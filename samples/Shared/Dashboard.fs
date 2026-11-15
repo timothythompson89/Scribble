@@ -38,21 +38,31 @@ let accentColor (i: int) = Color.Hsv(float i * 45.0 + 200.0, 0.55, 0.95)
 let progressAt (i: int) (seconds: float) = 0.5 + 0.45 * sin (seconds * 0.8 + float i)
 
 // --- Custom elements -----------------------------------------------------------------------------
+// Each one: a Props module (its properties), a type with its settings, and a module of the same
+// name with its definition (Type) and create.
 
 module CardGridProps =
     let minColumnWidth = Prop.define "MinColumnWidth" 240.0 Affects.Measure
     let gap = Prop.define "Gap" 20.0 Affects.Measure
     let rowHeight = Prop.define "RowHeight" 136.0 Affects.Measure
 
-let private cardGridType =
-    let columns (ctx: MeasureContext) (width: float) =
+/// Equal-width columns (as many as fit at minColumnWidth), fixed-height rows, a gap between both.
+[<AbstractClass>]
+type CardGrid =
+    inherit Panel
+    static member minColumnWidth<'k when 'k :> CardGrid>(value: float) : Setting<'k> = Setting.create CardGridProps.minColumnWidth value
+    static member gap<'k when 'k :> CardGrid>(value: float) : Setting<'k> = Setting.create CardGridProps.gap value
+    static member rowHeight<'k when 'k :> CardGrid>(value: float) : Setting<'k> = Setting.create CardGridProps.rowHeight value
+
+module CardGrid =
+    let private columns (ctx: MeasureContext) (width: float) =
         let gap, minWidth = ctx.Get CardGridProps.gap, ctx.Get CardGridProps.minColumnWidth
         if Double.IsInfinity width then max 1 ctx.Children.Count
         else max 1 (int ((width + gap) / (minWidth + gap)))
-    { ElementType.Default with
-        Name = "CardGrid"
-        Measure =
-            fun ctx available ->
+
+    let Type =
+        Element.define "CardGrid" [
+            Element.measure (fun ctx available ->
                 let gap, rowHeight = ctx.Get CardGridProps.gap, ctx.Get CardGridProps.rowHeight
                 let n = columns ctx available.Width
                 let cellWidth =
@@ -63,9 +73,8 @@ let private cardGridType =
                 let rows = (ctx.Children.Count + n - 1) / n
                 Size.Create(
                     (if Double.IsInfinity available.Width then float n * (cellWidth + gap) - gap else available.Width),
-                    max 0.0 (float rows * (rowHeight + gap) - gap))
-        Arrange =
-            fun ctx size ->
+                    max 0.0 (float rows * (rowHeight + gap) - gap)))
+            Element.arrange (fun ctx size ->
                 let gap, rowHeight = ctx.Get CardGridProps.gap, ctx.Get CardGridProps.rowHeight
                 let minWidth = ctx.Get CardGridProps.minColumnWidth
                 let n = max 1 (int ((size.Width + gap) / (minWidth + gap)))
@@ -73,25 +82,21 @@ let private cardGridType =
                 for i in 0 .. ctx.Children.Count - 1 do
                     let x = float (i % n) * (cellWidth + gap)
                     let y = float (i / n) * (rowHeight + gap)
-                    ctx.Arrange(ctx.Children[i], Rect.Create(x, y, cellWidth, rowHeight)) }
+                    ctx.Arrange(ctx.Children[i], Rect.Create(x, y, cellWidth, rowHeight)))
+        ]
 
-/// Equal-width columns (as many as fit at minColumnWidth), fixed-height rows, a gap between both.
-[<AbstractClass>]
-type CardGrid =
-    inherit Panel
-    static member create(settings: Setting<CardGrid> list) = View.Create(cardGridType, settings)
-    static member minColumnWidth<'k when 'k :> CardGrid>(value: float) : Setting<'k> = Setting.create CardGridProps.minColumnWidth value
-    static member gap<'k when 'k :> CardGrid>(value: float) : Setting<'k> = Setting.create CardGridProps.gap value
-    static member rowHeight<'k when 'k :> CardGrid>(value: float) : Setting<'k> = Setting.create CardGridProps.rowHeight value
+    let create (settings: Setting<CardGrid> list) = View.Create(Type, settings)
 
 /// Children on top of each other, each filling the panel within its own margin and alignment.
-/// That's exactly what ElementType.Default does, so there's nothing to write but a name. (Element
-/// types are defined once, as static values: the differ recognizes a type by reference.)
+/// That's what an element does when its definition leaves everything out, so there's nothing to
+/// write but a name.
 [<AbstractClass>]
 type Layers =
     inherit Panel
-    static member val Type = { ElementType.Default with Name = "Layers" }
-    static member create(settings: Setting<Layers> list) = View.Create(Layers.Type, settings)
+
+module Layers =
+    let Type = Element.define "Layers" []
+    let create (settings: Setting<Layers> list) = View.Create(Type, settings)
 
 module AccentStripProps =
     let color = Prop.define "Color" Color.Transparent Affects.Render
@@ -103,19 +108,21 @@ module AccentStripProps =
 [<AbstractClass>]
 type AccentStrip =
     inherit Layoutable
-    static member val Type =
-        { ElementType.Default with
-            Name = "AccentStrip"
-            Render =
-                fun ctx list ->
-                    let size = ctx.Size
-                    list.PushClip(Rect.Create(0.0, 0.0, size.Width, ctx.Get AccentStripProps.thickness))
-                    list.FillRoundedRect(Rect.Create(0.0, 0.0, size.Width, size.Height), ctx.Get AccentStripProps.cornerRadius, ctx.Get AccentStripProps.color)
-                    list.PopClip() }
-    static member create(settings: Setting<AccentStrip> list) = View.Create(AccentStrip.Type, settings)
     static member color<'k when 'k :> AccentStrip>(value: Color) : Setting<'k> = Setting.create AccentStripProps.color value
     static member cornerRadius<'k when 'k :> AccentStrip>(value: float) : Setting<'k> =
         Setting.create AccentStripProps.cornerRadius (CornerRadius.Uniform value)
+
+module AccentStrip =
+    let Type =
+        Element.define "AccentStrip" [
+            Element.render (fun ctx list ->
+                let size = ctx.Size
+                list.PushClip(Rect.Create(0.0, 0.0, size.Width, ctx.Get AccentStripProps.thickness))
+                list.FillRoundedRect(Rect.Create(0.0, 0.0, size.Width, size.Height), ctx.Get AccentStripProps.cornerRadius, ctx.Get AccentStripProps.color)
+                list.PopClip())
+        ]
+
+    let create (settings: Setting<AccentStrip> list) = View.Create(Type, settings)
 
 module ProgressBarProps =
     /// 0 to 1.
@@ -128,20 +135,22 @@ module ProgressBarProps =
 [<AbstractClass>]
 type ProgressBar =
     inherit Layoutable
-    static member val Type =
-        { ElementType.Default with
-            Name = "ProgressBar"
-            Measure = fun _ _ -> Size.Create(0.0, 8.0)
-            Render =
-                fun ctx list ->
-                    let size = ctx.Size
-                    let radius = CornerRadius.Uniform(size.Height / 2.0)
-                    let value = Math.Clamp(ctx.Get ProgressBarProps.value, 0.0, 1.0)
-                    list.FillRoundedRect(Rect.Create(0.0, 0.0, size.Width, size.Height), radius, ctx.Get ProgressBarProps.track)
-                    list.FillRoundedRect(Rect.Create(0.0, 0.0, size.Width * value, size.Height), radius, ctx.Get ProgressBarProps.accent, Precise) }
-    static member create(settings: Setting<ProgressBar> list) = View.Create(ProgressBar.Type, settings)
     static member value<'k when 'k :> ProgressBar>(value: float) : Setting<'k> = Setting.create ProgressBarProps.value value
     static member accent<'k when 'k :> ProgressBar>(value: Color) : Setting<'k> = Setting.create ProgressBarProps.accent value
+
+module ProgressBar =
+    let Type =
+        Element.define "ProgressBar" [
+            Element.measure (fun _ _ -> Size.Create(0.0, 8.0))
+            Element.render (fun ctx list ->
+                let size = ctx.Size
+                let radius = CornerRadius.Uniform(size.Height / 2.0)
+                let value = Math.Clamp(ctx.Get ProgressBarProps.value, 0.0, 1.0)
+                list.FillRoundedRect(Rect.Create(0.0, 0.0, size.Width, size.Height), radius, ctx.Get ProgressBarProps.track)
+                list.FillRoundedRect(Rect.Create(0.0, 0.0, size.Width * value, size.Height), radius, ctx.Get ProgressBarProps.accent, Precise))
+        ]
+
+    let create (settings: Setting<ProgressBar> list) = View.Create(Type, settings)
 
 // --- Cards and the whole dashboard ---------------------------------------------------------------
 
@@ -157,13 +166,16 @@ let private cardShadow hovered =
     { Blur = (if hovered then 28.0 else 16.0); OffsetX = 0.0; OffsetY = (if hovered then 8.0 else 4.0); Spread = 0.0
       Color = Color.Rgba(0.0f, 0.0f, 0.0f, 0.5f) }
 
-/// One card, showing `progress` (0–1), highlighted when hovered.
-let card (index: int) (progress: float) (hovered: bool) : View =
+/// One card, showing `progress` (0–1), highlighted when hovered. `onHover` hears about the pointer
+/// coming over the card (Some index) and leaving it (None).
+let card (index: int) (progress: float) (hovered: bool) (onHover: int option -> unit) : View =
     let title, subtitle, avatar = cards[index]
     let accent = accentColor index
     let thickness = if hovered then 2.0 else 1.0
     Border.create [
         Border.name $"card {index}"
+        Border.onPointerEnter (fun _ -> onHover (Some index))
+        Border.onPointerLeave (fun _ -> onHover None)
         Border.background cardFill
         Border.cornerRadius 12.0
         Border.borderThickness thickness
@@ -263,8 +275,8 @@ let private topBar (toolbar: View option) =
 
 /// The whole dashboard at `seconds` of animation: the cards in `order` (card indices), the one at
 /// `hovered` highlighted, and an optional toolbar on the right of the top bar. Called again whenever
-/// any of these change; Scribble patches only what differs.
-let view (seconds: float) (hovered: int option) (order: int list) (toolbar: View option) : View =
+/// any of these change; Scribble patches only what differs. `onHover` hears which card the pointer is over.
+let view (seconds: float) (hovered: int option) (order: int list) (toolbar: View option) (onHover: int option -> unit) : View =
     StackPanel.create [
         StackPanel.name "dashboard"
         StackPanel.children [
@@ -275,7 +287,7 @@ let view (seconds: float) (hovered: int option) (order: int list) (toolbar: View
                 CardGrid.name "cards"
                 CardGrid.margin (24.0, 23.0, 24.0, 24.0)
                 // Keyed by card index, so a card keeps its element when the order changes.
-                CardGrid.items order id (fun i -> card i (progressAt i seconds) (hovered = Some i))
+                CardGrid.items order id (fun i -> card i (progressAt i seconds) (hovered = Some i) onHover)
             ]
         ]
     ]

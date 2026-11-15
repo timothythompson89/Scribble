@@ -78,7 +78,7 @@ type DashboardTests(fixture: TextFixture) =
     member this.``the element dashboard looks like the hand-drawn one``(scale: float) =
         let width, height = 760.0, 520.0
         let tree = ElementTree(fixture.Text, Scale = scale)
-        tree.Update(view 0.0 None allCards None)
+        tree.Update(view 0.0 None allCards None ignore)
         tree.UpdateLayout(Size.Create(width, height))
         let elements = this.Render(scale, width, height, fun f -> tree.Render f.DrawList)
         let byHand = this.Render(scale, width, height, fun f -> handDrawn fixture.Text f.DrawList scale width height 0.0)
@@ -96,7 +96,7 @@ type DashboardTests(fixture: TextFixture) =
     member _.``hovering a card patches its look but not the layout``() =
         let tree = ElementTree(fixture.Text)
         let size = Size.Create(760.0, 520.0)
-        tree.Update(view 0.0 None allCards None)
+        tree.Update(view 0.0 None allCards None ignore)
         tree.UpdateLayout size
         let grid = tree.Root.Value.Children[2]
         let card = grid.Children[3]
@@ -105,7 +105,7 @@ type DashboardTests(fixture: TextFixture) =
         // Somewhere inside card 3, in tree coordinates.
         let hit = tree.HitTest(grid.Bounds.X + card.Bounds.X + 50.0, grid.Bounds.Y + card.Bounds.Y + 50.0)
         Assert.Equal(Some 3, cardAt hit)
-        tree.Update(view 0.0 (cardAt hit) allCards None)
+        tree.Update(view 0.0 (cardAt hit) allCards None ignore)
         tree.UpdateLayout size
         // Patched, not rebuilt: the same elements, a thicker border, the same layout.
         Assert.Same(card, grid.Children[3])
@@ -113,7 +113,7 @@ type DashboardTests(fixture: TextFixture) =
         Assert.Equal(1.0, grid.Children[0].Get BorderProps.borderThickness)
         Assert.Equal(before, card.Bounds)
         Assert.Equal(contentBefore, content.Bounds)
-        tree.Update(view 0.0 None allCards None)
+        tree.Update(view 0.0 None allCards None ignore)
         Assert.Equal(1.0, card.Get BorderProps.borderThickness)
 
     [<Fact>]

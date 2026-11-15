@@ -40,6 +40,9 @@ type IWindow =
     /// again from each `Frame` while an animation runs.
     abstract RequestFrame: unit -> unit
 
+    /// The pointer's look while it is over the window's drawable area.
+    abstract SetCursor: cursor: Cursor -> unit
+
 /// Entry point to a windowing system.
 type IPlatform =
     inherit IDisposable

@@ -12,50 +12,10 @@ module BorderProps =
     let shadow: Prop<BoxShadow voption> = Prop.define "Shadow" ValueNone Affects.Render
     let child = Prop.child "Child"
 
-module internal BorderType =
-    let inset (ctx: MeasureContext) =
-        let p, t = ctx.Get BorderProps.padding, ctx.Get BorderProps.borderThickness
-        p.Horizontal + 2.0 * t, p.Vertical + 2.0 * t
-
-    let value =
-        { ElementType.Default with
-            Name = "Border"
-            Measure =
-                fun ctx available ->
-                    let ix, iy = inset ctx
-                    let mutable w, h = ix, iy
-                    for child in ctx.Children do
-                        let d = ctx.Measure(child, Size.Create(max 0.0 (available.Width - ix), max 0.0 (available.Height - iy)))
-                        w <- max w (d.Width + ix)
-                        h <- max h (d.Height + iy)
-                    Size.Create(w, h)
-            Arrange =
-                fun ctx size ->
-                    let p, t = ctx.Get BorderProps.padding, ctx.Get BorderProps.borderThickness
-                    let slot =
-                        Rect.Create(p.Left + t, p.Top + t, max 0.0 (size.Width - p.Horizontal - 2.0 * t), max 0.0 (size.Height - p.Vertical - 2.0 * t))
-                    for child in ctx.Children do
-                        ctx.Arrange(child, slot)
-            Render =
-                fun ctx list ->
-                    let size = ctx.Size
-                    let rect = Rect.Create(0.0, 0.0, size.Width, size.Height)
-                    let radius = ctx.Get BorderProps.cornerRadius
-                    let background = ctx.Get BorderProps.background
-                    let thickness, brush = ctx.Get BorderProps.borderThickness, ctx.Get BorderProps.borderBrush
-                    match ctx.Get BorderProps.shadow with
-                    | ValueSome s -> list.DrawShadow(rect, radius, s.Blur, s.Color, s.OffsetX, s.OffsetY, s.Spread)
-                    | ValueNone -> ()
-                    if thickness > 0.0 && brush.A > 0.0f then list.DrawBox(rect, radius, background, thickness, brush)
-                    elif background.A > 0.0f then
-                        if radius.IsZero then list.FillRect(rect, background) else list.FillRoundedRect(rect, radius, background) }
-
 /// Draws a background, border and optional shadow around one child, with padding inside the border.
 [<AbstractClass>]
 type Border =
     inherit Layoutable
-    static member Type: ElementType = BorderType.value
-    static member create(settings: Setting<Border> list) : View = View.Create(BorderType.value, settings)
     static member background<'k when 'k :> Border>(value: Color) : Setting<'k> = Setting.create BorderProps.background value
     static member borderBrush<'k when 'k :> Border>(value: Color) : Setting<'k> = Setting.create BorderProps.borderBrush value
     static member borderThickness<'k when 'k :> Border>(value: float) : Setting<'k> = Setting.create BorderProps.borderThickness value
@@ -67,3 +27,42 @@ type Border =
         Setting.create BorderProps.padding (Thickness.Symmetric(horizontal, vertical))
     static member shadow<'k when 'k :> Border>(value: BoxShadow) : Setting<'k> = Setting.create BorderProps.shadow (ValueSome value)
     static member child<'k when 'k :> Border>(value: View) : Setting<'k> = Setting.create BorderProps.child (ValueSome value)
+
+module Border =
+    let private inset (ctx: MeasureContext) =
+        let p, t = ctx.Get BorderProps.padding, ctx.Get BorderProps.borderThickness
+        p.Horizontal + 2.0 * t, p.Vertical + 2.0 * t
+
+    /// Draws the shadow, background and border with the given colors and shadow (Button passes state looks).
+    let internal draw (ctx: RenderContext) (list: DrawList) (background: Color) (brush: Color) (shadow: BoxShadow voption) =
+        let size = ctx.Size
+        let rect = Rect.Create(0.0, 0.0, size.Width, size.Height)
+        let radius = ctx.Get BorderProps.cornerRadius
+        let thickness = ctx.Get BorderProps.borderThickness
+        match shadow with
+        | ValueSome s -> list.DrawShadow(rect, radius, s.Blur, s.Color, s.OffsetX, s.OffsetY, s.Spread)
+        | ValueNone -> ()
+        if thickness > 0.0 && brush.A > 0.0f then list.DrawBox(rect, radius, background, thickness, brush)
+        elif background.A > 0.0f then
+            if radius.IsZero then list.FillRect(rect, background) else list.FillRoundedRect(rect, radius, background)
+
+    let Type =
+        Element.define "Border" [
+            Element.measure (fun ctx available ->
+                let ix, iy = inset ctx
+                let mutable w, h = ix, iy
+                for child in ctx.Children do
+                    let d = ctx.Measure(child, Size.Create(max 0.0 (available.Width - ix), max 0.0 (available.Height - iy)))
+                    w <- max w (d.Width + ix)
+                    h <- max h (d.Height + iy)
+                Size.Create(w, h))
+            Element.arrange (fun ctx size ->
+                let p, t = ctx.Get BorderProps.padding, ctx.Get BorderProps.borderThickness
+                let slot =
+                    Rect.Create(p.Left + t, p.Top + t, max 0.0 (size.Width - p.Horizontal - 2.0 * t), max 0.0 (size.Height - p.Vertical - 2.0 * t))
+                for child in ctx.Children do
+                    ctx.Arrange(child, slot))
+            Element.render (fun ctx list -> draw ctx list (ctx.Get BorderProps.background) (ctx.Get BorderProps.borderBrush) (ctx.Get BorderProps.shadow))
+        ]
+
+    let create (settings: Setting<Border> list) : View = View.Create(Type, settings)

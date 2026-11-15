@@ -68,7 +68,7 @@ let private toolbar model dispatch =
     ]
 
 let view model dispatch =
-    Dashboard.view model.Seconds model.Hovered model.Cards (Some(toolbar model dispatch))
+    Dashboard.view model.Seconds model.Hovered model.Cards (Some(toolbar model dispatch)) (fun card -> dispatch (Hover card))
 
 let settings: AppSetting<Msg> list =
     [ App.title "Scribble · Hello"
@@ -81,7 +81,7 @@ let settings: AppSetting<Msg> list =
       App.program init update view
       // Clamp so a long idle gap doesn't make the animation jump when it resumes.
       App.onFrame (fun time -> Some(Tick(min time.Delta.TotalSeconds 0.1)))
-      App.onKey (function
+      App.onKey (fun key _ ->
+          match key with
           | Key.Space -> Some TogglePause
-          | _ -> None)
-      App.onPointerMove (fun hit -> Some(Hover(Dashboard.cardAt hit))) ]
+          | _ -> None) ]

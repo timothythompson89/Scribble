@@ -16,8 +16,8 @@ type FrameStats =
 /// on every Frame, and asks for a frame whenever something in the tree changes.
 ///
 /// Forward the window's events to `HandleEvent`; the host handles Frame, Resized and ScaleChanged,
-/// and clicks: a press and release of the left button on the same element with an `onClick`
-/// setting (or inside one). Full input routing arrives in Milestone 5.
+/// pointer input (routed events, pointer capture, clicks, element states, the cursor) and the
+/// keyboard (focus, Tab order, routed key events, Enter/Space activation).
 [<Sealed>]
 type ElementHost(window: IWindow, device: IRenderDevice, text: TextSystem) =
     let tree = ElementTree(text)
@@ -25,21 +25,10 @@ type ElementHost(window: IWindow, device: IRenderDevice, text: TextSystem) =
     let mutable background = Color.Black
     let mutable stats = { LayoutMilliseconds = 0.0; RenderMilliseconds = 0.0; Shapes = 0 }
     let mutable beforeFrame: unit -> unit = ignore
-    /// The clickable element the left button went down on.
-    let mutable pressed: Element voption = ValueNone
+    let input = InputRouter(tree, window.SetCursor)
+    let clock = Stopwatch.StartNew()
 
-    let rec clickable (e: Element voption) =
-        match e with
-        | ValueSome x when (x.Get LayoutProps.onClick).IsSome -> e
-        | ValueSome x -> clickable x.Parent
-        | ValueNone -> ValueNone
-
-    let rec isInside (target: Element) (e: Element voption) =
-        match e with
-        | ValueSome x -> obj.ReferenceEquals(x, target) || isInside target x.Parent
-        | ValueNone -> false
-
-    let hit (p: PixelPoint) = tree.HitTest(float p.X / window.Scale, float p.Y / window.Scale)
+    let dips (p: PixelPoint) = Point(p.X / window.Scale, p.Y / window.Scale)
 
     /// True while a frame is being prepared and drawn: changes made then (an update patched in
     /// before layout) are drawn by this frame, so they don't need to ask for another.
@@ -75,12 +64,15 @@ type ElementHost(window: IWindow, device: IRenderDevice, text: TextSystem) =
     member _.Update(view: View) = tree.Update view
 
     member private _.DrawFrame() =
+        tree.Time <- clock.Elapsed
         beforeFrame ()
         let size = window.ClientSize
         let scale = window.Scale
         tree.Scale <- scale
         let started = Stopwatch.GetTimestamp()
         tree.UpdateLayout { Width = float size.Width / scale; Height = float size.Height / scale }
+        // Layout may have moved things under a pointer that stood still (hover, cursor).
+        input.Refresh()
         let laidOut = Stopwatch.GetTimestamp()
         match surface.TryBeginFrame scale with
         | Some frame ->
@@ -93,7 +85,15 @@ type ElementHost(window: IWindow, device: IRenderDevice, text: TextSystem) =
                   Shapes = frame.DrawList.Count }
         | None -> ()
 
-    member this.HandleEvent(event: PlatformEvent) =
+    /// The element with keyboard focus, if any.
+    member _.Focused: Element voption = input.Focused
+
+    /// Moves keyboard focus as Tab (Next) or Shift+Tab (Previous) would.
+    member _.MoveFocus(direction: FocusDirection) = input.MoveFocus direction
+
+    /// Handles a window event. Returns true for a key that an element (or built-in behavior such
+    /// as Tab or a focused button's Enter) handled; the app's own key handling skips those.
+    member this.HandleEvent(event: PlatformEvent) : bool =
         match event with
         | Frame ->
             inFrame <- true
@@ -101,19 +101,22 @@ type ElementHost(window: IWindow, device: IRenderDevice, text: TextSystem) =
                 this.DrawFrame()
             finally
                 inFrame <- false
-        | Resized size -> surface.Resize size
-        | ScaleChanged scale -> tree.Scale <- scale
-        | PointerPressed(_, _, p, MouseButton.Left) -> pressed <- clickable (hit p)
-        | PointerReleased(_, _, p, MouseButton.Left) ->
-            match pressed with
-            | ValueSome target ->
-                pressed <- ValueNone
-                if isInside target (hit p) then
-                    match target.Get LayoutProps.onClick with
-                    | ValueSome handler -> handler ()
-                    | ValueNone -> ()
-            | ValueNone -> ()
-        | _ -> ()
+            // Effects and "keep animating" requests: outside the frame, so what they change asks
+            // for the next one.
+            tree.RunAfterFrame()
+            false
+        | Resized size -> surface.Resize size; false
+        | ScaleChanged scale -> tree.Scale <- scale; false
+        | PointerMoved(kind, id, p, mods) -> input.PointerMoved(kind, id, dips p, mods); false
+        | PointerPressed(kind, id, p, button, mods) -> input.PointerPressed(kind, id, dips p, button, mods); false
+        | PointerReleased(kind, id, p, button, mods) -> input.PointerReleased(kind, id, dips p, button, mods); false
+        | PointerExited(kind, id) -> input.PointerExited(kind, id); false
+        | PointerCanceled(kind, id) -> input.PointerCanceled(kind, id); false
+        | PointerWheel(p, dx, dy, mods) -> input.Wheel(dips p, dx, dy, mods); false
+        | KeyDown(key, mods, isRepeat) -> input.KeyDown(key, mods, isRepeat)
+        | KeyUp(key, mods) -> input.KeyUp(key, mods)
+        | FocusChanged active -> input.WindowFocusChanged active; false
+        | _ -> false
 
     interface System.IDisposable with
         member _.Dispose() = surface.Dispose()

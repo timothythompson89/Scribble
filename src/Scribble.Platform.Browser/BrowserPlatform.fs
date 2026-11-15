@@ -16,6 +16,7 @@ module internal PlatformJs =
     let scale = JsFunction(ModuleName, "scale", T.double, [])
     let requestFrame = JsFunction(ModuleName, "requestFrame", T.void', [])
     let setTitle = JsFunction(ModuleName, "setTitle", T.void', [ T.string ])
+    let setCursor = JsFunction(ModuleName, "setCursor", T.void', [ T.double ])
     let createCanvas = JsFunction(ModuleName, "createCanvas", T.doubles, [ T.string ])
     let removeCanvas = JsFunction(ModuleName, "removeCanvas", T.void', [])
 
@@ -30,8 +31,14 @@ module internal PlatformJs =
         f.Invoke args
         args
 
+    let callDouble (f: JsFunction) (value: float) =
+        let args = f.Args()
+        args[2].ToJS value
+        f.Invoke args
+        args
+
     [<Literal>]
-    let RecordSize = 6
+    let RecordSize = 7
 
 /// The browser "window": a canvas that fills the page.
 [<Sealed>]
@@ -40,6 +47,7 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
     let mutable title = ""
     let mutable closed = false
     let mutable frameRequested = false
+    let mutable cursor = Cursor.Default
 
     member _.FrameRequested = frameRequested && not closed
 
@@ -81,6 +89,23 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
                 frameRequested <- true
                 PlatformJs.call0 PlatformJs.requestFrame |> ignore
 
+        member _.SetCursor(value: Cursor) =
+            if not closed && value <> cursor then
+                cursor <- value
+                // The index into the `cursors` table in scribble-platform.js (declaration order).
+                let index =
+                    match value with
+                    | Cursor.Default -> 0
+                    | Cursor.Hand -> 1
+                    | Cursor.Text -> 2
+                    | Cursor.Crosshair -> 3
+                    | Cursor.Move -> 4
+                    | Cursor.ResizeLeftRight -> 5
+                    | Cursor.ResizeUpDown -> 6
+                    | Cursor.NotAllowed -> 7
+                    | Cursor.Wait -> 8
+                PlatformJs.callDouble PlatformJs.setCursor (float index) |> ignore
+
         member this.Dispose() = (this :> IWindow).Close()
 
 /// The browser windowing backend. One window per page for now: a canvas that fills it.
@@ -89,13 +114,14 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
 type BrowserPlatform private () =
     let mutable window: BrowserWindow option = None
 
+    let kindOf (code: float) =
+        match int code with
+        | 1 -> Touch
+        | 2 -> Pen
+        | _ -> Mouse
+
     let pointer (r: float[]) i =
-        let kind =
-            match int r[i + 1] with
-            | 1 -> Touch
-            | 2 -> Pen
-            | _ -> Mouse
-        kind, int r[i + 2], ({ X = r[i + 3]; Y = r[i + 4] }: PixelPoint)
+        kindOf r[i + 1], int r[i + 2], ({ X = r[i + 3]; Y = r[i + 4] }: PixelPoint)
 
     let button (code: float) =
         match int code with
@@ -105,16 +131,60 @@ type BrowserPlatform private () =
         | 4 -> XButton2
         | _ -> Left
 
+    let modifiers (code: float) : Modifiers = enum (int code)
+
+    /// A KeyboardEvent.key value as a Key.
+    let keyOf (name: string) : Key =
+        match name with
+        | " " | "Spacebar" -> Key.Space
+        | "Enter" -> Key.Enter
+        | "Escape" | "Esc" -> Key.Escape
+        | "Tab" -> Key.Tab
+        | "Backspace" -> Key.Backspace
+        | "Delete" | "Del" -> Key.Delete
+        | "Insert" -> Key.Insert
+        | "ArrowLeft" | "Left" -> Key.Left
+        | "ArrowUp" | "Up" -> Key.Up
+        | "ArrowRight" | "Right" -> Key.Right
+        | "ArrowDown" | "Down" -> Key.Down
+        | "Home" -> Key.Home
+        | "End" -> Key.End
+        | "PageUp" -> Key.PageUp
+        | "PageDown" -> Key.PageDown
+        | "Shift" -> Key.Shift
+        | "Control" -> Key.Control
+        | "Alt" | "AltGraph" -> Key.Alt
+        | "Meta" | "OS" -> Key.Meta
+        | "CapsLock" -> Key.CapsLock
+        | n when n.Length = 1 -> Key.Char(Char.ToLowerInvariant n[0])
+        | n when n.Length >= 2 && n.Length <= 3 && n[0] = 'F' && Char.IsDigit n[1] ->
+            match Int32.TryParse(n.Substring 1) with
+            | true, f when f >= 1 && f <= 24 -> Key.F f
+            | _ -> Key.Other n
+        | n -> Key.Other n
+
+    let textAt (texts: string[]) (index: float) =
+        let i = int index
+        if i >= 0 && i < texts.Length then ValueSome texts[i] else ValueNone
+
     let decode (r: float[]) (texts: string[]) i =
         match int r[i] with
         | 0 -> Some(Resized { Width = int r[i + 1]; Height = int r[i + 2] })
         | 1 -> Some(ScaleChanged r[i + 1])
-        | 2 -> let k, id, p = pointer r i in Some(PointerMoved(k, id, p))
-        | 3 -> let k, id, p = pointer r i in Some(PointerPressed(k, id, p, button r[i + 5]))
-        | 4 -> let k, id, p = pointer r i in Some(PointerReleased(k, id, p, button r[i + 5]))
-        | 5 -> Some(PointerWheel({ X = r[i + 1]; Y = r[i + 2] }, r[i + 3], r[i + 4]))
-        | 6 -> Some(KeyDown(int r[i + 1], r[i + 2] <> 0.0))
-        | 7 -> Some(KeyUp(int r[i + 1]))
+        | 2 -> let k, id, p = pointer r i in Some(PointerMoved(k, id, p, modifiers r[i + 6]))
+        | 3 -> let k, id, p = pointer r i in Some(PointerPressed(k, id, p, button r[i + 5], modifiers r[i + 6]))
+        | 4 -> let k, id, p = pointer r i in Some(PointerReleased(k, id, p, button r[i + 5], modifiers r[i + 6]))
+        | 5 -> Some(PointerWheel({ X = r[i + 1]; Y = r[i + 2] }, r[i + 3], r[i + 4], modifiers r[i + 5]))
+        | 10 -> Some(PointerExited(kindOf r[i + 1], int r[i + 2]))
+        | 11 -> Some(PointerCanceled(kindOf r[i + 1], int r[i + 2]))
+        | 6 ->
+            match textAt texts r[i + 1] with
+            | ValueSome name -> Some(KeyDown(keyOf name, modifiers r[i + 3], r[i + 2] <> 0.0))
+            | ValueNone -> None
+        | 7 ->
+            match textAt texts r[i + 1] with
+            | ValueSome name -> Some(KeyUp(keyOf name, modifiers r[i + 3]))
+            | ValueNone -> None
         | 8 ->
             let index = int r[i + 1]
             if index >= 0 && index < texts.Length then Some(TextInput texts[index]) else None

@@ -1,0 +1,60 @@
+namespace Scribble.Core
+
+// The platform's input types, under Scribble.Core too, so apps don't need `open Scribble.Platform`.
+type Cursor = Scribble.Platform.Cursor
+type Key = Scribble.Platform.Key
+type Modifiers = Scribble.Platform.Modifiers
+type MouseButton = Scribble.Platform.MouseButton
+type PointerKind = Scribble.Platform.PointerKind
+
+/// What every routed event tells its handlers.
+///
+/// Routed events go to a target element (the one under the pointer, or the focused one for keys)
+/// and then to each of its ancestors; their Preview versions go the other way first, from the
+/// root down. Call `Handle()` to stop the event there.
+[<AbstractClass>]
+type RoutedEventArgs internal (modifiers: Modifiers) =
+    let mutable handled = false
+    /// The top-left of the element whose handler is running, in window DIPs (set by the router).
+    member val internal Origin = Point.Zero with get, set
+    /// Modifier keys held when the event happened.
+    member _.Modifiers = modifiers
+    member _.IsHandled = handled
+    /// Stops the event: elements further along its route don't see it. Handling a Preview event
+    /// also stops the normal one (a press handled in Preview doesn't click; a key handled anywhere
+    /// skips built-in behavior such as Tab moving focus and App.onKey).
+    member _.Handle() = handled <- true
+
+/// A routed event at a position (pointer, wheel). Positions are in DIPs.
+[<AbstractClass>]
+type InputEventArgs internal (position: Point, modifiers: Modifiers) =
+    inherit RoutedEventArgs(modifiers)
+    /// Where the pointer is, relative to the window.
+    member _.Position = position
+    /// Where the pointer is, relative to the element whose handler is running.
+    member this.LocalPosition = Point(position.X - this.Origin.X, position.Y - this.Origin.Y)
+
+/// A pointer event: enter, leave, move, down or up.
+[<Sealed>]
+type PointerEventArgs internal (kind: PointerKind, pointerId: int, position: Point, button: MouseButton voption, modifiers: Modifiers) =
+    inherit InputEventArgs(position, modifiers)
+    member _.PointerKind = kind
+    /// Tells touches apart; the mouse is always 0 on desktop.
+    member _.PointerId = pointerId
+    /// The button that went down or up (ValueNone for move, enter and leave).
+    member _.Button = button
+
+/// Mouse wheel or touchpad scrolling, in notches (positive = away from the user / to the right).
+[<Sealed>]
+type WheelEventArgs internal (position: Point, deltaX: float, deltaY: float, modifiers: Modifiers) =
+    inherit InputEventArgs(position, modifiers)
+    member _.DeltaX = deltaX
+    member _.DeltaY = deltaY
+
+/// A key going down or up. Goes to the focused element (the root when nothing has focus).
+[<Sealed>]
+type KeyEventArgs internal (key: Key, modifiers: Modifiers, isRepeat: bool) =
+    inherit RoutedEventArgs(modifiers)
+    member _.Key = key
+    /// The key is held and the OS is repeating it (key down only).
+    member _.IsRepeat = isRepeat

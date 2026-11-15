@@ -14,14 +14,20 @@ type IElementRoot =
     abstract Invalidated: unit -> unit
     /// Throws if called from a thread other than the UI thread (debug builds only).
     abstract VerifyAccess: unit -> unit
+    /// The current frame's time, for animations.
+    abstract Time: TimeSpan
+    /// Runs `run` at the start of the next layout, shallowest first (components whose state
+    /// changed), and asks for a frame.
+    abstract ScheduleComponent: depth: int * run: (unit -> unit) -> unit
+    /// Runs `action` after the current frame is drawn (effects; "keep animating" requests).
+    abstract AfterFrame: action: (unit -> unit) -> unit
 
-/// What kind of element something is: its name and three functions. Measure says how big the
-/// content wants to be, Arrange places the children, Render draws the element. Margin, explicit
-/// sizes, min/max, alignment, visibility, clipping, pixel rounding and caching are done by the
-/// engine around these functions, so they only deal with content.
+/// What kind of element something is: its name, three functions and its default settings. Measure
+/// says how big the content wants to be, Arrange places the children, Render draws the element.
+/// Margin, explicit sizes, min/max, alignment, visibility, clipping, pixel rounding and caching are
+/// done by the engine around these functions, so they only deal with content.
 ///
-/// Start from `ElementType.Default`, which measures to the largest child, gives every child the
-/// whole element, and draws nothing.
+/// Made with `Element.define` or `Element.extend` (see the Element module below).
 type ElementType =
     { Name: string
       /// Content size wanted, given the available space (margin and explicit sizes already
@@ -30,10 +36,21 @@ type ElementType =
       /// Place every child within the element's final size (coordinates relative to the element).
       Arrange: ArrangeContext -> Size -> unit
       /// Draw the element in its own coordinates, (0, 0) at its top-left. Children draw after.
-      Render: RenderContext -> DrawList -> unit }
+      Render: RenderContext -> DrawList -> unit
+      /// Values used where an element of this type has no setting of its own (before the
+      /// property's own default).
+      Defaults: struct (Prop * obj)[]
+      /// A visual-only transform around the element and its children, in the element's own
+      /// coordinates (layout and hit testing ignore it).
+      Transform: (RenderContext -> Transform) voption }
 
-    static member Default: ElementType =
+    override t.ToString() = t.Name
+
+    /// Measures to the largest child, gives every child the whole element, and draws nothing.
+    static member internal Default: ElementType =
         { Name = "Element"
+          Defaults = [||]
+          Transform = ValueNone
           Measure =
             fun ctx available ->
                 let mutable w, h = 0.0, 0.0
@@ -72,7 +89,7 @@ and [<Struct>] ArrangeContext internal (element: Element) =
     member _.Text: TextSystem = element.TextSystem
     member _.SetLocal<'T>(prop: Prop<'T>, value: 'T) = element.SetLocal(prop, value)
 
-/// What a Render function can do: read properties and its size.
+/// What a Render function can do: read properties, its size and its input states.
 and [<Struct>] RenderContext internal (element: Element) =
     member _.Get<'T>(prop: Prop<'T>) : 'T = element.Get prop
     /// The element's size; draw within (0, 0)–(Width, Height).
@@ -80,6 +97,39 @@ and [<Struct>] RenderContext internal (element: Element) =
         let b: Rect = element.Bounds
         Size.Create(b.Width, b.Height)
     member _.Text: TextSystem = element.TextSystem
+    /// The pointer is over the element (or something inside it).
+    member _.IsPointerOver = element.IsPointerOver
+    /// The element got a left-button press that hasn't been released, and the pointer is over it.
+    member _.IsPressed = element.IsPressed
+    /// False when the element or one of its ancestors has `isEnabled false`.
+    member _.IsEnabled = element.IsEnabled
+    /// The element has keyboard focus (however it got it).
+    member _.IsFocused = element.IsFocused
+    /// The element has focus and the user is using the keyboard: draw a focus ring
+    /// (`FocusRing.draw`). False after a pointer press and while the window is inactive.
+    member _.IsFocusVisible = element.IsFocusVisible
+    /// The current frame's time.
+    member _.Time = element.Time
+
+    /// A value that moves to `target` over `duration` whenever the target changes (the first
+    /// target is taken at once). Frames keep coming while it moves; nothing else re-runs.
+    /// `key` tells this element's animated values apart: `ctx.Animate("press", ...)`.
+    member _.Animate(key: string, target: float, duration: TimeSpan, ?easing: float -> float) : float =
+        element.Animate(key, target, duration, defaultArg easing Easing.easeOut, Lerp.float)
+
+    /// A color that fades to `target` over `duration` whenever the target changes.
+    member _.Animate(key: string, target: Color, duration: TimeSpan, ?easing: float -> float) : Color =
+        element.Animate(key, target, duration, defaultArg easing Easing.easeOut, Lerp.color)
+
+/// What a component's input carries (its function and props); equal inputs don't re-run it.
+and [<AbstractClass>] internal ComponentInput() =
+    /// Runs the component for `element` and returns its view.
+    abstract Run: element: Element -> View
+
+/// A component's state on its element: told when the element joins or leaves a tree.
+and [<AbstractClass>] internal ComponentState() =
+    abstract Attached: root: IElementRoot -> unit
+    abstract Detached: unit -> unit
 
 /// A description of an element: its type, its settings and (inside the settings) its children's
 /// descriptions. Cheap to make: views are what `Border.create [ ... ]` returns, and what view
@@ -117,6 +167,9 @@ and View internal (elementType: ElementType, settings: struct (Prop * obj)[]) =
 and [<Sealed>] Element internal (elementType: ElementType) =
     static let empty: Element[] = [||]
     static let clamp (value: float) (low: float) (high: float) = max low (min value high)
+    /// A component's input (set by its view) and its rendered content (the view it returned).
+    static let componentInput = Prop<obj>("Component", obj (), Affects.Nothing, PropKind.Component)
+    static let componentContent = Prop<View voption>("Content", ValueNone, Affects.Measure, PropKind.Child)
 
     // Property values: a small list of (property, value), searched linearly.
     let mutable keys: Prop[] = Array.zeroCreate 4
@@ -149,6 +202,19 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     let mutable desiredSize = Size.Zero
     let mutable bounds = Rect.Create(0.0, 0.0, 0.0, 0.0)
 
+    // Input states, kept by the input router: how many pointers are over the element, and how many
+    // hold a press on it while over it.
+    let mutable pointersOver = 0
+    let mutable pointersPressing = 0
+    // Kept by the focus manager.
+    let mutable focused = false
+    let mutable focusVisible = false
+    /// Space is held on the focused element (it looks pressed until Space comes up).
+    let mutable keyPressed = false
+    /// Values animated by the render function (`ctx.Animate`), by key; created on first use.
+    let mutable animations: Dictionary<string, obj> voption = ValueNone
+    let mutable componentState: ComponentState voption = ValueNone
+
     let find (id: int) =
         let mutable i = 0
         while i < count && keys[i].Id <> id do
@@ -175,6 +241,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// Builds an element (and its children) from a view.
     static member internal Realize(v: View) : Element =
         let e = Element(v.Type)
+        // The type's defaults may include layout properties (Button aligns left).
+        if v.Type.Defaults.Length > 0 then e.RefreshLayoutValues()
         e.Patch v
         e
 
@@ -222,7 +290,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             match old with
             | ValueSome o ->
                 for struct (p, _) in o.Settings do
-                    if not (newView.Has p) then this.SetValue(p, p.DefaultBoxed)
+                    if not (newView.Has p) then this.SetValue(p, this.DefaultOf p)
             | ValueNone -> ()
 
     member _.Type = elementType
@@ -242,11 +310,121 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     /// Sets the tree for this element and everything below it.
     member internal _.SetRoot(r: IElementRoot voption) =
+        let before = root
         root <- r
         for child in children do
             child.SetRoot r
+        match componentState, before, r with
+        | ValueSome c, ValueSome _, ValueNone -> c.Detached()
+        | ValueSome c, ValueNone, ValueSome added -> c.Attached added
+        | _ -> ()
+
+    // --- Components and animation ----------------------------------------------------------------
+
+    static member internal ComponentInputProp: Prop<obj> = componentInput
+
+    /// The state of the component this element hosts, if it hosts one.
+    member internal _.ComponentState
+        with get () = componentState
+        and set v = componentState <- v
+
+    /// Runs the hosted component and patches what it returned in as this element's child.
+    member internal this.RunComponent() =
+        match find componentInput.Id with
+        | -1 -> ()
+        | i ->
+            let input = values[i] :?> ComponentInput
+            let view = input.Run this
+            this.SetValue(componentContent, box (ValueSome view))
+
+    member internal _.Time =
+        match root with
+        | ValueSome r -> r.Time
+        | ValueNone -> TimeSpan.Zero
+
+    member internal this.Animate<'T>(key: string, target: 'T, duration: TimeSpan, easing: float -> float, lerp: 'T -> 'T -> float -> 'T) : 'T =
+        let all =
+            match animations with
+            | ValueSome d -> d
+            | ValueNone ->
+                let d = Dictionary<string, obj>()
+                animations <- ValueSome d
+                d
+        let tween =
+            match all.TryGetValue key with
+            | true, (:? Tween<'T> as t) -> t
+            | _ ->
+                let t = Tween<'T>(lerp, target)
+                all[key] <- box t
+                t
+        let now = this.Time
+        let value = tween.Update(target, now, duration, easing)
+        if tween.IsMoving now then
+            match root with
+            | ValueSome r -> r.AfterFrame(fun () -> this.InvalidateVisual())
+            | ValueNone -> ()
+        value
 
     member _.IsVisible = lv.IsVisible
+
+    /// False when this element or one of its ancestors has `isEnabled false`.
+    member this.IsEnabled =
+        this.Get LayoutProps.isEnabled
+        && match parent with
+           | ValueSome p -> p.IsEnabled
+           | ValueNone -> true
+
+    /// The pointer is over this element or something inside it.
+    member _.IsPointerOver = pointersOver > 0
+    /// A left-button press on this element hasn't been released and the pointer is over it, or
+    /// Space is held while it has focus.
+    member _.IsPressed = pointersPressing > 0 || keyPressed
+    /// Has keyboard focus.
+    member _.IsFocused = focused
+    /// Has focus and should show it (the keyboard is in use and the window is active).
+    member _.IsFocusVisible = focused && focusVisible
+
+    member internal this.SetFocusState(isFocused: bool, isVisible: bool) =
+        let before = this.IsFocused, this.IsFocusVisible
+        focused <- isFocused
+        focusVisible <- isVisible
+        if before <> (this.IsFocused, this.IsFocusVisible) then this.InvalidateVisual()
+
+    member internal this.SetKeyPressed(value: bool) =
+        let before = this.IsPressed
+        keyPressed <- value
+        if before <> this.IsPressed then this.InvalidateVisual()
+
+    member internal this.ChangePointersOver(delta: int) =
+        let before = pointersOver > 0
+        pointersOver <- max 0 (pointersOver + delta)
+        if before <> (pointersOver > 0) then this.InvalidateVisual()
+
+    member internal this.ChangePointersPressing(delta: int) =
+        let before = pointersPressing > 0
+        pointersPressing <- max 0 (pointersPressing + delta)
+        if before <> (pointersPressing > 0) then this.InvalidateVisual()
+
+    /// The element's top-left in tree coordinates (DIPs), after the last arrange.
+    member _.PositionInTree: Point =
+        let mutable x, y = bounds.X, bounds.Y
+        let mutable p = parent
+        while p.IsSome do
+            let b = p.Value.Bounds
+            x <- x + b.X
+            y <- y + b.Y
+            p <- p.Value.Parent
+        Point(x, y)
+
+    /// True when `other` is this element or inside it.
+    member this.Contains(other: Element) =
+        let mutable e = ValueSome other
+        let mutable found = false
+        while not found && e.IsSome do
+            if obj.ReferenceEquals(e.Value, this) then found <- true
+            e <- e.Value.Parent
+        found
+
     /// The width and height as set (fast; for panels that look at their children's lengths).
     member _.RequestedWidth: Length = lv.Width
     member _.RequestedHeight: Length = lv.Height
@@ -268,21 +446,29 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     // --- Properties ------------------------------------------------------------------------------
 
-    member _.Get<'T>(prop: Prop<'T>) : 'T =
+    /// The value this element has without a setting of its own: its type's default, else the property's.
+    member _.DefaultOf(prop: Prop) : obj =
+        let defaults = elementType.Defaults
+        let mutable i = 0
+        while i < defaults.Length && (let struct (p, _) = defaults[i] in p.Id <> prop.Id) do
+            i <- i + 1
+        if i < defaults.Length then (let struct (_, v) = defaults[i] in v) else prop.DefaultBoxed
+
+    member this.Get<'T>(prop: Prop<'T>) : 'T =
         match find prop.Id with
-        | -1 -> prop.Default
+        | -1 -> if elementType.Defaults.Length = 0 then prop.Default else unbox<'T> (this.DefaultOf prop)
         | i -> unbox<'T> values[i]
 
     /// The value as stored (or the default), for tools such as the differ and the inspector.
-    member _.GetBoxed(prop: Prop) : obj =
+    member this.GetBoxed(prop: Prop) : obj =
         match find prop.Id with
-        | -1 -> prop.DefaultBoxed
+        | -1 -> this.DefaultOf prop
         | i -> values[i]
 
     member this.Set<'k>(setting: Setting<'k>) = this.SetValue(setting.Prop, setting.Value)
     member this.Set<'T>(prop: Prop<'T>, value: 'T) = this.SetValue(prop, box value)
-    /// Back to the default value.
-    member this.Reset(prop: Prop) = this.SetValue(prop, prop.DefaultBoxed)
+    /// Back to the default value (the element type's, else the property's).
+    member this.Reset(prop: Prop) = this.SetValue(prop, this.DefaultOf prop)
 
     member internal _.SetLocal<'T>(prop: Prop<'T>, value: 'T) = store prop (box value)
 
@@ -290,10 +476,13 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         this.VerifyAccess()
         let old =
             match find prop.Id with
-            | -1 -> prop.DefaultBoxed
+            | -1 -> this.DefaultOf prop
             | i -> values[i]
         if not (prop.Same(old, value)) then
-            if prop.Kind <> PropKind.Value then
+            if prop.Kind = PropKind.Component then
+                store prop value
+                this.RunComponent()
+            elif prop.Kind <> PropKind.Value then
                 let current =
                     match childSlots |> Array.tryFind (fun struct (p, _) -> obj.ReferenceEquals(p, prop)) with
                     | Some(struct (_, es)) -> es
@@ -336,7 +525,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     member internal _.SetParent(p: Element voption) = parent <- p
 
-    member private this.RefreshLayoutValues() =
+    member internal this.RefreshLayoutValues() =
         lv <-
             { Margin = this.Get LayoutProps.margin; Width = this.Get LayoutProps.width; Height = this.Get LayoutProps.height
               MinWidth = this.Get LayoutProps.minWidth; MinHeight = this.Get LayoutProps.minHeight
@@ -488,6 +677,12 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     member this.Render(list: DrawList) =
         if not bounds.IsEmpty && lv.IsVisible then
             list.PushTranslate(bounds.X, bounds.Y)
+            let transformed =
+                match elementType.Transform with
+                | ValueSome f ->
+                    list.PushTransform(f (RenderContext this))
+                    true
+                | ValueNone -> false
             elementType.Render (RenderContext this) list
             if children.Length > 0 then
                 let clip = lv.ClipToBounds
@@ -495,6 +690,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                 for child in children do
                     child.Render list
                 if clip then list.PopClip()
+            if transformed then list.PopTransform()
             list.PopTransform()
 
     override _.ToString() = elementType.Name
@@ -507,3 +703,59 @@ module PropChildren =
         static member child(name: string) = Prop<View voption>(name, ValueNone, Affects.Measure, PropKind.Child)
         /// Holds a list of children (views; the element keeps the realized children).
         static member children(name: string) = Prop<View list>(name, [], Affects.Measure, PropKind.Children)
+
+/// One part of an element definition, like a setting is one part of a view: `Element.measure`,
+/// `Element.arrange`, `Element.render`, `Element.defaults`.
+[<Struct>]
+type ElementPart = internal ElementPart of (ElementType -> ElementType)
+
+/// Defines element types, settings-list style:
+///
+///     let Type =
+///         Element.define "ProgressBar" [
+///             Element.measure (fun ctx available -> Size.Create(0.0, 8.0))
+///             Element.render (fun ctx list -> ...)
+///         ]
+///
+/// Define each type once, as a module-level value: the differ recognizes a type by reference.
+module Element =
+    let private build (start: ElementType) (name: string) (parts: ElementPart list) =
+        let mutable t = { start with Name = name }
+        for ElementPart apply in parts do
+            t <- apply t
+        t
+
+    /// A new element type. What it leaves out works like a plain container: it measures to its
+    /// largest child, gives every child the whole element, and draws nothing.
+    let define (name: string) (parts: ElementPart list) : ElementType = build ElementType.Default name parts
+
+    /// A new element type that starts as a copy of `baseType` (its measure, arrange, render and
+    /// defaults); the parts replace or add to them.
+    let extend (baseType: ElementType) (name: string) (parts: ElementPart list) : ElementType = build baseType name parts
+
+    /// How big the content wants to be, given the available space (margin and explicit sizes
+    /// already applied; may be infinite). Measure children here with `ctx.Measure`.
+    let measure (f: MeasureContext -> Size -> Size) = ElementPart(fun t -> { t with Measure = f })
+
+    /// Places every child within the element's final size, with `ctx.Arrange` (coordinates
+    /// relative to the element).
+    let arrange (f: ArrangeContext -> Size -> unit) = ElementPart(fun t -> { t with Arrange = f })
+
+    /// Draws the element in its own coordinates, (0, 0) at its top-left. Children draw after.
+    let render (f: RenderContext -> DrawList -> unit) = ElementPart(fun t -> { t with Render = f })
+
+    /// A visual-only transform around the element and its children (it changes how they're drawn,
+    /// not their layout or where they take input), in the element's own coordinates. For effects
+    /// like a pressed button sinking: see `Transform.ScaleAround`.
+    let transform (f: RenderContext -> Transform) = ElementPart(fun t -> { t with Transform = ValueSome f })
+
+    /// Values for this element type's properties when a view doesn't set them (a view's own
+    /// settings win; removing one from a later view goes back to these). Not for child properties.
+    let defaults (settings: Setting<'k> list) =
+        for s in settings do
+            if s.Prop.Kind <> PropKind.Value then
+                invalidArg "settings" $"'{s.Prop.Name}' holds children; element defaults can only be plain values."
+        ElementPart(fun t ->
+            let replaced = settings |> List.map (fun s -> s.Prop.Id) |> set
+            let kept = t.Defaults |> Array.filter (fun struct (p, _) -> not (replaced.Contains p.Id))
+            { t with Defaults = Array.append kept [| for s in settings -> struct (s.Prop, s.Value) |] })

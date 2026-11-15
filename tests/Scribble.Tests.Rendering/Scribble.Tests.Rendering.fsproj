@@ -15,8 +15,8 @@
     <Compile Include="../../samples/Shared/HelloApp.fs" Link="HelloApp.fs" />
     <Compile Include="DashboardTests.fs" />
     <Compile Include="../../samples/Shared/Counter.fs" Link="Counter.fs" />
-    <Compile Include="../../samples/Shared/CounterBuilders.fs" Link="CounterBuilders.fs" />
     <Compile Include="CounterTests.fs" />
+    <Compile Include="ButtonTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />

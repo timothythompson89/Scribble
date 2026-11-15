@@ -6,28 +6,6 @@ open Scribble.Platform
 open Scribble.Rendering
 open Scribble.Text
 
-/// Key codes for App.onKey. These are the platform's codes (Win32 virtual keys; the browser
-/// reports the same values for these keys) until a portable Key type arrives in Milestone 5.
-module Key =
-    [<Literal>]
-    let Backspace = 0x08
-    [<Literal>]
-    let Tab = 0x09
-    [<Literal>]
-    let Enter = 0x0D
-    [<Literal>]
-    let Escape = 0x1B
-    [<Literal>]
-    let Space = 0x20
-    [<Literal>]
-    let Left = 0x25
-    [<Literal>]
-    let Up = 0x26
-    [<Literal>]
-    let Right = 0x27
-    [<Literal>]
-    let Down = 0x28
-
 /// A running app's view and dispatch, as the runtime sees it.
 type internal ProgramRunner<'Msg> = { View: unit -> View; Dispatch: 'Msg -> unit }
 
@@ -39,9 +17,8 @@ type AppConfig<'Msg> internal () =
     member val internal Fonts: Font list = [] with get, set
     member val internal ShowStats = false with get, set
     member val internal CloseOnEscape = false with get, set
-    member val internal OnKey: (int -> 'Msg option) list = [] with get, set
+    member val internal OnKey: (Key -> Modifiers -> 'Msg option) list = [] with get, set
     member val internal OnFrame: (FrameTime -> 'Msg option) list = [] with get, set
-    member val internal OnPointerMove: (Element voption -> 'Msg option) list = [] with get, set
     /// Makes the program, given "the view needs rebuilding".
     member val internal Program: ((unit -> unit) -> ProgramRunner<'Msg>) voption = ValueNone with get, set
 
@@ -68,6 +45,7 @@ type App =
     /// Adds frames per second and layout time to the window title.
     static member showStats<'Msg>(value: bool) : AppSetting<'Msg> = AppSetting(fun c -> c.ShowStats <- value)
 
+    /// Closes the window on Escape, unless something in the view handled the key.
     static member closeOnEscape<'Msg>(value: bool) : AppSetting<'Msg> = AppSetting(fun c -> c.CloseOnEscape <- value)
 
     /// The Elmish pattern: a model, an update that makes the next model from a message, and a view
@@ -90,17 +68,15 @@ type App =
     static member view<'Msg>(value: View) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Program <- ValueSome(fun _ -> { View = (fun () -> value); Dispatch = ignore }))
 
-    /// Turns key presses into messages (repeats are left out).
-    static member onKey<'Msg>(handler: int -> 'Msg option) : AppSetting<'Msg> = AppSetting(fun c -> c.OnKey <- c.OnKey @ [ handler ])
+    /// Turns key presses into messages: `App.onKey (fun key mods -> match key with Key.Space -> Some Pause | _ -> None)`.
+    /// Runs last, only for keys nothing in the view handled (a focused button takes Space and
+    /// Enter; Tab moves focus), and never for repeats.
+    static member onKey<'Msg>(handler: Key -> Modifiers -> 'Msg option) : AppSetting<'Msg> = AppSetting(fun c -> c.OnKey <- c.OnKey @ [ handler ])
 
     /// Runs at the start of every frame. Frames only happen when something asked for one, so an
     /// animation keeps going by changing the model on each frame and stops when it doesn't.
     static member onFrame<'Msg>(handler: FrameTime -> 'Msg option) : AppSetting<'Msg> =
         AppSetting(fun c -> c.OnFrame <- c.OnFrame @ [ handler ])
-
-    /// The element under the pointer whenever it moves (a stopgap for hover until Milestone 5).
-    static member onPointerMove<'Msg>(handler: Element voption -> 'Msg option) : AppSetting<'Msg> =
-        AppSetting(fun c -> c.OnPointerMove <- c.OnPointerMove @ [ handler ])
 
     /// Runs an app on a given platform, device and shaper: creates the window, shows it, and from
     /// then on rebuilds the view when the model changes and draws when something asks for a frame.
@@ -135,13 +111,16 @@ type App =
         let onEvent (event: PlatformEvent) =
             match host.Value with
             | ValueSome(h: ElementHost) ->
-                h.HandleEvent event
+                let handled = h.HandleEvent event
                 match event with
                 | CloseRequested -> h.Window.Close()
-                | KeyDown(Key.Escape, false) when config.CloseOnEscape -> h.Window.Close()
-                | KeyDown(key, false) -> send config.OnKey key
-                | PointerMoved(_, _, p) when not config.OnPointerMove.IsEmpty ->
-                    send config.OnPointerMove (h.Tree.HitTest(float p.X / h.Window.Scale, float p.Y / h.Window.Scale))
+                | KeyDown _ when handled -> ()
+                | KeyDown(Key.Escape, _, false) when config.CloseOnEscape -> h.Window.Close()
+                | KeyDown(key, mods, false) ->
+                    for handler in config.OnKey do
+                        match handler key mods with
+                        | Some msg -> runner.Dispatch msg
+                        | None -> ()
                 | _ -> ()
             | ValueNone -> ()
 

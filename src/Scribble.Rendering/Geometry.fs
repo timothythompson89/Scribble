@@ -70,6 +70,10 @@ type Transform =
     static member Translate(dx, dy) = { Transform.Identity with OffsetX = dx; OffsetY = dy }
     static member Scale(sx, sy) = { Transform.Identity with ScaleX = sx; ScaleY = sy }
 
+    /// Scales by `factor` around the point (cx, cy), which stays where it is.
+    static member ScaleAround(factor: float, cx: float, cy: float) =
+        { ScaleX = factor; ScaleY = factor; OffsetX = cx - factor * cx; OffsetY = cy - factor * cy }
+
     /// Applies `inner` first, then this transform.
     member t.Then(inner: Transform) =
         { ScaleX = t.ScaleX * inner.ScaleX

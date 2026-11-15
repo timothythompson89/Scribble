@@ -1,5 +1,4 @@
-/// The counter sample in both syntaxes: settings lists and the experimental builders must produce
-/// the same picture.
+/// The counter sample against its reference picture.
 module Scribble.Tests.Rendering.CounterTests
 
 open System
@@ -22,13 +21,23 @@ type CounterTests(fixture: TextFixture) =
             tree.Render f.DrawList)
 
     [<Fact>]
-    member this.``both syntaxes draw the same counter``() =
+    member this.``the counter``() =
         let ignoreMsg (_: Scribble.Samples.Counter.Msg) = ()
-        let lists = this.Render(Scribble.Samples.Counter.view 3 ignoreMsg)
-        let builders = this.Render(Scribble.Samples.CounterBuilders.view 3 ignoreMsg)
-        let result = Snapshot.compare lists builders
-        Console.WriteLine($"counter: {result.DifferentPixels} of {result.TotalPixels} pixels differ between the two syntaxes")
-        Assert.Equal(0, result.DifferentPixels)
-        match Snapshot.check "counter@1x" lists with
+        let image = this.Render(Scribble.Samples.Counter.view 3 ignoreMsg)
+        match Snapshot.check "counter@1x" image with
+        | Some error -> Assert.Fail error
+        | None -> ()
+
+    [<Fact>]
+    member _.``the components demo``() =
+        let tree = ElementTree(fixture.Text)
+        tree.Update(Scribble.Samples.Counter.demo ())
+        tree.UpdateLayout(Size.Create(480.0, 520.0))
+        let size: PixelSize = { Width = 480; Height = 520 }
+        let image =
+            fixture.Gpu.Device.RenderOffscreen(size, 1.0, fun f ->
+                f.Clear(Color.Hex 0x181825)
+                tree.Render f.DrawList)
+        match Snapshot.check "counter-demo@1x" image with
         | Some error -> Assert.Fail error
         | None -> ()

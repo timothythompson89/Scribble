@@ -24,6 +24,10 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
     let mutable frameRequested = false
     /// WM_CHAR delivers UTF-16 code units; a character outside the BMP arrives as two messages.
     let mutable pendingHighSurrogate = None
+    /// True while Windows is watching for the mouse to leave (TrackMouseEvent), i.e. it's inside.
+    let mutable trackingLeave = false
+    let mutable cursor = Cursor.Default
+    let cursorHandles = System.Collections.Generic.Dictionary<Cursor, nativeint>()
 
     let scale () = float dpi / float USER_DEFAULT_SCREEN_DPI
 
@@ -35,16 +39,81 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
     let mousePosition (lParam: nativeint) =
         ({ X = float (signedLoWord lParam); Y = float (signedHiWord lParam) }: PixelPoint)
 
+    let modifiers () =
+        let down vk = GetKeyState vk < 0s
+        (if down VK_SHIFT then Modifiers.Shift else Modifiers.None)
+        ||| (if down VK_CONTROL then Modifiers.Control else Modifiers.None)
+        ||| (if down VK_MENU then Modifiers.Alt else Modifiers.None)
+        ||| (if down VK_LWIN || down VK_RWIN then Modifiers.Meta else Modifiers.None)
+
+    /// A Win32 virtual key as a portable Key: named keys by code, the rest through the active layout.
+    let keyOf (vk: int) : Key =
+        match vk with
+        | 0x08 -> Key.Backspace
+        | 0x09 -> Key.Tab
+        | 0x0D -> Key.Enter
+        | 0x10 | 0xA0 | 0xA1 -> Key.Shift
+        | 0x11 | 0xA2 | 0xA3 -> Key.Control
+        | 0x12 | 0xA4 | 0xA5 -> Key.Alt
+        | 0x14 -> Key.CapsLock
+        | 0x1B -> Key.Escape
+        | 0x20 -> Key.Space
+        | 0x21 -> Key.PageUp
+        | 0x22 -> Key.PageDown
+        | 0x23 -> Key.End
+        | 0x24 -> Key.Home
+        | 0x25 -> Key.Left
+        | 0x26 -> Key.Up
+        | 0x27 -> Key.Right
+        | 0x28 -> Key.Down
+        | 0x2D -> Key.Insert
+        | 0x2E -> Key.Delete
+        | 0x5B | 0x5C -> Key.Meta
+        | vk when vk >= 0x70 && vk <= 0x87 -> Key.F(vk - 0x6F)
+        | vk ->
+            let c = MapVirtualKeyW(uint32 vk, 2u) &&& 0x7FFFFFFFu
+            if c > 0u && c < 0xFFFFu then Key.Char(Char.ToLowerInvariant(char c))
+            else Key.Other("VK" + vk.ToString("X2"))
+
+    let cursorHandle (c: Cursor) =
+        match cursorHandles.TryGetValue c with
+        | true, h -> h
+        | _ ->
+            let id =
+                match c with
+                | Cursor.Default -> IDC_ARROW
+                | Cursor.Hand -> IDC_HAND
+                | Cursor.Text -> IDC_IBEAM
+                | Cursor.Crosshair -> IDC_CROSS
+                | Cursor.Move -> IDC_SIZEALL
+                | Cursor.ResizeLeftRight -> IDC_SIZEWE
+                | Cursor.ResizeUpDown -> IDC_SIZENS
+                | Cursor.NotAllowed -> IDC_NO
+                | Cursor.Wait -> IDC_WAIT
+            let h = LoadCursorW(0n, id)
+            cursorHandles[c] <- h
+            h
+
+    let isInside (p: PixelPoint) =
+        p.X >= 0.0 && p.Y >= 0.0 && p.X < float clientSize.Width && p.Y < float clientSize.Height
+
     let pressed button lParam =
         // Capture the mouse while any button is down so drags that leave the window keep reporting.
         if pressedButtons = 0 then SetCapture hwnd |> ignore
         pressedButtons <- pressedButtons + 1
-        onEvent (PointerPressed(Mouse, 0, mousePosition lParam, button))
+        onEvent (PointerPressed(Mouse, 0, mousePosition lParam, button, modifiers ()))
 
     let released button lParam =
+        let wasPressed = pressedButtons > 0
         pressedButtons <- max 0 (pressedButtons - 1)
+        // Zero before ReleaseCapture, so WM_CAPTURECHANGED knows this release was ours.
         if pressedButtons = 0 then ReleaseCapture() |> ignore
-        onEvent (PointerReleased(Mouse, 0, mousePosition lParam, button))
+        let position = mousePosition lParam
+        onEvent (PointerReleased(Mouse, 0, position, button, modifiers ()))
+        // Released outside the window after a drag: the pointer has left (Windows doesn't say so).
+        if wasPressed && pressedButtons = 0 && not (isInside position) then
+            trackingLeave <- false
+            onEvent (PointerExited(Mouse, 0))
 
     let wheel (wParam: nativeint) (lParam: nativeint) horizontal =
         // Wheel positions arrive in screen coordinates.
@@ -53,9 +122,16 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
         let delta = float (signedHiWord wParam) / WHEEL_DELTA
         let position: PixelPoint = { X = float p.X; Y = float p.Y }
         if horizontal then
-            onEvent (PointerWheel(position, delta, 0.0))
+            onEvent (PointerWheel(position, delta, 0.0, modifiers ()))
         else
-            onEvent (PointerWheel(position, 0.0, delta))
+            onEvent (PointerWheel(position, 0.0, delta, modifiers ()))
+
+    /// The press ended without a release we'll see (focus or capture went elsewhere).
+    let cancelPress () =
+        if pressedButtons > 0 then
+            pressedButtons <- 0
+            if GetCapture() = hwnd then ReleaseCapture() |> ignore
+            onEvent (PointerCanceled(Mouse, 0))
 
     member internal _.Attach(handle: nativeint) =
         hwnd <- handle
@@ -143,13 +219,31 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
             ValueSome 0n
 
         | WM_KILLFOCUS ->
-            pressedButtons <- 0
+            cancelPress ()
             onEvent (FocusChanged false)
             ValueSome 0n
 
-        | WM_MOUSEMOVE ->
-            onEvent (PointerMoved(Mouse, 0, mousePosition lParam))
+        // Another window took the mouse in the middle of a press (our own release zeroes the count first).
+        | WM_CAPTURECHANGED ->
+            if lParam <> hwnd then cancelPress ()
             ValueSome 0n
+
+        | WM_MOUSEMOVE ->
+            if not trackingLeave then
+                let mutable t = { cbSize = uint32 sizeof<TRACKMOUSEEVENT>; dwFlags = TME_LEAVE; hwndTrack = hwnd; dwHoverTime = 0u }
+                trackingLeave <- TrackMouseEvent(&&t) <> 0
+            onEvent (PointerMoved(Mouse, 0, mousePosition lParam, modifiers ()))
+            ValueSome 0n
+
+        | WM_MOUSELEAVE ->
+            trackingLeave <- false
+            // While a button is held the pointer is captured: the release reports where it ended up.
+            if pressedButtons = 0 then onEvent (PointerExited(Mouse, 0))
+            ValueSome 0n
+
+        | WM_SETCURSOR when loWord lParam = HTCLIENT ->
+            SetCursor(cursorHandle cursor) |> ignore
+            ValueSome 1n
 
         | WM_LBUTTONDOWN -> pressed Left lParam; ValueSome 0n
         | WM_LBUTTONUP -> released Left lParam; ValueSome 0n
@@ -170,13 +264,13 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
         | WM_KEYDOWN
         | WM_SYSKEYDOWN ->
             let isRepeat = (int64 lParam &&& (1L <<< 30)) <> 0L
-            onEvent (KeyDown(int wParam, isRepeat))
+            onEvent (KeyDown(keyOf (int wParam), modifiers (), isRepeat))
             // Let system keys (Alt+F4, Alt+Space) keep working.
             if msg = WM_SYSKEYDOWN then ValueNone else ValueSome 0n
 
         | WM_KEYUP
         | WM_SYSKEYUP ->
-            onEvent (KeyUp(int wParam))
+            onEvent (KeyUp(keyOf (int wParam), modifiers ()))
             if msg = WM_SYSKEYUP then ValueNone else ValueSome 0n
 
         | WM_CHAR ->
@@ -210,6 +304,12 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
                     SetWindowTextW(hwnd, p) |> ignore
 
         member _.RequestFrame() = if not closed then frameRequested <- true
+
+        member _.SetCursor(value: Cursor) =
+            if value <> cursor then
+                cursor <- value
+                // Change it now if the pointer is over us; otherwise WM_SETCURSOR applies it on entry.
+                if not closed && (trackingLeave || pressedButtons > 0) then SetCursor(cursorHandle value) |> ignore
 
         member _.Show() =
             if not closed then ShowWindow(hwnd, SW_SHOW) |> ignore

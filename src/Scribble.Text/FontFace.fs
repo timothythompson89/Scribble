@@ -166,7 +166,9 @@ type FontFace(data: byte[]) =
             layers
         | _ -> Dictionary<int, ColorLayer[]>()
 
-    let outlines = Dictionary<int, OutlinePoint[][]>()
+    /// Thread-safe: font values (the built-in Inter faces especially) are shared by every text
+    /// system in the process, and those may live on different threads (parallel tests, several UI threads).
+    let outlines = System.Collections.Concurrent.ConcurrentDictionary<int, OutlinePoint[][]>()
 
     /// Reads a simple glyph's contours.
     let readSimple (offset: int) (contourCount: int) : OutlinePoint[][] =

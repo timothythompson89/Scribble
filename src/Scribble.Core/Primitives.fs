@@ -12,6 +12,14 @@ type Size =
     static member Zero: Size = { Width = 0.0; Height = 0.0 }
     static member Infinite: Size = { Width = Double.PositiveInfinity; Height = Double.PositiveInfinity }
 
+/// A point in DIPs.
+[<Struct>]
+type Point(x: float, y: float) =
+    member _.X = x
+    member _.Y = y
+    static member Zero = Point(0.0, 0.0)
+    override _.ToString() = $"({x}, {y})"
+
 /// Space around or inside an element, in DIPs.
 [<Struct>]
 type Thickness =

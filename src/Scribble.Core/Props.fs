@@ -23,6 +23,8 @@ type internal PropKind =
     | Child = 1
     /// Holds `Element list`: any number of children.
     | Children = 2
+    /// Holds a component's input (its function and props): a change runs the component.
+    | Component = 3
 
 /// A property key: a name, a default value and what changing it affects. Elements store values
 /// for the properties set on them; everything else reads as the default.
@@ -93,8 +95,32 @@ module LayoutProps =
     let clipToBounds = Prop<bool>("ClipToBounds", false, Affects.Render, PropKind.Value)
     /// Identifies a child among its siblings across updates (for lists that insert, remove or reorder).
     let key = Prop<obj voption>("Key", ValueNone, Affects.Nothing, PropKind.Value)
-    /// Called when the pointer is pressed and released on the element (minimal input until M5).
+    /// Called when the left button is pressed and released on the element (or something inside it).
     let onClick = Prop<(unit -> unit) voption>("OnClick", ValueNone, Affects.Nothing, PropKind.Value)
+    /// False turns off input for the element and everything inside it (and greys out built-in looks).
+    let isEnabled = Prop<bool>("IsEnabled", true, Affects.Render, PropKind.Value)
+    /// The pointer's look over the element (ValueNone: whatever its parent uses).
+    let cursor = Prop<Cursor voption>("Cursor", ValueNone, Affects.Nothing, PropKind.Value)
+
+    let private pointerHandler name = Prop<(PointerEventArgs -> unit) voption>(name, ValueNone, Affects.Nothing, PropKind.Value)
+    let onPointerEnter = pointerHandler "OnPointerEnter"
+    let onPointerLeave = pointerHandler "OnPointerLeave"
+    let onPointerMove = pointerHandler "OnPointerMove"
+    let onPointerDown = pointerHandler "OnPointerDown"
+    let onPointerUp = pointerHandler "OnPointerUp"
+    let onPreviewPointerDown = pointerHandler "OnPreviewPointerDown"
+    let onPreviewPointerUp = pointerHandler "OnPreviewPointerUp"
+    let onWheel = Prop<(WheelEventArgs -> unit) voption>("OnWheel", ValueNone, Affects.Nothing, PropKind.Value)
+    let onPreviewWheel = Prop<(WheelEventArgs -> unit) voption>("OnPreviewWheel", ValueNone, Affects.Nothing, PropKind.Value)
+    /// Can take keyboard focus (Tab stops here; a press focuses it). Render, so turning it off
+    /// gets a frame, after which the focus manager lets go.
+    let focusable = Prop<bool>("Focusable", false, Affects.Render, PropKind.Value)
+
+    let private keyHandler name = Prop<(KeyEventArgs -> unit) voption>(name, ValueNone, Affects.Nothing, PropKind.Value)
+    let onKeyDown = keyHandler "OnKeyDown"
+    let onKeyUp = keyHandler "OnKeyUp"
+    let onPreviewKeyDown = keyHandler "OnPreviewKeyDown"
+    let onPreviewKeyUp = keyHandler "OnPreviewKeyUp"
 
     do
         for p in [ margin :> Prop; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment; verticalAlignment; isVisible; clipToBounds ] do

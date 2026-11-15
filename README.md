@@ -76,12 +76,22 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
 6. Escape or the close button exits cleanly, with no errors in the console.
 7. The toolbar: Pause/Resume (the label follows Space too), Restart, Remove card / Add card (1 to 8 cards; the rest
    stay put) and Shuffle (cards are keyed, so each keeps its element when it moves).
+8. Keyboard: Tab moves a blue ring through the toolbar buttons (Shift+Tab backwards, wrapping); Enter clicks the
+   focused one, Space presses it while held and clicks on release (Escape first cancels). Clicking a button focuses
+   it without a ring, so Space then presses *that* button; click the background to give Space back to the app.
 
-The counter (`dotnet run --project samples/Scribble.Samples.Counter`): the buttons change the count (a press and a
-release on the same button counts as a click), Reset appears when the count isn't zero, and nothing redraws while
-you don't click. `-- --builders` runs the same app written in the experimental builder syntax (below); it should
-look identical. The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281; add `?arg=--builders`
-to the address for the builder version).
+The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo:
+
+1. The top counter is the Elmish counter inside a component (`useElmish`): the buttons change the count (a press
+   and a release on the same button counts as a click), Reset is disabled (faded, no hand cursor) at zero.
+2. Below it, a list of counters, each with its own count (`useState`); the bar slides to the new count (0 to 10,
+   red when negative) over a quarter second (`useAnimated`). Add, Remove first and Reverse change the list: counts
+   stay with their names (keyed). Clicking one counter re-runs only that counter.
+3. Buttons sink slightly (97%) while pressed and spring back; their faint shadow flattens. Pressing with Space
+   does the same. Text stays sharp while sinking.
+4. Nothing redraws while you don't click; an animation draws until it arrives, then stops.
+5. Tab, Enter and Space work as in the Hello sample.
+The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
 
 ## Run the browser sample
 
@@ -171,30 +181,103 @@ StackPanel.create [ StackPanel.items todos _.Id (fun todo -> TextBlock.create [ 
 The app holds the model (`App.program init update view`, the Elmish pattern). Messages update it straight away;
 the view is rebuilt on the next frame, once, however many messages arrived, and not at all if the model didn't
 change. Other app settings: `App.title`, `App.size`, `App.background`, `App.fonts` (fallbacks such as Twemoji),
-`App.showStats`, `App.closeOnEscape`, `App.onKey`, `App.onFrame` (animation: frames continue only while the model
-keeps changing) and `App.onPointerMove` (hover, until input arrives properly in Milestone 5). `onClick` works on
-any element; `Button` is a Border with a default look.
+`App.showStats`, `App.closeOnEscape`, `App.onKey` and `App.onFrame` (animation: frames continue only while the
+model keeps changing). `Button` is a Border with a default look that lightens under the pointer, darkens while
+pressed and fades when disabled; it takes keyboard focus, and Enter or Space clicks it.
 
-### Experimental: builder syntax
+### Pointer input
 
-The same views can be written with constructors, chained modifiers and blocks (`Scribble.Core.Builders`, names
-provisional). `samples/Shared/CounterBuilders.fs` is the counter this way; it draws pixel-identically:
+Every element takes pointer settings:
 
 ```fsharp
-open type Scribble.Core.Builders.Ui
-
-let view count dispatch : View =
-    VStack(spacing = 16.0).margin(24.0) {
-        Text($"Count: {count}").fontSize(28.0).foreground(Color.White)
-        HStack(spacing = 8.0) {
-            Button("−", fun () -> dispatch Decrement)
-            Button("+", fun () -> dispatch Increment)
-            if count <> 0 then Button("Reset", fun () -> dispatch Reset)
-        }
-    }
+Border.create [
+    Border.onPointerEnter (fun _ -> dispatch (Hover(Some card)))  // enter/leave: not routed
+    Border.onPointerLeave (fun _ -> dispatch (Hover None))
+    Border.onPointerDown (fun e -> if e.Modifiers.HasFlag Modifiers.Shift then e.Handle())
+    Border.onClick (fun () -> dispatch Open)                      // left press + release over it
+    Border.cursor Cursor.Hand
+    Border.isEnabled model.CanOpen                                // false: no input here or inside
+]
 ```
 
-A panel's own modifiers go before its block: F# can't chain a method call after a closing brace.
+- **Routing:** down, up, move and wheel go to the element under the pointer and then to its ancestors (bubbling).
+  `onPreviewPointerDown`, `onPreviewPointerUp` and `onPreviewWheel` run first, from the root down (tunneling).
+  `e.Handle()` stops the event; a press handled in Preview is taken by that element (no click below it).
+- **Capture:** the element that gets a press keeps getting the moves and the release until the last button is up,
+  even outside the window. Dragging off a button and releasing doesn't click; dragging back on and releasing does.
+- **States:** element types read `ctx.IsPointerOver`, `ctx.IsPressed` and `ctx.IsEnabled` in Render. Views don't
+  read states (that's styles, Milestone 7); use enter/leave.
+- Positions are DIPs: `e.Position` (window) and `e.LocalPosition` (the element whose handler runs).
+
+### Keyboard and focus
+
+```fsharp
+Border.create [
+    Border.focusable true                                         // Tab stops here; a press focuses it
+    Border.onKeyDown (fun e ->                                    // from the focused element up to the root
+        if e.Key = Key.Char 's' && e.Modifiers.HasFlag Modifiers.Control then
+            dispatch Save
+            e.Handle())
+]
+
+App.onKey (fun key mods -> match key with Key.Space -> Some TogglePause | _ -> None)
+```
+
+- **Keys** are logical and follow the keyboard layout: `Key.Char 's'` (letters always lowercase), `Key.Enter`,
+  `Key.Left`, `Key.F 5`, `Key.Other "..."`; modifiers come separately. The browser uses `e.key`; Win32 maps virtual
+  keys through the active layout.
+- **Routing:** `onPreviewKeyDown`/`onPreviewKeyUp` run from the root down to the focused element (or the root
+  when nothing has focus), then `onKeyDown`/`onKeyUp` from there back up. `e.Handle()` stops the event and also
+  the built-in behavior below.
+- **Focus:** `focusable` (Buttons are by default). Tab and Shift+Tab move through focusable elements in tree order
+  and wrap; a press focuses the nearest focusable element under the pointer, or clears focus. Disabling, hiding or
+  removing the focused element clears focus.
+- **Focus ring:** element types draw it when `ctx.IsFocusVisible` (`FocusRing.draw ctx list radius`): after Tab,
+  not after a press, and not while the window is inactive. `ctx.IsFocused` is true either way.
+- **Activation:** Enter clicks the focused element (if it has `onClick`); Space shows it pressed and clicks on
+  release; Escape while Space is held cancels; key repeats never click.
+- **App.onKey** runs last and only for keys nothing handled, so a focused button's Space doesn't also reach the
+  app's Space shortcut. Repeats are left out. `App.closeOnEscape` likewise.
+
+### Components
+
+A component is a piece of view with its own state. Define it once, at module level; it's a function from its
+props to a View, so it goes anywhere a view does:
+
+```fsharp
+let counter = Component.define "Counter" (fun ctx (name: string) ->
+    let count = ctx.useState 0                                    // survives re-runs
+    let fill = ctx.useAnimated(float count.Current / 10.0, TimeSpan.FromMilliseconds 250.0)
+    StackPanel.create [
+        StackPanel.orientation Horizontal
+        StackPanel.children [
+            TextBlock.create [ TextBlock.text $"{name}: {count.Current}" ]
+            Button.create [ Button.text "+"; Button.onClick (fun () -> count.Update(fun c -> c + 1)) ]
+        ]
+    ])
+
+StackPanel.items names id counter                                // keyed: state follows the name
+```
+
+- **What re-runs:** a component runs again on the next frame when its state changes, and only its part of the tree
+  is patched. When its parent re-runs, it runs again only if its props changed (F# equality; props that hold
+  functions always count as changed). No props: `fun ctx () -> ...`, used as `counter ()`.
+- **Hooks** (call them unconditionally, in the same order every time; a change of order fails with the
+  component's name):
+  - `ctx.useState initial`: `.Current`, `.Set v`, `.Update f` (an equal value changes nothing; setting state
+    while the component runs fails).
+  - `ctx.useMemo(deps, fun d -> ...)`: computed again only when `deps` change.
+  - `ctx.useEffect(deps, fun d -> ...)`: after the frame that shows the component, and again when `deps` change
+    (`()` for once; a tuple for several values).
+  - `ctx.useSubscription(deps, fun d -> disposable)`: disposed when `deps` change and when the component goes.
+  - `ctx.useElmish(init, update)`: `let model, dispatch = ...` (no commands until M5b).
+  - `ctx.useAnimated(target, duration, ?easing)`: a `float` or `Color` that moves to each new target; the
+    component re-runs every frame while it moves.
+- **For element authors:** `ctx.Animate("key", target, duration, ?easing)` in a render function animates
+  without re-running any view, and `Element.transform (fun ctx -> Transform.ScaleAround(...))` changes how an
+  element and its children are drawn without touching layout or input. Button uses both to sink while pressed.
+  Easings: `Easing.linear`, `easeIn`, `easeOut` (the default), `easeInOut`, or any `float -> float`.
+- An app made only of components has no messages: annotate its settings (`let app: AppSetting<unit> list = ...`).
 
 ### Elements and layout
 
@@ -232,16 +315,25 @@ module ProgressBarProps =                                         // 1. properti
     let value = Prop.define "Value" 0.0 Affects.Render
 
 [<AbstractClass>]
-type ProgressBar =                                                // 3. a marker type with setting functions
+type ProgressBar =                                                // 2. its settings
     inherit Layoutable
-    static member val Type =                                      // 2. the element type: measure/arrange/render
-        { ElementType.Default with
-            Name = "ProgressBar"
-            Measure = fun _ _ -> Size.Create(0.0, 8.0)
-            Render = fun ctx list -> list.FillRect(Rect.Create(0.0, 0.0, ctx.Size.Width * ctx.Get ProgressBarProps.value, 8.0), Color.White) }
-    static member create(settings: Setting<ProgressBar> list) = View.Create(ProgressBar.Type, settings)
     static member value<'k when 'k :> ProgressBar>(v: float) : Setting<'k> = Setting.create ProgressBarProps.value v
+
+module ProgressBar =                                              // 3. the element: definition and create
+    let Type =
+        Element.define "ProgressBar" [
+            Element.measure (fun _ _ -> Size.Create(0.0, 8.0))
+            Element.render (fun ctx list ->
+                list.FillRect(Rect.Create(0.0, 0.0, ctx.Size.Width * ctx.Get ProgressBarProps.value, 8.0), Color.White))
+        ]
+    let create (settings: Setting<ProgressBar> list) = View.Create(Type, settings)
 ```
+
+A definition lists only what differs from a plain container (`Element.measure`, `Element.arrange`,
+`Element.render`). `Element.extend Border.Type "Button" [ ... ]` starts from another element, and
+`Element.defaults [ Border.background ...; Layoutable.cursor Cursor.Hand ]` sets values its elements have unless
+a view says otherwise (that's how Button gets its look). `Type` and `create` go in a module rather than on the
+settings type because static members are inherited: on the type, Button's would collide with Border's.
 
 Element types are defined once, as static values: the differ recognizes a type by reference. `ElementTree` works
 without a window (`tree.Update view`), which is how the layout and differ tests run; `App.start` runs an app on any
@@ -267,7 +359,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
 | `samples/Shared/Dashboard.fs` | The sample dashboard as a view function (also used by the rendering tests) |
 | `samples/Shared/HelloApp.fs` | The Hello sample's model, update and app settings, shared by both hosts |
-| `samples/Shared/Counter.fs`, `CounterBuilders.fs` | The counter, in settings lists and in the builder syntax |
+| `samples/Shared/Counter.fs` | The counter |
 | `samples/Scribble.Samples.Hello` | Desktop host |
 | `samples/Scribble.Samples.Browser` | Browser host (WebAssembly) |
 | `samples/Scribble.Samples.Counter`, `.Counter.Browser` | The counter, desktop and browser (one-line Program.fs each) |

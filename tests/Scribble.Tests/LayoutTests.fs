@@ -14,15 +14,16 @@ module BoxProps =
 [<AbstractClass>]
 type Box =
     inherit Layoutable
-    static member val Type =
-        { ElementType.Default with
-            Name = "Box"
-            Measure =
-                fun ctx _ ->
-                    ctx.SetLocal(BoxProps.measures, ctx.Get BoxProps.measures + 1)
-                    ctx.Get BoxProps.size }
-    static member create(settings: Setting<Box> list) = View.Create(Box.Type, settings)
     static member size<'k when 'k :> Box>(width: float, height: float) : Setting<'k> = Setting.create BoxProps.size (Size.Create(width, height))
+
+module Box =
+    let Type =
+        Element.define "Box" [
+            Element.measure (fun ctx _ ->
+                ctx.SetLocal(BoxProps.measures, ctx.Get BoxProps.measures + 1)
+                ctx.Get BoxProps.size)
+        ]
+    let create (settings: Setting<Box> list) = View.Create(Type, settings)
 
 let box w h (settings: Setting<Box> list) = Box.create (Box.size (w, h) :: settings)
 let measures (e: Element) = e.Get BoxProps.measures

@@ -16,6 +16,9 @@
     <Compile Include="LengthTests.fs" />
     <Compile Include="DifferTests.fs" />
     <Compile Include="AppTests.fs" />
+    <Compile Include="InputTests.fs" />
+    <Compile Include="KeyboardTests.fs" />
+    <Compile Include="ComponentTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />

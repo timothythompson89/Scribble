@@ -49,6 +49,13 @@ type WNDCLASSEXW =
       mutable lpszClassName: nativeint
       mutable hIconSm: nativeint }
 
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type TRACKMOUSEEVENT =
+    { mutable cbSize: uint32
+      mutable dwFlags: uint32
+      mutable hwndTrack: nativeint
+      mutable dwHoverTime: uint32 }
+
 /// LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM)
 [<UnmanagedFunctionPointer(CallingConvention.Winapi)>]
 type WndProc = delegate of hwnd: nativeint * msg: uint32 * wParam: nativeint * lParam: nativeint -> nativeint
@@ -103,6 +110,34 @@ let WM_XBUTTONDOWN = 0x020Bu
 let WM_XBUTTONUP = 0x020Cu
 [<Literal>]
 let WM_MOUSEHWHEEL = 0x020Eu
+[<Literal>]
+let WM_CAPTURECHANGED = 0x0215u
+[<Literal>]
+let WM_MOUSELEAVE = 0x02A3u
+[<Literal>]
+let WM_SETCURSOR = 0x0020u
+[<Literal>]
+let HTCLIENT = 1
+[<Literal>]
+let TME_LEAVE = 0x00000002u
+[<Literal>]
+let VK_SHIFT = 0x10
+[<Literal>]
+let VK_CONTROL = 0x11
+[<Literal>]
+let VK_MENU = 0x12
+[<Literal>]
+let VK_LWIN = 0x5B
+[<Literal>]
+let VK_RWIN = 0x5C
+let IDC_IBEAM = 32513n
+let IDC_WAIT = 32514n
+let IDC_CROSS = 32515n
+let IDC_SIZEWE = 32644n
+let IDC_SIZENS = 32645n
+let IDC_SIZEALL = 32646n
+let IDC_NO = 32648n
+let IDC_HAND = 32649n
 [<Literal>]
 let WM_DPICHANGED = 0x02E0u
 [<Literal>]
@@ -213,6 +248,23 @@ extern int ReleaseCapture()
 
 [<DllImport("user32.dll", ExactSpelling = true)>]
 extern int ScreenToClient(nativeint hwnd, POINT* lpPoint)
+
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern nativeint GetCapture()
+
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern int TrackMouseEvent(TRACKMOUSEEVENT* lpEventTrack)
+
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern int16 GetKeyState(int nVirtKey)
+
+/// uMapType 2 = MAPVK_VK_TO_CHAR: the unshifted character a virtual key types in the active layout
+/// (uppercase for letters; the top bit set for dead keys; 0 for keys that type nothing).
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern uint32 MapVirtualKeyW(uint32 uCode, uint32 uMapType)
+
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern nativeint SetCursor(nativeint hCursor)
 
 [<DllImport("user32.dll", ExactSpelling = true)>]
 extern uint32 GetDpiForWindow(nativeint hwnd)

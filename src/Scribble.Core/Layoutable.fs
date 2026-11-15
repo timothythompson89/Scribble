@@ -46,8 +46,60 @@ type Layoutable =
     /// Identifies this element among its siblings across updates. Only needed in lists that insert,
     /// remove or reorder items (see also `Panel.items`); elsewhere position is enough.
     static member key<'k when 'k :> Layoutable>(value: obj) : Setting<'k> = Setting.create LayoutProps.key (ValueSome value)
-    /// Runs when the pointer is pressed and released on this element (or something inside it).
+    /// Runs when the left button is pressed and released on this element (or something inside it).
+    /// Dragging off before releasing cancels it.
     static member onClick<'k when 'k :> Layoutable>(handler: unit -> unit) : Setting<'k> = Setting.create LayoutProps.onClick (ValueSome handler)
+    /// False turns off input for this element and everything inside it; built-in looks grey out.
+    static member isEnabled<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.isEnabled value
+    /// The pointer's look over this element (and inside it, unless something there sets its own).
+    static member cursor<'k when 'k :> Layoutable>(value: Cursor) : Setting<'k> = Setting.create LayoutProps.cursor (ValueSome value)
+
+    /// The pointer came over this element (or something inside it). Not routed.
+    static member onPointerEnter<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPointerEnter (ValueSome handler)
+    /// The pointer is no longer over this element or anything inside it. Not routed.
+    static member onPointerLeave<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPointerLeave (ValueSome handler)
+    /// The pointer moved over this element, or anywhere while this element holds the press. Bubbles.
+    static member onPointerMove<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPointerMove (ValueSome handler)
+    /// A button went down over this element. Bubbles. The element that gets the press keeps getting
+    /// the pointer's moves and the release until the last button is up (pointer capture).
+    static member onPointerDown<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPointerDown (ValueSome handler)
+    /// A button came up. Goes to the element that got the press (wherever the pointer is now). Bubbles.
+    static member onPointerUp<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPointerUp (ValueSome handler)
+    /// Like onPointerDown, but runs from the root down, before the element under the pointer sees it.
+    /// Handling it here takes the press: the element under the pointer gets nothing and doesn't click.
+    static member onPreviewPointerDown<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPreviewPointerDown (ValueSome handler)
+    /// Like onPointerUp, but runs from the root down first.
+    static member onPreviewPointerUp<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPreviewPointerUp (ValueSome handler)
+    /// The wheel turned over this element. Bubbles.
+    static member onWheel<'k when 'k :> Layoutable>(handler: WheelEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onWheel (ValueSome handler)
+    /// Like onWheel, but runs from the root down first.
+    static member onPreviewWheel<'k when 'k :> Layoutable>(handler: WheelEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPreviewWheel (ValueSome handler)
+
+    /// Can take keyboard focus: Tab and Shift+Tab stop here (in tree order), and pressing on it
+    /// focuses it. Buttons are focusable by default.
+    static member focusable<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.focusable value
+    /// A key went down while this element (or something inside it) has focus. Bubbles. Handling
+    /// it stops built-in behavior too (Tab moving focus, Enter/Space clicking, App.onKey).
+    static member onKeyDown<'k when 'k :> Layoutable>(handler: KeyEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onKeyDown (ValueSome handler)
+    /// A key came up while this element (or something inside it) has focus. Bubbles.
+    static member onKeyUp<'k when 'k :> Layoutable>(handler: KeyEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onKeyUp (ValueSome handler)
+    /// Like onKeyDown, but runs from the root down, before the focused element sees it.
+    static member onPreviewKeyDown<'k when 'k :> Layoutable>(handler: KeyEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPreviewKeyDown (ValueSome handler)
+    /// Like onKeyUp, but runs from the root down first.
+    static member onPreviewKeyUp<'k when 'k :> Layoutable>(handler: KeyEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onPreviewKeyUp (ValueSome handler)
 
 module PanelProps =
     let children = Prop.children "Children"

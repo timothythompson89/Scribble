@@ -14,6 +14,7 @@ type FakeWindow(onEvent: PlatformEvent -> unit) =
     member val FrameRequested = false with get, set
     member val Closed = false with get, set
     member val TitleText = "" with get, set
+    member val Cursor = Cursor.Default with get, set
     /// Delivers a requested frame, like the platform's loop does. Returns whether one was due.
     member this.DeliverFrame() =
         if this.FrameRequested then
@@ -31,6 +32,7 @@ type FakeWindow(onEvent: PlatformEvent -> unit) =
         member _.Show() = ()
         member this.Close() = this.Closed <- true
         member this.RequestFrame() = this.FrameRequested <- true
+        member this.SetCursor c = this.Cursor <- c
         member _.Dispose() = ()
 
 type FakePlatform() =
@@ -71,7 +73,7 @@ type FakeDevice() =
         member _.RenderOffscreen(_, _, _) = raise (NotSupportedException())
         member _.Dispose() = ()
 
-let private start (settings: AppSetting<'Msg> list) =
+let start (settings: AppSetting<'Msg> list) =
     let platform, device = new FakePlatform(), new FakeDevice()
     let app = App.start (platform, device, new FixedShaper(), settings)
     platform.Window.Value, device, app
@@ -91,10 +93,10 @@ let private counterView count dispatch =
 let private counter = App.program 0 (fun Increment count -> count + 1) counterView
 
 let private press (w: FakeWindow) x y =
-    w.Send(PointerPressed(Mouse, 0, { X = x; Y = y }, MouseButton.Left))
+    w.Send(PointerPressed(Mouse, 0, { X = x; Y = y }, MouseButton.Left, Modifiers.None))
 
 let private release (w: FakeWindow) x y =
-    w.Send(PointerReleased(Mouse, 0, { X = x; Y = y }, MouseButton.Left))
+    w.Send(PointerReleased(Mouse, 0, { X = x; Y = y }, MouseButton.Left, Modifiers.None))
 
 [<Fact>]
 let ``the first frame builds the view`` () =
@@ -151,16 +153,17 @@ let ``keys become messages, Escape closes when asked`` () =
     let w, _, app =
         start [ counter
                 App.closeOnEscape true
-                App.onKey (function
+                App.onKey (fun key _ ->
+                    match key with
                     | Key.Space -> Some Increment
                     | _ -> None) ]
     w.DeliverFrame() |> ignore
-    w.Send(KeyDown(Key.Space, false))
-    w.Send(KeyDown(Key.Space, true)) // a repeat: ignored
+    w.Send(KeyDown(Key.Space, Modifiers.None, false))
+    w.Send(KeyDown(Key.Space, Modifiers.None, true)) // a repeat: ignored
     w.DeliverFrame() |> ignore
     let host = app :?> ElementHost
     Assert.Equal("Count: 1", (host.Tree.Root.Value.Children[0]).Get TextProps.text)
-    w.Send(KeyDown(Key.Escape, false))
+    w.Send(KeyDown(Key.Escape, Modifiers.None, false))
     Assert.True w.Closed
 
 [<Fact>]

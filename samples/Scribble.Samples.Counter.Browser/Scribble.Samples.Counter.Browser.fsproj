@@ -10,7 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Shared/Counter.fs" Link="Counter.fs" />
-    <Compile Include="../Shared/CounterBuilders.fs" Link="CounterBuilders.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

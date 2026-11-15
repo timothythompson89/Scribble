@@ -29,6 +29,42 @@ let ``a setting the new view leaves out goes back to its default`` () =
     Assert.Equal(BorderProps.background.Default, t.Root.Value.Get BorderProps.background)
 
 [<Fact>]
+let ``an element type's defaults apply until a view sets its own, and come back when it stops`` () =
+    let t = tree ()
+    let buttonBackground = Color.Hex 0x3A3A55
+    t.Update(Button.create [ Button.text "Go" ])
+    let b = t.Root.Value
+    Assert.Equal(buttonBackground, b.Get BorderProps.background)
+    // Layout defaults too: Button aligns left (the engine keeps a typed copy of layout values).
+    Assert.Equal(HorizontalAlignment.Left, b.Get LayoutProps.horizontalAlignment)
+    t.UpdateLayout(Size.Create(400.0, 100.0))
+    Assert.Equal(0.0, b.Bounds.X)
+    Assert.True(b.Bounds.Width < 400.0)
+    t.Update(Button.create [ Button.text "Go"; Button.background Color.White ])
+    Assert.Equal(Color.White, b.Get BorderProps.background)
+    // Left out again: back to Button's default, not the property's (transparent).
+    t.Update(Button.create [ Button.text "Go" ])
+    Assert.Equal(buttonBackground, b.Get BorderProps.background)
+    // Views no longer carry the defaults.
+    Assert.Equal(1, b.CurrentView.Value.Settings.Length)
+
+[<Fact>]
+let ``extend starts from the base type, define from a plain container`` () =
+    let fancy = Element.extend Border.Type "Fancy" [ Element.defaults [ Border.padding 10.0 ] ]
+    let plain = Element.define "Plain" []
+    Assert.Equal("Fancy", fancy.Name)
+    Assert.Same(Border.Type.Measure, fancy.Measure)
+    Assert.Equal("Plain", plain.Name)
+    Assert.Empty(plain.Defaults)
+    // Later defaults replace earlier ones for the same property.
+    let twice = Element.extend fancy "Twice" [ Element.defaults [ Border.padding 2.0 ] ]
+    Assert.Equal(1, twice.Defaults.Length)
+
+[<Fact>]
+let ``element defaults can't hold children`` () =
+    Assert.Throws<ArgumentException>(fun () -> Element.defaults [ Border.child (TextBlock.create []) ] |> ignore) |> ignore
+
+[<Fact>]
 let ``a different element type is rebuilt`` () =
     let t = tree ()
     t.Update(StackPanel.create [ StackPanel.children [ Border.create [] ] ])

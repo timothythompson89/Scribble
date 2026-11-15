@@ -13,6 +13,10 @@ type ElementTree(text: TextSystem) =
     let mutable root: Element voption = ValueNone
     let mutable scale = 1.0
     let mutable onInvalidated: unit -> unit = ignore
+    let mutable time = TimeSpan.Zero
+    /// Components whose state changed, with their depth: run at the start of the next layout.
+    let scheduled = Collections.Generic.List<struct (int * (unit -> unit))>()
+    let afterFrame = Collections.Generic.List<unit -> unit>()
 
     member _.Text = text
 
@@ -53,7 +57,33 @@ type ElementTree(text: TextSystem) =
                 onInvalidated ()
 
     /// Lays the tree out in `size` DIPs. Only invalid parts do any work.
-    member _.UpdateLayout(size: Size) =
+    /// The current frame's time, for animations (ElementHost sets it at the start of every frame).
+    member _.Time
+        with get () = time
+        and set v = time <- v
+
+    /// Re-runs components whose state changed, parents before children (a parent that re-runs a
+    /// child with new props takes care of it). Part of UpdateLayout.
+    member _.RunScheduledComponents() =
+        let mutable rounds = 0
+        while scheduled.Count > 0 && rounds < 100 do
+            rounds <- rounds + 1
+            let batch = scheduled.ToArray() |> Array.sortBy (fun struct (depth, _) -> depth)
+            scheduled.Clear()
+            for struct (_, run) in batch do
+                run ()
+
+    /// Runs what asked to run after the frame (effects, animations asking for the next frame).
+    /// ElementHost calls it once a frame is drawn.
+    member _.RunAfterFrame() =
+        if afterFrame.Count > 0 then
+            let actions = afterFrame.ToArray()
+            afterFrame.Clear()
+            for action in actions do
+                action ()
+
+    member this.UpdateLayout(size: Size) =
+        this.RunScheduledComponents()
         match root with
         | ValueSome r ->
             r.Measure size
@@ -88,6 +118,11 @@ type ElementTree(text: TextSystem) =
         member _.Text = text
         member _.Scale = scale
         member _.Invalidated() = onInvalidated ()
+        member _.Time = time
+        member _.ScheduleComponent(depth, run) =
+            scheduled.Add(struct (depth, run))
+            onInvalidated ()
+        member _.AfterFrame action = afterFrame.Add action
         member _.VerifyAccess() =
 #if DEBUG
             if Environment.CurrentManagedThreadId <> ownerThread then

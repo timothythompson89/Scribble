@@ -26,9 +26,9 @@ dotnet build Scribble.slnx
 dotnet test tests/Scribble.Tests                  # unit tests (layout, differ, text, App runtime on a fake platform)
 dotnet test tests/Scribble.Tests.Rendering        # GPU screenshot tests (needs a GPU)
 dotnet run --project samples/Scribble.Samples.Hello
-dotnet run --project samples/Scribble.Samples.Counter            # add `-- --builders` for the builder-syntax version
+dotnet run --project samples/Scribble.Samples.Counter
 dotnet run --project samples/Scribble.Samples.Browser            # http://localhost:5280
-dotnet run --project samples/Scribble.Samples.Counter.Browser    # http://localhost:5281 (?arg=--builders)
+dotnet run --project samples/Scribble.Samples.Counter.Browser    # http://localhost:5281
 dotnet publish samples/Scribble.Samples.Hello -c Release         # NativeAOT exe (needs VS C++ tools)
 dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   # wasm AOT (wasm-tools workload)
 ```
@@ -38,8 +38,8 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
   a real GPU may differ slightly at anti-aliased edges. If a test fails only by a little on Tim's machine, look at
   the diff before regenerating. `SCRIBBLE_UPDATE_SNAPSHOTS=1` rewrites references; `SCRIBBLE_REPO_ROOT` overrides
   where they're found. Some tests (dashboard, counter) compare two renderings with each other and must be 0 pixels.
-- **Until 2026-11-15 tests ran against a local stand-in for xUnit** (NuGet was unreachable in that environment).
-  The first real `dotnet test` run may surface differences in assertion overloads; fix the tests, not the stand-in.
+- Tests use real xUnit (until 2026-11-15 they ran against a local stand-in; the first real run on Tim's machine
+  passed everything, on a real GPU too).
 - `SCRIBBLE_GPU_BACKEND=d3d12|vulkan` forces a wgpu backend.
 - wgpu-native v29.0.1.1 is downloaded on first build into `native/` (git-ignored) by `build/WgpuNative.targets`,
   imported by `Scribble.Desktop`; the DLL flows to every app that references it.
@@ -59,9 +59,9 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 | `src/Scribble.Text` | TrueType parser, rasterizer, text system, line breaking, wrapping/trimming; Inter built in |
 | `src/Scribble.Text.HarfBuzz` / `.Browser` | Shaping: native HarfBuzz / harfbuzzjs wasm (identical output) |
 | `src/Scribble.Text.Emoji` | Opt-in Twemoji COLRv0 font (CC-BY 4.0 art: apps must credit) |
-| `src/Scribble.Core` | Views, differ, elements, layout, Border/StackPanel/TextBlock/Button, App settings and runtime, experimental builders |
+| `src/Scribble.Core` | Views, differ, elements, layout, Border/StackPanel/TextBlock/Button, App settings and runtime |
 | `src/Scribble.Desktop` / `src/Scribble.Browser` | `App.run` / `App.runInBrowser`: one reference brings platform, GPU and shaping |
-| `samples/Shared` | Dashboard, HelloApp, Counter, CounterBuilders (shared by desktop and browser hosts) |
+| `samples/Shared` | Dashboard, HelloApp, Counter (shared by desktop and browser hosts) |
 | `tests/Scribble.Tests`, `tests/Scribble.Tests.Rendering` | Unit tests; GPU screenshot tests |
 
 ## Architecture in brief
@@ -74,25 +74,25 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 - **Frames on request only:** windows call `RequestFrame()`; nothing draws while nothing changes. `ElementHost`
   ignores its own tree's invalidations while a frame is being drawn (they're handled by that frame).
 - **Elements (since M3b):** properties are typed keys (`Prop<'T>`, declaring `Affects.Measure/Arrange/Render`);
-  an element type is a record of functions (`ElementType` with `Measure`/`Arrange`/`Render` taking stage-specific
-  contexts); settings are values created by static members on **marker types** (`Border`, `TextBlock`, ...) that
-  inherit `Layoutable`/`Panel`, so wrong settings don't compile and shared ones appear everywhere
-  (`TextBlock.margin`). No nulls in the public API. Layout: WPF-style measure/arrange, layout rounding half-up,
+  an element type is defined settings-style (`Element.define "Name" [ Element.measure ...; Element.render ...;
+  Element.defaults [...] ]`, or `Element.extend baseType`), stored as an `ElementType` record of stage functions
+  plus per-type defaults (`Get`: own value, else type default, else prop default); settings are values created by
+  static members on **marker types** (`Border`, `TextBlock`, ...) that inherit `Layoutable`/`Panel`, so wrong
+  settings don't compile and shared ones appear everywhere (`TextBlock.margin`); `Type` and `create` live in a
+  same-named module (since 2026-11-15). No nulls in the public API. Layout: WPF-style measure/arrange, layout rounding half-up,
   `Length` = Auto | Px | Percent | Star (strings "45px", "45%", "2*", "auto"); StackPanel shares leftover space
   among Star children only when its length is bounded.
 - **Views and the differ (M4):** `X.create [ settings ]` returns a `View` (type + settings; child properties hold
   Views). `ElementTree.Update view` realizes the first time and patches after that: same type in the same place is
-  patched setting by setting (missing settings reset to default), children match by position or by `key`
+  patched setting by setting (missing settings reset to the type's default, else the prop's), children match by position or by `key`
   (`Panel.items list keyFn viewFn`), an identical View object is skipped. Element types must be static values
   (compared by reference).
 - **Apps (M4):** `App.program init update view` (Elmish; an equal model causes no rebuild), `App.onKey`,
-  `App.onFrame` (animation continues only while the model keeps changing), `App.onPointerMove` (temporary, until
-  M5), `App.fonts`, `App.showStats`, `App.closeOnEscape`. `App.start` runs on any `IPlatform` (tests use a fake).
-  `onClick` works on any element (press and release on the same one); `Button` is a Border with a default look.
-- **Builder syntax (experimental, `Scribble.Core.Builders`):** `open type Scribble.Core.Builders.Ui`;
-  `VStack(spacing = 16.0).margin(24.0) { Text("Hi").fontSize(28.0); if c then Button("x", f) }`. A panel's own
-  modifiers go before its block (F# can't chain after a closing brace). Names provisional; Tim hasn't yet chosen
-  between lists and builders (both share the same core).
+  `App.onFrame` (animation continues only while the model keeps changing), `App.fonts`, `App.showStats`,
+  `App.closeOnEscape`. `App.start` runs on any `IPlatform` (tests use a fake). Pointer and keyboard input (M5): see README
+  "Pointer input" and "Keyboard and focus"; `Button` is a Border with a default look that reacts to hover/pressed/disabled.
+- **Syntax: FuncUI-style settings lists only** (decided 2026-11-15; the M4 builder trial was removed). Don't
+  reintroduce computation-expression or modifier-chain syntax.
 
 ## Rules and gotchas
 
@@ -112,7 +112,11 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 - A module and a type can't share a name across files in one namespace (FS0250); entry-point modules must not
   create a namespace equal to an existing module (e.g. `Scribble.Samples.Counter.Program` clashes with module
   `Scribble.Samples.Counter`).
-- UI-thread-only access to elements (checked in debug builds).
+- UI-thread-only access to elements (checked in debug builds). Fonts are shared process-wide, so caches inside
+  `FontFace`/`Font` must stay thread-safe (rendering test classes run in parallel on different threads).
+- Never put `create` on a marker type as a static member: statics are inherited, and `Button.create [ Button.width
+  100.0 ]` became ambiguous with `Border.create` (FS0041). It lives in a same-named module in the same file.
+- Core's `Cursor`, `Modifiers`, `MouseButton`, `PointerKind` are aliases of the Scribble.Platform types.
 - Rider once silently overwrote `Directory.Build.props`; if a fix "doesn't take", check the file on disk. For the
   browser samples Rider's default browser must be "First listed" (Blazor launch quirk).
 
@@ -123,53 +127,71 @@ module ProgressBarProps =
     let value = Prop.define "Value" 0.0 Affects.Render          // Prop.local for caches; Prop.child/children for children
 
 [<AbstractClass>]
-type ProgressBar =
+type ProgressBar =                                               // the settings (always the generic 'k form)
     inherit Layoutable                                           // or Panel / Border to inherit their settings
-    static member val Type =                                     // defined once: the differ compares by reference
-        { ElementType.Default with
-            Name = "ProgressBar"
-            Measure = fun _ _ -> Size.Create(0.0, 8.0)
-            Render = fun ctx list -> list.FillRect(Rect.Create(0.0, 0.0, ctx.Size.Width * ctx.Get ProgressBarProps.value, 8.0), Color.White) }
-    static member create(settings: Setting<ProgressBar> list) = View.Create(ProgressBar.Type, settings)
     static member value<'k when 'k :> ProgressBar>(v: float) : Setting<'k> = Setting.create ProgressBarProps.value v
+
+module ProgressBar =                                             // the element: same name, same file
+    let Type =                                                   // defined once: the differ compares by reference
+        Element.define "ProgressBar" [                           // Element.extend Border.Type "Button" [ ... ] to start from another
+            Element.measure (fun _ _ -> Size.Create(0.0, 8.0))   // left out: largest child / children fill / draws nothing
+            Element.render (fun ctx list ->
+                list.FillRect(Rect.Create(0.0, 0.0, ctx.Size.Width * ctx.Get ProgressBarProps.value, 8.0), Color.White))
+            Element.defaults [ Layoutable.height 8.0 ]           // per-type defaults (plain values, not children)
+        ]
+    let create (settings: Setting<ProgressBar> list) = View.Create(Type, settings)
 ```
+
+Settings are static members on the type (inherited, so `Button.background` works); `Type` and `create` live in a
+same-named module (modules aren't inherited, so nothing collides with Border's). Helpers go in the module as
+`private` (or `internal` when a derived element needs them, like `Border.draw` for Button).
 
 ## Status (2026-11-15)
 
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
-(lengths), M4 (views, differ, App.run, Counter sample, builder trial), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). Last counts: 95 unit tests, 28 rendering tests.
+(lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
+Add/Remove/Shuffle cards, keyed grid). Last counts: 133 unit tests, 31 rendering tests (M5 step 3).
 
-Remaining milestones: **M5 input and components** (next), M6 inspector, M7 styles, M7b icons, M8 core controls
+Remaining milestones: **M5b async in components** (next), M6 inspector, M7 styles, M7b icons, M8 core controls
 (Grid, DockPanel, ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
 
-### M5: proposed, not yet agreed (discuss first)
+### M5: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M5")
 
-Covers: pointer events on any element (`onPointerEnter/Leave/Down/Up/Move`, wheel) routed to the element then its
-ancestors, replacing `App.onPointerMove`; pointer capture (drag off a button cancels the click); element states
-(hover, pressed, focused, disabled) with Button's default look reacting; keyboard and focus (portable `Key` type
-replacing raw codes, Tab/Shift+Tab, focus ring, Enter/Space activate); components with local state (keys become
-visibly meaningful); a small "animate this value" helper.
+Three steps, each tried by Tim before the next:
+1. **Pointer** (done, verified by Tim on Windows and in the browser 2026-11-15; `src/Scribble.Core/Input.fs`): platform gaps (pointer left window, OS capture, modifiers, cursors); tunnel+bubble routing (preview
+   settings only for pointer down/up, wheel, key down); enter/leave on the hovered chain; capture (drag off a button
+   cancels the click); `isEnabled` (inherited); Button hover/pressed/disabled looks; `App.onPointerMove` removed.
+2. **Keyboard** (done, verified by Tim on Windows and in the browser 2026-11-15): portable logical `Key` + modifiers (browser uses
+   `e.key`, Win32 `MapVirtualKeyW`); routed `onKeyDown/Up` + Preview from the focused element (else the root);
+   `focusable` (Button by default); focus manager in `InputRouter` (`MoveFocus Next/Previous`, tree order,
+   wraps; press focuses, invalid focus cleared after layout); `ctx.IsFocusVisible` + `FocusRing.draw`; Enter/Space
+   activate (Space pressed while held, Escape cancels); `App.onKey (fun key mods -> ...)` only for unhandled keys;
+   `ElementHost.HandleEvent` returns "handled".
+3. **Components** (done, verified by Tim on Windows and in the browser 2026-11-15; `src/Scribble.Core/Component.fs`, `Animation.fs`):
+   `Component.define "Name" (fun ctx props -> view)` returns `'P -> View`; the component's element hosts its
+   state (`ComponentInstance`, hooks in slots checked for order) and its output as a child. Re-runs: own state
+   (scheduled via `IElementRoot.ScheduleComponent`, run shallowest first at the start of `UpdateLayout`) or changed
+   props (`PropKind.Component` setting compared by F# equality). Effects/subscriptions and "keep animating" go
+   through `IElementRoot.AfterFrame`, run by `ElementHost` after the frame (outside `inFrame`, so they can ask for
+   frames). Hooks: useState/useMemo/useEffect/useSubscription/useElmish/useAnimated. Element authors:
+   `ctx.Animate` (tweens, `Easing`) and `Element.transform`; Button sinks to 97% with a flattening shadow. Text
+   under an extra scale rasterizes at quarter-pixel sizes. Counter sample = components demo.
 
-Open decisions: (1) components as React-like hooks (`useState`) or mini-Elmish programs, or both; (2) routing:
-bubbling only (+ capture), recommended, vs WPF tunnel+bubble; (3) whether views can read element states directly
-or only via enter/leave events (overlaps M7 styles); (4) `isEnabled` now or in M8. Also pending: lists vs builder
-syntax.
-
-Idea Tim liked (not decided): a tactile pressed look for the default Button: sinks to ~97% around its center,
-shadow flattens, darkens slightly, springs back over 100–150 ms. Needs the pressed state, a visual-only render
-transform, and the animate helper; depth/timing become style settings in M7.
+Views don't read element states directly (that's M7 styles). Async/dispatcher is **M5b**.
 
 ### Later notes
+
+- Game UI hosts (Godot first, Unreal via a NativeAOT C API; see DESIGN.md "Later: Scribble as game UI"). Keep: the
+  draw list as plain data, no assumption that the core owns the window or loop, low per-frame allocations.
 
 - M7b icons: modeled on Tim's `C:\Users\Timot\Source\dotnet\CustomAvaloniaControls\CustomAvaloniaControls\Icons`
   (MaterialIcon: immutable icon values, "star-filled-rotate90" strings, typed names, FromPath, brotli data decoded
   on first use). Plan: rasterize icon paths through the glyph rasterizer into the atlas; opt-in
-  `Scribble.Icons.Material` package. Open: names/casing, pluggable sets, .svg import.
+  `Scribble.Icons.Material` package. Open: names/casing, pluggable sets, .svg import. Also custom cursors: a
+  `Cursor.Image` (bitmap + hotspot, e.g. from an icon) shown by the OS as a hardware cursor, never drawn in-frame.
 - Known issues: shrinking a window briefly flashes black at the edge with Vulkan on NVIDIA (D3D12 only slightly
   better; left as is). The Hello toolbar overlaps the subtitle below ~800 DIPs wide (needs Grid/DockPanel).
 - Open questions: license (MIT or Apache 2.0) before the first public push; is "Scribble" free on NuGet;
-  `RenderOffscreen` must become async for browser screenshot tests; browser key codes use deprecated `keyCode`
-  until the portable Key type (M5).
+  `RenderOffscreen` must become async for browser screenshot tests.

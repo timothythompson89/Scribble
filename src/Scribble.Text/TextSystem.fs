@@ -339,6 +339,9 @@ type TextSystem(atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: IShaper, fall
     member this.Draw(list: DrawList, text: string, font: Font, size: float, x: float, y: float, color: Color) =
         let t = list.Transform
         let sizePx = size * abs t.ScaleY
+        // Under an extra scale (an animated transform) the size changes every frame: round it to
+        // quarter pixels so a tween adds a few glyph sizes to the atlas, not one per frame.
+        let sizePx = if abs t.ScaleY <> list.Scale then Math.Round(sizePx * 4.0) / 4.0 else sizePx
         if sizePx > 0.5 && color.A > 0.0f then
             let lineHeightPx = this.LineHeight(font, size) * abs t.ScaleY
             let originX = t.OffsetX + t.ScaleX * x
