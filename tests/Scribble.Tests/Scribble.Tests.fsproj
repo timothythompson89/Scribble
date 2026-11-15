@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Destructuring a voption in a test is fine: a mismatch is a test failure anyway. -->
+    <NoWarn>$(NoWarn);FS0025</NoWarn>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="FrameClockTests.fs" />
+    <Compile Include="ColorTests.fs" />
+    <Compile Include="DrawListTests.fs" />
+    <Compile Include="TestShaping.fs" />
+    <Compile Include="TextTests.fs" />
+    <Compile Include="TextLayoutTests.fs" />
+    <Compile Include="LayoutTests.fs" />
+    <Compile Include="LengthTests.fs" />
+    <Compile Include="DifferTests.fs" />
+    <Compile Include="AppTests.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Platform/Scribble.Platform.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Rendering/Scribble.Rendering.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Text/Scribble.Text.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
+  </ItemGroup>
+</Project>

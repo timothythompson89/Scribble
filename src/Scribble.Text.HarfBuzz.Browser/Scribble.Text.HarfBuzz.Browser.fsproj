@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>HarfBuzz text shaping for Scribble in the browser (the official harfbuzzjs WebAssembly build).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="BrowserHarfBuzzShaper.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="scribble-harfbuzz.js" LogicalName="scribble-harfbuzz.js" />
+    <!-- harfbuzz.wasm from harfbuzzjs 1.6.4 (npm), MIT/Old-MIT licensed: see harfbuzzjs-LICENSE.txt. -->
+    <EmbeddedResource Include="harfbuzz.wasm" LogicalName="harfbuzz.wasm" />
+    <None Include="harfbuzzjs-LICENSE.txt" Pack="true" PackagePath="licenses/" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Text/Scribble.Text.fsproj" />
+    <ProjectReference Include="../Scribble.Platform.Browser/Scribble.Platform.Browser.fsproj" />
+  </ItemGroup>
+</Project>

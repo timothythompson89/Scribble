@@ -1,0 +1,36 @@
+<Project>
+  <!--
+    Supplies the wgpu-native library to any executable project that imports this file.
+    The version is pinned: the F# bindings in Scribble.Rendering.WebGPU match this exact webgpu.h.
+
+    Windows: the release zip is downloaded once into native/ (git-ignored) and copied to the output folder.
+    Other platforms: put the library in native/<rid>/ yourself for now (see README).
+  -->
+  <PropertyGroup>
+    <WgpuNativeVersion>v29.0.1.1</WgpuNativeVersion>
+    <WgpuNativeRoot>$(RepositoryRoot)native/wgpu-native-$(WgpuNativeVersion)/</WgpuNativeRoot>
+    <WgpuNativeWinZip>wgpu-windows-x86_64-msvc-release.zip</WgpuNativeWinZip>
+    <WgpuNativeWinDir>$(WgpuNativeRoot)win-x64/</WgpuNativeWinDir>
+    <WgpuNativeLinuxDir>$(WgpuNativeRoot)linux-x64/</WgpuNativeLinuxDir>
+  </PropertyGroup>
+
+  <Target Name="ScribbleFetchWgpuNative"
+          BeforeTargets="ResolveReferences"
+          Condition="$([MSBuild]::IsOSPlatform('Windows')) And !Exists('$(WgpuNativeWinDir)lib/wgpu_native.dll')">
+    <Message Importance="high" Text="Scribble: downloading wgpu-native $(WgpuNativeVersion) ..." />
+    <DownloadFile SourceUrl="https://github.com/gfx-rs/wgpu-native/releases/download/$(WgpuNativeVersion)/$(WgpuNativeWinZip)"
+                  DestinationFolder="$(WgpuNativeRoot)" />
+    <Unzip SourceFiles="$(WgpuNativeRoot)$(WgpuNativeWinZip)" DestinationFolder="$(WgpuNativeWinDir)" />
+  </Target>
+
+  <Target Name="ScribbleCopyWgpuNative" AfterTargets="ScribbleFetchWgpuNative" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <None Include="$(WgpuNativeWinDir)lib/wgpu_native.dll"
+            Condition="Exists('$(WgpuNativeWinDir)lib/wgpu_native.dll')"
+            Link="wgpu_native.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+      <None Include="$(WgpuNativeLinuxDir)libwgpu_native.so"
+            Condition="Exists('$(WgpuNativeLinuxDir)libwgpu_native.so')"
+            Link="libwgpu_native.so" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+</Project>

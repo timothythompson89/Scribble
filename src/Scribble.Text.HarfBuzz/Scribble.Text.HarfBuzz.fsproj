@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>HarfBuzz text shaping for Scribble on desktop (native HarfBuzz via P/Invoke).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="HarfBuzzShaper.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Text/Scribble.Text.fsproj" />
+  </ItemGroup>
+  <!--
+    Native HarfBuzz for Windows: SkiaSharp's prebuilt package (just the DLL, libHarfBuzzSharp.dll,
+    which exports the standard hb_* C API). Other platforms will get their own source when their
+    platform backends arrive; until then HarfBuzz must be installed (e.g. libharfbuzz on Linux).
+  -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.1" />
+  </ItemGroup>
+</Project>

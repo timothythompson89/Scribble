@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Scribble's element tree: layout (measure/arrange), invalidation, Border, StackPanel, TextBlock, and the host that connects a tree to a window.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Primitives.fs" />
+    <Compile Include="Props.fs" />
+    <Compile Include="Element.fs" />
+    <Compile Include="Layoutable.fs" />
+    <Compile Include="ElementTree.fs" />
+    <Compile Include="Elements/Border.fs" />
+    <Compile Include="Elements/StackPanel.fs" />
+    <Compile Include="Elements/TextBlock.fs" />
+    <Compile Include="Elements/Button.fs" />
+    <Compile Include="ElementHost.fs" />
+    <Compile Include="App.fs" />
+    <Compile Include="Builders.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />
+    <ProjectReference Include="../Scribble.Rendering/Scribble.Rendering.fsproj" />
+    <ProjectReference Include="../Scribble.Text/Scribble.Text.fsproj" />
+  </ItemGroup>
+</Project>

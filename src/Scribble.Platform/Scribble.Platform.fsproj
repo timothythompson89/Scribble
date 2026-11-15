@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Platform abstractions for Scribble: windows, input events, DPI, frame clock.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Geometry.fs" />
+    <Compile Include="Events.fs" />
+    <Compile Include="Window.fs" />
+    <Compile Include="FrameClock.fs" />
+  </ItemGroup>
+</Project>

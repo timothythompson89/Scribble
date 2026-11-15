@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Backend-neutral rendering interfaces for Scribble.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Color.fs" />
+    <Compile Include="Geometry.fs" />
+    <Compile Include="GlyphAtlas.fs" />
+    <Compile Include="DrawList.fs" />
+    <Compile Include="Shaders.fs" />
+    <Compile Include="RenderDevice.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="shapes.wgsl" LogicalName="shapes.wgsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />
+  </ItemGroup>
+</Project>

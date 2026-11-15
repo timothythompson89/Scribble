@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Brings the wgpu-native library along to every app that references this package. -->
+  <Import Project="$(RepositoryRoot)build/WgpuNative.targets" />
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Runs a Scribble app on the desktop: App.run picks the platform (Win32 for now), the WebGPU renderer and HarfBuzz shaping.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="App.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../Scribble.Platform.Win32/Scribble.Platform.Win32.fsproj" />
+    <ProjectReference Include="../Scribble.Rendering.WebGPU/Scribble.Rendering.WebGPU.fsproj" />
+    <ProjectReference Include="../Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
+  </ItemGroup>
+</Project>

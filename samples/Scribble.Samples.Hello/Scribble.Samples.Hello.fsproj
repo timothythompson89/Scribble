@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Keep a console window so logs are visible while we build the framework. -->
+    <IsPackable>false</IsPackable>
+    <!-- Only affects `dotnet publish`: compiles the app, Scribble, FSharp.Core and the runtime into
+         one native exe (needs the "Desktop development with C++" tools on Windows). -->
+    <PublishAot>true</PublishAot>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/Dashboard.fs" Link="Dashboard.fs" />
+    <Compile Include="../Shared/HelloApp.fs" Link="HelloApp.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Desktop/Scribble.Desktop.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
+  </ItemGroup>
+</Project>

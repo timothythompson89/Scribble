@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="$(RepositoryRoot)build/WgpuNative.targets" />
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Png.fs" />
+    <Compile Include="Snapshot.fs" />
+    <Compile Include="Scenes.fs" />
+    <Compile Include="ClearTests.fs" />
+    <Compile Include="ShapeTests.fs" />
+    <Compile Include="TextRenderingTests.fs" />
+    <Compile Include="../../samples/Shared/Dashboard.fs" Link="Dashboard.fs" />
+    <Compile Include="../../samples/Shared/HelloApp.fs" Link="HelloApp.fs" />
+    <Compile Include="DashboardTests.fs" />
+    <Compile Include="../../samples/Shared/Counter.fs" Link="Counter.fs" />
+    <Compile Include="../../samples/Shared/CounterBuilders.fs" Link="CounterBuilders.fs" />
+    <Compile Include="CounterTests.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Rendering.WebGPU/Scribble.Rendering.WebGPU.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
+  </ItemGroup>
+</Project>

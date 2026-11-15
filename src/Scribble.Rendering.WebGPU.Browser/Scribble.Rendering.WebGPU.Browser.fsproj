@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Browser WebGPU (navigator.gpu) backend for Scribble.Rendering.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="BrowserGpuDevice.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="scribble-webgpu.js" LogicalName="scribble-webgpu.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Rendering/Scribble.Rendering.fsproj" />
+    <ProjectReference Include="../Scribble.Platform.Browser/Scribble.Platform.Browser.fsproj" />
+  </ItemGroup>
+</Project>

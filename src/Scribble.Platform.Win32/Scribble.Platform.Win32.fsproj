@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Win32 backend for Scribble.Platform, written directly against user32/kernel32.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Native.fs" />
+    <Compile Include="Win32Window.fs" />
+    <Compile Include="Win32Platform.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />
+  </ItemGroup>
+</Project>

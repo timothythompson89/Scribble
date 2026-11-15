@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Runs a Scribble app in the browser: App.runInBrowser sets up the canvas, WebGPU and HarfBuzz (WebAssembly).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="App.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../Scribble.Platform.Browser/Scribble.Platform.Browser.fsproj" />
+    <ProjectReference Include="../Scribble.Rendering.WebGPU.Browser/Scribble.Rendering.WebGPU.Browser.fsproj" />
+    <ProjectReference Include="../Scribble.Text.HarfBuzz.Browser/Scribble.Text.HarfBuzz.Browser.fsproj" />
+  </ItemGroup>
+</Project>

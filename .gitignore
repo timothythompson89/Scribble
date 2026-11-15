@@ -1,0 +1,6 @@
+bin/
+obj/
+.idea/
+native/
+*.user
+*.DotSettings.user

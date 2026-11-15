@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- IL2104/IL3053 are one-line summaries saying a *referenced* assembly (FSharp.Core) has trim/AOT
+         warnings of its own. We can't fix those, and we avoid the affected features (printf, %A), so they
+         stay visible as warnings without failing the build. AOT warnings in Scribble's code still fail it. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2104;IL3053</WarningsNotAsErrors>
+    <!-- 9 = unverifiable IL (native pointers), 51 = address-of (&&). Expected in interop code. -->
+    <NoWarn>$(NoWarn);FS0009;FS0051</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Authors>Scribble contributors</Authors>
+    <Product>Scribble</Product>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
+    <!-- Only English resources (skips FSharp.Core's translated-message folders in the output). -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- Libraries must stay NativeAOT- and trim-safe (iOS and consoles allow no JIT). -->
+  <PropertyGroup Condition="'$(IsScribbleLibrary)' == 'true'">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+</Project>

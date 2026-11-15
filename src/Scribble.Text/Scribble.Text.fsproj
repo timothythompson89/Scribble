@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Fonts, glyph rasterization and text drawing for Scribble. Ships Inter (SIL OFL 1.1).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="FontFace.fs" />
+    <Compile Include="Rasterizer.fs" />
+    <Compile Include="Shaping.fs" />
+    <Compile Include="LineBreaking.fs" />
+    <Compile Include="TextSystem.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fonts/Inter-Regular.ttf" LogicalName="Inter-Regular.ttf" />
+    <EmbeddedResource Include="Fonts/Inter-SemiBold.ttf" LogicalName="Inter-SemiBold.ttf" />
+    <None Include="Fonts/Inter-OFL.txt" Pack="true" PackagePath="licenses/" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Rendering/Scribble.Rendering.fsproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Browser backend for Scribble.Platform: a canvas as the window, DOM events, requestAnimationFrame.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Js.fs" />
+    <Compile Include="BrowserPlatform.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Loaded at runtime as a data: URL, so apps don't need to ship or copy any files. -->
+    <EmbeddedResource Include="scribble-platform.js" LogicalName="scribble-platform.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />
+  </ItemGroup>
+</Project>

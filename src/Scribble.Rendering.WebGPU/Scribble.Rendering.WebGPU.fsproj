@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>WebGPU (webgpu.h) backend for Scribble.Rendering. Bindings match wgpu-native v29.0.1.1.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Native.fs" />
+    <Compile Include="Common.fs" />
+    <Compile Include="ShapeRenderer.fs" />
+    <Compile Include="Frame.fs" />
+    <Compile Include="WebGpuSurface.fs" />
+    <Compile Include="WebGpuDevice.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Rendering/Scribble.Rendering.fsproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,32 @@
+<Solution>
+  <Folder Name="/build/">
+    <File Path="Directory.Build.props" />
+    <File Path="global.json" />
+    <File Path="build/WgpuNative.targets" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Scribble.Browser/Scribble.Browser.fsproj" />
+    <Project Path="src/Scribble.Core/Scribble.Core.fsproj" />
+    <Project Path="src/Scribble.Desktop/Scribble.Desktop.fsproj" />
+    <Project Path="src/Scribble.Platform/Scribble.Platform.fsproj" />
+    <Project Path="src/Scribble.Platform.Win32/Scribble.Platform.Win32.fsproj" />
+    <Project Path="src/Scribble.Rendering/Scribble.Rendering.fsproj" />
+    <Project Path="src/Scribble.Rendering.WebGPU/Scribble.Rendering.WebGPU.fsproj" />
+    <Project Path="src/Scribble.Text/Scribble.Text.fsproj" />
+    <Project Path="src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
+    <Project Path="src/Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
+    <Project Path="src/Scribble.Text.HarfBuzz.Browser/Scribble.Text.HarfBuzz.Browser.fsproj" />
+    <Project Path="src/Scribble.Platform.Browser/Scribble.Platform.Browser.fsproj" />
+    <Project Path="src/Scribble.Rendering.WebGPU.Browser/Scribble.Rendering.WebGPU.Browser.fsproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Scribble.Samples.Hello/Scribble.Samples.Hello.fsproj" />
+    <Project Path="samples/Scribble.Samples.Browser/Scribble.Samples.Browser.fsproj" />
+    <Project Path="samples/Scribble.Samples.Counter/Scribble.Samples.Counter.fsproj" />
+    <Project Path="samples/Scribble.Samples.Counter.Browser/Scribble.Samples.Counter.Browser.fsproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Scribble.Tests/Scribble.Tests.fsproj" />
+    <Project Path="tests/Scribble.Tests.Rendering/Scribble.Tests.Rendering.fsproj" />
+  </Folder>
+</Solution>

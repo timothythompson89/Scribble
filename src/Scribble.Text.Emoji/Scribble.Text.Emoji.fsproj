@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>Color emoji for Scribble: the Twemoji font (COLR v0). Font: SIL OFL 1.1; emoji art: CC-BY 4.0 (Twitter/X), attribution required.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Emoji.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- twemoji-colr-font 15.0.3 (npm), converted from WOFF2 to TTF; ~1.4 MB. -->
+    <EmbeddedResource Include="Twemoji.ttf" LogicalName="Twemoji.ttf" />
+    <None Include="Twemoji-LICENSE.txt" Pack="true" PackagePath="licenses/" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Text/Scribble.Text.fsproj" />
+  </ItemGroup>
+</Project>

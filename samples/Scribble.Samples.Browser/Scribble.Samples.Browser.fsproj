@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- Culture data (ICU) is a large download; the sample doesn't need localized formatting. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!--
+    Opt-in WebAssembly AOT for release builds:
+      dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true
+    Compiles the app, Scribble and FSharp.Core to WebAssembly ahead of time: faster code, larger
+    download, much slower publish. Needs `dotnet workload install wasm-tools` once.
+    Without it, the runtime interprets the code (fast builds, smaller download).
+  -->
+  <PropertyGroup Condition="'$(BrowserAot)' == 'true'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <!-- Drop the IL bodies of methods that were compiled ahead of time, to shrink the download. -->
+    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
+    <DefineConstants>$(DefineConstants);BROWSER_AOT</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../Shared/Dashboard.fs" Link="Dashboard.fs" />
+    <Compile Include="../Shared/HelloApp.fs" Link="HelloApp.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Browser/Scribble.Browser.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
+  </ItemGroup>
+</Project>
