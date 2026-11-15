@@ -29,7 +29,7 @@ let view count dispatch =
         StackPanel.spacing 16.0
         StackPanel.children [
             TextBlock.create [ TextBlock.text $"Count: {count}"; TextBlock.fontSize 28.0; TextBlock.foreground Color.White ]
-            Button.create [ Button.text "+"; Button.onClick (fun () -> dispatch Increment) ]
+            Button.create [ Button.text "+"; Button.onClick (fun _ -> dispatch Increment) ]
         ]
     ]
 
@@ -194,7 +194,7 @@ Border.create [
     Border.onPointerEnter (fun _ -> dispatch (Hover(Some card)))  // enter/leave: not routed
     Border.onPointerLeave (fun _ -> dispatch (Hover None))
     Border.onPointerDown (fun e -> if e.Modifiers.HasFlag Modifiers.Shift then e.Handle())
-    Border.onClick (fun () -> dispatch Open)                      // left press + release over it
+    Border.onClick (fun e -> dispatch (Open e.Modifiers))         // left press + release over it (or Enter/Space)
     Border.cursor Cursor.Hand
     Border.isEnabled model.CanOpen                                // false: no input here or inside
 ]
@@ -252,7 +252,7 @@ let counter = Component.define "Counter" (fun ctx (name: string) ->
         StackPanel.orientation Horizontal
         StackPanel.children [
             TextBlock.create [ TextBlock.text $"{name}: {count.Current}" ]
-            Button.create [ Button.text "+"; Button.onClick (fun () -> count.Update(fun c -> c + 1)) ]
+            Button.create [ Button.text "+"; Button.onClick (fun _ -> count.Update(fun c -> c + 1)) ]
         ]
     ])
 

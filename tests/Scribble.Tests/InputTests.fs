@@ -115,7 +115,7 @@ let ``a press handled in Preview is taken: no click, and the taker gets the move
                 Border.create [
                     Border.width 100.0
                     Border.height 100.0
-                    Border.onClick (fun () -> clicks <- clicks + 1)
+                    Border.onClick (fun _ -> clicks <- clicks + 1)
                     Border.onPointerMove (fun _ -> moves.Add "inner")
                 ])
         ]
@@ -145,7 +145,7 @@ let ``the pressed element keeps the pointer: moves and the release go to it`` ()
 [<Fact>]
 let ``dragging off cancels the click, dragging back restores it, and IsPressed follows`` () =
     let mutable clicks = 0
-    let w, _, el = show (twoBoxes [ Border.onClick (fun () -> clicks <- clicks + 1) ] [])
+    let w, _, el = show (twoBoxes [ Border.onClick (fun _ -> clicks <- clicks + 1) ] [])
     let a = el "a"
     press w 50 50
     Assert.True a.IsPressed
@@ -166,7 +166,7 @@ let ``dragging off cancels the click, dragging back restores it, and IsPressed f
 let ``clicking inside a child clicks the parent`` () =
     let mutable clicks = 0
     let view =
-        Button.create [ Button.width 100.0; Button.height 40.0; Button.text "Go"; Button.onClick (fun () -> clicks <- clicks + 1) ]
+        Button.create [ Button.width 100.0; Button.height 40.0; Button.text "Go"; Button.onClick (fun _ -> clicks <- clicks + 1) ]
     let w, _, _ = show view
     // Buttons sit on the left (x 0–100) and are centered vertically (y 130–170); the label is in the middle.
     press w 50 150
@@ -176,7 +176,7 @@ let ``clicking inside a child clicks the parent`` () =
 [<Fact>]
 let ``a canceled press doesn't click`` () =
     let mutable clicks = 0
-    let w, _, el = show (twoBoxes [ Border.onClick (fun () -> clicks <- clicks + 1) ] [])
+    let w, _, el = show (twoBoxes [ Border.onClick (fun _ -> clicks <- clicks + 1) ] [])
     press w 50 50
     w.Send(PointerCanceled(Mouse, 0))
     Assert.False (el "a").IsPressed
@@ -195,7 +195,7 @@ let ``disabled elements and everything inside them get no input`` () =
                     Border.name "disabled"
                     Border.isEnabled false
                     Border.onPointerEnter (fun _ -> log.Add "disabled enter")
-                    Border.onClick (fun () -> log.Add "disabled click")
+                    Border.onClick (fun _ -> log.Add "disabled click")
                     Border.child (Border.create [ Border.name "inside"; Border.onPointerDown (fun _ -> log.Add "inside down") ])
                 ])
         ]
@@ -276,3 +276,14 @@ let ``states change the look: a frame is requested for hover, none for moves wit
     Assert.True(w.DeliverFrame())
     move w 60 50
     Assert.False(w.DeliverFrame())
+
+[<Fact>]
+let ``a click carries its source and the modifiers held at release`` () =
+    let clicks = List<ClickEventArgs>()
+    let w, _, _ = show (twoBoxes [ Border.onClick clicks.Add ] [])
+    let at: PixelPoint = { X = 50.0; Y = 50.0 }
+    w.Send(PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    w.Send(PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.Shift))
+    let e = Assert.Single clicks
+    Assert.Equal(ClickSource.Pointer Mouse, e.Source)
+    Assert.True(e.Modifiers.HasFlag Modifiers.Shift)

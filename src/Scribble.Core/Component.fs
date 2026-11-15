@@ -268,7 +268,7 @@ type internal ComponentInput<'P>(name: string, render: ComponentContext -> 'P ->
 ///
 ///     let counter = Component.define "Counter" (fun ctx (start: int) ->
 ///         let count = ctx.useState start
-///         Button.create [ Button.text $"{count.Current}"; Button.onClick (fun () -> count.Update((+) 1)) ])
+///         Button.create [ Button.text $"{count.Current}"; Button.onClick (fun _ -> count.Update((+) 1)) ])
 ///
 ///     StackPanel.children [ counter 0; counter 10 ]
 module Component =

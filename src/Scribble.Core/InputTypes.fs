@@ -58,3 +58,20 @@ type KeyEventArgs internal (key: Key, modifiers: Modifiers, isRepeat: bool) =
     member _.Key = key
     /// The key is held and the OS is repeating it (key down only).
     member _.IsRepeat = isRepeat
+
+/// How a click arrived.
+[<RequireQualifiedAccess>]
+type ClickSource =
+    /// A press and release over the element (mouse, touch or pen).
+    | Pointer of kind: PointerKind
+    /// Enter, or Space released, on the focused element.
+    | Keyboard
+
+/// A click: `Button.onClick (fun e -> if e.Modifiers.HasFlag Modifiers.Shift then ... else ...)`.
+/// Clicks aren't routed: they go to the nearest element with onClick.
+[<Sealed>]
+type ClickEventArgs internal (source: ClickSource, modifiers: Modifiers) =
+    member _.Source = source
+    /// Modifier keys held when the click happened (on release for a pointer; with the key for
+    /// Enter and Space).
+    member _.Modifiers = modifiers

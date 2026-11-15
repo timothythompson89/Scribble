@@ -96,7 +96,7 @@ module LayoutProps =
     /// Identifies a child among its siblings across updates (for lists that insert, remove or reorder).
     let key = Prop<obj voption>("Key", ValueNone, Affects.Nothing, PropKind.Value)
     /// Called when the left button is pressed and released on the element (or something inside it).
-    let onClick = Prop<(unit -> unit) voption>("OnClick", ValueNone, Affects.Nothing, PropKind.Value)
+    let onClick = Prop<(ClickEventArgs -> unit) voption>("OnClick", ValueNone, Affects.Nothing, PropKind.Value)
     /// False turns off input for the element and everything inside it (and greys out built-in looks).
     let isEnabled = Prop<bool>("IsEnabled", true, Affects.Render, PropKind.Value)
     /// The pointer's look over the element (ValueNone: whatever its parent uses).

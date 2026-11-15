@@ -91,6 +91,7 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
   `App.onFrame` (animation continues only while the model keeps changing), `App.fonts`, `App.showStats`,
   `App.closeOnEscape`. `App.start` runs on any `IPlatform` (tests use a fake). Pointer and keyboard input (M5): see README
   "Pointer input" and "Keyboard and focus"; `Button` is a Border with a default look that reacts to hover/pressed/disabled.
+  `onClick` takes `ClickEventArgs` (`Modifiers`, `Source`); write `fun _ -> ...` when unused (no unit overload: F# can't resolve `fun _ ->` between them).
 - **Syntax: FuncUI-style settings lists only** (decided 2026-11-15; the M4 builder trial was removed). Don't
   reintroduce computation-expression or modifier-chain syntax.
 
@@ -151,7 +152,7 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). Last counts: 133 unit tests, 31 rendering tests (M5 step 3).
+Add/Remove/Shuffle cards, keyed grid). Last counts: 135 unit tests, 31 rendering tests (after click args).
 
 Remaining milestones: **M5b async in components** (next), M6 inspector, M7 styles, M7b icons, M8 core controls
 (Grid, DockPanel, ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox), M9 TextBox, M10 hot reload; later:

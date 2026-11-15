@@ -35,9 +35,9 @@ let view count dispatch =
                 StackPanel.orientation Horizontal
                 StackPanel.spacing 8.0
                 StackPanel.children [
-                    Button.create [ Button.text "−"; Button.onClick (fun () -> dispatch Decrement) ]
-                    Button.create [ Button.text "+"; Button.onClick (fun () -> dispatch Increment) ]
-                    Button.create [ Button.text "Reset"; Button.isEnabled (count <> 0); Button.onClick (fun () -> dispatch Reset) ]
+                    Button.create [ Button.text "−"; Button.onClick (fun _ -> dispatch Decrement) ]
+                    Button.create [ Button.text "+"; Button.onClick (fun _ -> dispatch Increment) ]
+                    Button.create [ Button.text "Reset"; Button.isEnabled (count <> 0); Button.onClick (fun _ -> dispatch Reset) ]
                 ]
             ]
         ]
@@ -69,7 +69,7 @@ let counter =
                     TextBlock.foreground Color.White
                     TextBlock.verticalAlignment VerticalAlignment.Center
                 ]
-                Button.create [ Button.text "−"; Button.width 32.0; Button.onClick (fun () -> count.Update(fun c -> c - 1)) ]
+                Button.create [ Button.text "−"; Button.width 32.0; Button.onClick (fun _ -> count.Update(fun c -> c - 1)) ]
                 TextBlock.create [
                     TextBlock.text (string count.Current)
                     TextBlock.width 32.0
@@ -77,7 +77,7 @@ let counter =
                     TextBlock.foreground Color.White
                     TextBlock.verticalAlignment VerticalAlignment.Center
                 ]
-                Button.create [ Button.text "+"; Button.width 32.0; Button.onClick (fun () -> count.Update(fun c -> c + 1)) ]
+                Button.create [ Button.text "+"; Button.width 32.0; Button.onClick (fun _ -> count.Update(fun c -> c + 1)) ]
                 Border.create [
                     Border.width barWidth
                     Border.height 8.0
@@ -116,14 +116,14 @@ let counters =
                         Button.create [
                             Button.text "Add"
                             Button.isEnabled (not missing.IsEmpty)
-                            Button.onClick (fun () -> names.Update(fun ns -> ns @ List.truncate 1 missing))
+                            Button.onClick (fun _ -> names.Update(fun ns -> ns @ List.truncate 1 missing))
                         ]
                         Button.create [
                             Button.text "Remove first"
                             Button.isEnabled (not names.Current.IsEmpty)
-                            Button.onClick (fun () -> names.Update(List.tail))
+                            Button.onClick (fun _ -> names.Update(List.tail))
                         ]
-                        Button.create [ Button.text "Reverse"; Button.onClick (fun () -> names.Update List.rev) ]
+                        Button.create [ Button.text "Reverse"; Button.onClick (fun _ -> names.Update List.rev) ]
                     ]
                 ]
                 StackPanel.create [ StackPanel.spacing 6.0; StackPanel.items names.Current id counter ]

@@ -36,7 +36,7 @@ let private buttons (clicks: List<string>) (extra: Setting<StackPanel> list) =
             Button.name name
             Button.text name
             Button.isEnabled enabled
-            Button.onClick (fun () -> clicks.Add name)
+            Button.onClick (fun _ -> clicks.Add name)
         ]
     StackPanel.create (
         [ StackPanel.name "column"
@@ -167,3 +167,18 @@ let ``disabling, hiding or removing the focused element clears focus`` () =
     host.Update(StackPanel.create [ StackPanel.name "column" ])
     w.DeliverFrame() |> ignore
     Assert.Equal("(none)", focusedName host)
+
+[<Fact>]
+let ``Shift+Enter and Shift+Space click with Shift in the args, Ctrl+Enter doesn't click`` () =
+    let clicks = List<ClickEventArgs>()
+    let w, _ =
+        show (Button.create [ Button.text "Go"; Button.onClick clicks.Add ]) []
+    tab w
+    w.Send(KeyDown(Key.Enter, Modifiers.Shift, false))
+    w.Send(KeyDown(Key.Space, Modifiers.Shift, false))
+    w.Send(KeyUp(Key.Space, Modifiers.Shift))
+    w.Send(KeyDown(Key.Enter, Modifiers.Control, false))
+    Assert.Equal(2, clicks.Count)
+    for e in clicks do
+        Assert.Equal(ClickSource.Keyboard, e.Source)
+        Assert.True(e.Modifiers.HasFlag Modifiers.Shift)

@@ -59,11 +59,11 @@ let private toolbar model dispatch =
         StackPanel.orientation Horizontal
         StackPanel.spacing 8.0
         StackPanel.children [
-            Button.create [ Button.text (if model.Animating then "Pause" else "Resume"); Button.onClick (fun () -> dispatch TogglePause) ]
-            Button.create [ Button.text "Restart"; Button.onClick (fun () -> dispatch Restart) ]
-            Button.create [ Button.text "Remove card"; Button.onClick (fun () -> dispatch RemoveCard) ]
-            Button.create [ Button.text "Add card"; Button.onClick (fun () -> dispatch AddCard) ]
-            Button.create [ Button.text "Shuffle"; Button.onClick (fun () -> dispatch Shuffle) ]
+            Button.create [ Button.text (if model.Animating then "Pause" else "Resume"); Button.onClick (fun _ -> dispatch TogglePause) ]
+            Button.create [ Button.text "Restart"; Button.onClick (fun _ -> dispatch Restart) ]
+            Button.create [ Button.text "Remove card"; Button.onClick (fun _ -> dispatch RemoveCard) ]
+            Button.create [ Button.text "Add card"; Button.onClick (fun _ -> dispatch AddCard) ]
+            Button.create [ Button.text "Shuffle"; Button.onClick (fun _ -> dispatch Shuffle) ]
         ]
     ]
 

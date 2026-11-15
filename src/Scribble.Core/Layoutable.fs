@@ -46,9 +46,10 @@ type Layoutable =
     /// Identifies this element among its siblings across updates. Only needed in lists that insert,
     /// remove or reorder items (see also `Panel.items`); elsewhere position is enough.
     static member key<'k when 'k :> Layoutable>(value: obj) : Setting<'k> = Setting.create LayoutProps.key (ValueSome value)
-    /// Runs when the left button is pressed and released on this element (or something inside it).
-    /// Dragging off before releasing cancels it.
-    static member onClick<'k when 'k :> Layoutable>(handler: unit -> unit) : Setting<'k> = Setting.create LayoutProps.onClick (ValueSome handler)
+    /// Runs when the left button is pressed and released on this element (or something inside it),
+    /// or when it has focus and Enter or Space activates it. Dragging off before releasing cancels
+    /// it. `e.Modifiers` tells shift-clicks apart; `e.Source` says pointer or keyboard.
+    static member onClick<'k when 'k :> Layoutable>(handler: ClickEventArgs -> unit) : Setting<'k> = Setting.create LayoutProps.onClick (ValueSome handler)
     /// False turns off input for this element and everything inside it; built-in looks grey out.
     static member isEnabled<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.isEnabled value
     /// The pointer's look over this element (and inside it, unless something there sets its own).

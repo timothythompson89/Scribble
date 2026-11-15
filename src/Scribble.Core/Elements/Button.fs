@@ -4,7 +4,7 @@ open System
 open Scribble.Rendering
 
 /// A Border with a default look and something to click: `Button.create [ Button.text "+1";
-/// Button.onClick (fun () -> dispatch Increment) ]`. Every Border setting works on it.
+/// Button.onClick (fun _ -> dispatch Increment) ]`. Every Border setting works on it.
 /// It lightens under the pointer, darkens while pressed and fades when disabled. It takes keyboard
 /// focus (Tab; a ring shows), and Enter or Space clicks it. A themeable look comes with styles in
 /// Milestone 7.

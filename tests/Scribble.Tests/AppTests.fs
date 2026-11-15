@@ -86,7 +86,7 @@ let private counterView count dispatch =
     StackPanel.create [
         StackPanel.children [
             TextBlock.create [ TextBlock.name "label"; TextBlock.text $"Count: {count}" ]
-            Button.create [ Button.name "plus"; Button.width 100.0; Button.height 30.0; Button.text "+1"; Button.onClick (fun () -> dispatch Increment) ]
+            Button.create [ Button.name "plus"; Button.width 100.0; Button.height 30.0; Button.text "+1"; Button.onClick (fun _ -> dispatch Increment) ]
         ]
     ]
 

@@ -192,9 +192,9 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             ValueNone
         | ValueNone -> ValueNone
 
-    let click (e: Element) =
+    let click (e: Element) (source: ClickSource) (modifiers: Modifiers) =
         match e.Get LayoutProps.onClick with
-        | ValueSome handler -> handler ()
+        | ValueSome handler -> handler (ClickEventArgs(source, modifiers))
         | ValueNone -> ()
 
     let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome
@@ -250,7 +250,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         s.Buttons <- max 0 (s.Buttons - 1)
         if s.Buttons = 0 then endPress s
         refresh s
-        clicked |> ValueOption.iter click
+        clicked |> ValueOption.iter (fun e -> click e (ClickSource.Pointer kind) modifiers)
 
     /// The pointer left the window (or a touch ended).
     member _.PointerExited(kind: PointerKind, id: int) =
@@ -322,7 +322,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
                 releaseSpace ()
                 true
             | Key.Enter, ValueSome e when plain && hasClick e ->
-                if not isRepeat then click e
+                if not isRepeat then click e ClickSource.Keyboard modifiers
                 true
             | Key.Space, ValueSome e when plain && hasClick e ->
                 if not isRepeat && spacePressed.IsNone then
@@ -339,7 +339,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         match key, spacePressed with
         | Key.Space, ValueSome e ->
             releaseSpace ()
-            if not args.IsHandled && canFocus e && focused = ValueSome e then click e
+            if not args.IsHandled && canFocus e && focused = ValueSome e then click e ClickSource.Keyboard modifiers
             true
         | _ -> args.IsHandled
 
