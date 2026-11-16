@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>An inspector for Scribble apps: a panel over the app with every layer's element tree, pick mode and a highlight. Opt in with Inspector.enable [ ... ] in the app's settings.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Inspector.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />
+  </ItemGroup>
+</Project>

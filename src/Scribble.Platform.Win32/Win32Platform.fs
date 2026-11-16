@@ -100,6 +100,14 @@ type Win32Platform() =
         let window = new Win32Window(hinstance, onEvent, fun h -> windows.Remove h |> ignore)
         let w, h = outerSize (GetDpiForSystem())
         use titlePtr = fixed options.Title
+        // An owned window stays above its owner, minimizes with it and has no taskbar button.
+        let owner =
+            match options.Owner with
+            | ValueSome o ->
+                match o.Surface with
+                | Win32Handle(_, ownerHwnd) when not o.IsClosed -> ownerHwnd
+                | _ -> 0n
+            | ValueNone -> 0n
 
         let hwnd =
             CreateWindowExW(
@@ -111,7 +119,7 @@ type Win32Platform() =
                 CW_USEDEFAULT,
                 w,
                 h,
-                0n,
+                owner,
                 0n,
                 hinstance,
                 0n
@@ -160,6 +168,7 @@ type Win32Platform() =
 
     interface IPlatform with
         member _.Name = "Win32"
+        member _.SupportsMultipleWindows = true
         member _.CreateWindow(options, onEvent) = createWindow options onEvent
         member _.Run() = run ()
 

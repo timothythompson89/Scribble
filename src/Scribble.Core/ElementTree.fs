@@ -112,7 +112,7 @@ type ElementTree(text: TextSystem) =
     /// element is only hit through what the component shows (it fills its slot, but draws nothing).
     member _.HitTest(x: float, y: float) : Element voption =
         let rec hit (e: Element) (ox: float) (oy: float) =
-            if not e.IsVisible then ValueNone
+            if not e.IsVisible || not (e.Get LayoutProps.isHitTestVisible) then ValueNone
             else
                 let b = e.Bounds
                 let left, top = ox + b.X, oy + b.Y

@@ -65,6 +65,12 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// The layer that had the keyboard at the last check (its focus looks active).
     let mutable keyboardOwner: Layer voption = ValueNone
     let mutable windowActive = true
+    /// Keys looked at before any layer (tools such as the inspector): true stops the key there.
+    let keyPreviews = List<Key -> Modifiers -> bool>()
+    let frameDrawn = Event<FrameStats>()
+    let layerChanged = Event<Layer>()
+    let closed = Event<unit>()
+    let mutable isClosed = false
 
     let dips (p: PixelPoint) = Point(p.X / window.Scale, p.Y / window.Scale)
     let same (a: Layer) (b: Layer) = obj.ReferenceEquals(a, b)
@@ -74,7 +80,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         let tree = layer.Tree
         tree.Scale <- window.Scale
         tree.Dispatcher <- options.Dispatcher
-        tree.OnInvalidated <- fun () -> if not inFrame then window.RequestFrame()
+        tree.OnInvalidated <-
+            fun () ->
+                layerChanged.Trigger layer
+                if not inFrame then window.RequestFrame()
         // After everything with the same or a lower order.
         layers.Insert(layers.FindLastIndex(fun l -> l.Order <= layer.Order) + 1, layer)
         layer.InitialView |> ValueOption.iter layer.Update
@@ -172,6 +181,22 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
 
     member _.Window = window
 
+    /// The GPU device it draws with, and its text system (for tools that open a window of their own).
+    member _.Device = device
+    member _.Text = text
+
+    /// Raises `Closed`, then closes the window (once). App.start calls it when the window is asked to
+    /// close; call it instead of `Window.Close()` so everything attached hears about it.
+    member _.Close() =
+        if not isClosed then
+            isClosed <- true
+            // First, so windows owned by this one (an inspector pop-out) close while it still exists.
+            closed.Trigger()
+            window.Close()
+
+    /// When the host closes through `Close()`, just before its window goes.
+    member _.Closed: IEvent<unit> = closed.Publish
+
     /// The app's layer (order 0).
     member _.App = app
     /// The app's tree.
@@ -258,6 +283,21 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// The layer that gets keys now.
     member _.KeyboardLayer = keyboardLayer ()
 
+    /// Sees every key going down before any layer does, whatever has focus (repeats included);
+    /// returning true stops the key there. For tools that need a shortcut that always works (the
+    /// inspector's F12). Dispose the result to stop.
+    member _.AddKeyPreview(handler: Key -> Modifiers -> bool) : System.IDisposable =
+        keyPreviews.Add handler
+        { new System.IDisposable with
+            member _.Dispose() = keyPreviews.Remove handler |> ignore }
+
+    /// After each frame is drawn (and its effects have run), with the frame's timing.
+    member _.FrameDrawn: IEvent<FrameStats> = frameDrawn.Publish
+
+    /// When something in a layer changed (layout, looks or state: anything that asks for a frame,
+    /// including changes made while a frame is drawn). Fires often; keep handlers cheap.
+    member _.LayerChanged: IEvent<Layer> = layerChanged.Publish
+
     /// The element with keyboard focus (in the layer that gets keys), if any.
     member _.Focused: Element voption = (keyboardLayer ()).Focused
 
@@ -278,6 +318,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             // for the next one.
             for l in layers.ToArray() do
                 l.Tree.RunAfterFrame()
+            frameDrawn.Trigger stats
             false
         | Resized size -> surface.Resize size; false
         | ScaleChanged scale ->
@@ -340,7 +381,11 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             let p = dips p
             (layerAt p).Input.Wheel(p, dx, dy, mods)
             false
-        | KeyDown(key, mods, isRepeat) -> (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat)
+        | KeyDown(key, mods, isRepeat) ->
+            let mutable taken = false
+            for preview in keyPreviews.ToArray() do
+                if not taken then taken <- preview key mods
+            taken || (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat)
         | KeyUp(key, mods) -> (keyboardLayer ()).Input.KeyUp(key, mods)
         | FocusChanged active ->
             windowActive <- active

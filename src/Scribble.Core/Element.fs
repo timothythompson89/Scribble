@@ -152,6 +152,7 @@ and [<AbstractClass>] internal ComponentInput() =
 
 /// A component's state on its element: told when the element joins or leaves a tree.
 and [<AbstractClass>] internal ComponentState() =
+    abstract Name: string
     abstract Attached: root: IElementRoot -> unit
     abstract Detached: unit -> unit
 
@@ -351,6 +352,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     member internal _.ComponentState
         with get () = componentState
         and set v = componentState <- v
+
+    /// The name of the component this element hosts (`Component.define "Name"`), if it hosts one.
+    member _.ComponentName: string voption = componentState |> ValueOption.map _.Name
 
     /// Runs the hosted component and patches what it returned in as this element's child.
     member internal this.RunComponent() =

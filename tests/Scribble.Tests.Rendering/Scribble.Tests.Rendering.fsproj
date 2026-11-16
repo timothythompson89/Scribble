@@ -18,6 +18,7 @@
     <Compile Include="CounterTests.fs" />
     <Compile Include="ButtonTests.fs" />
     <Compile Include="LayerTests.fs" />
+    <Compile Include="InspectorTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
@@ -28,6 +29,7 @@
     <ProjectReference Include="../../src/Scribble.Rendering.WebGPU/Scribble.Rendering.WebGPU.fsproj" />
     <ProjectReference Include="../../src/Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
     <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
     <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
   </ItemGroup>
 </Project>

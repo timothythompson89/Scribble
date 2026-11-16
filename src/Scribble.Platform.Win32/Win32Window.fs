@@ -86,6 +86,7 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
                 | Cursor.Text -> IDC_IBEAM
                 | Cursor.Crosshair -> IDC_CROSS
                 | Cursor.Move -> IDC_SIZEALL
+                | Cursor.ResizeDiagonal -> IDC_SIZENWSE
                 | Cursor.ResizeLeftRight -> IDC_SIZEWE
                 | Cursor.ResizeUpDown -> IDC_SIZENS
                 | Cursor.NotAllowed -> IDC_NO
@@ -310,6 +311,10 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
                 cursor <- value
                 // Change it now if the pointer is over us; otherwise WM_SETCURSOR applies it on entry.
                 if not closed && (trackingLeave || pressedButtons > 0) then SetCursor(cursorHandle value) |> ignore
+
+        // Windows has no shortcuts of its own on keys an app would claim (F10 and Alt only matter to
+        // windows with menus, and this one has none).
+        member _.ClaimKey(_: Key, _: Modifiers) = ()
 
         member _.Show() =
             if not closed then ShowWindow(hwnd, SW_SHOW) |> ignore

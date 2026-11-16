@@ -12,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Scribble.Desktop/Scribble.Desktop.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
   </ItemGroup>
 </Project>

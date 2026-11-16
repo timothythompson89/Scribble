@@ -79,9 +79,28 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
 8. Keyboard: Tab moves a blue ring through the toolbar buttons (Shift+Tab backwards, wrapping); Enter clicks the
    focused one, Space presses it while held and clicks on release (Escape first cancels). Clicking a button focuses
    it without a ring, so Space then presses *that* button; click the background to give Space back to the app.
+9. The inspector (both samples, desktop and browser; M6 step 2): F12 shows a panel on the right with the element
+   tree of every layer (the app first; types in blue, components in purple, `#names` in amber, a TextBlock's text
+   in quotes, hidden elements dimmed). The app doesn't move or resize while it's open.
+   - Click a triangle to fold or unfold a row; click a row to select it. Hovering a row highlights its element in
+     the app: a blue box, any margin in orange, and a label with the type and size.
+   - Ctrl+Shift+C (or "Pick") starts pick mode: a crosshair, the element under the pointer is highlighted, and a
+     click selects it (the tree opens down to it) without reaching the app. Escape cancels.
+   - "Dock left"/"Dock right" moves the panel; "Close" or F12 hides it. The app keeps working everywhere the panel
+     isn't; with the app animating, the tree keeps up (about 10 updates a second).
+   - In the browser, F12 and Ctrl+Shift+C should open the inspector, not the browser's own developer tools, while
+     the page has focus.
+10. The panel's modes (step 2b):
+    - Drag the title ("Inspector") to undock the panel: it floats and stays inside the window, even when the
+      window shrinks. Drag the dots at its bottom-right corner to resize it; "Left"/"Right" dock it again.
+    - Docked, drag its inner edge (the cursor turns into a left-right arrow) to make it narrower or wider.
+    - "–" or a double-click on the title folds it to its title bar; "+" opens it again.
+    - Desktop only: "Pop out" moves it into its own window ("Inspector – <app>"); hovering rows still highlights in
+      the app, pick mode still works there, and F12 works in both windows. Closing the pop-out (or "Pop in") puts
+      the panel back where it was; closing the app closes both. The browser has no "Pop out" button.
 
-The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo, on three tabs
-(Elmish, Load, List). The tabs are made from what's already there: every page stays in the tree and only the
+The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo, on four tabs
+(Elmish, Load, List, Layers). The tabs are made from what's already there: every page stays in the tree and only the
 selected one has `isVisible true`, so each page keeps its state while hidden.
 
 1. Change something on each tab (a count, the number on Load, the list), switch away and back: it's all still
@@ -357,6 +376,41 @@ position bar. Give it a bounded height. At either end the wheel passes to whatev
 scrolling, dragging the bar, keyboard and touch come with M8. Element authors: `Element.wheel` (a type's own wheel
 behavior, after the view's `onWheel`) and `Element.renderAfter` (drawn over the children) are what it uses.
 
+### Inspector
+
+`Scribble.Inspector` (a separate, opt-in package) adds a panel over the app with the element tree of every layer,
+pick mode and a highlight:
+
+```fsharp
+open Scribble.Inspector
+
+App.run (settings @ [
+#if DEBUG
+    Inspector.enable [ Inspector.side DockSide.Left ]
+#endif
+])
+```
+
+- **Keys:** F12 shows and hides it, Ctrl+Shift+C picks an element (Escape cancels); change them with
+  `Inspector.toggleKey (key, modifiers)` and `Inspector.pickKey`. They work whatever has focus, and in the browser
+  they're kept from the browser's own developer tools. `Inspector.isOpen true` shows it from the start.
+- **Panel:** docked right or left (drag its inner edge to change the width), floating (drag the title; resize from
+  the corner grip), folded to its title bar ("–" or a double-click on the title), or, on the desktop, popped out
+  into a window of its own ("Pop out"; it closes with the app). Selection and folded rows stay as they are when
+  it moves.
+- It's built from Scribble's own elements and lives in two layers on top of everything (the panel, and a
+  highlight that only takes the pointer in pick mode), so the app's layout never changes.
+- Custom hosts: `Inspector.attach (host, [ Inspector.platform platform ])` (the platform enables "Pop out"),
+  disposable. Packages that plug into an app this way use
+  `App.onStart (fun ctx -> ...)` (`ctx.Host`, `ctx.Platform`, `ctx.Title`), `host.AddKeyPreview` (keys before
+  any layer), `host.Closed`, `host.LayerChanged` and
+  `host.FrameDrawn`. An element's `ComponentName` tells a component's host element apart.
+- The properties of the selected element (values and where they came from, layout numbers, states, hook values)
+  and frame stats come next (M6 step 3).
+
+Also new with it: `Layoutable.isHitTestVisible false` lets the pointer go through an element and everything inside
+it, and `IWindow.ClaimKey` keeps a key combination from the platform's own shortcuts.
+
 ### Elements and layout
 
 Widths and heights (and their min/max) take a number of DIPs, a `Length`, or a string:
@@ -419,11 +473,14 @@ without a window (`tree.Update view`), which is how the layout and differ tests 
 uses the same settings style as everything else:
 
 ```fsharp
-let device = WebGpuDevice.Create [ WebGpuDevice.backend BackendType.Vulkan; WebGpuDevice.powerPreference GpuPower.LowPower ]
+let device = WebGpuDevice.Create [ WebGpuDevice.backend BackendType.Vulkan; WebGpuDevice.powerPreference GpuPower.LowPower; WebGpuDevice.frameLatency 1 ]
 let host = ElementHost.create window device text [ ElementHost.background (Color.Hex 0x181825); ElementHost.beforeFrame tick ]
 ```
 
-(`BrowserGpuDevice.CreateAsync [ BrowserGpuDevice.powerPreference ... ]` in the browser.) Typical numbers (Release, after warm-up): 10,000 elements lay out in about 1 ms, and changing one of them takes a
+`WebGpuDevice.frameLatency` (default 1) is how many finished frames may wait for the screen: 1 lags the mouse
+least; 2 or more lets the CPU and GPU overlap for heavy frames. It doesn't change how many frames are drawn.
+(`BrowserGpuDevice.CreateAsync [ BrowserGpuDevice.powerPreference ... ]` in the browser, where the browser decides
+when frames reach the screen.) Typical numbers (Release, after warm-up): 10,000 elements lay out in about 1 ms, and changing one of them takes a
 few microseconds; building, diffing and laying out a 1,000-element view with one change takes about 0.5 ms.
 
 ## Project layout
@@ -432,6 +489,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | --- | --- |
 | `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer; layers; App settings and runtime |
 | `src/Scribble.Desktop` | `App.run`: the desktop platform, WebGPU renderer and HarfBuzz shaping in one reference |
+| `src/Scribble.Inspector` | Opt-in inspector: `Inspector.enable [ ... ]` (element tree of every layer, pick mode, highlight) |
 | `src/Scribble.Browser` | `App.runInBrowser`: the browser equivalents |
 | `src/Scribble.Platform` | Window, event, DPI and frame-clock abstractions |
 | `src/Scribble.Platform.Win32` | Win32 backend, hand-written P/Invoke |

@@ -23,6 +23,7 @@
     <Compile Include="../../samples/Shared/Counter.fs" Link="Counter.fs" />
     <Compile Include="TabsTests.fs" />
     <Compile Include="LayerTests.fs" />
+    <Compile Include="InspectorTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
@@ -31,6 +32,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
     <ProjectReference Include="../../src/Scribble.Platform/Scribble.Platform.fsproj" />
     <ProjectReference Include="../../src/Scribble.Rendering/Scribble.Rendering.fsproj" />
     <ProjectReference Include="../../src/Scribble.Text/Scribble.Text.fsproj" />

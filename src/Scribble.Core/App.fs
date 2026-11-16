@@ -13,6 +13,15 @@ type internal ProgramRunner<'Msg> = { View: unit -> View; Dispatch: 'Msg -> unit
 /// What a program gets from the runtime: "the view needs rebuilding" and the UI thread's dispatcher.
 type internal ProgramHost = { Changed: unit -> unit; Dispatcher: Dispatcher }
 
+/// What `App.onStart` handlers get: the running app's host and platform, for packages that plug
+/// into the app (the inspector adds layers and may open a window of its own).
+[<Sealed>]
+type AppContext internal (host: ElementHost, platform: IPlatform, title: string) =
+    member _.Host = host
+    member _.Platform = platform
+    /// The app's title (`App.title`).
+    member _.Title = title
+
 /// Everything App settings configure.
 type AppConfig<'Msg> internal () =
     member val internal Title = "Scribble" with get, set
@@ -25,6 +34,7 @@ type AppConfig<'Msg> internal () =
     member val internal OnFrame: (FrameTime -> 'Msg option) list = [] with get, set
     member val internal OnError: (exn -> unit) voption = ValueNone with get, set
     member val internal Layers: LayerSetting list list = [] with get, set
+    member val internal OnStart: (AppContext -> unit) list = [] with get, set
     /// Makes the program, given the runtime's side of it.
     member val internal Program: (ProgramHost -> ProgramRunner<'Msg>) voption = ValueNone with get, set
 
@@ -111,6 +121,11 @@ type App =
     static member layer<'Msg>(settings: LayerSetting list) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Layers <- c.Layers @ [ settings ])
 
+    /// Runs once the window and its host exist (layers added, before the first frame): for
+    /// packages that plug into the host, such as `Inspector.enable`.
+    static member onStart<'Msg>(handler: AppContext -> unit) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.OnStart <- c.OnStart @ [ handler ])
+
     /// Turns key presses into messages: `App.onKey (fun key mods -> match key with Key.Space -> Some Pause | _ -> None)`.
     /// Runs last, only for keys nothing in the view handled (a focused button takes Space and
     /// Enter; Tab moves focus), and never for repeats.
@@ -161,9 +176,9 @@ type App =
             | ValueSome(h: ElementHost) ->
                 let handled = h.HandleEvent event
                 match event with
-                | CloseRequested -> h.Window.Close()
+                | CloseRequested -> h.Close()
                 | KeyDown _ when handled -> ()
-                | KeyDown(Key.Escape, _, false) when config.CloseOnEscape -> h.Window.Close()
+                | KeyDown(Key.Escape, _, false) when config.CloseOnEscape -> h.Close()
                 | KeyDown(key, mods, false) ->
                     for handler in config.OnKey do
                         match handler key mods with
@@ -192,6 +207,8 @@ type App =
         host.Value <- ValueSome h
         for layer in config.Layers do
             h.AddLayer layer |> ignore
+        for handler in config.OnStart do
+            handler (AppContext(h, platform, config.Title))
         Console.WriteLine($"Scribble: {device.Description}, {shaper.Name} shaping, {platform.Name}")
         window.Show()
         window.RequestFrame()

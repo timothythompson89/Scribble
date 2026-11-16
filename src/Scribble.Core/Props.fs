@@ -93,6 +93,9 @@ module LayoutProps =
     let isVisible = Prop<bool>("IsVisible", true, Affects.Measure, PropKind.Value)
     /// Clip children to the element's bounds (rectangular for now).
     let clipToBounds = Prop<bool>("ClipToBounds", false, Affects.Render, PropKind.Value)
+    /// False: the pointer goes through the element and everything inside it, to whatever is
+    /// behind (highlights, decorations over other content).
+    let isHitTestVisible = Prop<bool>("IsHitTestVisible", true, Affects.Nothing, PropKind.Value)
     /// Identifies a child among its siblings across updates (for lists that insert, remove or reorder).
     let key = Prop<obj voption>("Key", ValueNone, Affects.Nothing, PropKind.Value)
     /// Called when the left button is pressed and released on the element (or something inside it).

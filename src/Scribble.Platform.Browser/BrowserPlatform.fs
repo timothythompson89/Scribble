@@ -18,6 +18,7 @@ module internal PlatformJs =
     let requestFrame = JsFunction(ModuleName, "requestFrame", T.void', [])
     let setTitle = JsFunction(ModuleName, "setTitle", T.void', [ T.string ])
     let setCursor = JsFunction(ModuleName, "setCursor", T.void', [ T.double ])
+    let claimKey = JsFunction(ModuleName, "claimKey", T.void', [ T.string ])
     let createCanvas = JsFunction(ModuleName, "createCanvas", T.doubles, [ T.string ])
     let removeCanvas = JsFunction(ModuleName, "removeCanvas", T.void', [])
 
@@ -105,7 +106,21 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
                     | Cursor.ResizeUpDown -> 6
                     | Cursor.NotAllowed -> 7
                     | Cursor.Wait -> 8
+                    | Cursor.ResizeDiagonal -> 9
                 PlatformJs.callDouble PlatformJs.setCursor (float index) |> ignore
+
+        member _.ClaimKey(key: Key, modifiers: Modifiers) =
+            // The browser's `key` name, lower case, as scribble-platform.js compares it.
+            let name =
+                match key with
+                | Key.F n -> ValueSome("f" + string n)
+                | Key.Char c -> ValueSome(string (Char.ToLowerInvariant c))
+                | Key.Escape -> ValueSome "escape"
+                | Key.Enter -> ValueSome "enter"
+                | _ -> ValueNone
+            match name with
+            | ValueSome n -> PlatformJs.callString PlatformJs.claimKey (string (int modifiers) + "|" + n) |> ignore
+            | ValueNone -> ()
 
         member this.Dispose() = (this :> IWindow).Close()
 
@@ -230,6 +245,7 @@ type BrowserPlatform private () =
 
     interface IPlatform with
         member _.Name = "Browser"
+        member _.SupportsMultipleWindows = false
 
         member _.CreateWindow(options, onEvent) =
             if window.IsSome then

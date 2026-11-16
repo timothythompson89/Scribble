@@ -93,8 +93,16 @@ export function setTitle(title) {
   document.title = title;
 }
 
+// Key combinations the app uses itself, as "modifiers|key" with the key in lower case
+// ("0|f12", "3|c" for Ctrl+Shift+C): the browser's own shortcut is prevented.
+const claimed = new Set();
+
+export function claimKey(id) {
+  claimed.add(id);
+}
+
 // Scribble.Platform.Cursor, in declaration order.
-const cursors = ["default", "pointer", "text", "crosshair", "move", "ew-resize", "ns-resize", "not-allowed", "wait"];
+const cursors = ["default", "pointer", "text", "crosshair", "move", "ew-resize", "ns-resize", "not-allowed", "wait", "nwse-resize"];
 
 export function setCursor(index) {
   if (canvas) canvas.style.cursor = cursors[index] || "default";
@@ -194,6 +202,7 @@ export function createCanvas(id) {
     }
     // Keep Space, arrows and Tab for the app instead of scrolling the page.
     if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key)) e.preventDefault();
+    if (claimed.has(modifiers(e) + "|" + e.key.toLowerCase())) e.preventDefault();
   });
   window.addEventListener("keyup", (e) => {
     texts.push(e.key);

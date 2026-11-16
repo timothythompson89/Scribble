@@ -4,6 +4,7 @@ module Scribble.Samples.Browser.Program
 
 open Scribble.Core
 open Scribble.Browser
+open Scribble.Inspector
 
 [<EntryPoint>]
 let main _ =
@@ -12,5 +13,5 @@ let main _ =
 #else
     System.Console.WriteLine "Scribble browser build: interpreted"
 #endif
-    App.runInBrowser Scribble.Samples.HelloApp.settings |> ignore
+    App.runInBrowser (Scribble.Samples.HelloApp.settings @ [ Inspector.enable [] ]) |> ignore
     0

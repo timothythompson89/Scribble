@@ -61,6 +61,7 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 | `src/Scribble.Text.Emoji` | Opt-in Twemoji COLRv0 font (CC-BY 4.0 art: apps must credit) |
 | `src/Scribble.Core` | Views, differ, elements, layout, Border/StackPanel/TextBlock/Button, App settings and runtime |
 | `src/Scribble.Desktop` / `src/Scribble.Browser` | `App.run` / `App.runInBrowser`: one reference brings platform, GPU and shaping |
+| `src/Scribble.Inspector` | Opt-in inspector (`Inspector.enable [ ... ]`): panel and highlight layers, tree, pick mode |
 | `samples/Shared` | Dashboard, HelloApp, Counter (shared by desktop and browser hosts) |
 | `tests/Scribble.Tests`, `tests/Scribble.Tests.Rendering` | Unit tests; GPU screenshot tests |
 
@@ -73,6 +74,9 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
   horizontal subpixel positions, no hinting; HarfBuzz shaping cached per string; fallback per grapheme cluster.
 - **Frames on request only:** windows call `RequestFrame()`; nothing draws while nothing changes. `ElementHost`
   ignores its own tree's invalidations while a frame is being drawn (they're handled by that frame).
+  **Power rule:** never add frames: none while idle, at most one per display refresh while something changes
+  (Mailbox presentation was rejected for this). Desktop surfaces keep one frame in flight
+  (`WebGpuDevice.frameLatency`, default 1) so drags lag the mouse least; that changes when frames show, not how many.
 - **Elements (since M3b):** properties are typed keys (`Prop<'T>`, declaring `Affects.Measure/Arrange/Render`);
   an element type is defined settings-style (`Element.define "Name" [ Element.measure ...; Element.render ...;
   Element.defaults [...] ]`, or `Element.extend baseType`), stored as an `ElementType` record of stage functions
@@ -163,8 +167,8 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). Last counts: 165 unit tests,
-32 rendering tests (after M6 step 1).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). Last counts: 176 unit tests,
+34 rendering tests (after M6 step 2b).
 
 Remaining milestones: M6 inspector (next), M7 styles, M7b icons, M8 core controls
 (Grid, DockPanel, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
@@ -213,7 +217,7 @@ Three steps, each tried by Tim before the next:
    top), each with its own focus scope; options *pass-through* (pointer falls through where the layer has nothing)
    and *modal* (blocks everything below, keyboard too); public setting so packages can add layers. Plus a basic
    public vertical `ScrollViewer` (wheel, clip, thin scrollbar) brought forward from M8.
-2. **Inspector** (`Scribble.Inspector`, opt-in: `Inspector.enable [ ... ]`, samples enable it; built from Scribble
+2. **Inspector** (done, verified by Tim on Windows and in the browser 2026-11-15, with step 2b's panel modes and the owned pop-out window; `src/Scribble.Inspector/Inspector.fs`; step 2b added panel modes: docked/floating/folded/popped out (desktop), see DESIGN.md; Core gained `App.onStart (AppContext)`, `host.Closed`/`Close()`, `IPlatform.SupportsMultipleWindows`, `host.AddKeyPreview`/`LayerChanged`/`FrameDrawn`, `isHitTestVisible`, `Element.ComponentName`, `IWindow.ClaimKey`) (`Scribble.Inspector`, opt-in: `Inspector.enable [ ... ]`, samples enable it; built from Scribble
    elements): floating panel docked right/left over the app (the app's layout never changes), tree of all layers,
    pick mode (Ctrl+Shift+C; the click doesn't reach the app), devtools-style highlight; F12 toggles (check the
    browser lets us keep F12).

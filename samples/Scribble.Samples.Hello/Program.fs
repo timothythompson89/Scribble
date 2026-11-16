@@ -3,6 +3,7 @@ module Scribble.Samples.Hello.Program
 
 open Scribble.Core
 open Scribble.Desktop
+open Scribble.Inspector
 
 [<EntryPoint>]
-let main _ = App.run Scribble.Samples.HelloApp.settings
+let main _ = App.run (Scribble.Samples.HelloApp.settings @ [ Inspector.enable [] ])

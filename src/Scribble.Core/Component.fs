@@ -32,7 +32,7 @@ type internal ComponentInstance(element: Element, name: string) =
             p <- p.Value.Parent
         d
 
-    member _.Name = name
+    override _.Name = name
     member _.Now = element.Time
 
     /// Runs `action` on the UI thread: now if this is it (or there's no dispatcher, as in bare

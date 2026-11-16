@@ -14,7 +14,7 @@ open Scribble.Rendering.WebGPU.Native
 /// values and are written as-is, like most UI toolkits. Present mode: Fifo (vsync), the only mode
 /// every platform supports.
 [<Sealed>]
-type internal WebGpuSurface(ctx: GpuContext, shapes: ShapeRenderer, window: NativeSurfaceHandle, initialSize: PixelSize) =
+type internal WebGpuSurface(ctx: GpuContext, shapes: ShapeRenderer, window: NativeSurfaceHandle, initialSize: PixelSize, frameLatency: int) =
     let surface =
         match window with
         | Win32Handle(hinstance, hwnd) ->
@@ -69,8 +69,15 @@ type internal WebGpuSurface(ctx: GpuContext, shapes: ShapeRenderer, window: Nati
             if configured then wgpuSurfaceUnconfigure surface
             configured <- false
         else
+            // One frame in flight by default: each frame reaches the screen at the next refresh
+            // instead of queueing behind another (wgpu's default is 2), so drags and hovers lag
+            // the mouse by one frame less. It doesn't change how many frames are drawn.
+            let mutable extras: SurfaceConfigurationExtras =
+                { Chain = { Next = 0n; SType = SType.SurfaceConfigurationExtras }
+                  DesiredMaximumFrameLatency = uint32 frameLatency }
+
             let mutable config =
-                { NextInChain = 0n
+                { NextInChain = NativePtr.toNativeInt &&extras
                   Device = ctx.Device
                   Format = format
                   Usage = TextureUsage.RenderAttachment

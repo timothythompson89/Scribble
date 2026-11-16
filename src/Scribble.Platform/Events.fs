@@ -70,6 +70,8 @@ type Cursor =
     | Move
     | ResizeLeftRight
     | ResizeUpDown
+    /// Diagonal arrows (top left to bottom right): a corner to resize from.
+    | ResizeDiagonal
     | NotAllowed
     | Wait
 

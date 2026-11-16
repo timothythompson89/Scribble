@@ -15,6 +15,8 @@ type FakeWindow(onEvent: PlatformEvent -> unit) =
     member val Closed = false with get, set
     member val TitleText = "" with get, set
     member val Cursor = Cursor.Default with get, set
+    member val Claimed: (Key * Modifiers) list = [] with get, set
+    member val Size: PixelSize = { Width = 400; Height = 300 } with get, set
     /// Delivers a requested frame, like the platform's loop does. Returns whether one was due.
     member this.DeliverFrame() =
         if this.FrameRequested then
@@ -24,7 +26,7 @@ type FakeWindow(onEvent: PlatformEvent -> unit) =
         else false
     member _.Send e = onEvent e
     interface IWindow with
-        member _.ClientSize = { Width = 400; Height = 300 }
+        member this.ClientSize = this.Size
         member _.Scale = 1.0
         member this.Title with get () = this.TitleText and set v = this.TitleText <- v
         member _.Surface = BrowserCanvas "test"
@@ -33,6 +35,7 @@ type FakeWindow(onEvent: PlatformEvent -> unit) =
         member this.Close() = this.Closed <- true
         member this.RequestFrame() = this.FrameRequested <- true
         member this.SetCursor c = this.Cursor <- c
+        member this.ClaimKey(key, mods) = this.Claimed <- this.Claimed @ [ key, mods ]
         member _.Dispose() = ()
 
 type FakePlatform() =
@@ -45,6 +48,7 @@ type FakePlatform() =
     member this.RunWake() = this.WakeHandler()
     interface IPlatform with
         member _.Name = "fake"
+        member _.SupportsMultipleWindows = false
         member this.CreateWindow(_, onEvent) =
             let w = new FakeWindow(onEvent)
             this.Window <- Some w

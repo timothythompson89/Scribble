@@ -18,12 +18,15 @@ type internal WebGpuOptions =
       /// Which native API wgpu should use. Undefined lets wgpu choose.
       Backend: BackendType
       /// Called for every uncaptured error. Default: write to stderr.
-      OnError: GpuError -> unit }
+      OnError: GpuError -> unit
+      /// Frames that may wait between drawing and the screen (1: least lag).
+      FrameLatency: int }
 
     static member Default =
         { PowerPreference = PowerPreference.HighPerformance
           Backend = BackendType.Undefined
-          OnError = fun e -> Console.Error.WriteLine $"[WebGPU] {e.Kind}: {e.Message}" }
+          OnError = fun e -> Console.Error.WriteLine $"[WebGPU] {e.Kind}: {e.Message}"
+          FrameLatency = 1 }
 
 /// One setting for `WebGpuDevice.Create [ ... ]`: `WebGpuDevice.backend BackendType.D3D12`.
 [<Struct>]
@@ -31,7 +34,7 @@ type WebGpuSetting = internal WebGpuSetting of (WebGpuOptions -> WebGpuOptions)
 
 /// The WebGPU implementation of IRenderDevice, using wgpu-native.
 [<Sealed>]
-type WebGpuDevice private (ctx: GpuContext, description: string, keepAlive: obj list) =
+type WebGpuDevice private (ctx: GpuContext, description: string, surfaceLatency: int, keepAlive: obj list) =
     let atlas = GlyphAtlas()
     let colorAtlas = GlyphAtlas(1024, 4)
     let shapes = new ShapeRenderer(ctx, atlas, colorAtlas)
@@ -63,6 +66,11 @@ type WebGpuDevice private (ctx: GpuContext, description: string, keepAlive: obj 
     /// Called for every error the GPU reports asynchronously (validation, out of memory, device
     /// lost). Default: written to stderr.
     static member onError(handler: GpuError -> unit) = WebGpuSetting(fun o -> { o with OnError = handler })
+
+    /// How many finished frames may wait for the screen (default: 1). 1 shows each frame at the
+    /// next refresh, so what follows the mouse lags least; 2 or more lets the CPU and GPU overlap,
+    /// for apps whose frames are heavy enough to need it. It never adds frames: power use is the same.
+    static member frameLatency(value: int) = WebGpuSetting(fun o -> { o with FrameLatency = max 1 value })
 
     /// Creates the instance, picks an adapter and creates a device. Throws if no GPU is usable:
     /// `WebGpuDevice.Create []`, or `WebGpuDevice.Create [ WebGpuDevice.backend BackendType.Vulkan ]`.
@@ -165,14 +173,14 @@ type WebGpuDevice private (ctx: GpuContext, description: string, keepAlive: obj 
               Device = device
               Queue = wgpuDeviceGetQueue device }
 
-        new WebGpuDevice(ctx, description, [ box onLost; box onError ])
+        new WebGpuDevice(ctx, description, options.FrameLatency, [ box onLost; box onError ])
 
     interface IRenderDevice with
         member _.Description = description
         member _.GlyphAtlas = atlas
         member _.ColorGlyphAtlas = colorAtlas
 
-        member _.CreateSurface(window, size) = new WebGpuSurface(ctx, shapes, window, size) :> IRenderSurface
+        member _.CreateSurface(window, size) = new WebGpuSurface(ctx, shapes, window, size, surfaceLatency) :> IRenderSurface
 
         member _.RenderOffscreen(size, scale, draw) =
             if size.IsEmpty then invalidArg (nameof size) "Offscreen size must be non-zero."

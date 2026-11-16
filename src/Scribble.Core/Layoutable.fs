@@ -43,6 +43,9 @@ type Layoutable =
         Setting.create LayoutProps.verticalAlignment value
     static member isVisible<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.isVisible value
     static member clipToBounds<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.clipToBounds value
+    /// False: the pointer goes through this element and everything inside it (a highlight drawn
+    /// over other content). Default: true.
+    static member isHitTestVisible<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.isHitTestVisible value
     /// Identifies this element among its siblings across updates. Only needed in lists that insert,
     /// remove or reorder items (see also `Panel.items`); elsewhere position is enough.
     static member key<'k when 'k :> Layoutable>(value: obj) : Setting<'k> = Setting.create LayoutProps.key (ValueSome value)

@@ -9,17 +9,6 @@ type NativeSurfaceHandle =
     /// A <canvas> element in a web page, by its DOM id.
     | BrowserCanvas of elementId: string
 
-/// Options for creating a window. Sizes are in DIPs, so a window looks the same size at any scaling.
-type WindowOptions =
-    { Title: string
-      Size: DipSize
-      Resizable: bool }
-
-    static member Default =
-        { Title = "Scribble"
-          Size = { Width = 960.0; Height = 600.0 }
-          Resizable = true }
-
 /// A native top-level window.
 type IWindow =
     inherit IDisposable
@@ -43,11 +32,36 @@ type IWindow =
     /// The pointer's look while it is over the window's drawable area.
     abstract SetCursor: cursor: Cursor -> unit
 
+    /// Leaves a key combination to the app: the platform doesn't use it itself (in the browser,
+    /// F12 or Ctrl+Shift+C no longer open the browser's own tools while the page has focus). The
+    /// key still arrives as usual.
+    abstract ClaimKey: key: Key * modifiers: Modifiers -> unit
+
+/// Options for creating a window. Sizes are in DIPs, so a window looks the same size at any scaling.
+type WindowOptions =
+    { Title: string
+      Size: DipSize
+      Resizable: bool
+      /// A window this one belongs to (a tool window): it always stays above its owner, minimizes
+      /// and closes with it, and has no taskbar button of its own. Ignored where an app has one
+      /// window (the browser).
+      Owner: IWindow voption }
+
+    static member Default =
+        { Title = "Scribble"
+          Size = { Width = 960.0; Height = 600.0 }
+          Resizable = true
+          Owner = ValueNone }
+
 /// Entry point to a windowing system.
 type IPlatform =
     inherit IDisposable
 
     abstract Name: string
+
+    /// True when `CreateWindow` can be called again while a window is open (desktop); false where
+    /// an app gets one window (the browser canvas).
+    abstract SupportsMultipleWindows: bool
 
     /// Creates a hidden window. Events are delivered on the UI thread to `onEvent`.
     abstract CreateWindow: options: WindowOptions * onEvent: (PlatformEvent -> unit) -> IWindow

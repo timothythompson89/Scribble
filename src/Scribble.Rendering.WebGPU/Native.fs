@@ -22,6 +22,8 @@ type SType =
     | SurfaceSourceWindowsHWND = 0x00000005u
     | SurfaceSourceXlibWindow = 0x00000006u
     | SurfaceSourceWaylandSurface = 0x00000007u
+    /// wgpu-native extension (wgpu.h).
+    | SurfaceConfigurationExtras = 0x00030008u
 
 type CallbackMode =
     | WaitAnyOnly = 1u
@@ -299,6 +301,13 @@ type SurfaceCapabilities =
       PresentModes: nativeint
       AlphaModeCount: unativeint
       AlphaModes: nativeint }
+
+/// wgpu.h: WGPUSurfaceConfigurationExtras, chained to a SurfaceConfiguration.
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type SurfaceConfigurationExtras =
+    { Chain: ChainedStruct
+      /// Frames in flight between getting the surface texture and showing it (1: least lag).
+      DesiredMaximumFrameLatency: uint32 }
 
 [<Struct; StructLayout(LayoutKind.Sequential)>]
 type SurfaceConfiguration =

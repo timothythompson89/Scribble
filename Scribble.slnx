@@ -8,6 +8,7 @@
     <Project Path="src/Scribble.Browser/Scribble.Browser.fsproj" />
     <Project Path="src/Scribble.Core/Scribble.Core.fsproj" />
     <Project Path="src/Scribble.Desktop/Scribble.Desktop.fsproj" />
+    <Project Path="src/Scribble.Inspector/Scribble.Inspector.fsproj" />
     <Project Path="src/Scribble.Platform/Scribble.Platform.fsproj" />
     <Project Path="src/Scribble.Platform.Win32/Scribble.Platform.Win32.fsproj" />
     <Project Path="src/Scribble.Rendering/Scribble.Rendering.fsproj" />
