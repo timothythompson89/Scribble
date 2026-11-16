@@ -42,6 +42,8 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member internal _.DefaultBoxed = defaultBoxed
     /// One of LayoutProps: the engine keeps a typed copy for fast layout.
     member val internal IsLayout = false with get, set
+    /// Made with `Prop.local`: private per-element data, left out of `Element.Values`.
+    member val internal IsLocal = false with get, set
     /// Equality of two values of this property's type.
     member internal _.Same(a: obj, b: obj) = same a b
     override _.ToString() = name
@@ -51,7 +53,10 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
         Prop<'T>(name, defaultValue, affects, PropKind.Value)
 
     /// Private per-element data (a cache, a counter): written with SetLocal, never invalidates.
-    static member local (name: string) (defaultValue: 'T) : Prop<'T> = Prop<'T>(name, defaultValue, Affects.Nothing, PropKind.Value)
+    static member local (name: string) (defaultValue: 'T) : Prop<'T> =
+        let p = Prop<'T>(name, defaultValue, Affects.Nothing, PropKind.Value)
+        p.IsLocal <- true
+        p
 
 /// A property key whose values are of type 'T.
 and [<Sealed>] Prop<'T> internal (name: string, defaultValue: 'T, affects: Affects, kind: PropKind) =
@@ -128,6 +133,12 @@ module LayoutProps =
     do
         for p in [ margin :> Prop; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment; verticalAlignment; isVisible; clipToBounds ] do
             p.IsLayout <- true
+
+    /// What `Element.Values` lists even at the property's default: the properties every element has
+    /// that say something about its layout or input (not the handlers or the key).
+    let internal common: Prop list =
+        [ name; margin; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment
+          verticalAlignment; isVisible; clipToBounds; isEnabled; isHitTestVisible; focusable; cursor ]
 
 /// The engine's typed copy of an element's layout properties (read on every measure and arrange).
 [<Struct>]

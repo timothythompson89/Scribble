@@ -22,7 +22,9 @@ type internal InspectorOptions =
       IsOpen: bool
       /// Where the pop-out window comes from (none: no pop-out).
       Platform: IPlatform voption
-      AppTitle: string voption }
+      AppTitle: string voption
+      /// The app's own formatting, tried before ours (`Inspector.format`).
+      Format: obj -> string voption }
 
     static member Default =
         { Side = DockSide.Right
@@ -30,7 +32,8 @@ type internal InspectorOptions =
           PickKey = (Key.Char 'c', Modifiers.Control ||| Modifiers.Shift)
           IsOpen = false
           Platform = ValueNone
-          AppTitle = ValueNone }
+          AppTitle = ValueNone
+          Format = fun _ -> ValueNone }
 
 /// Where the panel is.
 [<RequireQualifiedAccess>]
@@ -45,6 +48,8 @@ type internal DragKind =
     | Move
     | ResizeCorner
     | ResizeEdge
+    /// The divider between the tree and the properties.
+    | Split
 
 [<Struct>]
 type internal Drag = { Kind: DragKind; Start: Point; StartRect: Rect }
@@ -55,6 +60,9 @@ module internal PanelSize =
     let minHeight = 160.0
     /// Around a docked panel and between a floating one and the window's edges when clamped.
     let gap = 8.0
+    let minProperties = 60.0
+    /// What the header, the footer and a minimal tree take next to the properties.
+    let besideProperties = 170.0
 
 /// One inspector setting: `Inspector.side DockSide.Left`.
 [<Struct>]
@@ -107,6 +115,149 @@ module internal Format =
 
     let size (width: float) (height: float) = $"{width:F0} × {height:F0}"
 
+    let private inv = Globalization.CultureInfo.InvariantCulture
+
+    let number (v: float) =
+        // Inter has no ∞ glyph.
+        if Double.IsPositiveInfinity v then "any"
+        elif Double.IsNegativeInfinity v then "-any"
+        elif Double.IsNaN v then "NaN"
+        else v.ToString("0.##", inv)
+
+    /// "W × H", with "any" for unlimited space.
+    let sizeOf (s: Size) = number s.Width + " × " + number s.Height
+
+    let color (c: Color) =
+        if c.A = 0.0f && c.R = 0.0f && c.G = 0.0f && c.B = 0.0f then "transparent"
+        else
+            let byte (v: float32) = (int (Math.Round(float (max 0.0f (min 1.0f v)) * 255.0))).ToString("X2", inv)
+            "#" + byte c.R + byte c.G + byte c.B + (if c.A < 1.0f then byte c.A else "")
+
+    /// One number when all four are equal, two (horizontal, vertical) when the sides pair up.
+    let private four (l: float) (t: float) (r: float) (b: float) =
+        if l = t && t = r && r = b then number l
+        elif l = r && t = b then number l + ", " + number t
+        else number l + ", " + number t + ", " + number r + ", " + number b
+
+    let rec private isFunction (t: Type) =
+        if isNull t then false
+        elif t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<FSharpFunc<int, int>> then true
+        else isFunction t.BaseType
+
+    /// A type's name as F# writes it: `voption<Color>`, `float`, `Model`.
+    let rec typeName (t: Type) =
+        if t = typeof<float> then "float"
+        elif t = typeof<float32> then "float32"
+        elif t = typeof<int> then "int"
+        elif t = typeof<string> then "string"
+        elif t = typeof<bool> then "bool"
+        elif isFunction t then "function"
+        elif t.IsGenericType then
+            let def = t.GetGenericTypeDefinition()
+            let name =
+                if def = typedefof<int option> then "option"
+                elif def = typedefof<int voption> then "voption"
+                elif def = typedefof<int list> then "list"
+                else
+                    let n = t.Name
+                    let i = n.IndexOf '`'
+                    if i > 0 then n.Substring(0, i) else n
+            name + "<" + String.Join(", ", t.GetGenericArguments() |> Array.map typeName) + ">"
+        else t.Name
+
+    let private horizontal (a: HorizontalAlignment) =
+        match a with
+        | HorizontalAlignment.Stretch -> "stretch"
+        | HorizontalAlignment.Left -> "left"
+        | HorizontalAlignment.Center -> "center"
+        | HorizontalAlignment.Right -> "right"
+
+    let private vertical (a: VerticalAlignment) =
+        match a with
+        | VerticalAlignment.Stretch -> "stretch"
+        | VerticalAlignment.Top -> "top"
+        | VerticalAlignment.Center -> "center"
+        | VerticalAlignment.Bottom -> "bottom"
+
+    let private cursor (c: Cursor) =
+        match c with
+        | Cursor.Default -> "default"
+        | Cursor.Hand -> "hand"
+        | Cursor.Text -> "text"
+        | Cursor.Crosshair -> "crosshair"
+        | Cursor.Move -> "move"
+        | Cursor.ResizeLeftRight -> "resize left-right"
+        | Cursor.ResizeUpDown -> "resize up-down"
+        | Cursor.ResizeDiagonal -> "resize diagonal"
+        | Cursor.NotAllowed -> "not allowed"
+        | Cursor.Wait -> "wait"
+
+    let private shadow (s: BoxShadow) =
+        "blur " + number s.Blur + " at " + number s.OffsetX + ", " + number s.OffsetY
+        + (if s.Spread <> 0.0 then " spread " + number s.Spread else "") + " " + color s.Color
+
+    let private viewName (v: View) = v.Type.Name
+    let private handler (isSet: bool) = if isSet then "handler" else "none"
+
+    /// Text for any value, by our own code: `string`/`ToString()` on F# records and unions is `%A`
+    /// underneath, which crashes under NativeAOT. Unknown types show their type name. `custom` is
+    /// the app's formatter (`Inspector.format`), tried first, also for values inside lists.
+    let rec value (custom: obj -> string voption) (v: obj) : string =
+        match (if isNull v then ValueNone else custom v) with
+        | ValueSome s -> s
+        | ValueNone ->
+            match v with
+            | null -> "none"
+            | :? string as s -> "\"" + clip 60 s + "\""
+            | :? bool as b -> if b then "true" else "false"
+            | :? float as f -> number f
+            | :? float32 as f -> number (float f)
+            | :? int as i -> i.ToString(inv)
+            | :? int64 as i -> i.ToString(inv)
+            | :? decimal as d -> d.ToString(inv)
+            | :? char as c -> "'" + c.ToString() + "'"
+            | :? Color as c -> color c
+            | :? Thickness as t -> four t.Left t.Top t.Right t.Bottom
+            | :? CornerRadius as r -> four r.TopLeft r.TopRight r.BottomRight r.BottomLeft
+            | :? Length as l -> l.ToString() // Length formats itself without %A
+            | :? BoxShadow as s -> shadow s
+            | :? (BoxShadow voption) as s -> (match s with ValueSome x -> shadow x | ValueNone -> "none")
+            | :? Size as s -> sizeOf s
+            | :? Rect as r -> number r.X + ", " + number r.Y + "  " + number r.Width + " × " + number r.Height
+            | :? Point as p -> number p.X + ", " + number p.Y
+            | :? HorizontalAlignment as a -> horizontal a
+            | :? VerticalAlignment as a -> vertical a
+            | :? Orientation as o -> (match o with Vertical -> "vertical" | Horizontal -> "horizontal")
+            | :? Cursor as c -> cursor c
+            | :? (Cursor voption) as c -> (match c with ValueSome x -> cursor x | ValueNone -> "inherited")
+            | :? TextWrapping as w -> (match w with NoWrap -> "no wrap" | Wrap -> "wrap")
+            | :? TextTrimming as t -> (match t with NoTrimming -> "none" | CharacterEllipsis -> "ellipsis")
+            | :? TextAlignment as a -> (match a with TextAlignment.Start -> "start" | TextAlignment.Center -> "center" | TextAlignment.End -> "end")
+            | :? Font as f -> f.Name
+            | :? View as v -> viewName v
+            | :? (View voption) as v -> (match v with ValueSome x -> viewName x | ValueNone -> "none")
+            | :? (View list) as l -> (match l.Length with 1 -> "1 child" | n -> n.ToString(inv) + " children")
+            | :? Element as e -> label e
+            | :? (obj voption) as o -> (match o with ValueSome x -> value custom x | ValueNone -> "none")
+            | :? (string option) as s -> (match s with Some x -> value custom x | None -> "none")
+            | :? (float voption) as f -> (match f with ValueSome x -> number x | ValueNone -> "none")
+            | :? ((ClickEventArgs -> unit) voption) as h -> handler h.IsSome
+            | :? ((PointerEventArgs -> unit) voption) as h -> handler h.IsSome
+            | :? ((KeyEventArgs -> unit) voption) as h -> handler h.IsSome
+            | :? ((WheelEventArgs -> unit) voption) as h -> handler h.IsSome
+            | :? exn as e -> e.GetType().Name + ": " + clip 60 e.Message
+            | :? Enum as e -> e.ToString() // enums format themselves under NativeAOT
+            | :? Delegate -> "handler"
+            | _ when isFunction (v.GetType()) -> "handler"
+            | :? Collections.IEnumerable as items ->
+                let shown = List<string>()
+                let mutable n = 0
+                for item in items do
+                    if n < 3 then shown.Add(value custom item)
+                    n <- n + 1
+                "[" + n.ToString(inv) + ": " + String.Join(", ", shown) + (if n > 3 then ", …" else "") + "]"
+            | _ -> typeName (v.GetType())
+
 /// What the inspector shows and does. Both of its layers draw from this; `Changed` tells them to
 /// update. UI thread only.
 [<Sealed>]
@@ -136,6 +287,18 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     let mutable lastTitlePoint = Point(0.0, 0.0)
     let popOut = Event<unit>()
     let popIn = Event<unit>()
+    let mutable showDefaults = false
+    /// The properties' share of the panel, in DIPs (the divider changes it).
+    let mutable propertiesHeight = 240.0
+    // Frame stats. They're shown as of the last refresh only: the inspector's own frames must not
+    // update them, or every frame showing new stats would make new stats (frames forever).
+    let mutable lastStats: FrameStats voption = ValueNone
+    let mutable statsText = ""
+    /// Something in the app's layers changed since the last frame.
+    let mutable appChanged = false
+    /// When the frames the app caused were drawn (the last second's worth), for frames/s.
+    let appFrames = Queue<float>()
+    let mutable idleCheckScheduled = false
 
     /// The app window's size in DIPs.
     let windowSize () =
@@ -164,11 +327,28 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         | ValueSome x when x.Root.IsSome -> e
         | _ -> ValueNone
 
+    let trimFrames (now: float) =
+        while appFrames.Count > 0 && now - appFrames.Peek() > 1000.0 do
+            appFrames.Dequeue() |> ignore
+
     let refresh () =
         dirty <- false
-        lastRefresh <- clock.Elapsed.TotalMilliseconds
+        let now = clock.Elapsed.TotalMilliseconds
+        lastRefresh <- now
         hovered <- alive hovered
         selected <- alive selected
+        trimFrames now
+        let inv = Globalization.CultureInfo.InvariantCulture
+        let frames =
+            match appFrames.Count with
+            | 0 -> "app idle"
+            | n -> n.ToString(inv) + " app frames/s"
+        statsText <-
+            match lastStats with
+            | ValueSome s ->
+                "layout " + s.LayoutMilliseconds.ToString("0.00", inv) + " · render " + s.RenderMilliseconds.ToString("0.00", inv)
+                + " ms · " + s.Shapes.ToString("N0", inv) + " shapes · " + frames
+            | ValueNone -> frames
         changed.Trigger()
 
     /// The topmost element under a point in any layer but the inspector's own.
@@ -304,10 +484,11 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
                     let d = dockedRect ()
                     Rect.Create(d.X, d.Y, d.Width, max PanelSize.minHeight (min d.Height ((windowSize ()).Height * 0.6)))
                 | DragKind.ResizeEdge, _ -> dockedRect ()
+                | DragKind.Split, _ -> Rect.Create(0.0, 0.0, 0.0, this.PropertiesHeight)
                 | _ -> keepInside floating
             drag <- ValueSome { Kind = kind; Start = p; StartRect = start }
 
-    member _.DragTo(p: Point) =
+    member this.DragTo(p: Point) =
         match drag with
         | ValueSome d ->
             let dx, dy = p.X - d.Start.X, p.Y - d.Start.Y
@@ -319,6 +500,11 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
                 if mode = PanelMode.Floating then
                     floating <- keepInside (Rect.Create(r.X + dx, r.Y + dy, r.Width, r.Height))
                     changed.Trigger()
+            | DragKind.Split ->
+                // Up makes the properties taller.
+                propertiesHeight <- max PanelSize.minProperties (r.Height - dy)
+                propertiesHeight <- this.PropertiesHeight
+                changed.Trigger()
             | DragKind.ResizeCorner ->
                 floating <- keepInside (Rect.Create(r.X, r.Y, r.Width + dx, r.Height + dy))
                 changed.Trigger()
@@ -330,6 +516,29 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         | ValueNone -> ()
 
     member _.EndDrag() = drag <- ValueNone
+
+    // --- The properties ------------------------------------------------------------------------
+
+    /// Property defaults are listed too (off by default; type defaults always are).
+    member _.ShowDefaults = showDefaults
+
+    member _.ToggleShowDefaults() =
+        showDefaults <- not showDefaults
+        changed.Trigger()
+
+    /// The properties' height, kept small enough to leave the tree some room in the app's window.
+    member _.PropertiesHeight =
+        let panelHeight =
+            match mode with
+            | PanelMode.Floating -> (keepInside floating).Height
+            | PanelMode.Docked -> (dockedRect ()).Height
+            | PanelMode.PoppedOut -> Double.PositiveInfinity
+        max PanelSize.minProperties (min propertiesHeight (panelHeight - PanelSize.besideProperties))
+
+    /// Frame stats as of the last refresh, and the app's frames in the second before it.
+    member _.StatsText = statsText
+
+    member _.Format(v: obj) = Format.value options.Format v
 
     member _.ToggleExpanded(e: Element) =
         if not (expanded.Remove e) then expanded.Add e |> ignore
@@ -400,23 +609,46 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         else false
 
     /// A layer changed: if it's one of the app's, the tree may need refreshing.
-    member _.LayerChanged(layer: Layer) = if isOpen && not (isOwn layer) then dirty <- true
+    member _.LayerChanged(layer: Layer) =
+        if not (isOwn layer) then
+            appChanged <- true
+            if isOpen then dirty <- true
 
     /// After each frame: refresh the tree if the app changed, at most about 10 times a second.
-    member _.AfterFrame() =
-        if dirty && isOpen && not refreshScheduled then
-            let wait = 100.0 - (clock.Elapsed.TotalMilliseconds - lastRefresh)
+    /// Once the app has been still for a second, one more refresh shows it idle (and then nothing).
+    member this.AfterFrame(stats: FrameStats) =
+        let now = clock.Elapsed.TotalMilliseconds
+        lastStats <- ValueSome stats
+        if appChanged then
+            appChanged <- false
+            appFrames.Enqueue now
+        trimFrames now
+        let later (wait: float) (action: unit -> unit) =
             match host.Dispatcher with
-            | ValueSome d when wait > 0.0 ->
-                refreshScheduled <- true
-                Task
-                    .Delay(TimeSpan.FromMilliseconds wait)
-                    .ContinueWith(fun (_: Task) ->
-                        d.Post(fun () ->
-                            refreshScheduled <- false
-                            if dirty && isOpen then refresh ()))
-                |> ignore
-            | _ -> refresh ()
+            | ValueSome d ->
+                Task.Delay(TimeSpan.FromMilliseconds wait).ContinueWith(fun (_: Task) -> d.Post action) |> ignore
+                true
+            | ValueNone -> false
+        let checkIdle () =
+            if isOpen && not idleCheckScheduled then
+                idleCheckScheduled <-
+                    later 1100.0 (fun () ->
+                        idleCheckScheduled <- false
+                        trimFrames clock.Elapsed.TotalMilliseconds
+                        if isOpen && not dirty && appFrames.Count = 0 then refresh ())
+        if dirty && isOpen && not refreshScheduled then
+            let wait = 100.0 - (now - lastRefresh)
+            if wait > 0.0 then
+                refreshScheduled <-
+                    later wait (fun () ->
+                        refreshScheduled <- false
+                        if dirty && isOpen then
+                            refresh ()
+                            checkIdle ())
+                if not refreshScheduled then refresh ()
+            else
+                refresh ()
+                checkIdle ()
 
 // --- The highlight -----------------------------------------------------------------------------------
 
@@ -514,6 +746,39 @@ module internal Grip =
         ]
 
     let create (settings: Setting<Grip> list) = View.Create(Type, settings)
+
+module internal CheckMarkProps =
+    let isChecked = Prop.define "IsChecked" false Affects.Render
+
+/// The box of the "Show defaults" checkbox, with a tick when checked (until M8's CheckBox).
+[<AbstractClass>]
+type internal CheckMark =
+    inherit Layoutable
+    static member isChecked<'k when 'k :> CheckMark>(value: bool) : Setting<'k> = Setting.create CheckMarkProps.isChecked value
+
+module internal CheckMark =
+    let private render (ctx: RenderContext) (list: DrawList) =
+        let r = Rect.Create(0.0, 0.0, ctx.Size.Width, ctx.Size.Height)
+        if ctx.Get CheckMarkProps.isChecked then
+            list.FillRoundedRect(r, CornerRadius.Uniform 3.0, Color.Hex 0x3D59A1)
+            // The tick: two legs of small squares, down to the right, then up to the right.
+            let dot (x: float) (y: float) = list.FillRect(Rect.Create(x, y, 1.5, 1.5), Color.White, EdgeMode.Precise)
+            for i in 0..5 do
+                let t = float i * 0.5
+                dot (3.0 + t) (6.0 + t)
+            for i in 0..11 do
+                let t = float i * 0.5
+                dot (5.5 + t) (8.5 - t)
+        else
+            list.StrokeRect(r, CornerRadius.Uniform 3.0, 1.0, Color.Hex 0x8A8AA0)
+
+    let Type =
+        Element.define "InspectorCheckMark" [
+            Element.measure (fun _ _ -> Size.Create(13.0, 13.0))
+            Element.render render
+        ]
+
+    let create (settings: Setting<CheckMark> list) = View.Create(Type, settings)
 
 /// The panel component's props: the shared state, and whether it fills the pop-out window.
 type internal PanelProps = { State: InspectorState; IsPoppedOut: bool }
@@ -675,14 +940,8 @@ module internal Views =
             ]
         ]
 
+    /// Frame stats (as of the last refresh) and, when floating, the corner grip.
     let private footer (state: InspectorState) (showGrip: bool) =
-        let line =
-            match state.Selected with
-            | ValueSome e ->
-                let p = e.PositionInTree
-                Format.label e + "   at " + $"{p.X:F0}, {p.Y:F0}" + "   " + Format.size e.Bounds.Width e.Bounds.Height
-            | ValueNone ->
-                "Click a row, or Pick (" + Format.key state.Options.PickKey + ") and click in the app."
         StackPanel.create [
             StackPanel.orientation Horizontal
             StackPanel.children [
@@ -690,8 +949,8 @@ module internal Views =
                     TextBlock.create [
                         TextBlock.width "1*"
                         TextBlock.margin (Thickness.Create(10.0, 6.0, 10.0, 8.0))
-                        TextBlock.text line
-                        TextBlock.fontSize 12.0
+                        TextBlock.text state.StatsText
+                        TextBlock.fontSize 11.0
                         TextBlock.foreground dim
                         TextBlock.textTrimming CharacterEllipsis
                     ]
@@ -704,7 +963,149 @@ module internal Views =
             ]
         ]
 
-    /// The header, the tree and the line about the selection (only the header when collapsed).
+    /// Between the tree and the properties: drag it up or down.
+    let private divider (state: InspectorState) =
+        Border.create (
+            [ Border.height 7.0
+              Border.cursor Cursor.ResizeUpDown
+              Border.background Color.Transparent
+              Border.child (Border.create [ Border.height 1.0; Border.background (Color.Hex 0x3A3A55); Border.verticalAlignment VerticalAlignment.Center ]) ]
+            @ dragHandlers state DragKind.Split
+        )
+
+    let private cell (value: string) (color: Color) (width: Length) =
+        TextBlock.create [
+            TextBlock.width width
+            TextBlock.text value
+            TextBlock.fontSize 12.0
+            TextBlock.foreground color
+            TextBlock.textTrimming CharacterEllipsis
+            TextBlock.verticalAlignment VerticalAlignment.Center
+        ]
+
+    /// One line of the properties: a name, a value and (for properties) where the value comes from.
+    let private line (name: string) (value: string) (valueColor: Color) (source: string) =
+        StackPanel.create [
+            StackPanel.orientation Horizontal
+            StackPanel.height 20.0
+            StackPanel.margin (Thickness.Create(10.0, 0.0, 10.0, 0.0))
+            StackPanel.children [
+                yield cell name dim (Px 128.0)
+                yield cell value valueColor (Star 1.0)
+                if source.Length > 0 then yield cell source dim (Px 52.0)
+            ]
+        ]
+
+    let private heading (value: string) =
+        TextBlock.create [
+            TextBlock.margin (Thickness.Create(10.0, 8.0, 10.0, 2.0))
+            TextBlock.text value
+            TextBlock.fontSize 11.0
+            TextBlock.font (Fonts.SemiBold())
+            TextBlock.foreground dim
+        ]
+
+    /// Settings are written in lower camel case (`horizontalAlignment`); properties are named in Pascal case.
+    let private settingName (p: Prop) =
+        let n = p.Name
+        if n.Length = 0 then n else Char.ToLowerInvariant(n[0]).ToString() + n.Substring 1
+
+    let private sourceText (s: ValueSource) =
+        match s with
+        | ValueSource.View -> "view"
+        | ValueSource.Code -> "code"
+        | ValueSource.TypeDefault -> "type"
+        | ValueSource.Default -> "default"
+
+    /// A checkbox made of a Button (focusable, Space and Enter work) with the box and a label.
+    let private checkBox (label: string) (isChecked: bool) (onToggle: unit -> unit) =
+        Button.create [
+            Button.margin (Thickness.Create(6.0, 2.0, 0.0, 2.0))
+            Button.padding (4.0, 2.0)
+            Button.horizontalAlignment HorizontalAlignment.Left
+            Button.background Color.Transparent
+            Button.shadow { Blur = 0.0; OffsetX = 0.0; OffsetY = 0.0; Spread = 0.0; Color = Color.Transparent }
+            Button.onClick (fun _ -> onToggle ())
+            Button.child (
+                StackPanel.create [
+                    StackPanel.orientation Horizontal
+                    StackPanel.spacing 6.0
+                    StackPanel.children [
+                        CheckMark.create [ CheckMark.isChecked isChecked; CheckMark.verticalAlignment VerticalAlignment.Center ]
+                        TextBlock.create [
+                            TextBlock.text label
+                            TextBlock.fontSize 12.0
+                            TextBlock.foreground hintColor
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                        ]
+                    ]
+                ]
+            )
+        ]
+
+    /// What the selected element is: states, layout numbers, properties and a component's hooks.
+    let private properties (state: InspectorState) =
+        match state.Selected with
+        | ValueNone ->
+            [ TextBlock.create [
+                  TextBlock.margin 10.0
+                  TextBlock.text ("Click a row, or Pick (" + Format.key state.Options.PickKey + ") and click in the app.")
+                  TextBlock.fontSize 12.0
+                  TextBlock.foreground dim
+                  TextBlock.textWrapping Wrap
+              ] ]
+        | ValueSome e ->
+            let p = e.PositionInTree
+            let b = e.Bounds
+            let states =
+                [ if e.IsPointerOver then "hovered"
+                  if e.IsPressed then "pressed"
+                  if e.IsFocused then (if e.IsFocusVisible then "focused (visible)" else "focused")
+                  if e.IsEnabled then "enabled" else "disabled"
+                  if not e.IsVisible then "hidden" ]
+            let values =
+                e.Values
+                |> List.filter (fun v -> state.ShowDefaults || v.Source <> ValueSource.Default)
+                |> List.sortBy (fun v -> if v.Source = ValueSource.Default then 1 else 0)
+            let hooks = e.Hooks
+            [ yield
+                  StackPanel.create [
+                      StackPanel.orientation Horizontal
+                      StackPanel.spacing 6.0
+                      StackPanel.margin (Thickness.Create(10.0, 6.0, 10.0, 2.0))
+                      StackPanel.children [
+                          yield
+                              TextBlock.create [
+                                  TextBlock.text (Format.label e)
+                                  TextBlock.font (Fonts.SemiBold())
+                                  TextBlock.foreground (if e.ComponentName.IsSome then componentColor else typeColor)
+                              ]
+                          if e.Name.Length > 0 then yield text ("#" + e.Name) nameColor
+                      ]
+                  ]
+              yield line "states" (String.Join(" · ", states)) hintColor ""
+              yield heading "LAYOUT"
+              yield line "offered" (Format.sizeOf e.OfferedSize) hintColor ""
+              yield line "desired" (Format.sizeOf e.DesiredSize) hintColor ""
+              yield line "bounds" (Format.number b.X + ", " + Format.number b.Y + "  " + Format.size b.Width b.Height) hintColor "parent"
+              yield line "position" (Format.number p.X + ", " + Format.number p.Y) hintColor "window"
+              yield heading "PROPERTIES"
+              yield checkBox "Show defaults" state.ShowDefaults state.ToggleShowDefaults
+              for v in values do
+                  let isDefault = v.Source = ValueSource.Default
+                  yield line (settingName v.Prop) (state.Format v.Value) (if isDefault then dim else Color.White) (sourceText v.Source)
+              if not hooks.IsEmpty then
+                  yield heading "HOOKS"
+                  for h in hooks do
+                      let value =
+                          match h.Value with
+                          | ValueSome v -> (if h.Status.Length > 0 then h.Status + ": " else "") + state.Format v
+                          | ValueNone -> h.Status
+                      yield line h.Kind value Color.White ""
+              yield Border.create [ Border.height 8.0 ] ]
+
+    /// The header, the tree, the selected element's properties and the frame stats (only the
+    /// header when collapsed).
     let private content (state: InspectorState) (isPoppedOut: bool) (fillWidth: bool) =
         StackPanel.create [
             if fillWidth then StackPanel.width "1*"
@@ -715,6 +1116,12 @@ module internal Views =
                         ScrollViewer.create [
                             ScrollViewer.height "1*"
                             ScrollViewer.content (StackPanel.create [ StackPanel.items (state.Rows()) rowKey (row state) ])
+                        ]
+                    yield divider state
+                    yield
+                        ScrollViewer.create [
+                            ScrollViewer.height state.PropertiesHeight
+                            ScrollViewer.content (StackPanel.create [ StackPanel.children (properties state) ])
                         ]
                     yield footer state (not isPoppedOut && state.Mode = PanelMode.Floating)
             ]
@@ -814,6 +1221,16 @@ type Inspector =
     /// hosts pass theirs to get the "Pop out" button). Only platforms with several windows.
     static member platform(value: IPlatform) = InspectorSetting(fun o -> { o with Platform = ValueSome value })
 
+    /// The app's own text for values the inspector shows (properties, hook values, list items),
+    /// tried before the inspector's: `Inspector.format (function :? Model as m -> ValueSome m.Title | _ -> ValueNone)`.
+    /// Without it, the inspector writes Scribble's own types and plain values itself and shows other
+    /// types by name (never `ToString()` on F# records and unions: it isn't NativeAOT-safe). Several
+    /// formatters are tried in order.
+    static member format(formatter: obj -> string voption) =
+        InspectorSetting(fun o ->
+            let before = o.Format
+            { o with Format = fun v -> match before v with ValueSome s -> ValueSome s | ValueNone -> formatter v })
+
     /// Adds the inspector to a running host (custom hosts; apps use `Inspector.enable`). Dispose
     /// the result to take it away again.
     static member attach(host: ElementHost, settings: InspectorSetting list) : IDisposable =
@@ -872,7 +1289,7 @@ type Inspector =
         let subscriptions =
             [ host.AddKeyPreview state.OnKey
               host.LayerChanged.Subscribe state.LayerChanged
-              host.FrameDrawn.Subscribe(fun _ -> state.AfterFrame())
+              host.FrameDrawn.Subscribe state.AfterFrame
               state.PopOutRequested.Subscribe(fun () -> openWindow ())
               state.PopInRequested.Subscribe(fun () -> closeWindow ())
               // Closing the app closes the pop-out too (otherwise its window keeps the app running).

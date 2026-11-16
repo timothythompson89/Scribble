@@ -162,15 +162,15 @@ Settings are static members on the type (inherited, so `Button.background` works
 same-named module (modules aren't inherited, so nothing collides with Border's). Helpers go in the module as
 `private` (or `internal` when a derived element needs them, like `Border.draw` for Button).
 
-## Status (2026-11-15)
+## Status (2026-11-16)
 
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). Last counts: 176 unit tests,
-34 rendering tests (after M6 step 2b).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). Last counts: 182 unit tests,
+34 rendering tests (after M6 step 3).
 
-Remaining milestones: M6 inspector (next), M7 styles, M7b icons, M8 core controls
+Remaining milestones: M7 styles (next), M7b icons, M8 core controls
 (Grid, DockPanel, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
 
@@ -221,10 +221,13 @@ Three steps, each tried by Tim before the next:
    elements): floating panel docked right/left over the app (the app's layout never changes), tree of all layers,
    pick mode (Ctrl+Shift+C; the click doesn't reach the app), devtools-style highlight; F12 toggles (check the
    browser lets us keep F12).
-3. **Properties panel**: values with source (view / type default / prop default), layout numbers, states,
-   component hook values, frame stats. Format values with our own code: never `string`/`ToString()` on F#
-   records or unions (`%A`, crashes under NativeAOT). Rows only for expanded nodes, refresh at most ~10/s; measure
-   the Hello dashboard with it open.
+3. **Properties panel** (done, verified by Tim on Windows and in the browser 2026-11-16; decisions and measurements in DESIGN.md, "Decisions for M6
+   step 3"): below the tree behind a divider; states, layout numbers, properties tagged view/code/type (property
+   defaults behind a "Show defaults" checkbox), component hooks, frame stats. Core gained public `element.Values`
+   (`PropertyValue`, `ValueSource`), `element.OfferedSize`, `element.Hooks` (`HookValue`). Values are formatted by
+   `Format.value` (never `string`/`ToString()` on F# records or unions: `%A`, crashes under NativeAOT);
+   `Inspector.format` lets apps format their own types. Stats only change in an app-driven refresh (≤10/s) plus one
+   "app idle" refresh a second after the app stops, so the inspector never keeps itself drawing.
 
 Dialog, Toast and the "show this in a layer" element are M8.
 

@@ -419,6 +419,34 @@ M6 step 2b delivered 2026-11-15, verified by Tim on Windows and in the browser, 
 - **Rule (power):** frame pacing changes must keep "no frames while idle, at most one per display refresh while something changes". Draw on request is the main power saving; latency settings must not add frames (frame latency 1 doesn't: it changes when a frame is shown, not how many are drawn).
 Tests: 176 unit tests (6 new: undocking by drag and the app getting the uncovered area back, clamping, double-click folding, the docked edge, the corner grip and docking again, and the pop-out on a fake platform with several windows: title, panel moving out and back, closing with the app) and 34 rendering tests (new `inspector-floating@1x`; `inspector-pick@1x` regenerated for the new header buttons; both on Tim's GPU, checked by eye).
 
+Decisions for M6 step 3 (properties panel), agreed 2026-11-16:
+
+- **Layout:** the properties sit below the tree, split by a draggable divider (devtools style; tabs were the alternative). Header: type and #name; then states (hovered, pressed, focused, enabled, visible), layout (offered, desired, arranged bounds, position in the window), the properties, and a component's hooks. Nothing selected: "Click a row or pick an element". Footer: frame stats.
+- **Which properties:** everything with a value, tagged with its source: set by the view, set by code (`element.Set`), type default. Also the layout properties every element has, at their property default, dimmed. A **"Show defaults" checkbox** (off by default, kept while the app runs; Tim's idea) hides or shows the property defaults; type defaults always show, since they give the element its look. `Prop.local` values are hidden; child properties show as a count. Listing every property a type *could* have (an unset `fontSize`) needs a per-type property list: left for M7, where styles need one too.
+- **The checkbox** is drawn by the inspector itself (private, like its chevrons), until M8's CheckBox.
+- **New public read-only API in Core:** `element.Values` (property, value, source), `element.OfferedSize` (the space last offered to measure), `element.Hooks` (kind and current value: useState/useMemo/useAnimated their value, useElmish its model, useAsync Loading/Loaded/Failed, effects and subscriptions just their name). Public rather than internal so other tools and tests can use them.
+- **Formatter (NativeAOT-safe):** hand-written text for numbers, strings, bools, enums, Color (hex), Thickness, CornerRadius, Length, BoxShadow, Size/Rect/Point, Scribble's own unions (matched case by case: `ToString()` on an F# union is `%A`), options/voptions/lists (count plus the first few), views (type name), handlers ("handler"); anything else is its type name. `Inspector.format (fun (v: obj) -> string voption)` lets an app format its own types (an Elmish model). Long values end with "…".
+- **Frame stats without extra frames:** the stats line only changes together with a refresh caused by the app's layers (at most 10 a second), never on the inspector's own frames, or showing the stats would make new stats forever. An idle app stays idle with the inspector open. The numbers include the inspector's share of the frame (labelled so); frames/s counts frames actually drawn in the last second (0 while idle).
+- **Refresh:** the selected element's values refresh with the tree (at most ~10/s, only while the app changes).
+- **Performance:** a permanent test that an idle app with the inspector open and an element selected draws no frames; a one-off steady-state measurement of the animating Hello dashboard with and without the inspector, recorded here. More than ~0.5 ms extra per frame needs work.
+- **Not in step 3:** live editing, the "which style set this" column, a frame-time graph.
+
+M6 step 3 delivered 2026-11-16, verified by Tim on Windows and in the browser (M6 is complete), as agreed above. Tim noticed the browser using about 4% CPU against 1.5% on the desktop while Hello animates: expected for now (the debug browser build runs .NET on the WebAssembly interpreter, and every frame crosses into JavaScript for WebGPU); a wasm AOT build should close most of the gap. Notes from building it:
+- Core: `Element.Values` (`PropertyValue` = prop, value, `ValueSource.View | Code | TypeDefault | Default`), `Element.OfferedSize`, `Element.Hooks` (`HookValue` = kind, value, status). `Prop.local` properties are marked (`IsLocal`) and left out; `LayoutProps.common` is the list shown at its defaults. A view setting equal to the current value isn't stored on the element, so the source is decided by asking the view first for every entry (found by a test: Button's `horizontalAlignment Left` showed as "type"). Each hook slot reports its value (`HookSlot.Inspect`); useElmish's state slot is now named "useElmish".
+- Inspector: the panel is header, tree, divider (`DragKind.Split`; the properties keep at least 60 DIPs and leave 170 for the header, footer and some tree in the app's window), properties (a `ScrollViewer`), footer with the stats. The selection line moved from the footer into the properties. "Show defaults" is a Button holding a private `CheckMark` element. Property names are shown as settings are written (`horizontalAlignment`).
+- Formatter (`Format.value`): hand-written cases for Scribble's types and plain values; handler voptions matched by their concrete types (a boxed generic voption can't be read without reflection, which trimming would break); any `FSharpFunc` is "handler"; `IEnumerable` shows count and three items; anything else `typeName` (F# names: `voption<Color>`). Inter has no ∞, so unlimited sizes read "any".
+- Stats: `FrameDrawn` records the last stats every frame, but the text is only rebuilt in a refresh. A frame counts as the app's when one of its layers changed before it. After an app-driven refresh, a check 1.1 s later refreshes once more if the app has drawn nothing for a second ("app idle"); that refresh's frame is the inspector's own and schedules nothing.
+- **Measured** (temporary test, removed; animating Hello dashboard at 960×600, a card selected, per frame: view update, layout of every layer, draw list; best of 7 × 200 frames after warm-up):
+
+  | | Release | Debug |
+  | --- | --- | --- |
+  | No inspector | 0.088 ms | 0.264 ms |
+  | Inspector open, card selected | 0.107 ms | 0.475 ms |
+  | Same, panel refreshed every frame (really ≤10/s) | 0.173 ms | 0.688 ms |
+
+  Well within the 0.5 ms budget in Release (+0.02 ms per frame, +0.085 ms on a refresh frame). Shapes: 447 without, 889 with the panel.
+- Tests: 182 unit tests (6 new: value sources, hook values, the formatter and `Inspector.format`, the properties and "Show defaults" in the panel, no frames while idle with a selection, the divider); the two inspector screenshots were regenerated (34 rendering tests).
+
 
 Open questions:
 

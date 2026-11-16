@@ -10,6 +10,9 @@ open Scribble.Rendering
 [<AbstractClass>]
 type internal HookSlot(kind: string) =
     member _.Kind = kind
+    /// The current value and status, for `Element.Hooks`.
+    abstract Inspect: now: TimeSpan -> struct (obj voption * string)
+    default _.Inspect _ = struct (ValueNone, "")
 
 /// A component's hooks and lifecycle, kept on the element that hosts it.
 [<Sealed>]
@@ -33,6 +36,11 @@ type internal ComponentInstance(element: Element, name: string) =
         d
 
     override _.Name = name
+
+    override _.Hooks(now: TimeSpan) =
+        [ for s in slots ->
+              let struct (value, status) = s.Inspect now
+              { Kind = s.Kind; Value = value; Status = status } ]
     member _.Now = element.Time
 
     /// Runs `action` on the UI thread: now if this is it (or there's no dispatcher, as in bare
@@ -161,9 +169,10 @@ type State<'T> internal (initial: 'T, instance: ComponentInstance) =
     override _.ToString() = string (box value)
 
 [<Sealed>]
-type internal StateSlot<'T>(state: State<'T>) =
-    inherit HookSlot("useState")
+type internal StateSlot<'T>(kind: string, state: State<'T>) =
+    inherit HookSlot(kind)
     member _.State = state
+    override _.Inspect _ = struct (ValueSome(box state.Current), "")
 
 [<Sealed>]
 type internal MemoSlot<'D, 'T>() =
@@ -171,6 +180,7 @@ type internal MemoSlot<'D, 'T>() =
     member val Deps = Unchecked.defaultof<'D> with get, set
     member val Value = Unchecked.defaultof<'T> with get, set
     member val HasValue = false with get, set
+    override this.Inspect _ = struct ((if this.HasValue then ValueSome(box this.Value) else ValueNone), "")
 
 [<Sealed>]
 type internal EffectSlot<'D>(kind: string) =
@@ -208,6 +218,7 @@ type internal SubscriptionSlot<'D>() =
 type internal AnimatedSlot<'T>(tween: Tween<'T>) =
     inherit HookSlot("useAnimated")
     member _.Tween = tween
+    override _.Inspect now = struct (ValueSome(box (tween.ValueAt now)), "")
 
 /// What `ctx.useAsync` has so far.
 [<RequireQualifiedAccess>]
@@ -225,6 +236,12 @@ type internal AsyncSlot<'D, 'T>() =
     member val Value: AsyncValue<'T> = AsyncValue.Loading with get, set
     /// Bumped whenever a load starts or the component goes: a result from an older load is ignored.
     member val Version = 0 with get, set
+
+    override this.Inspect _ =
+        match this.Value with
+        | AsyncValue.Loading -> struct (ValueNone, "loading")
+        | AsyncValue.Loaded v -> struct (ValueSome(box v), "loaded")
+        | AsyncValue.Failed e -> struct (ValueSome(box e), "failed")
 
     /// Cancels the running load (if any) and makes its result stale.
     member this.Stop() =
@@ -260,8 +277,12 @@ type ComponentContext internal (instance: ComponentInstance) =
 
     /// State that survives re-runs: `let count = ctx.useState 0`, then `count.Current`,
     /// `count.Set 5`, `count.Update(fun c -> c + 1)`. `initial` is used on the first run only.
-    member _.useState<'T>(initial: 'T) : State<'T> =
-        (instance.Slot("useState", fun () -> StateSlot<'T>(State<'T>(initial, instance)))).State
+    member this.useState<'T>(initial: 'T) : State<'T> =
+        this.State("useState", initial)
+
+    /// A state hook under another name (useElmish keeps its model in one).
+    member private _.State<'T>(kind: string, initial: 'T) : State<'T> =
+        (instance.Slot(kind, fun () -> StateSlot<'T>(kind, State<'T>(initial, instance)))).State
 
     /// A value computed from `deps`, computed again only when `deps` change (F# equality):
     /// `ctx.useMemo(items, fun items -> List.sortBy _.Name items)`.
@@ -288,13 +309,13 @@ type ComponentContext internal (instance: ComponentInstance) =
     /// The Elmish pattern inside a component: `let model, dispatch = ctx.useElmish(init, update)`.
     /// A message that produces an equal model changes nothing.
     member this.useElmish<'Model, 'Msg>(init: 'Model, update: 'Msg -> 'Model -> 'Model) : 'Model * ('Msg -> unit) =
-        let state = this.useState init
+        let state = this.State("useElmish", init)
         state.Current, (fun msg -> state.Update(update msg))
 
     /// useElmish with commands: `init` and `update` return the model and a `Cmd` (messages to send,
     /// tasks to run). The init command runs after the first frame. `dispatch` works from any thread.
     member this.useElmishWithCmd<'Model, 'Msg>(init: 'Model * Cmd<'Msg>, update: 'Msg -> 'Model -> 'Model * Cmd<'Msg>) : 'Model * ('Msg -> unit) =
-        let state = this.useState (fst init)
+        let state = this.State("useElmish", fst init)
         let rec dispatch (msg: 'Msg) =
             instance.OnUiThread(fun () ->
                 let model, cmd = update msg state.Current

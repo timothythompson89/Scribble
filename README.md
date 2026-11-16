@@ -98,6 +98,15 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
     - Desktop only: "Pop out" moves it into its own window ("Inspector – <app>"); hovering rows still highlights in
       the app, pick mode still works there, and F12 works in both windows. Closing the pop-out (or "Pop in") puts
       the panel back where it was; closing the app closes both. The browser has no "Pop out" button.
+11. The properties (step 3): pick a card in the dashboard (or click a row).
+    - Below the tree: the element's type and #name, its states, layout numbers and properties, each tagged
+      `view`, `code` or `type`. Hover the card and press on it: "hovered" and "pressed" appear (within a
+      tenth of a second). Tick "Show defaults" for the common properties at their defaults (dimmed).
+    - Drag the divider between the tree and the properties up and down.
+    - In the Counter, pick a component row (purple, e.g. ElmishCounter): its hooks and their values, and the
+      model changing as you click "+".
+    - The footer shows the last frame's layout/render times, shapes and the app's frames per second; when the
+      app stops changing it shows "app idle" about a second later, and nothing redraws after that.
 
 The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo, on four tabs
 (Elmish, Load, List, Layers). The tabs are made from what's already there: every page stays in the tree and only the
@@ -379,7 +388,7 @@ behavior, after the view's `onWheel`) and `Element.renderAfter` (drawn over the 
 ### Inspector
 
 `Scribble.Inspector` (a separate, opt-in package) adds a panel over the app with the element tree of every layer,
-pick mode and a highlight:
+pick mode, a highlight, the selected element's properties and frame stats:
 
 ```fsharp
 open Scribble.Inspector
@@ -405,8 +414,22 @@ App.run (settings @ [
   `App.onStart (fun ctx -> ...)` (`ctx.Host`, `ctx.Platform`, `ctx.Title`), `host.AddKeyPreview` (keys before
   any layer), `host.Closed`, `host.LayerChanged` and
   `host.FrameDrawn`. An element's `ComponentName` tells a component's host element apart.
-- The properties of the selected element (values and where they came from, layout numbers, states, hook values)
-  and frame stats come next (M6 step 3).
+- **Properties** of the selected element, below the tree (drag the divider between them): its states (hovered,
+  pressed, focused, enabled, hidden); layout numbers (the space offered, desired size, bounds in its parent,
+  position in the window); every property with a value and where it came from (`view`, `code` for
+  `element.Set`, `type` for the element type's defaults such as Button's look); with "Show defaults", also
+  the common properties still at their defaults (dimmed); and a component's hooks with their current values
+  (`useState`, `useElmish`'s model, `useMemo`, `useAnimated`, `useAsync` loading/loaded/failed).
+- **Values** are written by the inspector's own code (colors as hex, thicknesses, lengths, alignments, handlers
+  as "handler", lists as a count and the first few items); other types show their type name, never
+  `ToString()` on F# records or unions (that's `%A`, which crashes under NativeAOT). Teach it your types with
+  `Inspector.format (function :? Model as m -> ValueSome m.Title | _ -> ValueNone)`.
+- **Frame stats** at the bottom: the last frame's layout and render time and shape count (the inspector's own
+  share included), and how many frames the app caused in the last second ("app idle" when none). They update
+  with the tree, at most 10 times a second and only while the app changes: an idle app stays idle with the
+  inspector open.
+- The same data is public in Core for other tools: `element.Values` (`PropertyValue`: prop, value,
+  `ValueSource`), `element.OfferedSize` and `element.Hooks` (`HookValue`: kind, value, status).
 
 Also new with it: `Layoutable.isHitTestVisible false` lets the pointer go through an element and everything inside
 it, and `IWindow.ClaimKey` keeps a key combination from the platform's own shortcuts.
@@ -489,7 +512,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | --- | --- |
 | `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer; layers; App settings and runtime |
 | `src/Scribble.Desktop` | `App.run`: the desktop platform, WebGPU renderer and HarfBuzz shaping in one reference |
-| `src/Scribble.Inspector` | Opt-in inspector: `Inspector.enable [ ... ]` (element tree of every layer, pick mode, highlight) |
+| `src/Scribble.Inspector` | Opt-in inspector: `Inspector.enable [ ... ]` (element tree of every layer, pick mode, highlight, properties, frame stats) |
 | `src/Scribble.Browser` | `App.runInBrowser`: the browser equivalents |
 | `src/Scribble.Platform` | Window, event, DPI and frame-clock abstractions |
 | `src/Scribble.Platform.Win32` | Win32 backend, hand-written P/Invoke |

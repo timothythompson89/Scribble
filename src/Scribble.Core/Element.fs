@@ -24,6 +24,33 @@ type IElementRoot =
     /// The UI thread's dispatcher, when the tree runs in an app (bare trees in tests have none).
     abstract Dispatcher: Dispatcher voption
 
+/// Where an element's property value comes from (`Element.Values`).
+[<RequireQualifiedAccess>]
+type ValueSource =
+    /// A setting in the view the element was last built or patched from.
+    | View
+    /// Set from code (`element.Set`), not by the view.
+    | Code
+    /// The element type's default (`Element.defaults`), e.g. Button's background.
+    | TypeDefault
+    /// The property's own default.
+    | Default
+
+/// One property of an element: its key, its value and where the value comes from.
+[<Struct>]
+type PropertyValue = { Prop: Prop; Value: obj; Source: ValueSource }
+
+/// One hook of a component (`Element.Hooks`), in the order the component calls them.
+[<Struct>]
+type HookValue =
+    { /// "useState", "useElmish", "useMemo", "useEffect", "useSubscription", "useAnimated", "useAsync".
+      Kind: string
+      /// The current value: a state, a model, a memo, an animated value, a loaded result, an
+      /// error. None for hooks that hold no value (effects, subscriptions) or don't have one yet.
+      Value: obj voption
+      /// For useAsync: "loading", "loaded" or "failed"; otherwise empty.
+      Status: string }
+
 /// What kind of element something is: its name, three functions and its default settings. Measure
 /// says how big the content wants to be, Arrange places the children, Render draws the element.
 /// Margin, explicit sizes, min/max, alignment, visibility, clipping, pixel rounding and caching are
@@ -155,6 +182,8 @@ and [<AbstractClass>] internal ComponentState() =
     abstract Name: string
     abstract Attached: root: IElementRoot -> unit
     abstract Detached: unit -> unit
+    /// The hooks' current values (`now` for animated ones).
+    abstract Hooks: now: TimeSpan -> HookValue list
 
 /// A description of an element: its type, its settings and (inside the settings) its children's
 /// descriptions. Cheap to make: views are what `Border.create [ ... ]` returns, and what view
@@ -355,6 +384,46 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     /// The name of the component this element hosts (`Component.define "Name"`), if it hosts one.
     member _.ComponentName: string voption = componentState |> ValueOption.map _.Name
+
+    // --- For tools (the inspector) ------------------------------------------------------------
+
+    /// The element's property values and where each comes from: everything the view, code or the
+    /// element type set, then the common layout and input properties at their defaults. Private
+    /// data (`Prop.local`) is left out. Children properties hold views (`View voption`, `View list`).
+    member this.Values: PropertyValue list =
+        let result = List<PropertyValue>()
+        let seen = HashSet<int>()
+        let typeHas (p: Prop) = elementType.Defaults |> Array.exists (fun struct (q, _) -> q.Id = p.Id)
+        // A setting equal to the current value isn't stored, so the view is asked in every case.
+        let add (p: Prop) (v: obj) =
+            let source =
+                match view with
+                | ValueSome vw when vw.Has p -> ValueSource.View
+                | _ when not (p.Same(v, this.DefaultOf p)) -> ValueSource.Code
+                | _ -> if typeHas p then ValueSource.TypeDefault else ValueSource.Default
+            result.Add { Prop = p; Value = v; Source = source }
+        for i in 0 .. count - 1 do
+            let p = keys[i]
+            if not p.IsLocal && p.Kind <> PropKind.Component && seen.Add p.Id then add p values[i]
+        for struct (p, v) in elementType.Defaults do
+            if not p.IsLocal && seen.Add p.Id then add p v
+        match view with
+        | ValueSome vw ->
+            for struct (p, v) in vw.Settings do
+                if not p.IsLocal && p.Kind <> PropKind.Component && seen.Add p.Id then add p v
+        | ValueNone -> ()
+        for p in LayoutProps.common do
+            if seen.Add p.Id then add p p.DefaultBoxed
+        List.ofSeq result
+
+    /// The space the last measure offered the element (margin included; may be infinite).
+    member _.OfferedSize: Size = lastAvailable
+
+    /// The hooks of the component this element hosts, in call order (empty for other elements).
+    member this.Hooks: HookValue list =
+        match componentState with
+        | ValueSome c -> c.Hooks this.Time
+        | ValueNone -> []
 
     /// Runs the hosted component and patches what it returned in as this element's child.
     member internal this.RunComponent() =

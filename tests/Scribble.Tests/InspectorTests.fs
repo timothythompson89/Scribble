@@ -1,9 +1,11 @@
-/// M6 step 2: the inspector (panel, tree, pick mode, keys) on the fake platform.
+/// M6: the inspector (panel, tree, pick mode, keys, properties, stats) on the fake platform.
 module Scribble.Tests.InspectorTests
 
+open System
 open System.Collections.Generic
 open Xunit
 open Scribble.Platform
+open Scribble.Rendering
 open Scribble.Core
 open Scribble.Inspector
 open Scribble.Tests.AppTests
@@ -110,8 +112,9 @@ let ``pick mode selects what's clicked, and the click doesn't reach the app`` ()
     click w 50.0 20.0
     settle w
     Assert.Empty log
-    let footer = texts panel |> List.last
-    Assert.StartsWith("Button", footer)
+    let shown = texts panel
+    Assert.Contains("PROPERTIES", shown) // the button is selected
+    Assert.Contains("100px", shown) // its width, set by the view
     // Pick mode is over: the next click is the app's.
     click w 50.0 20.0
     Assert.Equal<string list>([ "appButton" ], List.ofSeq log)
@@ -127,7 +130,7 @@ let ``Escape leaves pick mode without selecting`` () =
     settle w
     click w 50.0 20.0
     Assert.Equal<string list>([ "appButton" ], List.ofSeq log)
-    Assert.StartsWith("Click a row", texts panel |> List.last)
+    Assert.Contains(texts panel, fun t -> t.StartsWith "Click a row")
 
 [<Fact>]
 let ``the panel takes the pointer only where it is`` () =
@@ -277,3 +280,134 @@ let ``Pop out moves the panel into a window of its own, which closes with the ap
     let again = platform.Windows[2]
     w.Send CloseRequested
     Assert.True again.Closed
+
+// --- Properties, hooks, formatting and frame stats (step 3) -----------------------------------------
+
+let private pickAppButton (w: FakeWindow) =
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    move w 50.0 20.0
+    settle w
+    click w 50.0 20.0
+    settle w
+
+/// The value and source shown after a property's name in the panel.
+let private shownFor (panel: Layer) (name: string) =
+    let shown = texts panel
+    let i = shown |> List.findIndexBack ((=) name)
+    shown[i + 1], shown[i + 2]
+
+[<Fact>]
+let ``Element.Values says where each value comes from`` () =
+    let t = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    t.Update(Button.create [ Button.width 100.0 ])
+    let e = t.Root.Value
+    e.Set(LayoutProps.isEnabled, false)
+    let source (p: Prop) = (e.Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, p))).Source
+    Assert.Equal(ValueSource.View, source LayoutProps.width)
+    Assert.Equal(ValueSource.Code, source LayoutProps.isEnabled)
+    Assert.Equal(ValueSource.TypeDefault, source BorderProps.background)
+    Assert.Equal(ValueSource.Default, source LayoutProps.margin)
+    // Private data and the handlers left at their defaults aren't listed.
+    Assert.DoesNotContain(e.Values, fun v -> obj.ReferenceEquals(v.Prop, LayoutProps.onPointerMove))
+    // A setting the next view leaves out goes back to its default, and says so.
+    t.Update(Button.create [])
+    Assert.Equal(ValueSource.Default, source LayoutProps.width)
+
+[<Fact>]
+let ``Element.Hooks shows each hook's current value`` () =
+    let mutable count: State<int> voption = ValueNone
+    let probe =
+        Component.define "Probe" (fun ctx () ->
+            let c = ctx.useState 3
+            count <- ValueSome c
+            let _model, _ = ctx.useElmish(10, fun (msg: int) model -> model + msg)
+            let _ = ctx.useMemo(2, fun d -> d * 2)
+            ctx.useEffect((), ignore)
+            Border.create [])
+    let t = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    t.Update(probe ())
+    t.UpdateLayout(Size.Create(100.0, 100.0))
+    t.RunAfterFrame()
+    let hooks () = t.Root.Value.Hooks |> List.map (fun h -> h.Kind, h.Value |> ValueOption.map unbox<int>)
+    Assert.Equal<(string * int voption) list>([ "useState", ValueSome 3; "useElmish", ValueSome 10; "useMemo", ValueSome 4; "useEffect", ValueNone ], hooks ())
+    count.Value.Set 5
+    t.UpdateLayout(Size.Create(100.0, 100.0))
+    Assert.Equal(ValueSome 5, snd (hooks ()).Head)
+    Assert.Empty(t.Root.Value.Children[0].Hooks) // the Border isn't a component
+
+type private Model = { Title: string; Count: int }
+
+[<Fact>]
+let ``values are written by our own code, and the app can format its own types`` () =
+    let f = Format.value (fun _ -> ValueNone)
+    Assert.Equal("#3D59A1", f (box (Color.Hex 0x3D59A1)))
+    Assert.Equal("transparent", f (box Color.Transparent))
+    Assert.Equal("12, 6", f (box (Thickness.Create(12.0, 6.0, 12.0, 6.0))))
+    Assert.Equal("0", f (box Thickness.Zero))
+    Assert.Equal("2*", f (box (Star 2.0)))
+    Assert.Equal("left", f (box HorizontalAlignment.Left))
+    Assert.Equal("horizontal", f (box Horizontal))
+    Assert.Equal("1.5", f (box 1.5))
+    Assert.Equal("any × 20", Format.sizeOf (Size.Create(Double.PositiveInfinity, 20.0)))
+    Assert.Equal("\"hi\"", f (box "hi"))
+    Assert.Equal("handler", f (box (ValueSome(fun (_: ClickEventArgs) -> ()))))
+    Assert.Equal("none", f (box (ValueNone: (ClickEventArgs -> unit) voption)))
+    Assert.Equal("handler", f (box (fun (x: int) -> x + 1)))
+    Assert.Equal("[4: 1, 2, 3, …]", f (box [ 1; 2; 3; 4 ]))
+    Assert.Equal("2 children", f (box [ Border.create []; Border.create [] ]))
+    // A record (or union) of the app's: its type name, never ToString() (%A, not NativeAOT-safe).
+    Assert.Equal("Model", f (box { Title = "a"; Count = 1 }))
+    let custom (v: obj) =
+        match v with
+        | :? Model as m -> ValueSome(m.Title + " (" + m.Count.ToString() + ")")
+        | _ -> ValueNone
+    Assert.Equal("a (1)", Format.value custom (box { Title = "a"; Count = 1 }))
+    Assert.Equal("[1: a (1)]", Format.value custom (box [ { Title = "a"; Count = 1 } ]))
+
+[<Fact>]
+let ``the properties show the selection's values and sources, defaults only when asked`` () =
+    let log = List<string>()
+    let w, _, panel = start log
+    pickAppButton w
+    Assert.Equal(("100px", "view"), shownFor panel "width")
+    Assert.Equal(("left", "view"), shownFor panel "horizontalAlignment")
+    Assert.Equal(("handler", "view"), shownFor panel "onClick")
+    Assert.Equal("type", snd (shownFor panel "background")) // Button's own look
+    Assert.DoesNotContain("margin", texts panel) // a property default: hidden at first
+    clickButton w panel "Show defaults"
+    Assert.Equal(("0", "default"), shownFor panel "margin")
+    clickButton w panel "Show defaults"
+    Assert.DoesNotContain("margin", texts panel)
+    Assert.Contains("enabled", texts panel |> List.filter (fun t -> t.Contains "enabled"))
+    Assert.Contains(texts panel, fun t -> t.Contains "shapes") // frame stats
+
+[<Fact>]
+let ``with the inspector open and an element selected, an idle app draws nothing`` () =
+    let log = List<string>()
+    let w, _, _ = start log
+    pickAppButton w
+    settle w
+    Assert.False(w.DeliverFrame())
+    Assert.False(w.FrameRequested)
+
+[<Fact>]
+let ``dragging the divider gives the properties more room`` () =
+    let log = List<string>()
+    let w, _, panel = start log
+    openPanel w
+    let rec findDivider (e: Element) =
+        if e.Get LayoutProps.cursor = ValueSome Cursor.ResizeUpDown then Some e
+        else e.Children |> Seq.tryPick findDivider
+    let divider = panel.Tree.Root.Value |> findDivider |> Option.get
+    let properties () =
+        let siblings = divider.Parent.Value.Children
+        let i = Seq.findIndex (fun c -> obj.ReferenceEquals(c, divider)) siblings
+        siblings[i + 1].Bounds.Height
+    Assert.Equal(240.0, properties ())
+    let p = divider.PositionInTree
+    dragFrom w (p.X + 100.0, p.Y + 3.0) (p.X + 100.0, p.Y - 47.0)
+    Assert.Equal(290.0, properties ())
+    // Never so tall that the tree disappears: the window is 500 high.
+    dragFrom w (p.X + 100.0, p.Y - 47.0) (p.X + 100.0, 0.0)
+    Assert.Equal(484.0 - 170.0, properties ())
