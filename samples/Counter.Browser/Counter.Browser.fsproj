@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Browser/Scribble.Browser.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
+    <ProjectReference Include="../Counter/Counter.fsproj" />
+  </ItemGroup>
+</Project>

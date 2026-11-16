@@ -1,0 +1,5 @@
+<Project>
+  <!-- What the Scribble.Browser NuGet package imports by itself (its default page); a project reference
+       doesn't import a project's build targets, so the samples do it here. -->
+  <Import Project="../src/Scribble.Browser/build/Scribble.Browser.targets" Condition="$(MSBuildProjectName.EndsWith('.Browser'))" />
+</Project>

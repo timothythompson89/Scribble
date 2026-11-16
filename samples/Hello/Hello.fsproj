@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="Dashboard.fs" />
+    <Compile Include="HelloApp.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../Samples.Shared/Samples.Shared.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
+  </ItemGroup>
+</Project>

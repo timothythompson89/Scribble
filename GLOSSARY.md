@@ -78,6 +78,18 @@ _Avoid_: state (for the app's model), store
 
 ## Structure
 
+**Viewport**:
+The part of an element that the scroll viewers around it currently show, passed down from them during layout.
+_Avoid_: visible area, clip rect (for the viewport)
+
+**Realized item**:
+An item of an items view that currently has an element; items outside the viewport have none and keep no state.
+_Avoid_: rendered item, materialized item
+
+**Scroller**:
+The controller an app uses to scroll a scroll viewer or items view as an action (`ctx.useScroller ()`).
+_Avoid_: scroll state, scroll position (for the controller)
+
 **Element tree**:
 The elements realized from one root view, with their layout, focus and pending work.
 _Avoid_: visual tree, DOM

@@ -1,10 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
-    <Description>Runs a Scribble app in the browser: App.runInBrowser sets up the canvas, WebGPU and HarfBuzz (WebAssembly).</Description>
+    <Description>Runs a Scribble app in the browser: App.run sets up the canvas, WebGPU and HarfBuzz (WebAssembly), the same call as on the desktop.</Description>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="App.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- build/Scribble.Browser.targets (imported by NuGet into the app's build) and the default page it serves. -->
+    <None Include="build/**" Pack="true" PackagePath="build/" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />

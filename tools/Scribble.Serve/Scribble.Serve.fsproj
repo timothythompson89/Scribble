@@ -12,6 +12,11 @@
 
   <ItemGroup>
     <Compile Include="Certificates.fs" />
+    <Compile Include="Hub.fs" />
     <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The hub's QR code in the terminal (this tool only: never part of Scribble or what apps ship). -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 </Project>

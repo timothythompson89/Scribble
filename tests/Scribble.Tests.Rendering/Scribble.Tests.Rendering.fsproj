@@ -11,18 +11,7 @@
     <Compile Include="ClearTests.fs" />
     <Compile Include="ShapeTests.fs" />
     <Compile Include="TextRenderingTests.fs" />
-    <Compile Include="../../samples/Shared/Adaptive.fs" Link="Adaptive.fs" />
-    <Compile Include="../../samples/Shared/Dashboard.fs" Link="Dashboard.fs" />
-    <Compile Include="../../samples/Shared/HelloApp.fs" Link="HelloApp.fs" />
     <Compile Include="DashboardTests.fs" />
-    <Compile Include="../../samples/Shared/Counter/Common.fs" Link="Common.fs" />
-    <Compile Include="../../samples/Shared/Counter/ElmishTab.fs" Link="ElmishTab.fs" />
-    <Compile Include="../../samples/Shared/Counter/LoadTab.fs" Link="LoadTab.fs" />
-    <Compile Include="../../samples/Shared/Counter/ListTab.fs" Link="ListTab.fs" />
-    <Compile Include="../../samples/Shared/Counter/LayersTab.fs" Link="LayersTab.fs" />
-    <Compile Include="../../samples/Shared/Counter/StylesTab.fs" Link="StylesTab.fs" />
-    <Compile Include="../../samples/Shared/Counter/Counter.fs" Link="Counter.fs" />
-    <Compile Include="../../samples/Shared/IconGallery.fs" Link="IconGallery.fs" />
     <Compile Include="CounterTests.fs" />
     <Compile Include="PhoneTests.fs" />
     <Compile Include="IconGalleryTests.fs" />
@@ -40,6 +29,9 @@
     <ProjectReference Include="../../src/Scribble.Rendering.WebGPU/Scribble.Rendering.WebGPU.fsproj" />
     <ProjectReference Include="../../src/Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
     <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../../samples/Hello/Hello.fsproj" />
+    <ProjectReference Include="../../samples/Counter/Counter.fsproj" />
+    <ProjectReference Include="../../samples/Icons/Icons.fsproj" />
     <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
     <ProjectReference Include="../../src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
     <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />

@@ -50,7 +50,7 @@ type AppConfig<'Msg> internal () =
 type AppSetting<'Msg> = internal AppSetting of (AppConfig<'Msg> -> unit)
 
 /// Settings for an app, and `App.start`, which runs one on a given platform. `App.run`
-/// (Scribble.Desktop) and `App.runInBrowser` (Scribble.Browser) pick the platform for you.
+/// (from Scribble.Desktop or Scribble.Browser, whichever the app references) picks the platform for you.
 [<AbstractClass; Sealed>]
 type App =
     /// A dispatch that works from any thread: off the UI thread it's queued to it.

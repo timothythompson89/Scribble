@@ -59,7 +59,7 @@ type Dispatcher(wake: unit -> unit) =
         if this.CheckAccess() then onError e else this.Post(fun () -> onError e)
 
 /// Makes `await` (in `task { }`, and `async` started on the UI thread) come back to the UI thread.
-/// `App.run` and `App.runInBrowser` install it with `Dispatcher.Install`.
+/// `App.run` installs it with `Dispatcher.Install`.
 [<Sealed>]
 type DispatcherSynchronizationContext(dispatcher: Dispatcher) =
     inherit SynchronizationContext()
@@ -77,7 +77,7 @@ module DispatcherInstall =
     type Dispatcher with
         /// Makes this the UI thread's dispatcher for the whole process: `await` on this thread
         /// resumes here, and exceptions from tasks nobody awaited go to its OnError. Call it on the
-        /// UI thread before running the loop (App.run and App.runInBrowser do; custom hosts may).
+        /// UI thread before running the loop (App.run does on every platform; custom hosts may).
         member dispatcher.Install() =
             if not (dispatcher.CheckAccess()) then invalidOp "Install the dispatcher on its own (UI) thread."
             SynchronizationContext.SetSynchronizationContext(DispatcherSynchronizationContext dispatcher)

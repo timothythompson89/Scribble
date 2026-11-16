@@ -1,20 +1,21 @@
 /// Serves the browser samples to the local network over HTTPS:
 ///
-///   dotnet run --project tools/Scribble.Serve                 publish both samples, then serve them
+///   dotnet run --project tools/Scribble.Serve                 publish the samples, then serve them
 ///   dotnet run --project tools/Scribble.Serve -- --aot        publish with WebAssembly AOT (slow publish, fast app)
 ///   dotnet run --project tools/Scribble.Serve -- --no-build   serve what was published last
 ///   dotnet run --project tools/Scribble.Serve -- --self-signed   no certificate authority to install (warnings instead)
 ///
-/// Hello is on port 5280, Counter on 5281, Icons on 5282 (HTTPS); port 5279 (plain HTTP) offers the certificate to
-/// install on other devices. Published files and certificates go to `artifacts/serve` (git-ignored).
+/// The hub is on port 5279 (plain HTTP, so a new device can open it before trusting the certificate): it links the
+/// samples, says whether the device trusts the certificate and offers it; the terminal shows its QR code. Hello is on
+/// port 5280, Counter on 5281, Icons on 5282 (HTTPS). Published files and certificates go to `artifacts/serve`
+/// (git-ignored).
 module Scribble.Serve.Program
 
 open System
 open System.Diagnostics
+open System.Globalization
 open System.IO
 open System.Net
-open System.Net.NetworkInformation
-open System.Net.Sockets
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
@@ -22,14 +23,17 @@ open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.StaticFiles
 open Microsoft.Extensions.Logging
 
-type private Sample = { Name: string; Project: string; Port: int }
+type private Sample = { Name: string; Project: string; Port: int; Title: string; Description: string }
 
 let private samples =
-    [ { Name = "hello"; Project = "samples/Scribble.Samples.Browser"; Port = 5280 }
-      { Name = "counter"; Project = "samples/Scribble.Samples.Counter.Browser"; Port = 5281 }
-      { Name = "icons"; Project = "samples/Scribble.Samples.Icons.Browser"; Port = 5282 } ]
+    [ { Name = "hello"; Project = "samples/Hello.Browser"; Port = 5280
+        Title = "Hello"; Description = "The dashboard: animated cards, a toolbar, text and emoji" }
+      { Name = "counter"; Project = "samples/Counter.Browser"; Port = 5281
+        Title = "Counter"; Description = "Components, async, lists, layers, styles and light/dark themes" }
+      { Name = "icons"; Project = "samples/Icons.Browser"; Port = 5282
+        Title = "Icons"; Description = "All 4,304 Material Symbols" } ]
 
-let private certificatePort = 5279
+let private hubPort = 5279
 
 /// The repository root: the folder holding Scribble.slnx, above the working directory or this tool.
 let private repoRoot () =
@@ -41,16 +45,6 @@ let private repoRoot () =
     |> Option.orElse (up (DirectoryInfo AppContext.BaseDirectory))
     |> Option.defaultWith (fun () -> failwith "Run this from inside the Scribble repository.")
 
-/// This machine's IPv4 addresses on networks that are up (no loopback, no link-local).
-let private lanAddresses () =
-    [ for nic in NetworkInterface.GetAllNetworkInterfaces() do
-        if nic.OperationalStatus = OperationalStatus.Up && nic.NetworkInterfaceType <> NetworkInterfaceType.Loopback then
-            for a in nic.GetIPProperties().UnicastAddresses do
-                let ip = a.Address
-                let bytes = ip.GetAddressBytes()
-                if ip.AddressFamily = AddressFamily.InterNetwork && not (bytes[0] = 169uy && bytes[1] = 254uy) then
-                    yield nic.Name, ip ]
-
 /// Runs `dotnet publish` for one sample into `output`, streaming its output. False if it failed.
 let private publish (root: string) (sample: Sample) (output: string) (aot: bool) =
     let args =
@@ -58,10 +52,24 @@ let private publish (root: string) (sample: Sample) (output: string) (aot: bool)
         @ (if aot then [ "-p:BrowserAot=true" ] else [])
     let info = ProcessStartInfo("dotnet", args)
     info.UseShellExecute <- false
+    // Start from an empty folder: publishes add fingerprinted files and never remove the old ones.
+    if Directory.Exists output then Directory.Delete(output, true)
     Console.WriteLine("Publishing " + sample.Name + (if aot then " (WebAssembly AOT: this takes a few minutes)" else "") + "...")
     use p = Process.Start info
     p.WaitForExit()
     p.ExitCode = 0
+
+/// How the last publish was made, kept next to it (`build.txt`: "aot" or "interpreted", then the time).
+let private writeBuildInfo (artifacts: string) (aot: bool) =
+    File.WriteAllText(Path.Combine(artifacts, "build.txt"), (if aot then "aot" else "interpreted") + "\n" + DateTime.UtcNow.ToString("o"))
+
+let private readBuildInfo (artifacts: string) : Hub.BuildInfo voption =
+    try
+        match File.ReadAllLines(Path.Combine(artifacts, "build.txt")) with
+        | [| kind; time |] ->
+            ValueSome { Aot = (kind = "aot"); PublishedUtc = DateTime.Parse(time, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) }
+        | _ -> ValueNone
+    with _ -> ValueNone
 
 let private contentTypes =
     let provider = FileExtensionContentTypeProvider()
@@ -105,24 +113,6 @@ let private serveFiles (root: string) (context: HttpContext) : Task =
             do! response.SendFileAsync file
     }
 
-/// The page that offers the certificate authority to other devices (plain HTTP: they don't trust
-/// our HTTPS yet), with how to install it.
-let private certificatePage =
-    """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scribble: certificate</title>
-<style>body{font:16px system-ui,sans-serif;max-width:40em;margin:2em auto;padding:0 1em;line-height:1.5}a.button{display:inline-block;padding:.6em 1em;background:#3d59a1;color:#fff;border-radius:6px;text-decoration:none}li{margin:.4em 0}</style></head>
-<body><h1>Scribble development certificate</h1>
-<p>The samples need HTTPS (WebGPU only runs on secure pages). Install this certificate once on each device to open them without warnings. It only identifies the development machine serving this page.</p>
-<p><a class="button" href="/scribble-dev-ca.crt">Download the certificate</a></p>
-<ul>
-<li><b>Windows:</b> open the file, <i>Install Certificate</i>, <i>Current User</i>, <i>Place all certificates in the following store</i>: <i>Trusted Root Certification Authorities</i>.</li>
-<li><b>Android:</b> Settings, <i>Security</i>, <i>Encryption &amp; credentials</i>, <i>Install a certificate</i>, <i>CA certificate</i>, pick the downloaded file. (Menu names vary by phone; search settings for "CA certificate".)</li>
-<li><b>iPhone and iPad (Safari):</b> download, then Settings, <i>Profile Downloaded</i>, <i>Install</i>. Then Settings, <i>General</i>, <i>About</i>, <i>Certificate Trust Settings</i>, and turn on full trust for it.</li>
-<li><b>macOS:</b> open the file in Keychain Access, then set it to <i>Always Trust</i>.</li>
-</ul>
-<p>Then open the samples (addresses below, on the same network). To remove it later, delete "Scribble development CA" from the same place.</p>
-<ul>%LINKS%</ul></body></html>"""
-
 let private quietLogging (builder: WebApplicationBuilder) =
     builder.Logging.ClearProviders() |> ignore
     builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Warning) |> ignore
@@ -147,13 +137,16 @@ let main argv =
     if not published then
         1
     else
+        if not noBuild then writeBuildInfo artifacts aot
+        let build = readBuildInfo artifacts
         let host = Dns.GetHostName()
-        let addresses = lanAddresses ()
-        let certificate = Certificates.server certFolder selfSigned host (addresses |> List.map snd)
+        let addresses = Hub.addresses ()
+        let certificate = Certificates.server certFolder selfSigned host (addresses |> List.map _.Ip)
         let caPem = if selfSigned then "" else Certificates.authorityPem certFolder
+        let cards = [ for s in samples -> ({ Title = s.Title; Description = s.Description; Port = s.Port }: Hub.Card) ]
 
         let urls (port: int) (scheme: string) =
-            [ for (_, ip) in addresses -> scheme + "://" + ip.ToString() + ":" + string port + "/" ]
+            [ for a in addresses -> scheme + "://" + a.Ip.ToString() + ":" + string port + "/" ]
             @ [ scheme + "://" + host + ".local:" + string port + "/" ]
 
         let apps =
@@ -167,51 +160,54 @@ let main argv =
                 let files = Path.Combine(artifacts, s.Name, "wwwroot")
                 app.Run(RequestDelegate(serveFiles files))
                 yield app
-              if not selfSigned then
-                  let builder = WebApplication.CreateSlimBuilder()
-                  quietLogging builder
-                  builder.WebHost.ConfigureKestrel(fun options -> options.ListenAnyIP certificatePort) |> ignore
-                  let app = builder.Build()
-                  let links =
-                      String.Join(
-                          "",
-                          [ for s in samples do
-                              for u in urls s.Port "https" -> "<li>" + s.Name + ": <a href=\"" + u + "\">" + u + "</a></li>" ]
-                      )
-                  let page = certificatePage.Replace("%LINKS%", links)
-                  app.Run(fun context ->
-                      if context.Request.Path.Value = "/scribble-dev-ca.crt" then
-                          context.Response.ContentType <- "application/x-x509-ca-cert"
-                          context.Response.Headers.ContentDisposition <- "attachment; filename=scribble-dev-ca.crt"
-                          context.Response.WriteAsync caPem
-                      else
-                          context.Response.ContentType <- "text/html; charset=utf-8"
-                          context.Response.WriteAsync page)
-                  yield app ]
+              // The hub: plain HTTP, so a device that doesn't trust the certificate yet can open it.
+              let builder = WebApplication.CreateSlimBuilder()
+              quietLogging builder
+              builder.WebHost.ConfigureKestrel(fun options -> options.ListenAnyIP hubPort) |> ignore
+              let app = builder.Build()
+              app.Run(fun context ->
+                  if context.Request.Path.Value = "/scribble-dev-ca.crt" && not selfSigned then
+                      context.Response.ContentType <- "application/x-x509-ca-cert"
+                      context.Response.Headers.ContentDisposition <- "attachment; filename=scribble-dev-ca.crt"
+                      context.Response.WriteAsync caPem
+                  else
+                      // Links use the address the device used to reach the hub.
+                      let reached = context.Request.Host.Host
+                      context.Response.ContentType <- "text/html; charset=utf-8"
+                      context.Response.Headers.CacheControl <- "no-cache"
+                      context.Response.WriteAsync(Hub.page reached cards build selfSigned))
+              yield app ]
 
         for app in apps do
             app.StartAsync().Wait()
 
+        Console.OutputEncoding <- Text.Encoding.UTF8
+        let hubUrls = urls hubPort "http"
         Console.WriteLine()
-        Console.WriteLine("Serving the browser samples on this network (Ctrl+C stops):")
-        for s in samples do
-            Console.WriteLine()
-            Console.WriteLine("  " + s.Name + ":")
-            for u in urls s.Port "https" do
-                Console.WriteLine("    " + u)
+        Console.WriteLine("Serving the browser samples on this network (Ctrl+C stops).")
         Console.WriteLine()
+        Console.WriteLine("On another device, open the hub (scan with the camera, or type the address):")
+        Console.WriteLine()
+        Console.Write(Hub.terminalQr hubUrls.Head)
+        Console.WriteLine()
+        Console.WriteLine("  " + hubUrls.Head + (if addresses.IsEmpty || not addresses.Head.Primary then "" else "   (" + addresses.Head.Name + ")"))
+        if hubUrls.Length > 1 then
+            Console.WriteLine("  other addresses for it:")
+            for (u, a) in List.zip hubUrls.Tail ((addresses |> List.map (fun a -> a.Name)) @ [ "host name" ] |> List.tail) do
+                Console.WriteLine("    " + u + "   (" + a + ")")
+        Console.WriteLine()
+        Console.WriteLine("Samples on this machine: " + String.Join(", ", [ for s in samples -> "https://localhost:" + string s.Port + "/ (" + s.Title + ")" ]))
+        match build with
+        | ValueSome b -> Console.WriteLine("Build: " + (if b.Aot then "WebAssembly AOT" else "interpreted (pass --aot for speed)"))
+        | ValueNone -> ()
         if selfSigned then
             Console.WriteLine("Self-signed certificate: each device warns once; choose to continue anyway.")
         else
-            Console.WriteLine("First time on a device: install the certificate from")
-            for u in urls certificatePort "http" do
-                Console.WriteLine("    " + u)
-            Console.WriteLine("  (this machine: " + Path.Combine(certFolder, "scribble-dev-ca.crt") + ")")
+            Console.WriteLine("The hub offers the certificate to devices that don't trust it yet (this machine: "
+                              + Path.Combine(certFolder, "scribble-dev-ca.crt") + ").")
         Console.WriteLine()
         Console.WriteLine("Nothing loads on another device? Windows Firewall may be blocking it: allow \"Scribble.Serve\"")
         Console.WriteLine("(or dotnet) on private networks, and make sure this network is set to Private.")
-        for (name, ip) in addresses do
-            Console.WriteLine("  network: " + name + " " + ip.ToString())
 
         let stop = new System.Threading.ManualResetEventSlim(false)
         Console.CancelKeyPress.Add(fun e ->

@@ -1,0 +1,36 @@
+<Project>
+  <!--
+    Scribble's page for browser apps: a full-page canvas (index.html) and the script that starts .NET and
+    shows start-up errors on the page (main.js). Used when the app has no wwwroot/index.html of its own, so
+    a browser app needs no web files: its Program.fs is the same as on the desktop. An app that wants its
+    own page adds wwwroot/index.html and main.js, and these are left out.
+
+    The files are defined as static web assets with this folder as their content root (the SDK's own
+    discovery assumes the project's wwwroot folder; the development server would then look for them there).
+    Imported automatically from the NuGet package (build/Scribble.Browser.targets); samples in this repo
+    import it through samples/Directory.Build.targets.
+  -->
+  <Target Name="ScribbleDefaultPage"
+          AfterTargets="ResolveProjectStaticWebAssets"
+          BeforeTargets="AssignTargetPaths"
+          Condition="'$(UsingMicrosoftNETSdkWebAssembly)' == 'true' And !Exists('$(MSBuildProjectDirectory)/wwwroot/index.html')">
+    <ItemGroup>
+      <_ScribblePage Include="$(MSBuildThisFileDirectory)page/index.html" RelativePath="index.html" />
+      <_ScribblePage Include="$(MSBuildThisFileDirectory)page/main.js" RelativePath="main.js" />
+    </ItemGroup>
+    <DefineStaticWebAssets
+      CandidateAssets="@(_ScribblePage)"
+      SourceType="Discovered"
+      SourceId="$(PackageId)"
+      ContentRoot="$(MSBuildThisFileDirectory)page\"
+      BasePath="$(StaticWebAssetBasePath)">
+      <Output TaskParameter="Assets" ItemName="StaticWebAsset" />
+      <Output TaskParameter="Assets" ItemName="_ScribblePageAsset" />
+    </DefineStaticWebAssets>
+    <DefineStaticWebAssetEndpoints
+      CandidateAssets="@(_ScribblePageAsset)"
+      ContentTypeMappings="@(StaticWebAssetContentTypeMapping)">
+      <Output TaskParameter="Endpoints" ItemName="StaticWebAssetEndpoint" />
+    </DefineStaticWebAssetEndpoints>
+  </Target>
+</Project>

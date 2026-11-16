@@ -1,0 +1,35 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!--
+    Defaults for the samples, so each host project is only its SDK, OutputType, references and Program.fs:
+    each sample is a library (the app) plus X.Desktop and X.Browser hosts with the same Program.fs.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Culture data (ICU) is a large download in the browser; the samples don't need localized formatting. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Desktop hosts: `dotnet publish -c Release` compiles the app, Scribble, FSharp.Core and the runtime into one
+       native exe (needs the "Desktop development with C++" tools on Windows). -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Desktop'))">
+    <PublishAot>true</PublishAot>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- Browser hosts, opt-in WebAssembly AOT: `dotnet publish samples/Counter.Browser -c Release -p:BrowserAot=true`.
+       Faster code, larger download, much slower publish; needs `dotnet workload install wasm-tools` once.
+       Without it the runtime interprets the code (fast builds, smaller download). -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Browser')) And '$(BrowserAot)' == 'true'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <!-- Drop the IL of methods compiled ahead of time, to shrink the download. -->
+    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
+    <!-- Separate obj and bin for AOT builds: sharing them, an interpreted publish after an AOT one reused the
+         stripped assemblies (no IL left to interpret) and the runtime failed to start with
+         "interp.c: should not be reached" (2026-11-16). -->
+    <BaseIntermediateOutputPath>obj\aot\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\aot\</BaseOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

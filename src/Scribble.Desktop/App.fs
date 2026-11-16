@@ -1,7 +1,8 @@
-namespace Scribble.Desktop
+// In Scribble.Core's namespace (opened by every app), so an app's code is the same on every
+// platform: only the package it references (Scribble.Desktop or Scribble.Browser) changes.
+namespace Scribble.Core
 
 open System
-open Scribble.Core
 open Scribble.Platform
 open Scribble.Platform.Win32
 open Scribble.Rendering
@@ -10,11 +11,11 @@ open Scribble.Text
 open Scribble.Text.HarfBuzz
 
 [<AutoOpen>]
-module AppRun =
+module DesktopApp =
     type App with
         /// Runs an app in a desktop window and returns when the window closes (use it as main's
         /// result). Picks the platform, the GPU renderer (SCRIBBLE_GPU_BACKEND chooses a backend)
-        /// and HarfBuzz shaping.
+        /// and HarfBuzz shaping. The same call runs an app in the browser with Scribble.Browser.
         static member run<'Msg>(settings: AppSetting<'Msg> list) : int =
             if not (OperatingSystem.IsWindows()) then
                 Console.Error.WriteLine "Scribble runs on Windows for now (macOS and Linux are planned); the browser build runs anywhere."

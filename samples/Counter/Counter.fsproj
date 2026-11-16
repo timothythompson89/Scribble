@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="Common.fs" />
+    <Compile Include="ElmishTab.fs" />
+    <Compile Include="LoadTab.fs" />
+    <Compile Include="ListTab.fs" />
+    <Compile Include="LayersTab.fs" />
+    <Compile Include="StylesTab.fs" />
+    <Compile Include="Counter.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../Samples.Shared/Samples.Shared.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
+  </ItemGroup>
+</Project>

@@ -22,12 +22,24 @@
     <Project Path="src/Scribble.Rendering.WebGPU.Browser/Scribble.Rendering.WebGPU.Browser.fsproj" />
   </Folder>
   <Folder Name="/samples/">
-    <Project Path="samples/Scribble.Samples.Hello/Scribble.Samples.Hello.fsproj" />
-    <Project Path="samples/Scribble.Samples.Browser/Scribble.Samples.Browser.fsproj" />
-    <Project Path="samples/Scribble.Samples.Counter/Scribble.Samples.Counter.fsproj" />
-    <Project Path="samples/Scribble.Samples.Counter.Browser/Scribble.Samples.Counter.Browser.fsproj" />
-    <Project Path="samples/Scribble.Samples.Icons/Scribble.Samples.Icons.fsproj" />
-    <Project Path="samples/Scribble.Samples.Icons.Browser/Scribble.Samples.Icons.Browser.fsproj" />
+    <File Path="samples/Directory.Build.props" />
+    <File Path="samples/Directory.Build.targets" />
+    <Project Path="samples/Samples.Shared/Samples.Shared.fsproj" />
+  </Folder>
+  <Folder Name="/samples/Hello/">
+    <Project Path="samples/Hello/Hello.fsproj" />
+    <Project Path="samples/Hello.Desktop/Hello.Desktop.fsproj" />
+    <Project Path="samples/Hello.Browser/Hello.Browser.fsproj" />
+  </Folder>
+  <Folder Name="/samples/Counter/">
+    <Project Path="samples/Counter/Counter.fsproj" />
+    <Project Path="samples/Counter.Desktop/Counter.Desktop.fsproj" />
+    <Project Path="samples/Counter.Browser/Counter.Browser.fsproj" />
+  </Folder>
+  <Folder Name="/samples/Icons/">
+    <Project Path="samples/Icons/Icons.fsproj" />
+    <Project Path="samples/Icons.Desktop/Icons.Desktop.fsproj" />
+    <Project Path="samples/Icons.Browser/Icons.Browser.fsproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Scribble.Serve/Scribble.Serve.fsproj" />

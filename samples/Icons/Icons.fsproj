@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="IconGallery.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../Samples.Shared/Samples.Shared.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
+  </ItemGroup>
+</Project>

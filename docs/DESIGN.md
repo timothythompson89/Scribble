@@ -916,6 +916,121 @@ Not changed, noted: the immutable `static let` values left in `Element.fs` (an e
 Win32Platform's class name hold no shared state; `Inspector.fs` is 1,719 lines in one file (worth splitting when
 it next grows).
 
+## Decisions for M8 (core controls)
+
+Planned 2026-11-16 in rounds (questions with recommendations; Tim accepted each). Each step gets its own round
+before it is built, and Tim tries each step before the next.
+
+**Round 1 (2026-11-16): steps and virtualization.**
+1. **Four steps:** (1) scrolling and virtualization: the rest of ScrollViewer (draggable thumb, keyboard,
+   horizontal, scroll-into-view), a virtualizing `ItemsView` with scroll-to-item, the Icons gallery rebuilt on it,
+   and the agreed bar as tests; (2) layout: Grid, DockPanel, Canvas, WrapPanel (promoted from the samples), dashed
+   borders; (3) simple controls: CheckBox (on a ToggleButton), Slider, Image (image decoding decided there),
+   TabControl; (4) layers: the "show this in a layer" element (Popup) and tooltips, ListBox (selection on
+   ItemsView), ComboBox, Dialog, Toast.
+2. **Virtualization lives in the items element, not the scroller** (WinUI ItemsRepeater style, over WPF's
+   virtualizing panel that must be the ScrollViewer's direct content and Flutter's ListView that is the scroller
+   itself): a ScrollViewer tells its descendants which part of them is visible (the *viewport*, passed down during
+   layout), and an `ItemsView` anywhere inside realizes only the items in it. Headers above a list in the same
+   scroller, several lists on one page and nested scrollers all keep virtualizing.
+3. **`ItemsView`: data plus a view function**, never a list of Views: `ItemsView.source` (indexable: `'T array` or
+   `IReadOnlyList<'T>`; an F# list is copied into an array once), `ItemsView.key`, `ItemsView.view` (called only for
+   realized items), `ItemsView.layout` (`ItemsLayout.stack` default, `ItemsLayout.wrap w h`, `ItemsLayout.grid
+   columns`). Name `ItemsView` (Tim: yes to the recommendation over Items, VirtualList, Repeater).
+4. **Sizes variable by default**: measured sizes remembered by key, unmeasured ones estimated from the average;
+   when an estimate is corrected the first visible item stays where it is on screen (scroll anchoring); the
+   scrollbar's length may change a little as items are measured. **Exact fast paths**: a fixed item height for
+   stack, fixed cells for wrap and grid (laid out by arithmetic, exact scrollbar from the start).
+5. **Scrolling to an item is an action, through a controller**: `let scroller = ctx.useScroller ()`,
+   `ItemsView.scroller scroller` (and `ScrollViewer.scroller`), then `scroller.ScrollTo(key, align)`,
+   `ScrollToIndex`, `ScrollToOffset`, `ScrollBy`, `ScrollToTop`; `scroller.Offset` and `scroller.FirstVisible`
+   (key plus offset within it, to restore a position exactly). Requests apply at the next layout, so scrolling to
+   an item added in the same handler works; a key not in the source then does nothing (logged in debug builds).
+   Unrealized items: positioned by estimate (exact with fixed sizes), realized, measured, corrected in the same
+   frame. Elmish: `Cmd.scrollTo name key align` finds the element by name and uses its controller. Rejected: a
+   declarative `scrollTo (key, version)` setting (re-renders would fight the user's scrolling). **Automatic:**
+   focus moving to an element (Tab, arrow keys) brings it into view through every scroller it is in, including
+   items not yet realized; element authors call `ctx.BringIntoView()`. **`ScrollAlign.Nearest` is the default**
+   (no move when already fully visible, else the least scroll), with `Start`, `Center`, `End`. **`ScrollTo`
+   animates** briefly (about 200 ms) by default; `animate = false` jumps; long distances always jump (animating
+   past thousands of items would realize them all). Controller methods are calls, like hooks (agreed exception
+   to settings lists).
+6. **Items scrolled out are recycled**: their elements are reused for items scrolling in when the element type
+   matches (the differ patches them with the new item's view); component state inside an item that scrolled out
+   is dropped, as in every virtualizing list; state that must survive belongs in the model, keyed by item. The
+   **focused item stays realized** while it is scrolled out (focus never disappears). No `keepRealized` setting:
+   that is a plain panel.
+
+**Round 2 (2026-11-16): step 1 details.** Before: a 4-DIP thumb over the content, no track, not draggable; a wheel
+notch jumps 48 DIPs; touch drags without a fling; no keyboard or horizontal scrolling.
+7. **Scrollbar:** thumb drag scrolls proportionally; a click on the track pages toward it (Windows; jumping to the
+   spot, as macOS can, would be a later setting); no auto-hide (fading needs frames after the user stops, and hidden
+   bars are hard to find). **Space for it is reserved by default** (Tim asked whether an overlay bar hides items:
+   it does, so the first recommendation, overlay, was revised): `ScrollViewer.scrollBarSpace Reserved` keeps a
+   12-DIP gutter on the scrolling side whenever that direction is `Auto`, whether or not the content overflows
+   (a gutter that appears only on overflow narrows the content, which can re-wrap under the threshold and loop, the
+   classic WPF and browser problem); the thumb is 4 DIPs in it and widens to 10 with a faint track under the
+   pointer or while dragged. `Overlay` draws over the content (image viewers, maps, phone-style lists; the app pads).
+   The same layout on every device (no per-device switch). Width and colors are theme values.
+8. **Keyboard:** keys nothing handled bubble from the focused element to the nearest ScrollViewer: ↑/↓ one wheel
+   step, PageUp/PageDown the viewport minus one step, Home/End, ←/→ when horizontal scrolling is on; Space is left to
+   buttons. A click on empty space inside a ScrollViewer focuses it (not a Tab stop; accessibility may revisit).
+9. **Horizontal:** `ScrollViewer.horizontal` and `ScrollViewer.vertical` take `ScrollBarMode.Auto | Hidden |
+   Disabled` (Hidden scrolls without a bar; Disabled gives the content the viewer's size, so text wraps); defaults
+   vertical Auto, horizontal Disabled (today's behaviour). Shift+wheel and sideways deltas scroll horizontally.
+10. **Feel:** a touch fling after release slows to a stop (frames only while moving; a touch stops it); no bounce at
+    the ends (later, mobile polish); wheel notches animate over about 100 ms, precise touchpad deltas apply directly
+    (notch vs pixel deltas: browser `deltaMode`, Win32 multiples of 120; to check while building).
+11. **An ItemsView outside any ScrollViewer realizes everything** (its viewport is unlimited: a plain panel, not an
+    error). The inspector shows "realized 40 of 4,304" on an ItemsView.
+12. **Samples:** the Icons gallery becomes an ItemsView with fixed cells, plus a search box that scrolls to the first
+    match; the Counter demo's Layers tab list becomes 10,000 messages of varying length (variable sizes) with
+    "Jump to #…" and "Add message" (add and scroll to it).
+
+## One entry point and the sample layout (2026-11-16, before M8 step 1)
+
+Tim: "I only want the user to have to worry about swapping out the dependencies of Scribble.Desktop and
+Scribble.Browser", and the sample project names were inconsistent (Hello's browser host was
+`Scribble.Samples.Browser`). Agreed (recommendations, Tim: yes to all):
+14. **`App.run` everywhere**, `AppSetting list -> int`, defined by both packages in `namespace Scribble.Core` (opened
+    by every app), so app code has no platform `open`. Desktop: blocks until the window closes. Browser: starts the
+    app and returns 0 (the page keeps it running; start-up errors go to the console and the page's error box).
+    `App.runInBrowser` removed. Referencing both packages makes `App.run` ambiguous, which is right: an app is one or
+    the other. Rejected: one `Scribble` package choosing at run time (desktop apps would ship browser code, browser
+    bundles Win32 code that trimming might not fully remove).
+15. **No web files in browser apps**: `Scribble.Browser` brings `index.html` and `main.js` (`build/page/`, defined as
+    static web assets by `build/Scribble.Browser.targets`, which NuGet imports by itself; the repo's samples import
+    it in `samples/Directory.Build.targets`), used when the app has no `wwwroot/index.html`. The SDK's own discovery
+    assumes the project's `wwwroot` (a linked file published fine but the development server looked for it in the
+    project and answered 404), so the targets call `DefineStaticWebAssets` with the page folder as content root.
+    The swap is two lines of the project file: the SDK (`Microsoft.NET.Sdk.WebAssembly` can't be set by a package)
+    and the package. **Later (Tim): installable project templates** (`dotnet new`), which will rely on this.
+16. **Each sample's app is a library with two thin hosts**: `samples/Hello`, `Counter`, `Icons` (libraries),
+    `X.Desktop` and `X.Browser` (Program.fs identical: `App.run (app @ [ Inspector.enable [] ])`), and
+    `Samples.Shared` (Adaptive.fs). Project names drop the `Scribble.Samples.` prefix (module names inside stay);
+    solution folders per sample; host defaults (not packable, invariant globalization, NativeAOT for `.Desktop`,
+    `-p:BrowserAot=true` for `.Browser`) in `samples/Directory.Build.props`, by project-name suffix. Tests reference
+    the sample libraries instead of linking their files. Ports unchanged (5280, 5281, 5282). Hello's browser host no
+    longer prints "interpreted"/"WebAssembly AOT" (its Program.fs is the shared one now). `HelloApp.settings` is now
+    `HelloApp.app`, like the others.
+17. **Done before M8 step 1**, as its own change, so step 1's diff is only about scrolling.
+
+## Scribble.Serve hub (2026-11-16)
+
+Tim: a landing page in the serve tool, as a hub on another device. Agreed (recommendations, Tim: yes to all):
+1. **Port 5279 becomes the hub** (it was the certificate page): plain HTTP, so a device opens it before it trusts
+   our certificate. Sample cards (title, one line, Open) whose links use the address the device reached the hub by
+   (one link each instead of every address); a live check (a `no-cors` fetch to a sample over HTTPS succeeds only
+   once the device trusts the certificate) shows "✓ trusted" or opens the certificate download and install steps;
+   the build (WebAssembly AOT or interpreted, and when published: `artifacts/serve/build.txt`). In `--self-signed`
+   mode it says each sample warns once instead.
+2. **QR code of the hub in the terminal**, with the **QRCoder** package in this tool only (never in Scribble or what
+   apps ship; "borrow only WebGPU and HarfBuzz" is about the framework). Half-block characters, light modules drawn
+   (reads right on a dark terminal like Rider's).
+3. **The hub's address is the best guess**: an up IPv4 adapter with a default gateway that isn't virtual (Hyper-V,
+   WSL, VPN, ...); the others are listed under it.
+4. **No link back to the hub inside the samples** (they're drawn on a canvas; serve-only UI would clutter them).
+
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
 The working summaries kept in CLAUDE.md while each milestone was built, moved here unchanged when CLAUDE.md

@@ -4,7 +4,7 @@ A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.m
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Status: Milestones 0–7b done** (2026-11-16), next M8 (core controls, virtualization first). Apps are F# view
-functions: `App.run` (desktop) or `App.runInBrowser` starts one; views are built from settings lists
+functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
 ScrollViewer, an inspector, styles, light and dark themes, app values, icons (with the Material Symbols package)
@@ -17,7 +17,6 @@ frame, on Windows and in the browser. Scribble draws only when something asks fo
 ```fsharp
 open Scribble.Rendering
 open Scribble.Core
-open Scribble.Desktop          // or Scribble.Browser, with App.runInBrowser
 
 type Msg = Increment | Decrement
 
@@ -40,9 +39,31 @@ let view count dispatch =
 let main _ = App.run [ App.title "Counter"; App.program 0 update view ]
 ```
 
-Reference `Scribble.Desktop` (or `Scribble.Browser`); it brings the platform, the GPU renderer and text shaping
-along. A grown-up version of it (with a command) is the first tab of the Counter demo, `samples/Shared/Counter/ElmishTab.fs`;
-`dotnet run --project samples/Scribble.Samples.Counter` runs the demo.
+The same code runs on the desktop and in the browser: only the project file differs, in its SDK and the one
+Scribble package it references (which brings the platform, the GPU renderer and text shaping along).
+
+```xml
+<!-- Desktop -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Program.fs" /></ItemGroup>
+  <ItemGroup><PackageReference Include="Scribble.Desktop" /></ItemGroup>
+</Project>
+
+<!-- Browser (WebAssembly): no web files needed, Scribble.Browser brings the page -->
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Program.fs" /></ItemGroup>
+  <ItemGroup><PackageReference Include="Scribble.Browser" /></ItemGroup>
+</Project>
+```
+
+On the desktop `App.run` returns when the window closes; in the browser it starts the app and returns at once (the
+page keeps it running). A browser app that wants its own page adds `wwwroot/index.html` and `main.js`, and
+Scribble's are left out. For an app on both, put the app in a library and add a small host project per platform,
+as the samples do (`samples/Counter` is the app, `samples/Counter.Desktop` and `samples/Counter.Browser` its hosts,
+with the same Program.fs). A grown-up version of the code above (with a command) is the first tab of the Counter
+demo, `samples/Counter/ElmishTab.fs`; `dotnet run --project samples/Counter.Desktop` runs the demo.
 
 ## Requirements
 
@@ -53,7 +74,7 @@ along. A grown-up version of it (with a command) is the first tab of the Counter
 ## Run the sample
 
 ```powershell
-dotnet run --project samples/Scribble.Samples.Hello
+dotnet run --project samples/Hello.Desktop
 ```
 
 The first build downloads wgpu-native (pinned to `v29.0.1.1`) into `native/` (git-ignored) and copies
@@ -68,7 +89,7 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
 
 1. A dark dashboard of cards with emoji avatars, titles, subtitles and live percentages; the progress bars animate.
    Text should look crisp at every scaling, and the percentages stay right-aligned as they change. The dashboard is
-   a view function of the animation time and the hovered card (`samples/Shared/Dashboard.fs`), rebuilt and diffed
+   a view function of the animation time and the hovered card (`samples/Hello/Dashboard.fs`), rebuilt and diffed
    every frame; it should look exactly as before. The title bar shows frames per second, layout time and shapes.
 2. Resize the window: the cards reflow into more or fewer columns and stay sharp.
 3. Move the window between monitors with different scaling (or change Windows scaling): borders stay crisp,
@@ -113,7 +134,7 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
     - The footer shows the last frame's layout/render times, shapes and the app's frames per second; when the
       app stops changing it shows "app idle" about a second later, and nothing redraws after that.
 
-The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo, on five tabs
+The counter (`dotnet run --project samples/Counter.Desktop`) is the components demo, on five tabs
 (Elmish, Load, List, Layers, Styles). The tabs are made from what's already there: every page stays in the tree and only the
 selected one has `isVisible true`, so each page keeps its state while hidden.
 
@@ -197,9 +218,9 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    button's text color: light grey in dark, dark in light; it fades with the button when hovered or pressed like the
    text. Inspector: pick the switch; its `icon` property shows `light_mode` or `dark_mode`. (Hello's toolbar buttons
    have Material icons too.)
-The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
+The browser version is `samples/Counter.Browser` (port 5281).
 
-The icon gallery (`dotnet run --project samples/Scribble.Samples.Icons`; browser: `samples/Scribble.Samples.Icons.Browser`,
+The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,
 port 5282) shows all 4,304 Material Symbols in a ScrollViewer, in tiles that wrap to the window's width:
 
 1. Outlined/Filled switches every icon (about 30 ms here: 17,000 elements, no virtualization yet).
@@ -214,30 +235,28 @@ port 5282) shows all 4,304 Material Symbols in a ScrollViewer, in tiles that wra
 Needs a browser with WebGPU (current Chrome or Edge; Firefox 141+ on Windows).
 
 ```powershell
-dotnet run --project samples/Scribble.Samples.Browser
+dotnet run --project samples/Hello.Browser
 ```
 
 This builds the app to WebAssembly, serves it on http://localhost:5280 and opens the browser.
-Output from `printfn` appears in the browser's developer console (F12). It should look the same as the
+Output from `Console.WriteLine` appears in the browser's developer console (F12). It should look the same as the
 desktop sample.
 
 If `dotnet run` can't serve it, publish and use any static file server, for example:
 
 ```powershell
-dotnet publish samples/Scribble.Samples.Browser -c Release
+dotnet publish samples/Hello.Browser -c Release
 dotnet tool install -g dotnet-serve
-dotnet serve -d samples/Scribble.Samples.Browser/bin/Release/net10.0/publish/wwwroot -o
+dotnet serve -d samples/Hello.Browser/bin/Release/net10.0/publish/wwwroot -o
 ```
 
 For a faster release build, compile to WebAssembly ahead of time (needs `dotnet workload install wasm-tools`
 once; publishing takes minutes, and the download is larger):
 
 ```powershell
-dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true
-dotnet serve -d samples/Scribble.Samples.Browser/bin/Release/net10.0/publish/wwwroot -o
+dotnet publish samples/Hello.Browser -c Release -p:BrowserAot=true
+dotnet serve -d samples/Hello.Browser/bin/Release/net10.0/publish/wwwroot -o
 ```
-
-The browser console's first line says `Scribble browser build: WebAssembly AOT` (or `interpreted`).
 
 ### On other devices (phones, tablets, other computers)
 
@@ -245,17 +264,21 @@ WebGPU only runs on secure pages: `https://`, or `http://localhost` on the same 
 HTTPS with a certificate it trusts. `tools/Scribble.Serve` does this:
 
 ```powershell
-dotnet run --project tools/Scribble.Serve                    # publish both samples, then serve them
+dotnet run --project tools/Scribble.Serve                    # publish the samples, then serve them
 dotnet run --project tools/Scribble.Serve -- --no-build      # serve what was published last
 dotnet run --project tools/Scribble.Serve -- --aot           # WebAssembly AOT (publishing takes minutes)
 dotnet run --project tools/Scribble.Serve -- --self-signed   # nothing to install; each device warns instead
 ```
 
-It prints the addresses: Hello on port 5280, Counter on 5281, Icons on 5282 (HTTPS). The first time, the tool makes a small
-certificate authority for this machine (kept in `artifacts/serve/certificates`, git-ignored). Install its
-certificate once on each device: open `http://<this machine>:5279/` there, download it, and follow the steps on
-that page (Windows, Android, iPhone/iPad, macOS). The server's own certificate is made fresh on every run, naming
-this machine and its current addresses. Windows asks once whether to let the tool through the firewall: allow it
+It prints a QR code for **the hub**, `http://<this machine>:5279/` (plain HTTP, so a device can open it before it
+trusts anything): scan it with the phone's camera, or type the address printed under it. The hub links the three
+samples (Hello on port 5280, Counter on 5281, Icons on 5282, HTTPS) using the address the device reached it by,
+checks whether the device trusts the certificate yet (and if not, offers it with install steps for Android,
+iPhone/iPad, Windows and macOS), and shows whether the samples were published with WebAssembly AOT and when. The
+hub's address is the machine's main network (an adapter with a gateway, not a virtual one); the others are listed
+too. The first time, the tool makes a small certificate authority for this machine (kept in
+`artifacts/serve/certificates`, git-ignored); install it once per device. The server's own certificate is made
+fresh on every run, naming this machine and its current addresses. Windows asks once whether to let the tool through the firewall: allow it
 on private networks.
 
 How the browser backend talks to JavaScript: F# can't run .NET's `[JSImport]` generator, so
@@ -771,7 +794,7 @@ Settings are checked at compile time: `TextBlock.margin` works because every ele
 alignment, visibility and clipping. Layout is measure-and-arrange, rounded to whole physical pixels, and changing a
 setting only redoes what it affects.
 
-A custom element is three parts (see `samples/Shared/Dashboard.fs` for four of them):
+A custom element is three parts (see `samples/Hello/Dashboard.fs` for four of them):
 
 ```fsharp
 module ProgressBarProps =                                         // 1. properties, and what they affect
@@ -819,10 +842,10 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | Project | Purpose |
 | --- | --- |
 | `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer; layers; App settings and runtime |
-| `src/Scribble.Desktop` | `App.run`: the desktop platform, WebGPU renderer and HarfBuzz shaping in one reference |
+| `src/Scribble.Desktop` | `App.run` on the desktop: the platform, WebGPU renderer and HarfBuzz shaping in one reference |
 | `src/Scribble.Inspector` | Opt-in inspector: `Inspector.enable [ ... ]` (element tree of every layer, pick mode, highlight, properties, frame stats) |
 | `src/Scribble.Icons.Material` | Opt-in Material Symbols: `Material.home`, `Material.filled`, `Material.icon "name"` (© Google, Apache 2.0) |
-| `src/Scribble.Browser` | `App.runInBrowser`: the browser equivalents |
+| `src/Scribble.Browser` | `App.run` in the browser: the browser equivalents, plus a default page (`build/page`) |
 | `src/Scribble.Platform` | Window, event, DPI and frame-clock abstractions |
 | `src/Scribble.Platform.Win32` | Win32 backend, hand-written P/Invoke |
 | `src/Scribble.Rendering` | Backend-neutral rendering interfaces |
@@ -833,13 +856,12 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | `src/Scribble.Text.HarfBuzz.Browser` | Shaping with HarfBuzz compiled to WebAssembly (browser) |
 | `src/Scribble.Platform.Browser` | Browser backend: canvas, DOM events, `requestAnimationFrame` |
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
-| `samples/Shared/Dashboard.fs` | The sample dashboard as a view function (also used by the rendering tests) |
-| `samples/Shared/HelloApp.fs` | The Hello sample's model, update and app settings, shared by both hosts |
-| `samples/Shared/Counter/` | The Counter demo: one file per tab (`ElmishTab.fs`, `LoadTab.fs`, `ListTab.fs`, `LayersTab.fs`, `StylesTab.fs`), `Common.fs`, and `Counter.fs` (the tabs and the app) |
-| `samples/Scribble.Samples.Hello` | Desktop host |
-| `samples/Scribble.Samples.Browser` | Browser host (WebAssembly) |
-| `samples/Scribble.Samples.Counter`, `.Counter.Browser` | The counter, desktop and browser (one-line Program.fs each) |
-| `samples/Shared/IconGallery.fs`, `samples/Scribble.Samples.Icons`, `.Icons.Browser` | The Material Symbols gallery and its two hosts |
+| `samples/Hello` | The Hello sample (library): `HelloApp.fs` (model, update, app settings) and `Dashboard.fs` (the dashboard as a view function, also used by the rendering tests) |
+| `samples/Counter` | The Counter demo (library): one file per tab (`ElmishTab.fs`, `LoadTab.fs`, `ListTab.fs`, `LayersTab.fs`, `StylesTab.fs`), `Common.fs`, and `Counter.fs` (the tabs and the app) |
+| `samples/Icons` | The Material Symbols gallery (library) |
+| `samples/X.Desktop`, `samples/X.Browser` | Each sample's hosts: the same one-line Program.fs, a different SDK and Scribble package |
+| `samples/Samples.Shared` | `Adaptive.fs`: the samples' own `WrapPanel` and `SplitRow` |
+| `samples/Directory.Build.props` | The hosts' defaults (NativeAOT for desktop, `-p:BrowserAot=true` for the browser) |
 | `tests/*` | Unit and rendering tests |
 
 ## Interop rules
