@@ -23,6 +23,7 @@
     <Compile Include="../../samples/Shared/Counter/Counter.fs" Link="Counter.fs" />
     <Compile Include="CounterTests.fs" />
     <Compile Include="ButtonTests.fs" />
+    <Compile Include="IconRenderingTests.fs" />
     <Compile Include="LayerTests.fs" />
     <Compile Include="InspectorTests.fs" />
   </ItemGroup>

@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="FontFace.fs" />
+    <Compile Include="PathGeometry.fs" />
     <Compile Include="Rasterizer.fs" />
     <Compile Include="Shaping.fs" />
     <Compile Include="LineBreaking.fs" />

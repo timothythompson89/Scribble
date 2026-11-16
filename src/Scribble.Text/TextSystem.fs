@@ -67,6 +67,9 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
     let glyphs = Dictionary<struct (int * int * int * int), struct (GlyphBitmap * int * int * bool)>()
     let mutable atlasGeneration = atlas.Generation
     let mutable colorGeneration = colorAtlas.Generation
+    // Rasterized icons: key = path, size in 1/16 px, rotation in 1/100 degree, flips, viewBox.
+    let icons = Dictionary<struct (int * int * int * int * Rect), struct (GlyphBitmap * int * int)>()
+    let mutable iconGeneration = atlas.Generation
 
     let isVariationOrJoiner (cp: int) =
         cp = 0x200D // zero-width joiner
@@ -162,6 +165,46 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
                     // Bigger than the whole atlas (a huge font size): skip it rather than loop.
                     let entry = struct (GlyphBitmap.Empty, 0, 0, isColor)
                     glyphs[key] <- entry
+                    entry
+
+    /// Rasterizes an icon (if needed) into the coverage atlas: its bitmap (placed relative to the
+    /// top-left of its square box) and atlas position.
+    let rec icon (path: PathGeometry) (viewBox: Rect) (sizePx: float) (rotation: float) (flipH: bool) (flipV: bool) (afterClear: bool) =
+        if atlas.Generation <> iconGeneration then
+            icons.Clear()
+            iconGeneration <- atlas.Generation
+        let flips = (if flipH then 1 else 0) ||| (if flipV then 2 else 0)
+        let key = struct (path.Id, int (Math.Round(sizePx * 16.0)), int (Math.Round(rotation * 100.0)), flips, viewBox)
+        match icons.TryGetValue key with
+        | true, entry -> entry
+        | _ ->
+            // Center the viewBox on the origin, flip, rotate clockwise, scale to the box, move into it.
+            let scale = sizePx / max viewBox.Width viewBox.Height
+            let cx, cy = viewBox.X + viewBox.Width / 2.0, viewBox.Y + viewBox.Height / 2.0
+            let fx, fy = (if flipH then -1.0 else 1.0), (if flipV then -1.0 else 1.0)
+            let angle = rotation * Math.PI / 180.0
+            let c, s = cos angle, sin angle
+            let half = sizePx / 2.0
+            let map (x: float) (y: float) =
+                let x, y = (x - cx) * fx, (y - cy) * fy
+                struct ((x * c - y * s) * scale + half, (x * s + y * c) * scale + half)
+            let bitmap = rasterizePath path map
+            if bitmap.Width = 0 then
+                let entry = struct (bitmap, 0, 0)
+                icons[key] <- entry
+                entry
+            else
+                match allocate atlas bitmap with
+                | ValueSome(struct (x, y)) ->
+                    let entry = struct (bitmap, x, y)
+                    icons[key] <- entry
+                    entry
+                | ValueNone when not afterClear ->
+                    atlas.Clear()
+                    icon path viewBox sizePx rotation flipH flipV true
+                | ValueNone ->
+                    let entry = struct (GlyphBitmap.Empty, 0, 0)
+                    icons[key] <- entry
                     entry
 
     let lines (text: string) = text.Split '\n'
@@ -376,6 +419,22 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
                             else list.DrawGlyph(gx, gy, bitmap.Width, bitmap.Height, ax, ay, color)
                         pen <- pen + float g.XAdvance * scale
                 lineIndex <- lineIndex + 1
+
+    /// Draws a path icon filling a `size` × `size` square (DIPs) whose top-left is at (x, y): the
+    /// viewBox scaled to fit, centered, flipped and then rotated clockwise by `rotation` degrees
+    /// around its center, in `color`. Rasterized once per pixel size into the glyph atlas; the box
+    /// snaps to whole pixels.
+    member _.DrawIcon(list: DrawList, path: PathGeometry, viewBox: Rect, rotation: float, flipHorizontal: bool, flipVertical: bool, x: float, y: float, size: float, color: Color) =
+        let t = list.Transform
+        let sizePx = size * abs t.ScaleY
+        // As for text: under an extra scale, quarter pixels keep a tween from filling the atlas.
+        let sizePx = if abs t.ScaleY <> list.Scale then Math.Round(sizePx * 4.0) / 4.0 else sizePx
+        if sizePx > 0.5 && color.A > 0.0f && viewBox.Width > 0.0 && viewBox.Height > 0.0 then
+            let struct (bitmap, ax, ay) = icon path viewBox sizePx rotation flipHorizontal flipVertical false
+            if bitmap.Width > 0 then
+                let px = int (Math.Round(t.OffsetX + t.ScaleX * x))
+                let py = int (Math.Round(t.OffsetY + t.ScaleY * y))
+                list.DrawGlyph(px + bitmap.Left, py + bitmap.Top, bitmap.Width, bitmap.Height, ax, ay, color)
 
 module TextSystem =
     /// A text system drawing into `device`'s glyph atlases, shaping with `shaper`:

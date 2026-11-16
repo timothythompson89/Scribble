@@ -236,6 +236,8 @@ module internal Format =
             | :? TextTrimming as t -> (match t with NoTrimming -> "none" | CharacterEllipsis -> "ellipsis")
             | :? TextAlignment as a -> (match a with TextAlignment.Start -> "start" | TextAlignment.Center -> "center" | TextAlignment.End -> "end")
             | :? Font as f -> f.Name
+            | :? Icon as i -> i.Description
+            | :? (Icon voption) as i -> (match i with ValueSome x -> x.Description | ValueNone -> "none")
             | :? Style as s -> s.Description
             | :? ElementState as s -> ":" + s.Name
             | :? View as v -> viewName v
@@ -907,9 +909,46 @@ module internal CheckMark =
 /// The panel component's props: the shared state, and whether it fills the pop-out window.
 type internal PanelProps = { State: InspectorState; IsPoppedOut: bool }
 
+/// The header's props: what its buttons depend on (equal props, no re-run).
+type internal HeaderProps =
+    { State: InspectorState
+      IsPoppedOut: bool
+      IsPicking: bool
+      IsFloating: bool
+      Side: DockSide
+      IsCollapsed: bool
+      CanPopOut: bool }
+
 /// Props for the parts that only change with the content (`InspectorState.ContentVersion`), not
 /// with the panel's place or size: equal props, no re-run.
 type internal SectionProps = { State: InspectorState; Version: int }
+
+/// The toolbar's icons: Google's Material Symbols (outlined, weight 400), © Google, Apache License 2.0
+/// (https://www.apache.org/licenses/LICENSE-2.0). Path data in Google's box (0, -960, 960, 960).
+module internal InspectorIcons =
+    let private material name data =
+        Icon.fromPath data [ Icon.name name; Icon.viewBox (0.0, -960.0, 960.0, 960.0) ]
+
+    let pick = material "arrow_selector_tool" "M320 -410 399 -520H569L320 -716ZM551 -80 406 -392 240 -160V-880L800 -440H516L660 -131ZM399 -520Z"
+    /// A window with a narrow pane on the left (Material calls it dock_to_right: the content docks right).
+    let dockLeft =
+        material
+            "dock_left"
+            "M200 -120Q167 -120 144 -144Q120 -167 120 -200V-760Q120 -793 144 -816Q167 -840 200 -840H760Q793 -840 816 -816Q840 -793 840 -760V-200Q840 -167 816 -144Q793 -120 760 -120ZM320 -200V-760H200Q200 -760 200 -760Q200 -760 200 -760V-200Q200 -200 200 -200Q200 -200 200 -200ZM400 -200H760Q760 -200 760 -200Q760 -200 760 -200V-760Q760 -760 760 -760Q760 -760 760 -760H400ZM320 -200H200Q200 -200 200 -200Q200 -200 200 -200Q200 -200 200 -200Q200 -200 200 -200H320Z"
+    /// The same, mirrored: the pane on the right.
+    let dockRight = dockLeft.FlippedHorizontally
+    let popOut =
+        material
+            "open_in_new"
+            "M200 -120Q167 -120 144 -144Q120 -167 120 -200V-760Q120 -793 144 -816Q167 -840 200 -840H480V-760H200Q200 -760 200 -760Q200 -760 200 -760V-200Q200 -200 200 -200Q200 -200 200 -200H760Q760 -200 760 -200Q760 -200 760 -200V-480H840V-200Q840 -167 816 -144Q793 -120 760 -120ZM388 -332 332 -388 704 -760H560V-840H840V-560H760V-704Z"
+    let popIn = material "close_fullscreen" "M136 -80 80 -136 344 -400H160V-480H480V-160H400V-344ZM480 -480V-800H560V-616L824 -880L880 -824L616 -560H800V-480Z"
+    /// Folding the panel to its title bar, like a window's minimize; restoring it, like a window's square.
+    let fold = material "minimize" "M240 -120V-200H720V-120Z"
+    let unfold =
+        material
+            "crop_square"
+            "M200 -120Q167 -120 144 -144Q120 -167 120 -200V-760Q120 -793 144 -816Q167 -840 200 -840H760Q793 -840 816 -816Q840 -793 840 -760V-200Q840 -167 816 -144Q793 -120 760 -120ZM200 -200H760Q760 -200 760 -200Q760 -200 760 -200V-760Q760 -760 760 -760Q760 -760 760 -760H200Q200 -760 200 -760Q200 -760 200 -760V-200Q200 -200 200 -200Q200 -200 200 -200ZM200 -200Q200 -200 200 -200Q200 -200 200 -200V-760Q200 -760 200 -760Q200 -760 200 -760Q200 -760 200 -760Q200 -760 200 -760V-200Q200 -200 200 -200Q200 -200 200 -200Z"
+    let close = material "close" "M256 -200 200 -256 424 -480 200 -704 256 -760 480 -536 704 -760 760 -704 536 -480 760 -256 704 -200 480 -424Z"
 
 // --- The views ---------------------------------------------------------------------------------------
 
@@ -1036,44 +1075,119 @@ module internal Views =
           Layoutable.onPointerMove (fun a -> state.DragTo a.Position)
           Layoutable.onPointerUp (fun _ -> state.EndDrag()) ]
 
-    /// The title, and the area to drag the panel by (double-click collapses).
-    let private title (state: InspectorState) (draggable: bool) =
+    /// The title, and the area to drag the panel by (double-click collapses). While the pointer is
+    /// over a toolbar button, it says what the button does instead.
+    let private title (state: InspectorState) (draggable: bool) (hint: string) =
         Border.create (
             [ Border.width "1*"
               Border.padding (Thickness.Create(12.0, 0.0, 4.0, 0.0))
               Border.child (
                   TextBlock.create [
-                      TextBlock.text "Inspector"
-                      TextBlock.font (Fonts.SemiBold())
-                      TextBlock.foreground Color.White
+                      if hint.Length > 0 then
+                          TextBlock.text hint
+                          TextBlock.foreground (Color.Hex 0xB8B8CC)
+                          TextBlock.textTrimming CharacterEllipsis
+                      else
+                          TextBlock.text "Inspector"
+                          TextBlock.font (Fonts.SemiBold())
+                          TextBlock.foreground Color.White
                       TextBlock.verticalAlignment VerticalAlignment.Center
                   ]
               ) ]
             @ (if draggable then dragHandlers state DragKind.Move else [])
         )
 
-    let private header (state: InspectorState) (isPoppedOut: bool) =
-        let floating = state.Mode = PanelMode.Floating
-        StackPanel.create [
-            StackPanel.orientation Horizontal
-            StackPanel.spacing 4.0
-            StackPanel.height 36.0
-            StackPanel.margin (Thickness.Create(0.0, 0.0, 6.0, 0.0))
-            StackPanel.children [
-                yield title state (not isPoppedOut)
-                yield smallButton (if state.IsPicking then "Picking…" else "Pick") state.IsPicking state.TogglePick
-                if isPoppedOut then
-                    yield smallButton "Pop in" false state.PopIn
-                else
-                    if floating || state.Side = DockSide.Right then
-                        yield smallButton "Left" false (fun () -> state.Dock DockSide.Left)
-                    if floating || state.Side = DockSide.Left then
-                        yield smallButton "Right" false (fun () -> state.Dock DockSide.Right)
-                    if state.CanPopOut then yield smallButton "Pop out" false state.PopOut
-                    yield smallButton (if state.IsPanelCollapsed then "+" else "–") false state.ToggleCollapsed
-                    yield smallButton "×" false state.Toggle
-            ]
+    /// A toolbar button: an icon, transparent until hovered (accent-filled when `isActive`);
+    /// hovering shows `hint` in the title.
+    let private toolButton (name: string) (icon: Icon) (hint: string) (isActive: bool) (showHint: string -> unit) (onClick: unit -> unit) =
+        Button.create [
+            Button.name name
+            Button.icon icon
+            Button.iconSize 18.0
+            Button.width 28.0
+            Button.height 28.0
+            Button.padding 0.0
+            Button.borderThickness 0.0
+            Button.cornerRadius 5.0
+            Setting.create BorderProps.shadow ValueNone
+            Button.background (if isActive then Color.Hex 0x3D59A1 else Color.Transparent)
+            Button.foreground (if isActive then Color.White else Color.Hex 0xC8C8D8)
+            Button.verticalAlignment VerticalAlignment.Center
+            Button.onPointerEnter (fun _ -> showHint name)
+            Button.onPointerLeave (fun _ -> showHint "")
+            Button.onClick (fun _ -> onClick ())
         ]
+
+    /// A thin line between groups of toolbar buttons.
+    let private toolSeparator () =
+        Border.create [
+            Border.width 1.0
+            Border.height 16.0
+            Border.margin (Thickness.Create(3.0, 0.0, 3.0, 0.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.background (Color.White.WithAlpha 0.12f)
+        ]
+
+    /// The title and the toolbar. Its own component, so hovering a button (which changes the
+    /// title) re-runs only this.
+    let private header =
+        Component.define "InspectorHeader" (fun ctx (p: HeaderProps) ->
+            let state = p.State
+            // The hovered button's name; its hint shows only while that button is still there
+            // (a click can remove it before the pointer leaves).
+            let hovered = ctx.useState ""
+            let show = hovered.Set
+            let buttons = [
+                yield "pick", InspectorIcons.pick, (if p.IsPicking then "Stop picking (Esc)" else "Pick (Ctrl+Shift+C)"), p.IsPicking, state.TogglePick
+                if p.IsPoppedOut then
+                    yield "popIn", InspectorIcons.popIn, "Pop back in", false, state.PopIn
+                else
+                    if p.IsFloating || p.Side = DockSide.Right then
+                        yield "dockLeft", InspectorIcons.dockLeft, "Dock left", false, (fun () -> state.Dock DockSide.Left)
+                    if p.IsFloating || p.Side = DockSide.Left then
+                        yield "dockRight", InspectorIcons.dockRight, "Dock right", false, (fun () -> state.Dock DockSide.Right)
+                    if p.CanPopOut then yield "popOut", InspectorIcons.popOut, "Pop out", false, state.PopOut
+                    if p.IsCollapsed then yield "fold", InspectorIcons.unfold, "Restore", false, state.ToggleCollapsed
+                    else yield "fold", InspectorIcons.fold, "Minimize", false, state.ToggleCollapsed
+                    yield "close", InspectorIcons.close, "Close (F12)", false, state.Toggle
+            ]
+            // A hovered button's hint, else pick mode's status (the pointer is out in the app while
+            // picking), else the title.
+            let hint =
+                buttons
+                |> List.tryPick (fun (name, _, hint, _, _) -> if name = hovered.Current then Some hint else None)
+                |> Option.defaultValue (if p.IsPicking then "Picking… (Esc stops)" else "")
+            // Groups: pick | where the panel goes | fold and close.
+            let groupOf name =
+                match name with
+                | "pick" -> 0
+                | "fold" | "close" -> 2
+                | _ -> 1
+            StackPanel.create [
+                StackPanel.orientation Horizontal
+                StackPanel.spacing 2.0
+                StackPanel.height 36.0
+                StackPanel.margin (Thickness.Create(0.0, 0.0, 6.0, 0.0))
+                StackPanel.children [
+                    yield title state (not p.IsPoppedOut) hint
+                    let mutable group = 0
+                    for (name, icon, text, isActive, onClick) in buttons do
+                        if groupOf name <> group then
+                            group <- groupOf name
+                            yield toolSeparator ()
+                        yield toolButton name icon text isActive show onClick
+                ]
+            ])
+
+    let private headerFor (state: InspectorState) (isPoppedOut: bool) =
+        header
+            { State = state
+              IsPoppedOut = isPoppedOut
+              IsPicking = state.IsPicking
+              IsFloating = state.Mode = PanelMode.Floating
+              Side = state.Side
+              IsCollapsed = state.IsPanelCollapsed
+              CanPopOut = state.CanPopOut }
 
     /// Frame stats (as of the last refresh) and, when floating, the corner grip.
     let private footer (state: InspectorState) (showGrip: bool) =
@@ -1381,7 +1495,7 @@ module internal Views =
         StackPanel.create [
             if fillWidth then StackPanel.width "1*"
             StackPanel.children [
-                yield header state isPoppedOut
+                yield headerFor state isPoppedOut
                 if isPoppedOut || not state.IsPanelCollapsed then
                     yield
                         ScrollViewer.create [

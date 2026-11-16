@@ -178,11 +178,13 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme tokens and app values) is done and verified (2026-11-16). Last counts: 249 unit tests,
-37 rendering tests (after the window title app value and the first-frame fix).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme tokens and app values) is done and verified (2026-11-16). Last counts: 264 unit tests,
+39 rendering tests (after M7b step 1 and the inspector toolbar).
 
-Remaining milestones: M7c custom title bars (Win32 first; the popped-out
-inspector looks like the docked panel; see DESIGN.md), M7b icons, M8 core controls
+Remaining milestones (M7c custom title bars was skipped, 2026-11-16; see DESIGN.md): M7b icons (decisions in
+DESIGN.md, "Decisions for M7b"; step 1, icons in Core, done and verified 2026-11-16: `PathGeometry` in Text,
+`TextSystem.DrawIcon`, `Icon`/`IconView`/`Button.icon` in Core; plus the inspector's icon toolbar with hover hints,
+also verified; next step 2, the Material package, then step 3, image cursors), M8 core controls
 (Grid, DockPanel, Canvas, dashed lines in the renderer, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
 

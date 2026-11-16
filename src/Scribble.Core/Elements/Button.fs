@@ -3,6 +3,14 @@ namespace Scribble.Core
 open System
 open Scribble.Rendering
 
+module ButtonProps =
+    /// An icon before the content (or alone), in the button's text color.
+    let icon: Prop<Icon voption> = Prop.define "Icon" ValueNone Affects.Measure
+    /// The icon's width and height in DIPs.
+    let iconSize = Prop.define "IconSize" 18.0 Affects.Measure
+    /// Where the icon was placed by the last arrange.
+    let iconRect: Prop<Rect> = Prop.local "IconRect" (Rect.Create(0.0, 0.0, 0.0, 0.0))
+
 /// A Border with a default look and something to click: `Button.create [ Button.text "+1";
 /// Button.onClick (fun _ -> dispatch Increment) ]`. Every Border setting works on it.
 /// It takes keyboard focus (Tab; a ring shows), and Enter or Space clicks it. Its hover, pressed
@@ -28,14 +36,60 @@ type Button =
     /// Any content.
     static member content<'k when 'k :> Button>(value: View) : Setting<'k> = Setting.create BorderProps.child (ValueSome value)
 
+    /// An icon before the text or content (or on its own), in the button's text color; the two sit
+    /// together in the middle: `Button.icon addIcon; Button.text "Add"`.
+    static member icon<'k when 'k :> Button>(value: Icon) : Setting<'k> = Setting.create ButtonProps.icon (ValueSome value)
+
+    /// The icon's width and height in DIPs (default 18).
+    static member iconSize<'k when 'k :> Button>(value: float) : Setting<'k> = Setting.create ButtonProps.iconSize value
+
 module Button =
-    /// Border's look plus the focus ring.
+    /// Space between the icon and the content.
+    let private gap = 8.0
+
+    /// Border's look, the icon, and the focus ring.
     let private render (ctx: RenderContext) (list: DrawList) =
         Border.draw ctx list
+        match ctx.Get ButtonProps.icon with
+        | ValueSome icon -> IconView.draw ctx list icon (ctx.Get ButtonProps.iconRect) (ctx.Get ButtonProps.iconSize)
+        | ValueNone -> ()
         if ctx.IsFocusVisible then FocusRing.draw ctx list (ctx.Get BorderProps.cornerRadius)
+
+    /// Border's measure, with room for the icon before the content.
+    let private measure (ctx: MeasureContext) (available: Size) =
+        let ix, iy = Border.inset ctx
+        let icon = if (ctx.Get ButtonProps.icon).IsSome then ctx.Get ButtonProps.iconSize else 0.0
+        let extra = if icon > 0.0 && ctx.Children.Count > 0 then icon + gap else icon
+        let mutable w, h = ix + extra, iy + icon
+        for child in ctx.Children do
+            let d = ctx.Measure(child, Size.Create(max 0.0 (available.Width - ix - extra), max 0.0 (available.Height - iy)))
+            w <- max w (d.Width + ix + extra)
+            h <- max h (d.Height + iy)
+        Size.Create(w, h)
+
+    /// Border's arrange; with an icon, the icon and the content form one centered row.
+    let private arrange (ctx: ArrangeContext) (size: Size) =
+        let p, t = ctx.Get BorderProps.padding, ctx.Get BorderProps.borderThickness
+        let slot =
+            Rect.Create(p.Left + t, p.Top + t, max 0.0 (size.Width - p.Horizontal - 2.0 * t), max 0.0 (size.Height - p.Vertical - 2.0 * t))
+        match ctx.Get ButtonProps.icon with
+        | ValueNone ->
+            for child in ctx.Children do
+                ctx.Arrange(child, slot)
+        | ValueSome _ ->
+            let icon = ctx.Get ButtonProps.iconSize
+            let content = if ctx.Children.Count > 0 then min (ctx.DesiredSize ctx.Children[0]).Width (max 0.0 (slot.Width - icon - gap)) else 0.0
+            let row = if ctx.Children.Count > 0 then icon + gap + content else icon
+            // Rounded half-up, like layout, so the icon and the content keep their exact gap.
+            let left = Math.Floor(slot.X + max 0.0 ((slot.Width - row) / 2.0) + 0.5)
+            ctx.SetLocal(ButtonProps.iconRect, Rect.Create(left, slot.Y, icon, slot.Height))
+            for child in ctx.Children do
+                ctx.Arrange(child, Rect.Create(left + icon + gap, slot.Y, content, slot.Height))
 
     let Type =
         Element.extend Border.Type "Button" [
+            Element.measure measure
+            Element.arrange arrange
             Element.render render
             // The dark base look (also without a theme); the theme adds the state looks.
             Element.defaults [

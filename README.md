@@ -85,20 +85,21 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
    - Click a triangle to fold or unfold a row; click a row to select it. Hovering a row highlights its element in
      the app: a blue box, any margin in orange, and a label with the type and size. The selected element gets only
      blue corner marks a little outside it (no fill, no label, sides clear), so its own looks and edges stay visible.
-   - Ctrl+Shift+C (or "Pick") starts pick mode: a crosshair, the element under the pointer is highlighted, and a
+   - Ctrl+Shift+C (or the arrow button) starts pick mode: a crosshair, the element under the pointer is highlighted, and a
      click selects it (the tree opens down to it) without reaching the app. Escape cancels.
-   - "Dock left"/"Dock right" moves the panel; "Close" or F12 hides it. The app keeps working everywhere the panel
+   - The toolbar's buttons are icons; hovering one shows what it does in place of the title. The dock buttons
+     move the panel; × or F12 hides it. The app keeps working everywhere the panel
      isn't; with the app animating, the tree keeps up (about 10 updates a second).
    - In the browser, F12 and Ctrl+Shift+C should open the inspector, not the browser's own developer tools, while
      the page has focus.
 10. The panel's modes (step 2b):
     - Drag the title ("Inspector") to undock the panel: it floats and stays inside the window, even when the
-      window shrinks. Drag the dots at its bottom-right corner to resize it; "Left"/"Right" dock it again.
+      window shrinks. Drag the dots at its bottom-right corner to resize it; the dock buttons dock it again.
     - Docked, drag its inner edge (the cursor turns into a left-right arrow) to make it narrower or wider.
-    - "–" or a double-click on the title folds it to its title bar; "+" opens it again.
-    - Desktop only: "Pop out" moves it into its own window ("Inspector – <app>"); hovering rows still highlights in
-      the app, pick mode still works there, and F12 works in both windows. Closing the pop-out (or "Pop in") puts
-      the panel back where it was; closing the app closes both. The browser has no "Pop out" button.
+    - The minimize button (a bar) or a double-click on the title folds it to its title bar; the square restores it.
+    - Desktop only: the pop-out button (a box with an arrow) moves it into its own window ("Inspector – <app>"); hovering rows still highlights in
+      the app, pick mode still works there, and F12 works in both windows. Closing the pop-out (or its pop-in button) puts
+      the panel back where it was; closing the app closes both. The browser has no pop-out button.
 11. The properties (step 3): pick a card in the dashboard (or click a row).
     - Below the tree: the element's type and #name, its states, layout numbers and properties, each tagged
       `view`, `code` or `type`. Hover the card and press on it: "hovered" and "pressed" appear (within a
@@ -189,6 +190,9 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      inspector (F12). In the Styles tab, forcing `selected` on an unselected chip makes it look selected.
 12. The title (an app value, `WindowTitle.current`; verified): the window, or the browser tab, is called "Counter – Elmish" at
    the start and names whichever tab you select. A popped-out inspector ("Inspector – Counter – …") follows it.
+13. Icons (M7b step 1, verified): the Light/Dark switch shows a sun (or, in light, a moon) before its text, in the button's text
+   color: light grey in dark, dark in light; it fades with the button when hovered or pressed like the text.
+   Inspector: pick the switch; its `icon` property shows `sun` or `moon`.
 The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
 
 ## Run the browser sample
@@ -480,12 +484,13 @@ App.run (settings @ [
   `Inspector.toggleKey (key, modifiers)` and `Inspector.pickKey`. They work whatever has focus, and in the browser
   they're kept from the browser's own developer tools. `Inspector.isOpen true` shows it from the start.
 - **Panel:** docked right or left (drag its inner edge to change the width), floating (drag the title; resize from
-  the corner grip), folded to its title bar ("–" or a double-click on the title), or, on the desktop, popped out
-  into a window of its own ("Pop out"; it closes with the app). Selection and folded rows stay as they are when
+  the corner grip), folded to its title bar (the minimize button or a double-click on the title), or, on the desktop, popped out
+  into a window of its own (it closes with the app). Selection and folded rows stay as they are when
   it moves.
 - It's built from Scribble's own elements and lives in two layers on top of everything (the panel, and a
-  highlight that only takes the pointer in pick mode), so the app's layout never changes.
-- Custom hosts: `Inspector.attach (host, [ Inspector.platform platform ])` (the platform enables "Pop out"),
+  highlight that only takes the pointer in pick mode), so the app's layout never changes. Its toolbar icons are
+  Google's Material Symbols (Apache License 2.0).
+- Custom hosts: `Inspector.attach (host, [ Inspector.platform platform ])` (the platform enables popping out),
   disposable. Packages that plug into an app this way use
   `App.onStart (fun ctx -> ...)` (`ctx.Host`, `ctx.Platform`, `ctx.Title`), `host.AddKeyPreview` (keys before
   any layer), `host.Closed`, `host.LayerChanged` and
@@ -628,6 +633,29 @@ let themeSwitch = Component.define "ThemeSwitch" (fun ctx () ->
   `Cmd.setAppValue Theme.current t`. A `theme` on an element applies only inside it (the root's too). A theme switch
   doesn't animate (hover and press still fade). The inspector shows the token under the value (`Palette.surface`).
 - Not yet: following the OS's light/dark setting (later).
+
+### Icons
+
+Icons are shapes from SVG path data, drawn in the text color around them:
+
+```fsharp
+let menu = Icon.fromPath "M3 18h18v-2H3zm0-5h18v-2H3zm0-7v2h18V6z" [ Icon.name "menu" ]   // a 24 × 24 box by default
+let logo = Icon.fromPath "M0 0h48v48H0z" [ Icon.viewBox (0.0, 0.0, 48.0, 48.0) ]
+
+IconView.create [ IconView.icon menu; IconView.size 24.0 ]              // default size 20
+IconView.create [ IconView.icon (menu.Rotated 90.0); IconView.foreground c ]
+Button.create [ Button.icon menu; Button.text "Menu" ]                   // icon before the text, or alone
+```
+
+- Path data: M, L, H, V, C, S, Q, T, A and Z, absolute and relative. Shapes fill with the nonzero rule, as fonts do
+  (SVG's even-odd rule isn't supported). Bad data throws a `FormatException` when the icon is first drawn.
+- An icon is an immutable value: `Rotated degrees` (clockwise), `FlippedHorizontally`, `FlippedVertically` (or
+  `Icon.rotate`, `Icon.flipHorizontal`, `Icon.flipVertical` when making it). Equal icons compare equal, so a rebuilt
+  view with the same icon changes nothing.
+- Color: the inherited `foreground` (so themes, styles and `opacity` apply); `IconView.foreground` sets its own.
+- Rendering: rasterized once per pixel size into the glyph atlas, like text; sharp at any scale, drawn in the same
+  single draw call. `Button.iconSize` (default 18) sets a button's icon size.
+- An icon set is just a module of icon values. Coming next: the opt-in Material Symbols package.
 
 ### Elements and layout
 

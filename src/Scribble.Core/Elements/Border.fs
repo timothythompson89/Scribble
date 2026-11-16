@@ -45,7 +45,7 @@ type Border =
     static member child<'k when 'k :> Border>(value: View) : Setting<'k> = Setting.create BorderProps.child (ValueSome value)
 
 module Border =
-    let private inset (ctx: MeasureContext) =
+    let internal inset (ctx: MeasureContext) =
         let p, t = ctx.Get BorderProps.padding, ctx.Get BorderProps.borderThickness
         p.Horizontal + 2.0 * t, p.Vertical + 2.0 * t
 

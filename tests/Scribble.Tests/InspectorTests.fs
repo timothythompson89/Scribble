@@ -163,10 +163,10 @@ let private dragFrom (w: FakeWindow) (x, y) (toX, toY) =
 /// The panel's Border (under the component's host element).
 let private panelBox (panel: Layer) = panel.Tree.Root.Value.Children[0]
 
-/// Clicks the inspector button labelled `label`.
+/// Clicks the inspector element labelled `label` (its text), or a toolbar button by name ("popOut").
 let private clickButton (w: FakeWindow) (layer: Layer) (label: string) =
     let rec findText (e: Element) =
-        if e.IsVisible && e.Type.Name = "TextBlock" && e.Get TextProps.text = label then Some e
+        if e.IsVisible && ((e.Type.Name = "TextBlock" && e.Get TextProps.text = label) || e.Name = label) then Some e
         else e.Children |> Seq.tryPick findText
     let t = layer.Tree.Root.Value |> findText |> Option.get
     let p = t.PositionInTree
@@ -176,6 +176,52 @@ let private clickButton (w: FakeWindow) (layer: Layer) (label: string) =
 let private openPanel (w: FakeWindow) =
     keyWith w (Key.F 12) Modifiers.None
     settle w
+
+/// Whether the layer shows an element with this name.
+let private hasNamed (layer: Layer) (name: string) =
+    let rec find (e: Element) = (e.IsVisible && e.Name = name) || e.Children |> Seq.exists find
+    find layer.Tree.Root.Value
+
+[<Fact>]
+let ``hovering a toolbar button says what it does in the title, until the pointer leaves`` () =
+    let log = List<string>()
+    let w, _, panel = start log
+    openPanel w
+    Assert.Contains("Inspector", texts panel)
+    let rec named (e: Element) = if e.Name = "close" then Some e else e.Children |> Seq.tryPick named
+    let close = (named panel.Tree.Root.Value).Value
+    let p = close.PositionInTree
+    move w (p.X + 14.0) (p.Y + 14.0)
+    settle w
+    Assert.Contains("Close (F12)", texts panel)
+    Assert.DoesNotContain("Inspector", texts panel)
+    move w 100.0 300.0
+    settle w
+    Assert.Contains("Inspector", texts panel)
+    // A button that goes away under the pointer leaves no hint behind: Dock on the left
+    // replaces itself with Dock on the right.
+    let rec namedLeft (e: Element) = if e.Name = "dockLeft" then Some e else e.Children |> Seq.tryPick namedLeft
+    let left = (namedLeft panel.Tree.Root.Value).Value
+    let lp = left.PositionInTree
+    move w (lp.X + 14.0) (lp.Y + 14.0)
+    settle w
+    Assert.Contains("Dock left", texts panel)
+    clickButton w panel "dockLeft"
+    Assert.DoesNotContain("Dock left", texts panel)
+
+[<Fact>]
+let ``while picking, the title says so wherever the pointer is, until Escape`` () =
+    let log = List<string>()
+    let w, _, panel = start log
+    openPanel w
+    keyWith w (Key.Char 'c') ctrlShift
+    move w 100.0 300.0 // out in the app
+    settle w
+    Assert.Contains("Picking… (Esc stops)", texts panel)
+    keyWith w Key.Escape Modifiers.None
+    settle w
+    Assert.Contains("Inspector", texts panel)
+    Assert.DoesNotContain("Picking… (Esc stops)", texts panel)
 
 [<Fact>]
 let ``dragging the title undocks the panel, and the app gets back what it covered`` () =
@@ -208,7 +254,7 @@ let ``a double click on the title collapses and expands the panel`` () =
     settle w
     Assert.True((panelBox panel).Bounds.Height < 60.0)
     Assert.DoesNotContain("Layer App", texts panel)
-    clickButton w panel "+"
+    clickButton w panel "fold" // unfolds
     Assert.True((panelBox panel).Bounds.Height > 400.0)
 
 [<Fact>]
@@ -229,9 +275,9 @@ let ``the corner grip resizes a floating panel, and Right docks it again`` () =
     dragFrom w (784.0, 400.0) (824.0, 420.0)
     let b = (panelBox panel).Bounds
     Assert.Equal((420.0, 320.0), (b.Width, b.Height))
-    clickButton w panel "Right"
+    clickButton w panel "dockRight"
     Assert.Equal(512.0, (panelBox panel).Bounds.X)
-    Assert.DoesNotContain("Pop out", texts panel) // the fake platform has one window
+    Assert.False(hasNamed panel "popOut") // the fake platform has one window
 
 /// A platform that can open several (fake) windows.
 type private ManyWindows() =
@@ -261,7 +307,7 @@ let ``Pop out moves the panel into a window of its own, which closes with the ap
     settle w
     let panel = host.Layers |> Seq.find (fun l -> l.Name = "Inspector")
     openPanel w
-    clickButton w panel "Pop out"
+    clickButton w panel "popOut"
     Assert.Equal(2, platform.Windows.Count)
     let popped = platform.Windows[1]
     Assert.Equal("Inspector – Test", popped.TitleText)
@@ -280,7 +326,7 @@ let ``Pop out moves the panel into a window of its own, which closes with the ap
     Assert.True popped.Closed
     Assert.True panel.Tree.HasVisibleContent
     // Popped out again, it closes with the app.
-    clickButton w panel "Pop out"
+    clickButton w panel "popOut"
     let again = platform.Windows[2]
     w.Send CloseRequested
     Assert.True again.Closed

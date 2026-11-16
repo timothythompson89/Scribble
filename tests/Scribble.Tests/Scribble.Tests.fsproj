@@ -12,6 +12,7 @@
     <Compile Include="TestShaping.fs" />
     <Compile Include="TextTests.fs" />
     <Compile Include="TextLayoutTests.fs" />
+    <Compile Include="IconTests.fs" />
     <Compile Include="LayoutTests.fs" />
     <Compile Include="LengthTests.fs" />
     <Compile Include="DifferTests.fs" />

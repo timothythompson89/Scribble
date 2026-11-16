@@ -146,9 +146,8 @@ let private accumulate (acc: float32[]) (width: int) (height: int) (line: Line) 
                 add xbi (d * am)
             x <- xNext
 
-/// Rasterizes contours at `scale` pixels per font unit, shifted right by `offsetX` (0 ≤ offsetX < 1).
-let rasterize (contours: OutlinePoint[][]) (scale: float) (offsetX: float) : GlyphBitmap =
-    let lines = flatten contours scale offsetX
+/// Fills closed polygons given as lines in pixel space (y down), nonzero rule.
+let private rasterizeLines (lines: ResizeArray<Line>) : GlyphBitmap =
     if lines.Count = 0 then
         GlyphBitmap.Empty
     else
@@ -178,6 +177,61 @@ let rasterize (contours: OutlinePoint[][]) (scale: float) (offsetX: float) : Gly
                     sum <- sum + acc[y * width + x]
                     coverage[y * width + x] <- byte (MathF.Min(1.0f, MathF.Abs sum) * 255.0f + 0.5f)
             { Width = width; Height = height; Left = left; Top = top; Coverage = coverage }
+
+/// Rasterizes contours at `scale` pixels per font unit, shifted right by `offsetX` (0 ≤ offsetX < 1).
+let rasterize (contours: OutlinePoint[][]) (scale: float) (offsetX: float) : GlyphBitmap =
+    rasterizeLines (flatten contours scale offsetX)
+
+/// Turns path contours into lines in pixel space, each point mapped by `map`. Curves are split
+/// by Wang's formula so no line strays more than 0.1 px from the curve (the lines run inside a
+/// curve, so a coarser tolerance visibly shrinks round shapes).
+let private flattenPath (contours: PathContour[]) (map: float -> float -> struct (float * float)) =
+    let lines = ResizeArray<Line>()
+    let tolerance = 0.1
+    let add (struct (x0, y0)) (struct (x1, y1)) = lines.Add { X0 = x0; Y0 = y0; X1 = x1; Y1 = y1 }
+    let length (x: float) (y: float) = sqrt (x * x + y * y)
+    for contour in contours do
+        let start = map contour.StartX contour.StartY
+        let mutable current = start
+        for segment in contour.Segments do
+            match segment with
+            | LineTo(x, y) ->
+                let p = map x y
+                add current p
+                current <- p
+            | QuadTo(cx, cy, x, y) ->
+                let struct (x0, y0) = current
+                let struct (x1, y1) = map cx cy
+                let struct (x2, y2) as p2 = map x y
+                let dd = length (x0 - 2.0 * x1 + x2) (y0 - 2.0 * y1 + y2)
+                let n = max 1 (int (Math.Ceiling(sqrt (0.25 * dd / tolerance))))
+                for i in 1..n do
+                    let t = float i / float n
+                    let mt = 1.0 - t
+                    let p = if i = n then p2 else struct (mt * mt * x0 + 2.0 * mt * t * x1 + t * t * x2, mt * mt * y0 + 2.0 * mt * t * y1 + t * t * y2)
+                    add current p
+                    current <- p
+            | CubicTo(c1x, c1y, c2x, c2y, x, y) ->
+                let struct (x0, y0) = current
+                let struct (x1, y1) = map c1x c1y
+                let struct (x2, y2) = map c2x c2y
+                let struct (x3, y3) as p3 = map x y
+                let dd = max (length (x0 - 2.0 * x1 + x2) (y0 - 2.0 * y1 + y2)) (length (x1 - 2.0 * x2 + x3) (y1 - 2.0 * y2 + y3))
+                let n = max 1 (int (Math.Ceiling(sqrt (0.75 * dd / tolerance))))
+                for i in 1..n do
+                    let t = float i / float n
+                    let mt = 1.0 - t
+                    let a, b, c, d = mt * mt * mt, 3.0 * mt * mt * t, 3.0 * mt * t * t, t * t * t
+                    let p = if i = n then p3 else struct (a * x0 + b * x1 + c * x2 + d * x3, a * y0 + b * y1 + c * y2 + d * y3)
+                    add current p
+                    current <- p
+        // Filled shapes are closed.
+        if current <> start then add current start
+    lines
+
+/// Rasterizes a path, each point mapped into pixel space (y down) by `map`. Nonzero fill.
+let rasterizePath (path: PathGeometry) (map: float -> float -> struct (float * float)) : GlyphBitmap =
+    rasterizeLines (flattenPath path.Contours map)
 
 /// Rasterizes a color glyph (COLR v0): each layer is an outline glyph in one color, painted
 /// bottom to top with "over" blending. Returns premultiplied RGBA bytes.

@@ -33,6 +33,13 @@ let private appTitle = "Counter"
 /// The selected tab's look: the theme's accent, whichever theme is in use.
 let private tabStyles = [ Button.style [ Style.cls "selected" ] [ Button.background Palette.accent; Button.foreground Palette.onAccent ] ]
 
+/// Icons from SVG path data (24 × 24, the default box), drawn in the button's text color.
+let private sun =
+    Icon.fromPath
+        "M12 7a5 5 0 1 0 0 10 5 5 0 1 0 0-10zM11 1h2v3h-2zM11 20h2v3h-2zM1 11h3v2H1zM20 11h3v2h-3zM4.2 5.6l1.4-1.4 2.1 2.1-1.4 1.4zM16.3 17.7l1.4-1.4 2.1 2.1-1.4 1.4zM18.4 4.2l1.4 1.4-2.1 2.1-1.4-1.4zM6.3 16.3l1.4 1.4-2.1 2.1-1.4-1.4z"
+        [ Icon.name "sun" ]
+let private moon = Icon.fromPath "M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" [ Icon.name "moon" ]
+
 /// The Light/Dark button: it switches the window's theme (`Theme.current`, an app value) itself,
 /// wherever it sits; the whole window follows, the toast and dialog layers too.
 let private themeSwitch =
@@ -40,8 +47,9 @@ let private themeSwitch =
         let theme = ctx.useAppValue Theme.current
         let isLight = obj.ReferenceEquals(theme.Current, lightTheme)
         Button.create [
+            Button.icon (if isLight then moon else sun)
             Button.text (if isLight then "Dark" else "Light")
-            Button.width 64.0
+            Button.padding (10.0, 7.0)
             Button.onClick (fun _ -> theme.Set(if isLight then darkTheme else lightTheme))
         ])
 
