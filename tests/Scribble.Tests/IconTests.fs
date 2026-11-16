@@ -88,20 +88,20 @@ let ``icons compare by shape, box, rotation, flips and name, and describe themse
     let b = Icon.fromPath "M2 2h20v20H2z" []
     Assert.Equal(a, b)
     Assert.Equal(a.GetHashCode(), b.GetHashCode())
-    Assert.NotEqual(a, a.Rotated 90.0)
-    Assert.NotEqual(a, a.FlippedHorizontally)
-    Assert.Equal(a, a.FlippedHorizontally.FlippedHorizontally)
+    Assert.NotEqual(a, a |> Icon.rotate 90.0)
+    Assert.NotEqual(a, a |> Icon.flipHorizontal)
+    Assert.Equal(a |> Icon.flipHorizontal, a |> Icon.flipHorizontal |> Icon.flipHorizontal) // flips set, not toggle
     Assert.NotEqual(a, Icon.fromPath "M2 2h20v20H2z" [ Icon.viewBox (0.0, 0.0, 48.0, 48.0) ])
-    Assert.Equal("path", a.Description)
+    Assert.Equal("path", Icon.describe a)
     let named = Icon.fromPath "M2 2h20v20H2z" [ Icon.name "box"; Icon.rotate 90.0; Icon.flipVertical ]
-    Assert.Equal("box-rotate90-flipv", named.Description)
-    Assert.Equal("box-rotate90-fliph-flipv", named.FlippedHorizontally.Description)
+    Assert.Equal("box-rotate90-flipv", Icon.describe named)
+    Assert.Equal("box-rotate90-fliph-flipv", named |> Icon.flipHorizontal |> Icon.describe)
     Assert.Throws<ArgumentException>(fun () -> Icon.fromPath " " [] |> ignore) |> ignore
 
 [<Fact>]
 let ``bad path data is found when the icon is first drawn`` () =
     let icon = Icon.fromPath "M2 2 L" []
-    Assert.Throws<FormatException>(fun () -> icon.Path |> ignore) |> ignore
+    Assert.Throws<FormatException>(fun () -> Icon.geometry icon |> ignore) |> ignore
 
 let private square = Icon.fromPath "M0 0h24v24H0z" [ Icon.name "square" ]
 
@@ -116,7 +116,7 @@ let private glyphRects (list: DrawList) =
 let ``DrawIcon scales the viewBox to the size, snaps to pixels and caches the bitmap`` () =
     let text = textSystem ()
     let list = DrawList(2.0)
-    text.DrawIcon(list, square.Path, square.ViewBox, 0.0, false, false, 10.2, 5.0, 12.0, Color.White)
+    text.DrawIcon(list, Icon.geometry square, square.ViewBox, 0.0, false, false, 10.2, 5.0, 12.0, Color.White)
     // 12 DIPs at 2x = 24 px, at (20.4 → 20, 10); one more column, where the rasterizer's
     // accumulation spills (empty).
     Assert.Equal<(float * float * float * float) list>([ 20.0, 10.0, 25.0, 24.0 ], glyphRects list)
@@ -124,9 +124,9 @@ let ``DrawIcon scales the viewBox to the size, snaps to pixels and caches the bi
     let atlas = GlyphAtlas(256)
     let t2 = TextSystem(atlas, new FixedShaper())
     let l2 = DrawList(1.0)
-    t2.DrawIcon(l2, square.Path, square.ViewBox, 0.0, false, false, 0.0, 0.0, 10.0, Color.White)
+    t2.DrawIcon(l2, Icon.geometry square, square.ViewBox, 0.0, false, false, 0.0, 0.0, 10.0, Color.White)
     let dirty = atlas.TakeDirtyRegion()
-    t2.DrawIcon(l2, square.Path, square.ViewBox, 0.0, false, false, 30.0, 0.0, 10.0, Color.White)
+    t2.DrawIcon(l2, Icon.geometry square, square.ViewBox, 0.0, false, false, 30.0, 0.0, 10.0, Color.White)
     Assert.False dirty.IsEmpty
     Assert.True((atlas.TakeDirtyRegion()).IsEmpty)
 
@@ -138,7 +138,7 @@ let ``rotation and flips turn the shape around its center`` () =
         let atlas = GlyphAtlas(256)
         let text = TextSystem(atlas, new FixedShaper())
         let list = DrawList(1.0)
-        text.DrawIcon(list, icon.Path, icon.ViewBox, icon.Rotation, icon.IsFlippedHorizontally, icon.IsFlippedVertically, 0.0, 0.0, 24.0, Color.White)
+        text.DrawIcon(list, Icon.geometry icon, icon.ViewBox, icon.Rotation, icon.FlipHorizontal, icon.FlipVertical, 0.0, 0.0, 24.0, Color.White)
         let data = list.InstanceData
         let ax, ay = int data[4], int data[5]
         let x0, y0 = int data[0], int data[1]
@@ -149,9 +149,9 @@ let ``rotation and flips turn the shape around its center`` () =
     // The triangle fills the top-left half: left and top.
     Assert.Equal<bool list>([ true; true; false; false ], coverageAt tri)
     // Turned a quarter clockwise, it fills the top-right half: top and right.
-    Assert.Equal<bool list>([ false; true; true; false ], coverageAt (tri.Rotated 90.0))
-    Assert.Equal<bool list>([ false; true; true; false ], coverageAt tri.FlippedHorizontally)
-    Assert.Equal<bool list>([ true; false; false; true ], coverageAt tri.FlippedVertically)
+    Assert.Equal<bool list>([ false; true; true; false ], coverageAt (tri |> Icon.rotate 90.0))
+    Assert.Equal<bool list>([ false; true; true; false ], coverageAt (tri |> Icon.flipHorizontal))
+    Assert.Equal<bool list>([ true; false; false; true ], coverageAt (tri |> Icon.flipVertical))
 
 let private frame (t: ElementTree) =
     t.UpdateLayout(Size.Create(400.0, 300.0))

@@ -667,14 +667,16 @@ let menu = Icon.fromPath "M3 18h18v-2H3zm0-5h18v-2H3zm0-7v2h18V6z" [ Icon.name "
 let logo = Icon.fromPath "M0 0h48v48H0z" [ Icon.viewBox (0.0, 0.0, 48.0, 48.0) ]
 
 IconView.create [ IconView.icon menu; IconView.size 24.0 ]              // default size 20
-IconView.create [ IconView.icon (menu.Rotated 90.0); IconView.foreground c ]
+IconView.create [ IconView.icon (menu |> Icon.rotate 90.0); IconView.foreground c ]
 Button.create [ Button.icon menu; Button.text "Menu" ]                   // icon before the text, or alone
 ```
 
 - Path data: M, L, H, V, C, S, Q, T, A and Z, absolute and relative. Shapes fill with the nonzero rule, as fonts do
   (SVG's even-odd rule isn't supported). Bad data throws a `FormatException` when the icon is first drawn.
-- An icon is an immutable value: `Rotated degrees` (clockwise), `FlippedHorizontally`, `FlippedVertically` (or
-  `Icon.rotate`, `Icon.flipHorizontal`, `Icon.flipVertical` when making it). Equal icons compare equal, so a rebuilt
+- An icon is a plain F# record (name, path data, viewBox, rotation, flips). Its settings are `Icon -> Icon`
+  functions, so the same ones change an existing icon: `menu |> Icon.rotate 90.0` (clockwise, replacing any
+  rotation), `|> Icon.flipHorizontal`, `|> Icon.flipVertical` (these set the flip; applying one twice doesn't undo
+  it). `Icon.describe` gives "menu-rotate90-fliph" (the inspector shows it). Equal icons compare equal, so a rebuilt
   view with the same icon changes nothing.
 - Color: the inherited `foreground` (so themes, styles and `opacity` apply); `IconView.foreground` sets its own.
 - Rendering: rasterized once per pixel size into the glyph atlas, like text; sharp at any scale, drawn in the same

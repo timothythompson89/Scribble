@@ -22,7 +22,7 @@ module IconView =
         let color = ctx.Get InheritedProps.foreground
         let x = area.X + (area.Width - size) / 2.0
         let y = area.Y + (area.Height - size) / 2.0
-        ctx.Text.DrawIcon(list, icon.Path, icon.ViewBox, icon.Rotation, icon.IsFlippedHorizontally, icon.IsFlippedVertically, x, y, size, color)
+        ctx.Text.DrawIcon(list, Icon.geometry icon, icon.ViewBox, icon.Rotation, icon.FlipHorizontal, icon.FlipVertical, x, y, size, color)
 
     let Type =
         Element.define "IconView" [

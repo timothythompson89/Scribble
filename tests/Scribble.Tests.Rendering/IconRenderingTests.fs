@@ -33,10 +33,10 @@ let scene () =
                 IconView.create [ IconView.icon star; IconView.size 12.0 ]
             ]
             row [
-                IconView.create [ IconView.icon (arrow.Rotated 90.0) ]
-                IconView.create [ IconView.icon (arrow.Rotated 45.0) ]
-                IconView.create [ IconView.icon arrow.FlippedHorizontally ]
-                IconView.create [ IconView.icon heart.FlippedVertically ]
+                IconView.create [ IconView.icon (arrow |> Icon.rotate 90.0) ]
+                IconView.create [ IconView.icon (arrow |> Icon.rotate 45.0) ]
+                IconView.create [ IconView.icon (arrow |> Icon.flipHorizontal) ]
+                IconView.create [ IconView.icon (heart |> Icon.flipVertical) ]
                 // The text color around it: set on the row, inherited by the icons.
                 StackPanel.create [
                     StackPanel.orientation Horizontal

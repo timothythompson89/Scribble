@@ -236,8 +236,8 @@ module internal Format =
             | :? TextTrimming as t -> (match t with NoTrimming -> "none" | CharacterEllipsis -> "ellipsis")
             | :? TextAlignment as a -> (match a with TextAlignment.Start -> "start" | TextAlignment.Center -> "center" | TextAlignment.End -> "end")
             | :? Font as f -> f.Name
-            | :? Icon as i -> i.Description
-            | :? (Icon voption) as i -> (match i with ValueSome x -> x.Description | ValueNone -> "none")
+            | :? Icon as i -> Icon.describe i
+            | :? (Icon voption) as i -> (match i with ValueSome x -> Icon.describe x | ValueNone -> "none")
             | :? Style as s -> s.Description
             | :? ElementState as s -> ":" + s.Name
             | :? View as v -> viewName v
@@ -936,7 +936,7 @@ module internal InspectorIcons =
             "dock_left"
             "M200 -120Q167 -120 144 -144Q120 -167 120 -200V-760Q120 -793 144 -816Q167 -840 200 -840H760Q793 -840 816 -816Q840 -793 840 -760V-200Q840 -167 816 -144Q793 -120 760 -120ZM320 -200V-760H200Q200 -760 200 -760Q200 -760 200 -760V-200Q200 -200 200 -200Q200 -200 200 -200ZM400 -200H760Q760 -200 760 -200Q760 -200 760 -200V-760Q760 -760 760 -760Q760 -760 760 -760H400ZM320 -200H200Q200 -200 200 -200Q200 -200 200 -200Q200 -200 200 -200Q200 -200 200 -200H320Z"
     /// The same, mirrored: the pane on the right.
-    let dockRight = dockLeft.FlippedHorizontally
+    let dockRight = dockLeft |> Icon.flipHorizontal
     let popOut =
         material
             "open_in_new"

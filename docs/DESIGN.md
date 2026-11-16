@@ -598,7 +598,7 @@ M7 step 1 delivered 2026-11-16 and verified by Tim on Windows and in the browser
 
 Decisions for M7b (icons), agreed 2026-11-16 (Tim: "go with your recommendations"). Three steps, each tried by Tim before the next: (1) icons in Core: an SVG path-data parser (M/L/H/V/C/S/Q/T/A/Z, relative and absolute) feeding the font rasterizer (which gains cubics and arcs), icons in the R8 coverage atlas tinted at draw time (inherited text color, themes, styles, `opacity`; the same single draw call), rasterized per physical pixel size (quarter-pixel sizes under an extra scale, as text); (2) the opt-in `Scribble.Icons.Material` package; (3) image cursors (`Cursor.Image`, bitmap + hotspot, shown by the OS).
 1. Names: an `Icon` value and an `IconView` element (`IconView.create [ IconView.icon Material.home; IconView.size 20.0 ]`), like the Avalonia `MaterialIcon`/`MaterialIconView`.
-2. The value: path data, a viewBox, rotation and flips; made settings-style (`Icon.fromPath "M2 12h20" [ Icon.viewBox (0.0, 0.0, 24.0, 24.0) ]`); changed by members (`icon.Rotated 90.0`, `icon.FlippedHorizontally`); equal icons compare equal. No color on the value: `IconView.foreground`, the inherited text color or styles give it.
+2. The value: path data, a viewBox, rotation and flips; made settings-style (`Icon.fromPath "M2 12h20" [ Icon.viewBox (0.0, 0.0, 24.0, 24.0) ]`); changed by members (`icon.Rotated 90.0`, `icon.FlippedHorizontally`; replaced by functions on 2026-11-16, see "Icon as an F# value"); equal icons compare equal. No color on the value: `IconView.foreground`, the inherited text color or styles give it.
 3. No registry of icon sets: a set is a module of icon values; Material is the first.
 4. Material names: camelCase static members (`Material.home`, `Material.arrowUpward`, `Material.star.Filled`; a leading digit gets `_`: `Material._10k`), and `Material.icon "star-filled-rotate90"` for strings (the Avalonia spec format; no implicit conversion: FS3391).
 5. Material data: one Brotli-compressed block decoded on first use (every app using the package carries the set; revisit if a browser app needs it smaller).
@@ -693,3 +693,24 @@ height it's given), which kept Counter's tab row pixel-identical at its usual si
 unchanged (the dashboard still matches the hand-drawn version). Tests: 5 new unit tests (269), 6 new rendering
 tests (45: `hello-phone@3x`, `counter-phone-<tab>@3x`, checked by eye; each Counter tab also checks nothing
 reaches past the right edge).
+
+## Icon as an F# value (Tim, 2026-11-16)
+
+`Icon` was a class (private constructor, `Rotated`/`FlippedHorizontally`/`FlippedVertically` methods, hand-written
+equality, settings as static members): the C#-in-F# shape M3b removed from elements. Agreed (recommendations):
+1. `Icon` is a plain record with public fields (`Name`, `PathData`, `ViewBox`, `Rotation`, `FlipHorizontal`,
+   `FlipVertical`): structural equality for free, `{ icon with ... }` works. Building one by hand skips
+   `fromPath`'s empty-data check; bad data fails when first drawn, as malformed data does anyway.
+2. Settings are plain `Icon -> Icon` functions in a module `Icon` (`name`, `viewBox`, `rotate`, `flipHorizontal`,
+   `flipVertical`), so the same functions configure (`Icon.fromPath d [ Icon.rotate 90.0 ]`) and transform
+   (`arrow |> Icon.rotate 90.0`). `IconSetting` and the methods are gone.
+3. Flips set (mirrored), they don't toggle.
+4. The parsed path isn't in the value (a lazy field would break equality): an internal, thread-safe cache keyed by
+   path data (`Icon.geometry`), so equal data shares one `PathGeometry` and its id in the rasterized-icon cache.
+5. `ToString` is overridden (a record's default uses printf, which crashes under NativeAOT); `Icon.describe` gives
+   the same text, and the inspector uses it.
+6. Only `Icon` and its users changed; `PathGeometry` and `TextSystem.DrawIcon` stay as the lower-level API. M7b step
+   2's `Material.star.Filled` (member access) is to be revisited in step 2's discussion.
+
+Built 2026-11-16, verified by Tim the same day: no pixel changes (all 45 rendering tests unchanged); 269 unit tests pass (the toggle test now
+checks that flips set).
