@@ -11,7 +11,7 @@ open Scribble.Rendering.WebGPU
 /// One device for the whole test run; creating devices is slow.
 type GpuFixture() =
     let errors = Collections.Concurrent.ConcurrentQueue<GpuError>()
-    let device = WebGpuDevice.Create { WebGpuOptions.Default with OnError = errors.Enqueue }
+    let device = WebGpuDevice.Create [ WebGpuDevice.onError errors.Enqueue ]
     member _.Device = device :> IRenderDevice
     member _.Errors = errors
     interface IDisposable with

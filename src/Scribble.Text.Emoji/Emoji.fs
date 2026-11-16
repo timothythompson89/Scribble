@@ -19,7 +19,7 @@ let private twemoji =
          Font("Twemoji", memory.ToArray()))
 
 /// Twemoji, a color emoji font. Use it as a fallback:
-/// `TextSystem(device, shaper, fallbacks = [ Emoji.Twemoji() ])`.
+/// `TextSystem.create device shaper [ TextSystem.fallbacks [ Emoji.Twemoji() ] ]` (or `App.fonts`).
 let Twemoji () = twemoji.Value
 
 /// The attribution text the CC-BY 4.0 license asks for.

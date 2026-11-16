@@ -1,13 +1,18 @@
 /// The counter sample, now a components demo (desktop and browser; Program.fs in each host is one
 /// line):
 ///
-/// - an Elmish counter inside a component (`useElmish`),
+/// - an Elmish counter inside a component, with a command that adds 1 a second later
+///   (`useElmishWithCmd`, `Cmd.ofAsync`),
 /// - a list of counters, each with its own state (`useState`), keyed so state follows the item
 ///   when the list changes order, with a bar that animates to the count (`useAnimated`),
-/// - Buttons that sink when pressed.
+/// - a slow load that restarts (cancelling the old one) when its input changes (`useAsync`),
+/// - Buttons that sink when pressed,
+/// - the three on tabs that keep each page's state while another is shown.
 module Scribble.Samples.Counter
 
 open System
+open System.Threading
+open System.Threading.Tasks
 open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
@@ -18,12 +23,15 @@ type Msg =
     | Increment
     | Decrement
     | Reset
+    | IncrementLater
 
 let update msg count =
     match msg with
-    | Increment -> count + 1
-    | Decrement -> count - 1
-    | Reset -> 0
+    | Increment -> count + 1, Cmd.none
+    | Decrement -> count - 1, Cmd.none
+    | Reset -> 0, Cmd.none
+    // The model doesn't change now; the command sends Increment after a second.
+    | IncrementLater -> count, Cmd.ofAsync (fun () -> Async.Sleep 1000) () (fun () -> Increment) (fun _ -> Reset)
 
 let view count dispatch =
     StackPanel.create [
@@ -38,6 +46,7 @@ let view count dispatch =
                     Button.create [ Button.text "−"; Button.onClick (fun _ -> dispatch Decrement) ]
                     Button.create [ Button.text "+"; Button.onClick (fun _ -> dispatch Increment) ]
                     Button.create [ Button.text "Reset"; Button.isEnabled (count <> 0); Button.onClick (fun _ -> dispatch Reset) ]
+                    Button.create [ Button.text "+1 in a second"; Button.onClick (fun _ -> dispatch IncrementLater) ]
                 ]
             ]
         ]
@@ -46,7 +55,7 @@ let view count dispatch =
 /// The same counter as a component: its model lives in the component, not the app.
 let elmishCounter =
     Component.define "ElmishCounter" (fun ctx () ->
-        let count, dispatch = ctx.useElmish(0, update)
+        let count, dispatch = ctx.useElmishWithCmd((0, Cmd.none), update)
         view count dispatch)
 
 // --- A list of counters ---------------------------------------------------------------------------
@@ -130,21 +139,89 @@ let counters =
             ]
         ])
 
+// --- A slow load ----------------------------------------------------------------------------------
+
+/// Pretends to fetch something slow: n squared, a second later. Honors cancellation.
+let private slowSquare (n: int) (ct: CancellationToken) : Task<int> =
+    task {
+        do! Task.Delay(1000, ct)
+        return n * n
+    }
+
+/// Change the number while it's loading: the old load is cancelled and a new one starts.
+let slowLoad =
+    Component.define "SlowLoad" (fun ctx () ->
+        let n = ctx.useState 1
+        let square = ctx.useAsync(n.Current, slowSquare)
+        let result, color =
+            match square with
+            | AsyncValue.Loading -> "loading…", dim
+            | AsyncValue.Loaded v -> $"{n.Current}² = {v}", Color.White
+            | AsyncValue.Failed e -> e.Message, Color.Hex 0xF7768E
+        StackPanel.create [
+            StackPanel.orientation Horizontal
+            StackPanel.spacing 8.0
+            StackPanel.margin (24.0, 10.0, 24.0, 0.0)
+            StackPanel.children [
+                Button.create [ Button.text "−"; Button.width 32.0; Button.onClick (fun _ -> n.Update(fun v -> v - 1)) ]
+                TextBlock.create [
+                    TextBlock.text (string n.Current)
+                    TextBlock.width 32.0
+                    TextBlock.textAlignment TextAlignment.Center
+                    TextBlock.foreground Color.White
+                    TextBlock.verticalAlignment VerticalAlignment.Center
+                ]
+                Button.create [ Button.text "+"; Button.width 32.0; Button.onClick (fun _ -> n.Update(fun v -> v + 1)) ]
+                TextBlock.create [
+                    TextBlock.text result
+                    TextBlock.margin (8.0, 0.0, 0.0, 0.0)
+                    TextBlock.foreground color
+                    TextBlock.verticalAlignment VerticalAlignment.Center
+                ]
+            ]
+        ])
+
 // --- The app --------------------------------------------------------------------------------------
 
 let private heading (text: string) =
     TextBlock.create [ TextBlock.text text; TextBlock.foreground dim; TextBlock.margin (24.0, 16.0, 24.0, 0.0) ]
 
+/// The demo's pages: tab title, then the page.
+let private pages =
+    [ "Elmish", [ heading "useElmishWithCmd, with a command that adds 1 a second later"; elmishCounter () ]
+      "Load", [ heading "useAsync: a one-second load, cancelled when the number changes"; slowLoad () ]
+      "List", [ heading "useState and useAnimated, keyed by name"; counters () ] ]
+
+/// Tabs made from what's already there: every page stays in the tree and only the selected one
+/// is visible (`isVisible false` is neither measured, drawn, hit nor focused), so each page keeps
+/// its state, including a load still running, while another is shown.
 let demo =
-    Component.define "Demo" (fun _ () ->
+    Component.define "Demo" (fun ctx () ->
+        let selected = ctx.useState 0
         StackPanel.create [
             StackPanel.children [
-                heading "useElmish"
-                elmishCounter ()
-                heading "useState and useAnimated, keyed by name"
-                counters ()
+                yield StackPanel.create [
+                    StackPanel.orientation Horizontal
+                    StackPanel.spacing 4.0
+                    StackPanel.margin (24.0, 16.0, 24.0, 0.0)
+                    StackPanel.children [
+                        for i, (title, _) in List.indexed pages ->
+                            Button.create [
+                                yield Button.text title
+                                yield Button.width 80.0
+                                // Until styles (M7), the selected tab is just a different background.
+                                if i = selected.Current then yield Button.background (Color.Hex 0x3D59A1)
+                                yield Button.onClick (fun _ -> selected.Set i)
+                            ]
+                    ]
+                ]
+                // Pages by position: the same three in the same places, so switching only flips
+                // isVisible and never rebuilds a page.
+                for i, (_, content) in List.indexed pages ->
+                    let shown = i = selected.Current
+                    StackPanel.create [ StackPanel.isVisible shown; StackPanel.children content ]
             ]
         ])
 
 /// Components hold all the state, so the app has no messages of its own (hence `unit`).
-let app: AppSetting<unit> list = [ App.title "Counter"; App.size (480.0, 520.0); App.view (demo ()) ]
+let app: AppSetting<unit> list = [ App.title "Counter"; App.size (520.0, 520.0); App.view (demo ()) ]

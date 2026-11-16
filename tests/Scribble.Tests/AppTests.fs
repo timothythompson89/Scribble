@@ -36,7 +36,13 @@ type FakeWindow(onEvent: PlatformEvent -> unit) =
         member _.Dispose() = ()
 
 type FakePlatform() =
+    let mutable wakes = 0
     member val Window: FakeWindow option = None with get, set
+    member val WakeHandler: unit -> unit = ignore with get, set
+    /// How many times something woke the platform (any thread).
+    member _.Wakes = Threading.Volatile.Read(&wakes)
+    /// What the platform's loop does after a wake: drain the dispatcher (on the test's thread).
+    member this.RunWake() = this.WakeHandler()
     interface IPlatform with
         member _.Name = "fake"
         member this.CreateWindow(_, onEvent) =
@@ -44,12 +50,15 @@ type FakePlatform() =
             this.Window <- Some w
             w :> IWindow
         member _.Run() = ()
+        member this.SetWakeHandler handler = this.WakeHandler <- handler
+        member _.Wake() = Threading.Interlocked.Increment(&wakes) |> ignore
         member _.Dispose() = ()
 
 type FakeDevice() =
     let atlas, colorAtlas = GlyphAtlas(256), GlyphAtlas(64, 4)
     member val Frames = 0 with get, set
     member val LastShapes = 0 with get, set
+    member val LastClear = Color.Black with get, set
     interface IRenderDevice with
         member _.Description = "fake GPU"
         member _.GlyphAtlas = atlas
@@ -64,7 +73,7 @@ type FakeDevice() =
                         { new IFrame with
                             member _.Size = size
                             member _.Scale = scale
-                            member _.Clear _ = ()
+                            member _.Clear c = this.LastClear <- c
                             member _.DrawList = list
                             member _.Dispose() =
                                 this.Frames <- this.Frames + 1
@@ -172,3 +181,24 @@ let ``showStats puts frame stats in the title`` () =
     w.DeliverFrame() |> ignore
     // The counter refreshes once a second; the title keeps its name either way.
     Assert.True(w.TitleText = "" || w.TitleText.StartsWith "Stats")
+
+[<Fact>]
+let ``a custom host is made from settings`` () =
+    let w = new FakeWindow(ignore)
+    let device = new FakeDevice()
+    let frames = ref 0
+    let dispatcher = Dispatcher ignore
+    use host =
+        ElementHost.create w device (TextSystem.create device (new FixedShaper()) []) [
+            ElementHost.background (Color.Hex 0x123456)
+            ElementHost.dispatcher dispatcher
+            ElementHost.beforeFrame (fun () -> frames.Value <- frames.Value + 1)
+        ]
+    host.Update(TextBlock.create [ TextBlock.text "hi" ])
+    host.HandleEvent Frame |> ignore
+    Assert.Equal(1, frames.Value)
+    Assert.Equal(Color.Hex 0x123456, device.LastClear)
+    Assert.True(obj.ReferenceEquals(dispatcher, host.Dispatcher.Value))
+    host.Background <- Color.White // still changeable while running
+    host.HandleEvent Frame |> ignore
+    Assert.Equal(Color.White, device.LastClear)

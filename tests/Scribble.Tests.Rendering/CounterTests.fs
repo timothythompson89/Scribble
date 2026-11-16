@@ -14,8 +14,8 @@ type CounterTests(fixture: TextFixture) =
     member private _.Render(view: View) =
         let tree = ElementTree(fixture.Text)
         tree.Update view
-        tree.UpdateLayout(Size.Create(360.0, 180.0))
-        let size: PixelSize = { Width = 360; Height = 180 }
+        tree.UpdateLayout(Size.Create(480.0, 180.0))
+        let size: PixelSize = { Width = 480; Height = 180 }
         fixture.Gpu.Device.RenderOffscreen(size, 1.0, fun f ->
             f.Clear(Color.Hex 0x181825)
             tree.Render f.DrawList)
@@ -32,8 +32,8 @@ type CounterTests(fixture: TextFixture) =
     member _.``the components demo``() =
         let tree = ElementTree(fixture.Text)
         tree.Update(Scribble.Samples.Counter.demo ())
-        tree.UpdateLayout(Size.Create(480.0, 520.0))
-        let size: PixelSize = { Width = 480; Height = 520 }
+        tree.UpdateLayout(Size.Create(520.0, 520.0))
+        let size: PixelSize = { Width = 520; Height = 520 }
         let image =
             fixture.Gpu.Device.RenderOffscreen(size, 1.0, fun f ->
                 f.Clear(Color.Hex 0x181825)

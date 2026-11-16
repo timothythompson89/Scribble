@@ -94,6 +94,17 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
   `onClick` takes `ClickEventArgs` (`Modifiers`, `Source`); write `fun _ -> ...` when unused (no unit overload: F# can't resolve `fun _ ->` between them).
 - **Syntax: FuncUI-style settings lists only** (decided 2026-11-15; the M4 builder trial was removed). Don't
   reintroduce computation-expression or modifier-chain syntax.
+- **Settings lists for every user-facing API where possible** (Tim, 2026-11-15): not just views, but anything an
+  app author configures (`App.run [ App.title ...; App.size ... ]`, `Element.define "X" [ Element.measure ... ]`
+  already follow it). When designing a new public API, default to `Thing.create [ Thing.option v ]` / `[ X.a; X.b ]`
+  over records with `{ Default with ... }`, optional arguments or builders, and say so if it doesn't fit. Internal
+  code is free. Settings are static members on the type they configure (`WebGpuDevice.backend`,
+  `ElementHost.background`), applied to an internal options record. Done 2026-11-15: `WebGpuDevice.Create [ ... ]`,
+  `BrowserGpuDevice.CreateAsync [ ... ]` (shared `GpuPower`), `ElementHost.create window device text [ ... ]`,
+  `TextSystem.create device shaper [ TextSystem.fallbacks ... ]` (atlas-only constructors are internal, for tests).
+  Agreed exceptions: `App.program init update view` stays positional (types), platform contracts
+  (`WindowOptions`, `IPlatform`) stay records/interfaces, component props stay `'P -> View`, hooks/`Cmd`/
+  `ctx.Animate` stay calls. Details in `docs/DESIGN.md` ("Settings everywhere").
 
 ## Rules and gotchas
 
@@ -152,10 +163,11 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). Last counts: 135 unit tests, 31 rendering tests (after click args).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). Last counts: 150 unit tests,
+31 rendering tests (after M5b).
 
-Remaining milestones: **M5b async in components** (next), M6 inspector, M7 styles, M7b icons, M8 core controls
-(Grid, DockPanel, ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox), M9 TextBox, M10 hot reload; later:
+Remaining milestones: M6 inspector (next), M7 styles, M7b icons, M8 core controls
+(Grid, DockPanel, ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, TabControl), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
 
 ### M5: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M5")
@@ -180,7 +192,19 @@ Three steps, each tried by Tim before the next:
    `ctx.Animate` (tweens, `Easing`) and `Element.transform`; Button sinks to 97% with a flattening shadow. Text
    under an extra scale rasterizes at quarter-pixel sizes. Counter sample = components demo.
 
-Views don't read element states directly (that's M7 styles). Async/dispatcher is **M5b**.
+Views don't read element states directly (that's M7 styles).
+
+### M5b: async (decisions in `docs/DESIGN.md`, "Decisions for M5b")
+
+`Dispatcher.fs`: one queue in Core (`Post`/`InvokeAsync`/`CheckAccess`/`RunPending`); platforms only `Wake`
+(Win32 message-only window + `PostMessageW`, so it works during the move/resize modal loop; browser
+`setTimeout(0)`). `dispatcher.Install()` (done by `App.run`/`runInBrowser`) sets a `SynchronizationContext` and
+routes unobserved task exceptions to `OnError` (= `App.onError`). `State.Set/Update` and Elmish dispatch post
+when off the UI thread (inline when the tree has no dispatcher, as in bare `ElementTree` tests). `Cmd.fs`: own
+`Cmd` (`none/ofMsg/batch/map/ofSub/ofTask/ofAsync`); `App.programWithCmd`, `ctx.useElmishWithCmd`;
+`ctx.useAsync(deps, fun d ct -> task|async)` → `AsyncValue.Loading|Loaded|Failed` (version counter drops late
+results). Tests drain the fake platform's wakes by hand (`AsyncTests.fs`; use a real `Thread` for "other thread",
+since `Task.Run(...).Wait()` can run inline).
 
 ### Later notes
 

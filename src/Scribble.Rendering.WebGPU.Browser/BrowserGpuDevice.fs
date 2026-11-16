@@ -92,6 +92,13 @@ type internal BrowserSurface(elementId: string, initialSize: PixelSize, atlas: G
                 disposed <- true
                 GpuJs.withId GpuJs.destroySurface elementId
 
+/// What the BrowserGpuDevice settings configure.
+type internal BrowserGpuOptions = { Power: GpuPower }
+
+/// One setting for `BrowserGpuDevice.CreateAsync [ ... ]`.
+[<Struct>]
+type BrowserGpuSetting = internal BrowserGpuSetting of (BrowserGpuOptions -> BrowserGpuOptions)
+
 /// IRenderDevice on the browser's own WebGPU (navigator.gpu).
 ///
 /// Unlike the native backend, creation is asynchronous: the browser only answers adapter and
@@ -100,17 +107,21 @@ type internal BrowserSurface(elementId: string, initialSize: PixelSize, atlas: G
 type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtlas: GlyphAtlas) =
     let mutable disposed = false
 
-    /// Loads the JavaScript side, then requests an adapter and a device.
-    /// `highPerformance`: Some true / Some false to state a preference; None lets the browser choose.
-    static member CreateAsync(?highPerformance: bool) : Task<BrowserGpuDevice> =
+    /// Which GPU to prefer on machines with more than one. Default: the browser chooses.
+    static member powerPreference(value: GpuPower) = BrowserGpuSetting(fun o -> { o with Power = value })
+
+    /// Loads the JavaScript side, then requests an adapter and a device:
+    /// `BrowserGpuDevice.CreateAsync []`, or `CreateAsync [ BrowserGpuDevice.powerPreference GpuPower.LowPower ]`.
+    static member CreateAsync(settings: BrowserGpuSetting list) : Task<BrowserGpuDevice> =
+        let options = settings |> List.fold (fun o (BrowserGpuSetting apply) -> apply o) { Power = GpuPower.Default }
         task {
             do! importEmbeddedModule GpuJs.ModuleName typeof<BrowserGpuDevice>.Assembly "scribble-webgpu.js"
             let args = GpuJs.init.Args()
             args[2].ToJS(
-                match highPerformance with
-                | Some true -> "high-performance"
-                | Some false -> "low-power"
-                | None -> ""
+                match options.Power with
+                | GpuPower.HighPerformance -> "high-performance"
+                | GpuPower.LowPower -> "low-power"
+                | GpuPower.Default -> ""
             )
             args[3].ToJS Shaders.shapesWgsl.Value
             let atlas = GlyphAtlas()

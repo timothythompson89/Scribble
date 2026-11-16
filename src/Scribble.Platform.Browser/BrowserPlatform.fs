@@ -10,7 +10,8 @@ module internal PlatformJs =
     [<Literal>]
     let ModuleName = "scribble-platform"
 
-    let init = JsFunction(ModuleName, "init", T.void', [ T.action; T.action ])
+    let init = JsFunction(ModuleName, "init", T.void', [ T.action; T.action; T.action ])
+    let wake = JsFunction(ModuleName, "wake", T.void', [])
     let takeEvents = JsFunction(ModuleName, "takeEvents", T.doubles, [])
     let takeTexts = JsFunction(ModuleName, "takeTexts", T.strings, [])
     let scale = JsFunction(ModuleName, "scale", T.double, [])
@@ -206,13 +207,16 @@ type BrowserPlatform private () =
         | _ -> ()
 
     // JavaScript holds these delegates; keeping them in fields documents that they must stay alive.
+    let mutable wakeHandler: unit -> unit = ignore
     let onEventsAction = Action onEvents
     let onFrameAction = Action onFrame
+    let onWakeAction = Action(fun () -> wakeHandler ())
 
     member private _.Start() =
         let args = PlatformJs.init.Args()
         args[2].ToJS onEventsAction
         args[3].ToJS onFrameAction
+        args[4].ToJS onWakeAction
         PlatformJs.init.Invoke args
 
     /// Loads the JavaScript side and returns a ready platform.
@@ -240,6 +244,11 @@ type BrowserPlatform private () =
 
         // The browser drives events and frames; there is no loop to run.
         member _.Run() = ()
+
+        member _.SetWakeHandler(handler) = wakeHandler <- handler
+
+        // WebAssembly is single-threaded here, so "any thread" is this one.
+        member _.Wake() = PlatformJs.call0 PlatformJs.wake |> ignore
 
         member _.Dispose() =
             window |> Option.iter (fun w -> (w :> IWindow).Close())

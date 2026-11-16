@@ -44,9 +44,24 @@ function push(kind, a = 0, b = 0, c = 0, d = 0, e = 0, f = 0) {
   }
 }
 
-export function init(onEvents, onFrame) {
+let notifyWake = null;
+let wakeScheduled = false;
+
+export function init(onEvents, onFrame, onWake) {
   notifyEvents = onEvents;
   notifyFrame = onFrame;
+  notifyWake = onWake;
+}
+
+// Scribble's dispatcher has work queued: drain it soon (a macrotask, so a burst of wakes and the
+// promise continuations around them become one call).
+export function wake() {
+  if (wakeScheduled) return;
+  wakeScheduled = true;
+  setTimeout(() => {
+    wakeScheduled = false;
+    if (notifyWake) notifyWake();
+  }, 0);
 }
 
 export function takeEvents() {

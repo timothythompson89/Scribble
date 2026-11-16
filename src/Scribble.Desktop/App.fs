@@ -22,9 +22,11 @@ module AppRun =
             else
                 use platform = new Win32Platform() :> IPlatform
                 use device =
-                    WebGpuDevice.Create { WebGpuOptions.Default with Backend = WebGpuDevice.BackendFromEnvironment() }
+                    WebGpuDevice.Create [ WebGpuDevice.backend (WebGpuDevice.BackendFromEnvironment()) ]
                     :> IRenderDevice
                 use shaper = new HarfBuzzShaper() :> IShaper
-                use _app = App.start (platform, device, shaper, settings)
+                use app = App.start (platform, device, shaper, settings)
+                // `await` in app code resumes on this (the UI) thread.
+                (app :?> ElementHost).Dispatcher |> ValueOption.iter _.Install()
                 platform.Run()
                 0

@@ -21,6 +21,8 @@ type IElementRoot =
     abstract ScheduleComponent: depth: int * run: (unit -> unit) -> unit
     /// Runs `action` after the current frame is drawn (effects; "keep animating" requests).
     abstract AfterFrame: action: (unit -> unit) -> unit
+    /// The UI thread's dispatcher, when the tree runs in an app (bare trees in tests have none).
+    abstract Dispatcher: Dispatcher voption
 
 /// What kind of element something is: its name, three functions and its default settings. Measure
 /// says how big the content wants to be, Arrange places the children, Render draws the element.

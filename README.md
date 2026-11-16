@@ -80,17 +80,28 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
    focused one, Space presses it while held and clicks on release (Escape first cancels). Clicking a button focuses
    it without a ring, so Space then presses *that* button; click the background to give Space back to the app.
 
-The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo:
+The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo, on three tabs
+(Elmish, Load, List). The tabs are made from what's already there: every page stays in the tree and only the
+selected one has `isVisible true`, so each page keeps its state while hidden.
 
-1. The top counter is the Elmish counter inside a component (`useElmish`): the buttons change the count (a press
-   and a release on the same button counts as a click), Reset is disabled (faded, no hand cursor) at zero.
-2. Below it, a list of counters, each with its own count (`useState`); the bar slides to the new count (0 to 10,
+1. Change something on each tab (a count, the number on Load, the list), switch away and back: it's all still
+   there. The selected tab is blue; the others look and react like normal buttons. Tab (the key) only reaches the
+   visible page's buttons. Open Load more than a second after starting: its first result is already there (hidden
+   pages keep running).
+2. The Elmish tab is the Elmish counter inside a component (`useElmishWithCmd`): the buttons change the count (a
+   press and a release on the same button counts as a click), Reset is disabled (faded, no hand cursor) at zero.
+   "+1 in a second" adds one a second later (`Cmd.ofAsync`); press it several times quickly and each one lands.
+   Try it while dragging or resizing the window too: the count should still go up during the drag.
+3. The Load tab shows "loading…" for a second, then `1² = 1`. Press − or + quickly several times: it stays on
+   "loading…" and only the last number's result appears (older loads are cancelled). Negative numbers work.
+4. The List tab has a list of counters, each with its own count (`useState`); the bar slides to the new count (0 to 10,
    red when negative) over a quarter second (`useAnimated`). Add, Remove first and Reverse change the list: counts
    stay with their names (keyed). Clicking one counter re-runs only that counter.
-3. Buttons sink slightly (97%) while pressed and spring back; their faint shadow flattens. Pressing with Space
+5. Buttons sink slightly (97%) while pressed and spring back; their faint shadow flattens. Pressing with Space
    does the same. Text stays sharp while sinking.
-4. Nothing redraws while you don't click; an animation draws until it arrives, then stops.
-5. Tab, Enter and Space work as in the Hello sample.
+6. Nothing redraws while you don't click; an animation draws until it arrives, then stops. A pending load or
+   "+1 in a second" draws one frame when it finishes, not continuously while waiting.
+7. Tab, Enter and Space work as in the Hello sample.
 The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
 
 ## Run the browser sample
@@ -142,7 +153,7 @@ dotnet test
 ## Text
 
 ```fsharp
-let text = TextSystem(device.GlyphAtlas, new HarfBuzzShaper())      // browser: BrowserHarfBuzzShaper.CreateAsync()
+let text = TextSystem.create device (new HarfBuzzShaper()) []       // browser: BrowserHarfBuzzShaper.CreateAsync()
 drawList.DrawText(text, "Hello", Fonts.SemiBold(), 15.0, x, y, color) // (x, y) = top-left of the line box, in DIPs
 let m = text.Measure("Hello", Fonts.Regular(), 15.0)                  // Width, Height, Baseline, LineHeight
 ```
@@ -152,7 +163,7 @@ the first fallback that has them; emoji prefer a color font. Text is split into 
 sequences like 👨‍👩‍👧, 👍🏽, 🇺🇸 and 1️⃣ stay intact.
 
 ```fsharp
-let text = TextSystem(device, shaper, [ Emoji.Twemoji() ])   // Emoji module: Scribble.Text.Emoji package
+let text = TextSystem.create device shaper [ TextSystem.fallbacks [ Emoji.Twemoji() ] ]   // Scribble.Text.Emoji package; in an app: App.fonts
 ```
 
 **Attribution:** the emoji art is Twemoji by Twitter, Inc. and other contributors, under CC-BY 4.0. Apps that use
@@ -270,7 +281,9 @@ StackPanel.items names id counter                                // keyed: state
   - `ctx.useEffect(deps, fun d -> ...)`: after the frame that shows the component, and again when `deps` change
     (`()` for once; a tuple for several values).
   - `ctx.useSubscription(deps, fun d -> disposable)`: disposed when `deps` change and when the component goes.
-  - `ctx.useElmish(init, update)`: `let model, dispatch = ...` (no commands until M5b).
+  - `ctx.useElmish(init, update)`: `let model, dispatch = ...`; `ctx.useElmishWithCmd((model, cmd), update)`
+    when `update` returns `model, cmd` (see Async below).
+  - `ctx.useAsync(deps, fun d ct -> task)`: see Async below.
   - `ctx.useAnimated(target, duration, ?easing)`: a `float` or `Color` that moves to each new target; the
     component re-runs every frame while it moves.
 - **For element authors:** `ctx.Animate("key", target, duration, ?easing)` in a render function animates
@@ -278,6 +291,33 @@ StackPanel.items names id counter                                // keyed: state
   element and its children are drawn without touching layout or input. Button uses both to sink while pressed.
   Easings: `Easing.linear`, `easeIn`, `easeOut` (the default), `easeInOut`, or any `float -> float`.
 - An app made only of components has no messages: annotate its settings (`let app: AppSetting<unit> list = ...`).
+
+### Async
+
+Everything in the UI runs on one thread. Work that waits (files, network, delays) runs elsewhere and comes back:
+
+```fsharp
+let square = ctx.useAsync(n, fun n ct -> task { do! Task.Delay(1000, ct); return n * n })
+match square with
+| AsyncValue.Loading -> "loading…"
+| AsyncValue.Loaded v -> string v
+| AsyncValue.Failed e -> e.Message
+```
+
+- **`ctx.useAsync(deps, fun d ct -> ...)`** returns a `Task` or an F# `Async`. It starts after the frame that
+  shows the component, and again whenever `deps` change; the old load's token is cancelled and its result
+  ignored, so a slow old answer never overwrites a newer one. Removing the component cancels too. Reloading shows
+  `Loading` again.
+- **Commands:** `App.programWithCmd (model, cmd) update view` and `ctx.useElmishWithCmd` take an `update` that
+  returns `model, cmd`. `Cmd.none`, `Cmd.ofMsg`, `Cmd.batch`, `Cmd.map`, `Cmd.ofSub (fun dispatch -> ...)`,
+  `Cmd.ofTask work arg onSuccess onError` and `Cmd.ofAsync` (same shape). `App.program` and `useElmish` stay.
+- **From other threads:** `State.Set`/`Update` and Elmish `dispatch` may be called from any thread; they're queued
+  to the UI thread. Elements themselves are UI-thread only. `await` inside `task { }` started on the UI thread
+  resumes there (Scribble installs a `SynchronizationContext`).
+- **Errors:** exceptions from commands, queued work and tasks nobody awaited go to `App.onError (fun e -> ...)`
+  (default: written to the console; the app keeps running). `useAsync` failures become `Failed e` instead.
+- **The dispatcher** (`Scribble.Core.Dispatcher`: `Post`, `InvokeAsync`, `CheckAccess`, `RunPending`) is what all
+  of this uses; apps rarely need it. A host that owns its loop (a game engine) calls `RunPending()` each tick.
 
 ### Elements and layout
 
@@ -337,7 +377,15 @@ settings type because static members are inherited: on the type, Button's would 
 
 Element types are defined once, as static values: the differ recognizes a type by reference. `ElementTree` works
 without a window (`tree.Update view`), which is how the layout and differ tests run; `App.start` runs an app on any
-`IPlatform`, which is how the app tests run against a fake platform. Typical numbers (Release, after warm-up): 10,000 elements lay out in about 1 ms, and changing one of them takes a
+`IPlatform`, which is how the app tests run against a fake platform. Hosting Scribble yourself (a game engine, say)
+uses the same settings style as everything else:
+
+```fsharp
+let device = WebGpuDevice.Create [ WebGpuDevice.backend BackendType.Vulkan; WebGpuDevice.powerPreference GpuPower.LowPower ]
+let host = ElementHost.create window device text [ ElementHost.background (Color.Hex 0x181825); ElementHost.beforeFrame tick ]
+```
+
+(`BrowserGpuDevice.CreateAsync [ BrowserGpuDevice.powerPreference ... ]` in the browser.) Typical numbers (Release, after warm-up): 10,000 elements lay out in about 1 ms, and changing one of them takes a
 few microseconds; building, diffing and laying out a 1,000-element view with one change takes about 0.5 ms.
 
 ## Project layout

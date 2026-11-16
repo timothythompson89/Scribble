@@ -17,5 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Rendering/Scribble.Rendering.fsproj" />
+    <InternalsVisibleTo Include="Scribble.Tests" />
+    <InternalsVisibleTo Include="Scribble.Tests.Rendering" />
   </ItemGroup>
 </Project>

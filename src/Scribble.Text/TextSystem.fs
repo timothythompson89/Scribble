@@ -49,11 +49,18 @@ type internal Run = { Font: Font; Glyphs: ShapedGlyph[] }
 ///
 /// Glyphs are rasterized at their exact pixel size and at one of four horizontal subpixel
 /// positions, so text stays sharp at any scale and spacing stays even.
+/// What the TextSystem settings configure.
+type internal TextSystemOptions = { Fallbacks: Font list }
+
+/// One setting for `TextSystem.create`: `TextSystem.fallbacks [ Emoji.Twemoji() ]`.
+[<Struct>]
+type TextSystemSetting = internal TextSystemSetting of (TextSystemOptions -> TextSystemOptions)
+
 [<Sealed>]
-type TextSystem(atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: IShaper, fallbacks: Font list) =
+type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: IShaper, initialFallbacks: Font list) =
     static let subpixelSteps = 4
 
-    let mutable fallbacks = fallbacks
+    let mutable currentFallbacks = initialFallbacks
     // Shaping results are size independent (font units): cache per font and string.
     let runs = Dictionary<struct (int * string), Run[]>()
     // Rasterized glyphs, placed in an atlas: key = font, glyph, size in 1/16 px, subpixel step.
@@ -72,7 +79,7 @@ type TextSystem(atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: IShaper, fall
     let fontFor (primary: Font) (cluster: string) =
         let codepoints = [| for rune in cluster.EnumerateRunes() -> rune.Value |]
         let first = codepoints[0]
-        let chain = primary :: fallbacks
+        let chain = primary :: currentFallbacks
         let emoji = Array.contains 0xFE0F codepoints || first >= 0x1F000 || (first >= 0x2600 && first <= 0x27BF && codepoints.Length > 1)
         let covers (font: Font) =
             codepoints |> Array.forall (fun cp -> isVariationOrJoiner cp || cp < 0x20 || font.Face.HasCharacter cp)
@@ -101,7 +108,7 @@ type TextSystem(atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: IShaper, fall
                     result.Add { Font = runFont; Glyphs = glyphs |> Array.map (fun g -> { g with Cluster = g.Cluster + runStart }) }
             while i < line.Length do
                 let length = StringInfo.GetNextTextElementLength(line, i)
-                let clusterFont = if fallbacks.IsEmpty then font else fontFor font (line.Substring(i, length))
+                let clusterFont = if currentFallbacks.IsEmpty then font else fontFor font (line.Substring(i, length))
                 if clusterFont.Id <> runFont.Id then
                     flush i
                     runFont <- clusterFont
@@ -159,21 +166,21 @@ type TextSystem(atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: IShaper, fall
 
     let lines (text: string) = text.Split '\n'
 
-    /// A text system without fallback fonts.
-    new(atlas: GlyphAtlas, shaper: IShaper) = TextSystem(atlas, GlyphAtlas(256, 4), shaper, [])
+    /// A text system on bare atlases, without fallback fonts (tests).
+    internal new(atlas: GlyphAtlas, shaper: IShaper) = TextSystem(atlas, GlyphAtlas(256, 4), shaper, [])
 
-    /// A text system drawing into a render device's atlases, with optional fallback fonts
-    /// (for example `Emoji.Twemoji()` from Scribble.Text.Emoji).
-    new(device: IRenderDevice, shaper: IShaper, ?fallbacks: Font list) =
-        TextSystem(device.GlyphAtlas, device.ColorGlyphAtlas, shaper, defaultArg fallbacks [])
+    /// Fonts tried, in order, for characters the requested font doesn't have, e.g.
+    /// `TextSystem.fallbacks [ Emoji.Twemoji() ]` (Scribble.Text.Emoji). Default: none.
+    static member fallbacks(fonts: Font list) = TextSystemSetting(fun o -> { o with Fallbacks = fonts })
 
     member _.Shaper = shaper
 
-    /// Fonts tried, in order, for characters the requested font doesn't have.
+    /// Fonts tried, in order, for characters the requested font doesn't have (starts as
+    /// `TextSystem.fallbacks`; may change while running).
     member _.Fallbacks
-        with get () = fallbacks
+        with get () = currentFallbacks
         and set value =
-            fallbacks <- value
+            currentFallbacks <- value
             runs.Clear()
 
     /// Line height in DIPs for a font at `size` DIPs (ascender − descender + line gap).
@@ -369,6 +376,13 @@ type TextSystem(atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: IShaper, fall
                             else list.DrawGlyph(gx, gy, bitmap.Width, bitmap.Height, ax, ay, color)
                         pen <- pen + float g.XAdvance * scale
                 lineIndex <- lineIndex + 1
+
+module TextSystem =
+    /// A text system drawing into `device`'s glyph atlases, shaping with `shaper`:
+    /// `TextSystem.create device shaper [ TextSystem.fallbacks [ Emoji.Twemoji() ] ]`.
+    let create (device: IRenderDevice) (shaper: IShaper) (settings: TextSystemSetting list) =
+        let options = settings |> List.fold (fun o (TextSystemSetting apply) -> apply o) { Fallbacks = [] }
+        TextSystem(device.GlyphAtlas, device.ColorGlyphAtlas, shaper, options.Fallbacks)
 
 [<AutoOpen>]
 module DrawListTextExtensions =

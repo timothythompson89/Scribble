@@ -20,9 +20,11 @@ module AppRun =
             task {
                 try
                     let! platform = BrowserPlatform.InitializeAsync()
-                    let! device = BrowserGpuDevice.CreateAsync()
+                    let! device = BrowserGpuDevice.CreateAsync []
                     let! shaper = BrowserHarfBuzzShaper.CreateAsync()
-                    App.start (platform :> IPlatform, device :> IRenderDevice, shaper :> IShaper, settings) |> ignore
+                    let app = App.start (platform :> IPlatform, device :> IRenderDevice, shaper :> IShaper, settings)
+                    // `await` in app code resumes through Scribble's dispatcher (and its error handling).
+                    (app :?> ElementHost).Dispatcher |> ValueOption.iter _.Install()
                     (platform :> IPlatform).Run()
                 with ex ->
                     Console.Error.WriteLine $"Scribble failed to start: {ex}"

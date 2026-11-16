@@ -14,7 +14,7 @@ open Scribble.Tests.Rendering.ClearTests
 type TextFixture() =
     let gpu = new GpuFixture()
     let shaper = new HarfBuzzShaper()
-    let text = TextSystem(gpu.Device, shaper, [ Emoji.Twemoji() ])
+    let text = TextSystem.create gpu.Device shaper [ TextSystem.fallbacks [ Emoji.Twemoji() ] ]
     member _.Gpu = gpu
     member _.Text = text
     interface IDisposable with

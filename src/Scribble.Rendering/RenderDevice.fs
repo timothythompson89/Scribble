@@ -3,6 +3,16 @@ namespace Scribble.Rendering
 open System
 open Scribble.Platform
 
+/// Which GPU to prefer when a machine has more than one.
+[<RequireQualifiedAccess>]
+type GpuPower =
+    /// Let the system choose.
+    | Default
+    /// The integrated GPU: less power, less heat.
+    | LowPower
+    /// The discrete GPU.
+    | HighPerformance
+
 /// One frame being recorded for a surface or an offscreen target.
 /// Disposing the frame submits it (and presents it, for a window surface).
 type IFrame =

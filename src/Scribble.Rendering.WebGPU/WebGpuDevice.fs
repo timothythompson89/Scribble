@@ -12,8 +12,8 @@ open Scribble.Rendering.WebGPU.Native
 /// An error the GPU reported asynchronously (validation errors, out of memory, device lost).
 type GpuError = { Kind: string; Message: string }
 
-/// Options for creating a WebGPU device.
-type WebGpuOptions =
+/// What the WebGpuDevice settings configure.
+type internal WebGpuOptions =
     { PowerPreference: PowerPreference
       /// Which native API wgpu should use. Undefined lets wgpu choose.
       Backend: BackendType
@@ -24,6 +24,10 @@ type WebGpuOptions =
         { PowerPreference = PowerPreference.HighPerformance
           Backend = BackendType.Undefined
           OnError = fun e -> Console.Error.WriteLine $"[WebGPU] {e.Kind}: {e.Message}" }
+
+/// One setting for `WebGpuDevice.Create [ ... ]`: `WebGpuDevice.backend BackendType.D3D12`.
+[<Struct>]
+type WebGpuSetting = internal WebGpuSetting of (WebGpuOptions -> WebGpuOptions)
 
 /// The WebGPU implementation of IRenderDevice, using wgpu-native.
 [<Sealed>]
@@ -44,9 +48,26 @@ type WebGpuDevice private (ctx: GpuContext, description: string, keepAlive: obj 
         | Some "opengles" | Some "gles" -> BackendType.OpenGLES
         | _ -> BackendType.Undefined
 
-    /// Creates the instance, picks an adapter and creates a device. Throws if no GPU is usable.
-    static member Create(?options: WebGpuOptions) : WebGpuDevice =
-        let options = defaultArg options WebGpuOptions.Default
+    /// Which native API wgpu uses (D3D12, Vulkan, Metal, ...). By default wgpu chooses.
+    static member backend(value: BackendType) = WebGpuSetting(fun o -> { o with Backend = value })
+
+    /// Which GPU to prefer on machines with more than one. Default: HighPerformance.
+    static member powerPreference(value: GpuPower) =
+        let native =
+            match value with
+            | GpuPower.Default -> PowerPreference.Undefined
+            | GpuPower.LowPower -> PowerPreference.LowPower
+            | GpuPower.HighPerformance -> PowerPreference.HighPerformance
+        WebGpuSetting(fun o -> { o with PowerPreference = native })
+
+    /// Called for every error the GPU reports asynchronously (validation, out of memory, device
+    /// lost). Default: written to stderr.
+    static member onError(handler: GpuError -> unit) = WebGpuSetting(fun o -> { o with OnError = handler })
+
+    /// Creates the instance, picks an adapter and creates a device. Throws if no GPU is usable:
+    /// `WebGpuDevice.Create []`, or `WebGpuDevice.Create [ WebGpuDevice.backend BackendType.Vulkan ]`.
+    static member Create(settings: WebGpuSetting list) : WebGpuDevice =
+        let options = settings |> List.fold (fun o (WebGpuSetting apply) -> apply o) WebGpuOptions.Default
 
         let instance = wgpuCreateInstance NativePtr.nullPtr
         if instance = 0n then

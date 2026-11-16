@@ -52,6 +52,14 @@ type IPlatform =
     /// Creates a hidden window. Events are delivered on the UI thread to `onEvent`.
     abstract CreateWindow: options: WindowOptions * onEvent: (PlatformEvent -> unit) -> IWindow
 
+    /// Sets what runs on the UI thread after `Wake` (Scribble's dispatcher draining its queue).
+    /// Call once, on the UI thread, before the first Wake.
+    abstract SetWakeHandler: handler: (unit -> unit) -> unit
+
+    /// Makes the platform call the wake handler on the UI thread soon, even while it's idle or the
+    /// user is dragging a window. Safe from any thread; several wakes may become one call.
+    abstract Wake: unit -> unit
+
     /// Starts delivering events.
     ///
     /// Desktop: runs the message loop and returns when every window is closed. While nothing has

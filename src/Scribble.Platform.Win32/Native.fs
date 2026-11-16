@@ -140,6 +140,11 @@ let IDC_NO = 32648n
 let IDC_HAND = 32649n
 [<Literal>]
 let WM_DPICHANGED = 0x02E0u
+/// WM_APP + 1: Scribble's "wake up and drain the dispatcher" message.
+[<Literal>]
+let WM_SCRIBBLE_WAKE = 0x8001u
+/// Parent for message-only windows.
+let HWND_MESSAGE = -3n
 [<Literal>]
 let WM_PAINT = 0x000Fu
 [<Literal>]
@@ -227,6 +232,10 @@ extern nativeint DispatchMessageW(MSG* lpMsg)
 
 [<DllImport("user32.dll", ExactSpelling = true)>]
 extern int WaitMessage()
+
+/// Safe from any thread.
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern int PostMessageW(nativeint hwnd, uint32 msg, nativeint wParam, nativeint lParam)
 
 [<DllImport("user32.dll", ExactSpelling = true)>]
 extern int GetClientRect(nativeint hwnd, RECT* lpRect)

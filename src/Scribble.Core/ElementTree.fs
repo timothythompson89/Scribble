@@ -14,6 +14,7 @@ type ElementTree(text: TextSystem) =
     let mutable scale = 1.0
     let mutable onInvalidated: unit -> unit = ignore
     let mutable time = TimeSpan.Zero
+    let mutable dispatcher: Dispatcher voption = ValueNone
     /// Components whose state changed, with their depth: run at the start of the next layout.
     let scheduled = Collections.Generic.List<struct (int * (unit -> unit))>()
     let afterFrame = Collections.Generic.List<unit -> unit>()
@@ -56,11 +57,15 @@ type ElementTree(text: TextSystem) =
                 root |> ValueOption.iter _.InvalidateAll()
                 onInvalidated ()
 
-    /// Lays the tree out in `size` DIPs. Only invalid parts do any work.
     /// The current frame's time, for animations (ElementHost sets it at the start of every frame).
     member _.Time
         with get () = time
         and set v = time <- v
+
+    /// The UI thread's dispatcher (App.start sets it): state set from other threads goes through it.
+    member _.Dispatcher
+        with get () = dispatcher
+        and set (v: Dispatcher voption) = dispatcher <- v
 
     /// Re-runs components whose state changed, parents before children (a parent that re-runs a
     /// child with new props takes care of it). Part of UpdateLayout.
@@ -82,6 +87,8 @@ type ElementTree(text: TextSystem) =
             for action in actions do
                 action ()
 
+    /// Lays the tree out in `size` DIPs (after re-running components whose state changed). Only
+    /// invalid parts do any work.
     member this.UpdateLayout(size: Size) =
         this.RunScheduledComponents()
         match root with
@@ -123,6 +130,7 @@ type ElementTree(text: TextSystem) =
             scheduled.Add(struct (depth, run))
             onInvalidated ()
         member _.AfterFrame action = afterFrame.Add action
+        member _.Dispatcher = dispatcher
         member _.VerifyAccess() =
 #if DEBUG
             if Environment.CurrentManagedThreadId <> ownerThread then

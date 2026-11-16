@@ -19,18 +19,27 @@ type Win32Platform() =
     let classNamePtr = Marshal.StringToHGlobalUni className
     let mutable pendingException: ExceptionDispatchInfo option = None
     let mutable disposed = false
+    /// A hidden message-only window that receives wake messages. Posted to a window (not the
+    /// thread) so they still arrive during the modal loop Windows runs while a window is dragged
+    /// or resized.
+    let mutable wakeWindow = 0n
+    let mutable wakeHandler: unit -> unit = ignore
 
     // An exception must never unwind through native frames, so the window procedure catches it,
     // stores it, and the message loop rethrows it with its original stack trace.
     let wndProc =
         WndProc(fun hwnd msg wParam lParam ->
             try
-                match windows.TryGetValue hwnd with
-                | true, window ->
-                    match window.HandleMessage(msg, wParam, lParam) with
-                    | ValueSome result -> result
-                    | ValueNone -> DefWindowProcW(hwnd, msg, wParam, lParam)
-                | _ -> DefWindowProcW(hwnd, msg, wParam, lParam)
+                if hwnd = wakeWindow && msg = WM_SCRIBBLE_WAKE then
+                    wakeHandler ()
+                    0n
+                else
+                    match windows.TryGetValue hwnd with
+                    | true, window ->
+                        match window.HandleMessage(msg, wParam, lParam) with
+                        | ValueSome result -> result
+                        | ValueNone -> DefWindowProcW(hwnd, msg, wParam, lParam)
+                    | _ -> DefWindowProcW(hwnd, msg, wParam, lParam)
             with ex ->
                 if pendingException.IsNone then pendingException <- Some(ExceptionDispatchInfo.Capture ex)
                 DefWindowProcW(hwnd, msg, wParam, lParam))
@@ -154,9 +163,22 @@ type Win32Platform() =
         member _.CreateWindow(options, onEvent) = createWindow options onEvent
         member _.Run() = run ()
 
+        member _.SetWakeHandler(handler) =
+            wakeHandler <- handler
+            if wakeWindow = 0n then
+                wakeWindow <- CreateWindowExW(0u, classNamePtr, 0n, 0u, 0, 0, 0, 0, HWND_MESSAGE, 0n, hinstance, 0n)
+                if wakeWindow = 0n then
+                    raise (InvalidOperationException $"Creating the wake window failed (error {Marshal.GetLastPInvokeError()}).")
+
+        member _.Wake() =
+            if wakeWindow <> 0n then PostMessageW(wakeWindow, WM_SCRIBBLE_WAKE, 0n, 0n) |> ignore
+
         member _.Dispose() =
             if not disposed then
                 disposed <- true
+                if wakeWindow <> 0n then
+                    DestroyWindow wakeWindow |> ignore
+                    wakeWindow <- 0n
                 for w in List.ofSeq windows.Values do
                     (w :> IWindow).Close()
                 UnregisterClassW(classNamePtr, hinstance) |> ignore
