@@ -34,6 +34,7 @@ type AppConfig<'Msg> internal () =
     member val internal OnFrame: (FrameTime -> 'Msg option) list = [] with get, set
     member val internal OnError: (exn -> unit) voption = ValueNone with get, set
     member val internal Layers: LayerSetting list list = [] with get, set
+    member val internal Styles: Style list = [] with get, set
     member val internal OnStart: (AppContext -> unit) list = [] with get, set
     /// Makes the program, given the runtime's side of it.
     member val internal Program: (ProgramHost -> ProgramRunner<'Msg>) voption = ValueNone with get, set
@@ -115,6 +116,10 @@ type App =
     /// Where errors from async work go: commands, work queued to the UI thread, tasks nobody
     /// awaited. By default they're written to the console and the app keeps running.
     static member onError<'Msg>(handler: exn -> unit) : AppSetting<'Msg> = AppSetting(fun c -> c.OnError <- ValueSome handler)
+
+    /// Styles for the whole app (every layer but those with `Layer.appStyles false`); later ones win
+    /// over earlier ones, and styles set on elements win over these. Several `App.styles` add up.
+    static member styles<'Msg>(value: Style list) : AppSetting<'Msg> = AppSetting(fun c -> c.Styles <- c.Styles @ value)
 
     /// A layer above the app: `App.layer [ Layer.view (toasts ()) ]`, or a modal one with
     /// `Layer.modal true`. Its view is fixed (components inside keep their own state); see `Layer`.
@@ -203,6 +208,7 @@ type App =
                 ElementHost.background config.Background
                 ElementHost.dispatcher dispatcher
                 ElementHost.beforeFrame beforeFrame
+                ElementHost.styles config.Styles
             ]
         host.Value <- ValueSome h
         for layer in config.Layers do

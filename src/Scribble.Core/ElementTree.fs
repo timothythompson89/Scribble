@@ -18,6 +18,12 @@ type ElementTree(text: TextSystem) =
     /// Components whose state changed, with their depth: run at the start of the next layout.
     let scheduled = Collections.Generic.List<struct (int * (unit -> unit))>()
     let afterFrame = Collections.Generic.List<unit -> unit>()
+    // Styles: the app's (every element), whether anything in the tree uses styles (until then
+    // restyle requests are ignored), whether a style tests an ancestor's state, and the queue.
+    let mutable appStyles: Style list = []
+    let mutable stylesInUse = false
+    let mutable ancestorStates = false
+    let restyleQueue = Collections.Generic.List<Element>()
 
     member _.Text = text
 
@@ -78,6 +84,46 @@ type ElementTree(text: TextSystem) =
             for struct (_, run) in batch do
                 run ()
 
+    /// Styles for every element in the tree (`App.styles`; the host sets them on its layers).
+    member this.Styles
+        with get () = appStyles
+        and set (value: Style list) =
+            if not (obj.ReferenceEquals(value, appStyles)) then
+                appStyles <- value
+                stylesInUse <- stylesInUse || not value.IsEmpty
+                match root with
+                | ValueSome r -> (this :> IElementRoot).RequestRestyle(box r, true, false)
+                | ValueNone -> ()
+
+    /// Matches styles for elements that asked (joined the tree, changed classes or states, ...),
+    /// parents before children. Part of UpdateLayout, after components run.
+    member this.RunScheduledStyles() =
+        let mutable rounds = 0
+        while restyleQueue.Count > 0 && rounds < 10 do
+            rounds <- rounds + 1
+            let depth (e: Element) =
+                let mutable d = 0
+                let mutable p = e.Parent
+                while p.IsSome do
+                    d <- d + 1
+                    p <- p.Value.Parent
+                d
+            let batch = restyleQueue.ToArray() |> Array.sortBy depth
+            restyleQueue.Clear()
+            for e in batch do
+                let isOurs =
+                    match e.Root with
+                    | ValueSome r -> obj.ReferenceEquals(r, this)
+                    | ValueNone -> false
+                if isOurs then
+                    let struct (queued, deep) = e.TakeRestyle()
+                    if queued then
+                        let scopes = StyleEngine.scopesAbove e
+                        let found =
+                            if deep then StyleEngine.applyDeep appStyles scopes e
+                            else StyleEngine.apply appStyles scopes e
+                        if found then ancestorStates <- true
+
     /// Runs what asked to run after the frame (effects, animations asking for the next frame).
     /// ElementHost calls it once a frame is drawn.
     member _.RunAfterFrame() =
@@ -91,6 +137,7 @@ type ElementTree(text: TextSystem) =
     /// invalid parts do any work.
     member this.UpdateLayout(size: Size) =
         this.RunScheduledComponents()
+        this.RunScheduledStyles()
         match root with
         | ValueSome r ->
             r.Measure size
@@ -142,6 +189,18 @@ type ElementTree(text: TextSystem) =
             onInvalidated ()
         member _.AfterFrame action = afterFrame.Add action
         member _.Dispatcher = dispatcher
+        member this.RequestRestyle(element, deep, stateChange) =
+            if stylesInUse then
+                let e = element :?> Element
+                if e.MarkRestyle(deep || (stateChange && ancestorStates)) then
+                    restyleQueue.Add e
+                    onInvalidated ()
+        member this.StylesUsed() =
+            if not stylesInUse then
+                stylesInUse <- true
+                match root with
+                | ValueSome r -> (this :> IElementRoot).RequestRestyle(box r, true, false)
+                | ValueNone -> ()
         member _.VerifyAccess() =
 #if DEBUG
             if Environment.CurrentManagedThreadId <> ownerThread then

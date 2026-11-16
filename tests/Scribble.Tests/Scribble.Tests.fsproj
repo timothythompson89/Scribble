@@ -20,8 +20,15 @@
     <Compile Include="KeyboardTests.fs" />
     <Compile Include="ComponentTests.fs" />
     <Compile Include="AsyncTests.fs" />
-    <Compile Include="../../samples/Shared/Counter.fs" Link="Counter.fs" />
+    <Compile Include="../../samples/Shared/Counter/Common.fs" Link="Common.fs" />
+    <Compile Include="../../samples/Shared/Counter/ElmishTab.fs" Link="ElmishTab.fs" />
+    <Compile Include="../../samples/Shared/Counter/LoadTab.fs" Link="LoadTab.fs" />
+    <Compile Include="../../samples/Shared/Counter/ListTab.fs" Link="ListTab.fs" />
+    <Compile Include="../../samples/Shared/Counter/LayersTab.fs" Link="LayersTab.fs" />
+    <Compile Include="../../samples/Shared/Counter/StylesTab.fs" Link="StylesTab.fs" />
+    <Compile Include="../../samples/Shared/Counter/Counter.fs" Link="Counter.fs" />
     <Compile Include="TabsTests.fs" />
+    <Compile Include="StyleTests.fs" />
     <Compile Include="LayerTests.fs" />
     <Compile Include="InspectorTests.fs" />
   </ItemGroup>

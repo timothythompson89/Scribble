@@ -9,7 +9,13 @@
     <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../Shared/Counter.fs" Link="Counter.fs" />
+    <Compile Include="../Shared/Counter/Common.fs" Link="Common.fs" />
+    <Compile Include="../Shared/Counter/ElmishTab.fs" Link="ElmishTab.fs" />
+    <Compile Include="../Shared/Counter/LoadTab.fs" Link="LoadTab.fs" />
+    <Compile Include="../Shared/Counter/ListTab.fs" Link="ListTab.fs" />
+    <Compile Include="../Shared/Counter/LayersTab.fs" Link="LayersTab.fs" />
+    <Compile Include="../Shared/Counter/StylesTab.fs" Link="StylesTab.fs" />
+    <Compile Include="../Shared/Counter/Counter.fs" Link="Counter.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

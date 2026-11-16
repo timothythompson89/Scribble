@@ -234,6 +234,8 @@ module internal Format =
             | :? TextTrimming as t -> (match t with NoTrimming -> "none" | CharacterEllipsis -> "ellipsis")
             | :? TextAlignment as a -> (match a with TextAlignment.Start -> "start" | TextAlignment.Center -> "center" | TextAlignment.End -> "end")
             | :? Font as f -> f.Name
+            | :? Style as s -> s.Description
+            | :? ElementState as s -> ":" + s.Name
             | :? View as v -> viewName v
             | :? (View voption) as v -> (match v with ValueSome x -> viewName x | ValueNone -> "none")
             | :? (View list) as l -> (match l.Length with 1 -> "1 child" | n -> n.ToString(inv) + " children")
@@ -563,6 +565,18 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
             | _ -> ()
         changed.Trigger()
 
+    /// Clears the selection (the panel shows its hint again).
+    member _.Deselect() =
+        if selected.IsSome then
+            selected <- ValueNone
+            changed.Trigger()
+
+    /// A click on a tree row: selects it, or deselects it when it's already selected.
+    member this.ClickRow(e: Element) =
+        match selected with
+        | ValueSome s when obj.ReferenceEquals(s, e) -> this.Deselect()
+        | _ -> this.Select e
+
     member _.HoverRow(e: Element) =
         if not picking then
             hovered <- ValueSome e
@@ -786,6 +800,8 @@ type internal PanelProps = { State: InspectorState; IsPoppedOut: bool }
 // --- The views ---------------------------------------------------------------------------------------
 
 module internal Views =
+    // Shown in their own words on the states line ("hovered", "focused (visible)"), not by name.
+    let private builtInStates = [ States.hover; States.pressed; States.focused; States.focusVisible; States.disabled ]
     let private panelBackground = (Color.Hex 0x1B1B2A).WithAlpha 0.97f
     let private dim = Color.Hex 0x8A8AA0
     let private typeColor = Color.Hex 0x8AB4F8
@@ -853,7 +869,7 @@ module internal Views =
                 )
                 // The chevron toggles; anywhere else selects.
                 Border.onPointerDown (fun a ->
-                    if hasChildren && a.LocalPosition.X < left + 14.0 then state.ToggleExpanded e else state.Select e)
+                    if hasChildren && a.LocalPosition.X < left + 14.0 then state.ToggleExpanded e else state.ClickRow e)
                 Border.onPointerEnter (fun _ -> state.HoverRow e)
                 Border.onPointerLeave (fun _ -> state.LeaveRow e)
                 Border.child (
@@ -996,6 +1012,26 @@ module internal Views =
             ]
         ]
 
+    /// A line whose value wraps instead of ending in "…" (the states, which can be many). One line
+    /// tall, it looks exactly like `line`.
+    let private wrappingLine (name: string) (value: string) (valueColor: Color) =
+        StackPanel.create [
+            StackPanel.orientation Horizontal
+            StackPanel.minHeight 20.0
+            StackPanel.margin (Thickness.Create(10.0, 0.0, 10.0, 0.0))
+            StackPanel.children [
+                cell name dim (Px 128.0)
+                TextBlock.create [
+                    TextBlock.width (Star 1.0)
+                    TextBlock.text value
+                    TextBlock.fontSize 12.0
+                    TextBlock.foreground valueColor
+                    TextBlock.textWrapping Wrap
+                    TextBlock.verticalAlignment VerticalAlignment.Center
+                ]
+            ]
+        ]
+
     let private heading (value: string) =
         TextBlock.create [
             TextBlock.margin (Thickness.Create(10.0, 8.0, 10.0, 2.0))
@@ -1014,6 +1050,7 @@ module internal Views =
         match s with
         | ValueSource.View -> "view"
         | ValueSource.Code -> "code"
+        | ValueSource.Style -> "style"
         | ValueSource.TypeDefault -> "type"
         | ValueSource.Default -> "default"
 
@@ -1062,7 +1099,10 @@ module internal Views =
                   if e.IsPressed then "pressed"
                   if e.IsFocused then (if e.IsFocusVisible then "focused (visible)" else "focused")
                   if e.IsEnabled then "enabled" else "disabled"
-                  if not e.IsVisible then "hidden" ]
+                  if not e.IsVisible then "hidden"
+                  // Custom states (`States.define`, `States.ofProp`), by name.
+                  for s in e.ActiveStates do
+                      if not (List.exists (fun b -> obj.ReferenceEquals(b, s)) builtInStates) then s.Name ]
             let values =
                 e.Values
                 |> List.filter (fun v -> state.ShowDefaults || v.Source <> ValueSource.Default)
@@ -1081,9 +1121,13 @@ module internal Views =
                                   TextBlock.foreground (if e.ComponentName.IsSome then componentColor else typeColor)
                               ]
                           if e.Name.Length > 0 then yield text ("#" + e.Name) nameColor
+                          // Pushes the deselect button to the right edge.
+                          yield Border.create [ Border.width "1*" ]
+                          // Not "×": the title bar's × closes the whole inspector.
+                          yield smallButton "Deselect" false state.Deselect
                       ]
                   ]
-              yield line "states" (String.Join(" · ", states)) hintColor ""
+              yield wrappingLine "states" (String.Join(" · ", states)) hintColor
               yield heading "LAYOUT"
               yield line "offered" (Format.sizeOf e.OfferedSize) hintColor ""
               yield line "desired" (Format.sizeOf e.DesiredSize) hintColor ""
@@ -1093,7 +1137,22 @@ module internal Views =
               yield checkBox "Show defaults" state.ShowDefaults state.ToggleShowDefaults
               for v in values do
                   let isDefault = v.Source = ValueSource.Default
-                  yield line (settingName v.Prop) (state.Format v.Value) (if isDefault then dim else Color.White) (sourceText v.Source)
+                  let shown =
+                      match v.Value with
+                      | :? (string list) as classes when obj.ReferenceEquals(v.Prop, LayoutProps.classes) ->
+                          if classes.IsEmpty then "none" else String.Join(" ", classes |> List.map (fun c -> "." + c))
+                      | value -> state.Format value
+                  yield line (settingName v.Prop) shown (if isDefault then dim else Color.White) (sourceText v.Source)
+                  // Which style set it, under the value.
+                  if v.Source = ValueSource.Style then
+                      yield
+                          TextBlock.create [
+                              TextBlock.margin (Thickness.Create(138.0, -3.0, 10.0, 3.0))
+                              TextBlock.text ("from " + v.Selector)
+                              TextBlock.fontSize 11.0
+                              TextBlock.foreground dim
+                              TextBlock.textTrimming CharacterEllipsis
+                          ]
               if not hooks.IsEmpty then
                   yield heading "HOOKS"
                   for h in hooks do
@@ -1237,9 +1296,9 @@ type Inspector =
         let options = settings |> List.fold (fun o (InspectorSetting apply) -> apply o) InspectorOptions.Default
         let state = InspectorState(host, options)
         let highlightLayer =
-            host.AddLayer [ Layer.name "Inspector highlight"; Layer.order (Int32.MaxValue - 1); Layer.view (Views.highlight state) ]
+            host.AddLayer [ Layer.name "Inspector highlight"; Layer.order (Int32.MaxValue - 1); Layer.appStyles false; Layer.view (Views.highlight state) ]
         let panelLayer =
-            host.AddLayer [ Layer.name "Inspector"; Layer.order Int32.MaxValue; Layer.view (Views.panel { State = state; IsPoppedOut = false }) ]
+            host.AddLayer [ Layer.name "Inspector"; Layer.order Int32.MaxValue; Layer.appStyles false; Layer.view (Views.panel { State = state; IsPoppedOut = false }) ]
         state.Own <- [ highlightLayer; panelLayer ]
         let toggleKey, toggleMods = options.ToggleKey
         let pickKey, pickMods = options.PickKey

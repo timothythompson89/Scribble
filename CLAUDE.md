@@ -59,7 +59,7 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 | `src/Scribble.Text` | TrueType parser, rasterizer, text system, line breaking, wrapping/trimming; Inter built in |
 | `src/Scribble.Text.HarfBuzz` / `.Browser` | Shaping: native HarfBuzz / harfbuzzjs wasm (identical output) |
 | `src/Scribble.Text.Emoji` | Opt-in Twemoji COLRv0 font (CC-BY 4.0 art: apps must credit) |
-| `src/Scribble.Core` | Views, differ, elements, layout, Border/StackPanel/TextBlock/Button, App settings and runtime |
+| `src/Scribble.Core` | Views, differ, elements, layout, styles, Border/StackPanel/TextBlock/Button/ScrollViewer, App settings and runtime |
 | `src/Scribble.Desktop` / `src/Scribble.Browser` | `App.run` / `App.runInBrowser`: one reference brings platform, GPU and shaping |
 | `src/Scribble.Inspector` | Opt-in inspector (`Inspector.enable [ ... ]`): panel and highlight layers, tree, pick mode |
 | `samples/Shared` | Dashboard, HelloApp, Counter (shared by desktop and browser hosts) |
@@ -133,6 +133,8 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 - Never put `create` on a marker type as a static member: statics are inherited, and `Button.create [ Button.width
   100.0 ]` became ambiguous with `Border.create` (FS0041). It lives in a same-named module in the same file.
 - Core's `Cursor`, `Modifiers`, `MouseButton`, `PointerKind` are aliases of the Scribble.Platform types.
+- Rider's F# project view hides linked files whose `Link` has a folder (`Link="Counter/Common.fs"`): link shared
+  files flat (`Link="Common.fs"`), as the samples and tests do.
 - Rider once silently overwrote `Directory.Build.props`; if a fix "doesn't take", check the file on disk. For the
   browser samples Rider's default browser must be "First listed" (Blazor launch quirk).
 
@@ -156,6 +158,7 @@ module ProgressBar =                                             // the element:
             Element.defaults [ Layoutable.height 8.0 ]           // per-type defaults (plain values, not children)
         ]
     let create (settings: Setting<ProgressBar> list) = View.Create(Type, settings)
+    let style parts (settings: Setting<ProgressBar> list) = Style.forType Type parts settings   // its styles (M7)
 ```
 
 Settings are static members on the type (inherited, so `Button.background` works); `Type` and `create` live in a
@@ -167,11 +170,11 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). Last counts: 182 unit tests,
-34 rendering tests (after M6 step 3).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). Last counts: 208 unit tests,
+35 rendering tests (after M7 step 1 with property selectors).
 
 Remaining milestones: M7 styles (next), M7b icons, M8 core controls
-(Grid, DockPanel, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
+(Grid, DockPanel, Canvas, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
 
 ### M5: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M5")
@@ -196,7 +199,7 @@ Three steps, each tried by Tim before the next:
    `ctx.Animate` (tweens, `Easing`) and `Element.transform`; Button sinks to 97% with a flattening shadow. Text
    under an extra scale rasterizes at quarter-pixel sizes. Counter sample = components demo.
 
-Views don't read element states directly (that's M7 styles).
+Views don't read element states directly: state-dependent looks are styles (M7).
 
 ### M5b: async (decisions in `docs/DESIGN.md`, "Decisions for M5b")
 
@@ -230,6 +233,28 @@ Three steps, each tried by Tim before the next:
    "app idle" refresh a second after the app stops, so the inspector never keeps itself drawing.
 
 Dialog, Toast and the "show this in a layer" element are M8.
+
+### M7: agreed 2026-11-16 (full list in `docs/DESIGN.md`, "Decisions for M7")
+
+Two steps, each tried by Tim before the next:
+1. **Styles engine** (done, verified by Tim on Windows and in the browser 2026-11-16; `src/Scribble.Core/Style.fs`): syntax A+D+E+F (Tim's
+   choice): typed selector lists `Button.style [ Style.cls "primary"; States.hover ] [ Button.background c ]` (each
+   element module has `style` next to `create`; `Style.any` for every type), nested `Style.on States.hover [ ... ]`
+   blocks, inline `X.on States.hover [ ... ]` in views. A state is itself a selector part (no `Style.hover`
+   shorthands, no `Style.state`); classes are plain strings (`X.classes [ "primary" ]`; no `Class.define`).
+   Strings implicitly converted to selector parts are out (FS3391 under warnings-as-errors). Custom states are
+   registered when made; `element.ActiveStates` (for tools; the inspector's states line) tests them all. Scopes:
+   `App.styles`, any element's `styles` (it and its subtree); `Layer.appStyles false` opts a layer out (the
+   inspector). Precedence: own value > inline blocks > styles (nearest scope first, later in a list wins) > type
+   default > prop default; no specificity. A type selector matches that type exactly. Engine: per-element style
+   values (`Get`: own, styles, defaults); property selectors `Style.prop p v` / `Style.where p f` and
+  `States.ofProp` read the *unstyled* value and re-match when a tested prop changes (`Prop.TestedByStyles`); restyles queued (`IElementRoot.RequestRestyle`) and run at the start of
+   `UpdateLayout` after components; a tree ignores requests until something uses styles. **A setting the view
+   drops is now removed** (`ClearValue`), not stored at its default, so styles show through. Styles can't set
+   children/classes/styles/name/key. `ValueSource.Style` + `PropertyValue.Selector` for the inspector.
+2. **Themes**: `Theme` record, `Theme.dark/light`, built-in looks as theme styles (Button's hover/press tint moves
+   from its render function into styles), `Style.transition` for appearance properties, inherited
+   foreground/font/fontSize; default theme must keep existing screenshots pixel-identical.
 
 ### Later notes
 

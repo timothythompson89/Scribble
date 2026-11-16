@@ -38,8 +38,8 @@ let main _ = App.run [ App.title "Counter"; App.program 0 update view ]
 ```
 
 Reference `Scribble.Desktop` (or `Scribble.Browser`); it brings the platform, the GPU renderer and text shaping
-along. `samples/Shared/Counter.fs` is this app in full; `dotnet run --project samples/Scribble.Samples.Counter`
-runs it.
+along. A grown-up version of it (with a command) is the first tab of the Counter demo, `samples/Shared/Counter/ElmishTab.fs`;
+`dotnet run --project samples/Scribble.Samples.Counter` runs the demo.
 
 ## Requirements
 
@@ -108,8 +108,8 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
     - The footer shows the last frame's layout/render times, shapes and the app's frames per second; when the
       app stops changing it shows "app idle" about a second later, and nothing redraws after that.
 
-The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo, on four tabs
-(Elmish, Load, List, Layers). The tabs are made from what's already there: every page stays in the tree and only the
+The counter (`dotnet run --project samples/Scribble.Samples.Counter`) is the components demo, on five tabs
+(Elmish, Load, List, Layers, Styles). The tabs are made from what's already there: every page stays in the tree and only the
 selected one has `isVisible true`, so each page keeps its state while hidden.
 
 1. Change something on each tab (a count, the number on Load, the list), switch away and back: it's all still
@@ -139,6 +139,24 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      and Tab cycles only through the dialog's two buttons (the app's focus ring goes away and comes back after).
      "Toast" in the dialog shows a toast under the dimming; Close brings the app back exactly as it was.
    - Hover a button, then open the dialog without moving the mouse: the button stops looking hovered.
+9. The Styles tab (M7 step 1, verified on Windows and in the browser 2026-11-16):
+   - Primary is blue and Danger red (classes); the selected tab's blue comes from a style too.
+   - Hover the card: its border and all three lines of text turn light blue (`Style.on States.hover` on the card,
+     and text matched by `Style.inside Border.Type [ Style.cls "card"; States.hover ]`); the line below the card stays
+     grey. Leave it: they go back.
+   - "Hover me" lights up under the pointer (an inline `Border.on States.hover` block).
+   - The chips at the bottom (Fast, Quiet, Cheap): Fast starts blue with white text. Clicking a chip toggles it
+     (a `selected` state made with `States.ofProp` on the chip, and `Style.prop selected true` on its text through
+     `Style.inside`); hovering a chip lightens it, selected or not. In the inspector, pick a selected chip: its
+     states line ends with `selected`, and its `background` is "from Border.chip:selected". Unselect it and
+     `selected` goes away.
+   - "Compact buttons" swaps the page's style list: every button on the page gets smaller padding; again to undo.
+   - "Disable Danger" fades it (Button's own disabled look); hover and click no longer work on it.
+   - With the inspector (F12): pick Primary: its `classes` reads `.primary`, and its `background` shows `style`,
+     "from Button.primary". Pick a line of the card's text: `foreground` comes "from Border.card TextBlock"; hover
+     the card and it changes to "from Border.card:hover TextBlock".
+   - To clear the inspector's selection, click "Deselect" next to the element's name, or click its tree row again:
+     the panel shows its "Click a row, or Pick…" hint.
 The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
 
 ## Run the browser sample
@@ -434,6 +452,56 @@ App.run (settings @ [
 Also new with it: `Layoutable.isHitTestVisible false` lets the pointer go through an element and everything inside
 it, and `IWindow.ClaimKey` keeps a key combination from the platform's own shortcuts.
 
+### Styles
+
+A style gives every element it matches some settings; a theme (M7 step 2) will be a list of them. Selectors are
+typed lists, and each element module has a `style` next to `create`, so a style only takes its own type's settings:
+
+```fsharp
+let styles = [
+    Button.style [ Style.cls "primary" ] [               // classes are plain names
+        Button.background accent
+        Style.on States.hover [ Button.borderBrush accentLight ]   // while hovered (blocks nest: states combine)
+    ]
+    TextBlock.style [ Style.inside Border.Type [ Style.cls "card" ] ] [ TextBlock.foreground light ]
+    Button.style [ Style.cls "primary"; States.hover ] [ Button.borderBrush white ]   // a state in a selector list
+    TextBlock.style [ Style.parent StackPanel.Type [] ] [ TextBlock.margin 2.0 ]
+    Style.any [ States.focusVisible ] [ Layoutable.cursor Cursor.Hand ]
+]
+
+App.run [ App.styles styles; ... ]                                   // the whole app
+Border.create [ Border.styles cardStyles; Border.child (...) ]       // an element and what's inside it
+Button.create [ Button.classes [ "primary"; if wide then "wide" ]; Button.text "Save" ]
+Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inline, for this element alone
+```
+
+- **Selectors:** `X.style` matches type X exactly (a `Border.style` doesn't touch Buttons); `Style.any` matches
+  every type. Parts: `Style.cls "name"`, `Style.name "x"`, any state (`States.hover`, `pressed`, `focused`,
+  `focusVisible`, `disabled`, or your own), `Style.inside T [ ... ]` (any ancestor), `Style.parent T [ ... ]` (the direct parent),
+  `Style.prop p v` (a property equals a value) and `Style.where p (fun v -> ...)` (a test on it).
+- **Classes are plain names**, matched exactly (case counts). For typo safety, define a name once
+  (`let primary = "primary"`) and use that.
+- **Property selectors read the element's own value** (else its default), never a value set by a style, so a style
+  can't turn itself on or off. They re-match by themselves when the value changes.
+- **Precedence:** the view's (or code's) own setting wins; then the element's inline `on` blocks; then styles, the
+  nearest scope first (its own `styles`, its ancestors', then `App.styles`), and within a list later beats earlier;
+  then the element type's defaults. No CSS specificity. A setting the view drops lets the style show again.
+- **Re-matching** happens at the start of layout, only where needed: an element joining the tree, classes, name,
+  `isEnabled` or styles changing, a state changing (and the subtree when a style tests an ancestor's state, as with
+  `inside Button.Type [ States.hover ]`). An app without styles pays nothing.
+- Styles compare by reference: define them once at module level, not inside a view function.
+- Styles can't set children, classes, styles, name or key (that throws when the style is made).
+- Element authors: add `let style parts (settings: Setting<MyElement> list) = Style.forType Type parts settings`
+  next to `create`; a state read from a property is `States.ofProp "checked" CheckBoxProps.isChecked id` (matched
+  again by itself); any other state is `States.define "name" (fun e -> ...)`, and `element.RefreshStates()` says it
+  may have changed.
+- The inspector shows a value a style set as `style`, with the selector under it (`from Button.primary:hover`). Its
+  own layers ignore `App.styles` (`Layer.appStyles false`). Its states line lists custom states that are on, by
+  name, after the built-in ones (`element.ActiveStates`: every state made so far, tested on demand; a custom
+  state whose test throws for that element is left out).
+- Not yet (M7 step 2): themes, so Button's hover and press tint is still computed by Button itself (a `:hover`
+  background on a Button gets that tint on top); transitions; text color and font passing down to text inside.
+
 ### Elements and layout
 
 Widths and heights (and their min/max) take a number of DIPs, a `Length`, or a string:
@@ -526,7 +594,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
 | `samples/Shared/Dashboard.fs` | The sample dashboard as a view function (also used by the rendering tests) |
 | `samples/Shared/HelloApp.fs` | The Hello sample's model, update and app settings, shared by both hosts |
-| `samples/Shared/Counter.fs` | The counter |
+| `samples/Shared/Counter/` | The Counter demo: one file per tab (`ElmishTab.fs`, `LoadTab.fs`, `ListTab.fs`, `LayersTab.fs`, `StylesTab.fs`), `Common.fs`, and `Counter.fs` (the tabs and the app) |
 | `samples/Scribble.Samples.Hello` | Desktop host |
 | `samples/Scribble.Samples.Browser` | Browser host (WebAssembly) |
 | `samples/Scribble.Samples.Counter`, `.Counter.Browser` | The counter, desktop and browser (one-line Program.fs each) |

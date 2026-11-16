@@ -358,6 +358,8 @@ let ``values are written by our own code, and the app can format its own types``
     Assert.Equal("2 children", f (box [ Border.create []; Border.create [] ]))
     // A record (or union) of the app's: its type name, never ToString() (%A, not NativeAOT-safe).
     Assert.Equal("Model", f (box { Title = "a"; Count = 1 }))
+    Assert.Equal("[2: \"primary\", \"card\"]", f (box [ "primary"; "card" ]))
+    Assert.Equal("[1: Button.x:hover]", f (box [ Button.style [ Style.cls "x"; States.hover ] [] ]))
     let custom (v: obj) =
         match v with
         | :? Model as m -> ValueSome(m.Title + " (" + m.Count.ToString() + ")")
@@ -381,6 +383,48 @@ let ``the properties show the selection's values and sources, defaults only when
     Assert.DoesNotContain("margin", texts panel)
     Assert.Contains("enabled", texts panel |> List.filter (fun t -> t.Contains "enabled"))
     Assert.Contains(texts panel, fun t -> t.Contains "shapes") // frame stats
+
+// On only while a test sets it (states are global, and other tests' elements are tested too).
+let mutable private longStatesOn = false
+let private longStates =
+    [ for i in 1 .. 6 -> States.define ("a-rather-long-custom-state-" + i.ToString()) (fun _ -> longStatesOn) ]
+
+[<Fact>]
+let ``a long states line wraps instead of being cut off`` () =
+    let log = List<string>()
+    let w, _, panel = start log
+    pickAppButton w
+    // The row whose first cell reads "states"; its second cell is the value.
+    let rec statesLabel (e: Element) =
+        if e.Type.Name = "TextBlock" && e.Get TextProps.text = "states" then Some e
+        else e.Children |> Seq.tryPick statesLabel
+    let line () = (panel.Tree.Root.Value |> statesLabel |> Option.get).Parent.Value
+    Assert.Equal(20.0, (line ()).Bounds.Height) // one line: as tall as the others
+    longStatesOn <- true
+    try
+        clickButton w panel "Show defaults" // rebuilds the panel
+        Assert.Contains("a-rather-long-custom-state-6", (line ()).Children[1].Get TextProps.text)
+        Assert.True((line ()).Bounds.Height > 40.0)
+    finally
+        longStatesOn <- false
+    Assert.Equal(6, longStates.Length)
+
+[<Fact>]
+let ``Deselect, or clicking the selected row again, clears the selection`` () =
+    let log = List<string>()
+    let w, _, panel = start log
+    let hint = "Click a row, or Pick"
+    let showsHint () = texts panel |> List.exists (fun t -> t.StartsWith hint)
+    pickAppButton w
+    Assert.False(showsHint ())
+    clickButton w panel "Deselect"
+    Assert.True(showsHint ())
+    Assert.DoesNotContain("Deselect", texts panel)
+    clickButton w panel "#appButton" // its tree row: selects
+    Assert.False(showsHint ())
+    clickButton w panel "#appButton" // again: deselects
+    Assert.True(showsHint ())
+    Assert.Empty(log) // none of it reached the app
 
 [<Fact>]
 let ``with the inspector open and an element selected, an idle app draws nothing`` () =

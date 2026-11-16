@@ -11,6 +11,7 @@
     <Compile Include="Cmd.fs" />
     <Compile Include="Animation.fs" />
     <Compile Include="Element.fs" />
+    <Compile Include="Style.fs" />
     <Compile Include="Layoutable.fs" />
     <Compile Include="ElementTree.fs" />
     <Compile Include="Input.fs" />

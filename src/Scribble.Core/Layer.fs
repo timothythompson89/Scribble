@@ -8,7 +8,8 @@ type internal LayerOptions =
     { Name: string
       Order: int
       Modal: bool
-      View: View voption }
+      View: View voption
+      AppStyles: bool }
 
 /// One setting for a layer: `Layer.order 100`, `Layer.modal true`, `Layer.view (toasts ())`.
 [<Struct>]
@@ -46,7 +47,12 @@ type Layer internal (text: TextSystem, options: LayerOptions, setCursor: Cursor 
     /// What the layer shows. Components inside keep their own state; `Update` shows another view.
     static member view(value: View) = LayerSetting(fun o -> { o with View = ValueSome value })
 
+    /// Whether the app's styles (`App.styles`) apply in this layer. Default: true. Tools such as the
+    /// inspector turn it off, so an app's styles don't restyle them.
+    static member appStyles(value: bool) = LayerSetting(fun o -> { o with AppStyles = value })
+
     member _.Name = options.Name
+    member internal _.UsesAppStyles = options.AppStyles
     member _.Order = options.Order
     member _.IsModal = options.Modal
     member _.Tree = tree
@@ -65,7 +71,7 @@ type Layer internal (text: TextSystem, options: LayerOptions, setCursor: Cursor 
     member internal _.InitialView = options.View
 
     static member internal Create(text: TextSystem, settings: LayerSetting list, setCursor: Cursor -> unit) =
-        let defaults = { Name = "Layer"; Order = 100; Modal = false; View = ValueNone }
+        let defaults = { Name = "Layer"; Order = 100; Modal = false; View = ValueNone; AppStyles = true }
         let options = settings |> List.fold (fun o (LayerSetting apply) -> apply o) defaults
         Layer(text, options, setCursor)
 

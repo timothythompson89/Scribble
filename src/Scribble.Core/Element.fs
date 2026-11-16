@@ -23,6 +23,12 @@ type IElementRoot =
     abstract AfterFrame: action: (unit -> unit) -> unit
     /// The UI thread's dispatcher, when the tree runs in an app (bare trees in tests have none).
     abstract Dispatcher: Dispatcher voption
+    /// An element (an `Element`) asks for style matching: `deep` for its subtree too, `stateChange`
+    /// when one of its states changed. The tree queues it for the start of the next layout (and
+    /// ignores it while nothing in the tree uses styles).
+    abstract RequestRestyle: element: obj * deep: bool * stateChange: bool -> unit
+    /// Something in the tree uses styles (a `styles` setting or an inline state block).
+    abstract StylesUsed: unit -> unit
 
 /// Where an element's property value comes from (`Element.Values`).
 [<RequireQualifiedAccess>]
@@ -31,6 +37,8 @@ type ValueSource =
     | View
     /// Set from code (`element.Set`), not by the view.
     | Code
+    /// A matching style (`PropertyValue.Selector` says which).
+    | Style
     /// The element type's default (`Element.defaults`), e.g. Button's background.
     | TypeDefault
     /// The property's own default.
@@ -38,7 +46,12 @@ type ValueSource =
 
 /// One property of an element: its key, its value and where the value comes from.
 [<Struct>]
-type PropertyValue = { Prop: Prop; Value: obj; Source: ValueSource }
+type PropertyValue =
+    { Prop: Prop
+      Value: obj
+      Source: ValueSource
+      /// For values from a style: its selector written out (`Button.primary:hover`); otherwise empty.
+      Selector: string }
 
 /// One hook of a component (`Element.Hooks`), in the order the component calls them.
 [<Struct>]
@@ -286,6 +299,29 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             count <- count + 1
         | i -> values[i] <- value
 
+    let remove (i: int) =
+        for j in i .. count - 2 do
+            keys[j] <- keys[j + 1]
+            values[j] <- values[j + 1]
+        count <- count - 1
+        keys[count] <- Unchecked.defaultof<Prop>
+        values[count] <- null
+
+    // Values from matching styles (between the element's own values and the defaults), with the
+    // selector that set each one (for the inspector). Replaced as a whole by ApplyStyleValues.
+    let mutable styleKeys: Prop[] = [||]
+    let mutable styleValues: obj[] = [||]
+    let mutable styleSelectors: string[] = [||]
+    /// Queued for style matching (by the tree), and whether its subtree is too.
+    let mutable restyleQueued = false
+    let mutable restyleDeep = false
+
+    let findStyle (id: int) =
+        let mutable i = 0
+        while i < styleKeys.Length && styleKeys[i].Id <> id do
+            i <- i + 1
+        if i < styleKeys.Length then i else -1
+
     static let viewsOf (kind: PropKind) (value: obj) : View[] =
         match kind, value with
         | PropKind.Child, (:? (View voption) as v) -> (match v with ValueSome x -> [| x |] | ValueNone -> [||])
@@ -344,7 +380,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             match old with
             | ValueSome o ->
                 for struct (p, _) in o.Settings do
-                    if not (newView.Has p) then this.SetValue(p, this.DefaultOf p)
+                    if not (newView.Has p) then this.ClearValue p
             | ValueNone -> ()
 
     member _.Type = elementType
@@ -362,16 +398,36 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// The tree this element belongs to, if any.
     member _.Root: IElementRoot voption = root
 
-    /// Sets the tree for this element and everything below it.
-    member internal _.SetRoot(r: IElementRoot voption) =
+    /// Sets the tree for this element and everything below it. A subtree that joins a tree is
+    /// queued for style matching.
+    member internal this.SetRoot(r: IElementRoot voption) =
+        this.SetRootInSubtree r
+        match r with
+        | ValueSome added -> added.RequestRestyle(box this, true, false)
+        | ValueNone -> ()
+
+    member private this.SetRootInSubtree(r: IElementRoot voption) =
         let before = root
         root <- r
+        restyleQueued <- false
+        restyleDeep <- false
+        match r with
+        | ValueSome added when this.UsesStyles -> added.StylesUsed()
+        | _ -> ()
         for child in children do
-            child.SetRoot r
+            child.SetRootInSubtree r
         match componentState, before, r with
         | ValueSome c, ValueSome _, ValueNone -> c.Detached()
         | ValueSome c, ValueNone, ValueSome added -> c.Attached added
         | _ -> ()
+
+    /// Has a `styles` setting or an inline state block of its own.
+    member private _.UsesStyles =
+        let mutable uses = false
+        for i in 0 .. count - 1 do
+            if keys[i].IsStateBlock || keys[i].IsStyles then
+                uses <- true
+        uses
 
     // --- Components and animation ----------------------------------------------------------------
 
@@ -387,34 +443,41 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     // --- For tools (the inspector) ------------------------------------------------------------
 
-    /// The element's property values and where each comes from: everything the view, code or the
+    /// The element's property values and where each comes from: everything the view, code, styles or the
     /// element type set, then the common layout and input properties at their defaults. Private
     /// data (`Prop.local`) is left out. Children properties hold views (`View voption`, `View list`).
     member this.Values: PropertyValue list =
         let result = List<PropertyValue>()
         let seen = HashSet<int>()
         let typeHas (p: Prop) = elementType.Defaults |> Array.exists (fun struct (q, _) -> q.Id = p.Id)
-        // A setting equal to the current value isn't stored, so the view is asked in every case.
-        let add (p: Prop) (v: obj) =
-            let source =
-                match view with
-                | ValueSome vw when vw.Has p -> ValueSource.View
-                | _ when not (p.Same(v, this.DefaultOf p)) -> ValueSource.Code
-                | _ -> if typeHas p then ValueSource.TypeDefault else ValueSource.Default
-            result.Add { Prop = p; Value = v; Source = source }
+        let shown (p: Prop) = not p.IsLocal && not p.IsStateBlock && p.Kind <> PropKind.Component && seen.Add p.Id
+        let add (p: Prop) =
+            let own = find p.Id
+            let fromStyle = findStyle p.Id
+            let value, source, selector =
+                if own >= 0 then
+                    let source =
+                        match view with
+                        | ValueSome vw when vw.Has p -> ValueSource.View
+                        | _ -> ValueSource.Code
+                    values[own], source, ""
+                elif fromStyle >= 0 then styleValues[fromStyle], ValueSource.Style, styleSelectors[fromStyle]
+                elif typeHas p then this.DefaultOf p, ValueSource.TypeDefault, ""
+                else p.DefaultBoxed, ValueSource.Default, ""
+            result.Add { Prop = p; Value = value; Source = source; Selector = selector }
         for i in 0 .. count - 1 do
-            let p = keys[i]
-            if not p.IsLocal && p.Kind <> PropKind.Component && seen.Add p.Id then add p values[i]
-        for struct (p, v) in elementType.Defaults do
-            if not p.IsLocal && seen.Add p.Id then add p v
-        match view with
-        | ValueSome vw ->
-            for struct (p, v) in vw.Settings do
-                if not p.IsLocal && p.Kind <> PropKind.Component && seen.Add p.Id then add p v
-        | ValueNone -> ()
+            if shown keys[i] then add keys[i]
+        for p in styleKeys do
+            if shown p then add p
+        for struct (p, _) in elementType.Defaults do
+            if shown p then add p
         for p in LayoutProps.common do
-            if seen.Add p.Id then add p p.DefaultBoxed
+            if shown p then add p
         List.ofSeq result
+
+    /// Its states changed in a way only it knows about (a custom state from `States.define`, such
+    /// as M8's checked): styles that test states are matched again.
+    member this.RefreshStates() = this.RequestRestyle(false, true)
 
     /// The space the last measure offered the element (margin included; may be infinite).
     member _.OfferedSize: Size = lastAvailable
@@ -485,22 +548,30 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         let before = this.IsFocused, this.IsFocusVisible
         focused <- isFocused
         focusVisible <- isVisible
-        if before <> (this.IsFocused, this.IsFocusVisible) then this.InvalidateVisual()
+        if before <> (this.IsFocused, this.IsFocusVisible) then
+            this.InvalidateVisual()
+            this.RequestRestyle(false, true)
 
     member internal this.SetKeyPressed(value: bool) =
         let before = this.IsPressed
         keyPressed <- value
-        if before <> this.IsPressed then this.InvalidateVisual()
+        if before <> this.IsPressed then
+            this.InvalidateVisual()
+            this.RequestRestyle(false, true)
 
     member internal this.ChangePointersOver(delta: int) =
         let before = pointersOver > 0
         pointersOver <- max 0 (pointersOver + delta)
-        if before <> (pointersOver > 0) then this.InvalidateVisual()
+        if before <> (pointersOver > 0) then
+            this.InvalidateVisual()
+            this.RequestRestyle(false, true)
 
     member internal this.ChangePointersPressing(delta: int) =
         let before = pointersPressing > 0
         pointersPressing <- max 0 (pointersPressing + delta)
-        if before <> (pointersPressing > 0) then this.InvalidateVisual()
+        if before <> (pointersPressing > 0) then
+            this.InvalidateVisual()
+            this.RequestRestyle(false, true)
 
     /// The element's top-left in tree coordinates (DIPs), after the last arrange.
     member _.PositionInTree: Point =
@@ -551,74 +622,182 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             i <- i + 1
         if i < defaults.Length then (let struct (_, v) = defaults[i] in v) else prop.DefaultBoxed
 
-    member this.Get<'T>(prop: Prop<'T>) : 'T =
-        match find prop.Id with
-        | -1 -> if elementType.Defaults.Length = 0 then prop.Default else unbox<'T> (this.DefaultOf prop)
-        | i -> unbox<'T> values[i]
+    /// The value without a setting of its own: a matching style's, else the default.
+    member private this.BaseOf(prop: Prop) : obj =
+        match findStyle prop.Id with
+        | -1 -> this.DefaultOf prop
+        | i -> styleValues[i]
 
-    /// The value as stored (or the default), for tools such as the differ and the inspector.
-    member this.GetBoxed(prop: Prop) : obj =
+    /// The value without styles: its own, else the default. What property selectors test, so a
+    /// style can't change whether it (or another style) matches.
+    member internal this.UnstyledValue(prop: Prop) : obj =
         match find prop.Id with
         | -1 -> this.DefaultOf prop
         | i -> values[i]
 
+    /// A style selector tests `prop` and its unstyled value went from `before` to `after`.
+    member private this.TestedValueChanged(prop: Prop, before: obj, after: obj) =
+        if prop.TestedByStyles && not (prop.Same(before, after)) then
+            this.RequestRestyle(prop.TestedByAncestorStyles, false)
+
+    member this.Get<'T>(prop: Prop<'T>) : 'T =
+        match find prop.Id with
+        | -1 ->
+            if styleKeys.Length > 0 then unbox<'T> (this.BaseOf prop)
+            elif elementType.Defaults.Length = 0 then prop.Default
+            else unbox<'T> (this.DefaultOf prop)
+        | i -> unbox<'T> values[i]
+
+    /// The current value, boxed: the element's own, else a style's, else the default.
+    member this.GetBoxed(prop: Prop) : obj =
+        match find prop.Id with
+        | -1 -> this.BaseOf prop
+        | i -> values[i]
+
     member this.Set<'k>(setting: Setting<'k>) = this.SetValue(setting.Prop, setting.Value)
     member this.Set<'T>(prop: Prop<'T>, value: 'T) = this.SetValue(prop, box value)
-    /// Back to the default value (the element type's, else the property's).
-    member this.Reset(prop: Prop) = this.SetValue(prop, this.DefaultOf prop)
+    /// Takes away the element's own value: a matching style's shows, else the default (the element
+    /// type's, else the property's).
+    member this.Reset(prop: Prop) = this.ClearValue prop
 
     member internal _.SetLocal<'T>(prop: Prop<'T>, value: 'T) = store prop (box value)
 
+    /// Redoes what a value change affects (layout copy, invalidation, style matching).
+    member private this.ValueChanged(prop: Prop) =
+        if prop.IsLayout then this.RefreshLayoutValues()
+        match prop.Affects with
+        | Affects.Measure -> this.InvalidateMeasure()
+        | Affects.Arrange -> this.InvalidateArrange()
+        | Affects.Render -> this.InvalidateVisual()
+        | _ -> ()
+        if prop.IsStyles || prop.IsStateBlock then
+            match root with
+            | ValueSome r -> r.StylesUsed()
+            | ValueNone -> ()
+        if prop.Restyles || prop.IsStyles then this.RequestRestyle(true, false)
+        elif prop.IsStateBlock then this.RequestRestyle(false, false)
+
+    /// Removes the element's own value (a setting the view dropped, or Reset).
+    member internal this.ClearValue(prop: Prop) =
+        if prop.Kind <> PropKind.Value then this.SetValue(prop, this.DefaultOf prop)
+        else
+            match find prop.Id with
+            | -1 -> ()
+            | i ->
+                this.VerifyAccess()
+                let old = values[i]
+                remove i
+                this.TestedValueChanged(prop, old, this.DefaultOf prop)
+                if not (prop.Same(old, this.BaseOf prop)) then this.ValueChanged prop
+                elif prop.IsStateBlock then this.RequestRestyle(false, false)
+
+    // --- Styles ----------------------------------------------------------------------------------
+
+    /// Asks the tree to match styles again for this element (and its subtree when `deep`).
+    member internal this.RequestRestyle(deep: bool, stateChange: bool) =
+        match root with
+        | ValueSome r -> r.RequestRestyle(box this, deep, stateChange)
+        | ValueNone -> ()
+
+    /// The tree accepted a restyle request: remember it. Returns true when the element wasn't
+    /// queued yet (the tree then adds it to its queue).
+    member internal _.MarkRestyle(deep: bool) =
+        let wasQueued = restyleQueued
+        restyleQueued <- true
+        restyleDeep <- restyleDeep || deep
+        not wasQueued
+
+    /// Takes the queued request: (queued, deep).
+    member internal _.TakeRestyle() =
+        let r = struct (restyleQueued, restyleDeep)
+        restyleQueued <- false
+        restyleDeep <- false
+        r
+
+    /// The element's own values that are part of its styles: its `styles` list and inline blocks.
+    member internal _.StyleSettings: struct (Prop * obj)[] =
+        [| for i in 0 .. count - 1 do
+               if keys[i].IsStyles || keys[i].IsStateBlock then struct (keys[i], values[i]) |]
+
+    /// Replaces the values from matching styles; whatever changes for this element is redone.
+    member internal this.ApplyStyleValues(newKeys: Prop[], newValues: obj[], newSelectors: string[]) =
+        let oldKeys, oldValues = styleKeys, styleValues
+        let changed = List<Prop>()
+        let check (p: Prop) =
+            // The element's own value hides any style value.
+            if find p.Id = -1 && not (changed.Contains p) then
+                let before =
+                    match Array.tryFindIndex (fun (k: Prop) -> k.Id = p.Id) oldKeys with
+                    | Some i -> oldValues[i]
+                    | None -> this.DefaultOf p
+                let after =
+                    match Array.tryFindIndex (fun (k: Prop) -> k.Id = p.Id) newKeys with
+                    | Some i -> newValues[i]
+                    | None -> this.DefaultOf p
+                if not (p.Same(before, after)) then changed.Add p
+        for p in oldKeys do check p
+        for p in newKeys do check p
+        styleKeys <- newKeys
+        styleValues <- newValues
+        styleSelectors <- newSelectors
+        if changed.Count > 0 then
+            if changed |> Seq.exists _.IsLayout then this.RefreshLayoutValues()
+            let mutable affects = Affects.Nothing
+            for p in changed do
+                affects <- affects ||| p.Affects
+            if affects.HasFlag Affects.Measure then this.InvalidateMeasure()
+            elif affects.HasFlag Affects.Arrange then this.InvalidateArrange()
+            elif affects.HasFlag Affects.Render then this.InvalidateVisual()
+
     member internal this.SetValue(prop: Prop, value: obj) =
         this.VerifyAccess()
-        let old =
-            match find prop.Id with
-            | -1 -> this.DefaultOf prop
-            | i -> values[i]
-        if not (prop.Same(old, value)) then
-            if prop.Kind = PropKind.Component then
-                store prop value
-                this.RunComponent()
-            elif prop.Kind <> PropKind.Value then
-                let current =
-                    match childSlots |> Array.tryFind (fun struct (p, _) -> obj.ReferenceEquals(p, prop)) with
-                    | Some(struct (_, es)) -> es
-                    | None -> [||]
-                let next = Element.Reconcile(current, viewsOf prop.Kind value)
-                let kept = HashSet<Element>(next, HashIdentity.Reference)
-                for e in current do
-                    if not (kept.Contains e) then
-                        e.SetParent ValueNone
-                        e.SetRoot ValueNone
-                for e in next do
-                    if e.Parent.IsNone then
-                        e.SetParent(ValueSome this)
-                        e.SetRoot root
-                        e.InvalidateAll()
-                store prop value
-                // The same elements in the same order (each patched in place): nothing to re-lay out
-                // at this level; patched children invalidated themselves as needed.
-                let unchanged = current.Length = next.Length && Array.forall2 (fun a b -> obj.ReferenceEquals(a, b)) current next
-                if not unchanged then
-                    childSlots <-
-                        if childSlots |> Array.exists (fun struct (p, _) -> obj.ReferenceEquals(p, prop)) then
-                            childSlots |> Array.map (fun struct (p, es) -> if obj.ReferenceEquals(p, prop) then struct (p, next) else struct (p, es))
-                        else
-                            Array.append childSlots [| struct (prop, next) |]
-                    this.RebuildChildren()
-                    match prop.Affects with
-                    | Affects.Measure -> this.InvalidateMeasure()
-                    | Affects.Arrange -> this.InvalidateArrange()
-                    | Affects.Render -> this.InvalidateVisual()
-                    | _ -> ()
-            else
-                store prop value
-                if prop.IsLayout then this.RefreshLayoutValues()
-                match prop.Affects with
-                | Affects.Measure -> this.InvalidateMeasure()
-                | Affects.Arrange -> this.InvalidateArrange()
-                | Affects.Render -> this.InvalidateVisual()
-                | _ -> ()
+        if prop.Kind = PropKind.Value then
+            // Always stored (even when equal to a style's value): the element's own value wins over styles.
+            let old = this.GetBoxed prop
+            if prop.TestedByStyles then this.TestedValueChanged(prop, this.UnstyledValue prop, value)
+            store prop value
+            if not (prop.Same(old, value)) then this.ValueChanged prop
+        else
+            let old =
+                match find prop.Id with
+                | -1 -> this.DefaultOf prop
+                | i -> values[i]
+            if not (prop.Same(old, value)) then
+                if prop.Kind = PropKind.Component then
+                    store prop value
+                    this.RunComponent()
+                else
+                    let current =
+                        match childSlots |> Array.tryFind (fun struct (p, _) -> obj.ReferenceEquals(p, prop)) with
+                        | Some(struct (_, es)) -> es
+                        | None -> [||]
+                    let next = Element.Reconcile(current, viewsOf prop.Kind value)
+                    let kept = HashSet<Element>(next, HashIdentity.Reference)
+                    for e in current do
+                        if not (kept.Contains e) then
+                            e.SetParent ValueNone
+                            e.SetRoot ValueNone
+                    for e in next do
+                        if e.Parent.IsNone then
+                            e.SetParent(ValueSome this)
+                            e.SetRoot root
+                            e.InvalidateAll()
+                    store prop value
+                    // The same elements in the same order (each patched in place): nothing to re-lay out
+                    // at this level; patched children invalidated themselves as needed.
+                    let unchanged = current.Length = next.Length && Array.forall2 (fun a b -> obj.ReferenceEquals(a, b)) current next
+                    if not unchanged then
+                        childSlots <-
+                            if childSlots |> Array.exists (fun struct (p, _) -> obj.ReferenceEquals(p, prop)) then
+                                childSlots |> Array.map (fun struct (p, es) -> if obj.ReferenceEquals(p, prop) then struct (p, next) else struct (p, es))
+                            else
+                                Array.append childSlots [| struct (prop, next) |]
+                        this.RebuildChildren()
+                        match prop.Affects with
+                        | Affects.Measure -> this.InvalidateMeasure()
+                        | Affects.Arrange -> this.InvalidateArrange()
+                        | Affects.Render -> this.InvalidateVisual()
+                        | _ -> ()
 
     member internal _.SetParent(p: Element voption) = parent <- p
 

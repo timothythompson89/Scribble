@@ -7,6 +7,14 @@ namespace Scribble.Core
 type Layoutable =
     /// A name for the inspector, tests and logs.
     static member name<'k when 'k :> Layoutable>(value: string) : Setting<'k> = Setting.create LayoutProps.name value
+    /// Style classes, plain names: `Button.classes [ "primary"; if big then "large" ]`.
+    static member classes<'k when 'k :> Layoutable>(value: string list) : Setting<'k> = Setting.create LayoutProps.classes value
+    /// Styles for this element and everything inside it (nearer scopes win over outer ones and the
+    /// app's): `Border.styles cardStyles`. Define the list once (styles compare by reference).
+    static member styles<'k when 'k :> Layoutable>(value: Style list) : Setting<'k> = Setting.create StyleProps.styles value
+    /// Settings that apply while this element is in `state`, right in the view:
+    /// `Button.on States.hover [ Button.background light ]` (one block per state; blocks nest).
+    static member on<'k when 'k :> Layoutable> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> = Style.on state settings
     static member margin<'k when 'k :> Layoutable>(value: Thickness) : Setting<'k> = Setting.create LayoutProps.margin value
     static member margin<'k when 'k :> Layoutable>(uniform: float) : Setting<'k> = Setting.create LayoutProps.margin (Thickness.Uniform uniform)
     static member margin<'k when 'k :> Layoutable>(horizontal: float, vertical: float) : Setting<'k> =
@@ -117,3 +125,10 @@ type Panel =
     /// collection inserts, removes or reorders: `StackPanel.items todos _.Id todoView`.
     static member items<'k, 'T, 'Key when 'k :> Panel> (items: 'T seq) (key: 'T -> 'Key) (view: 'T -> View) : Setting<'k> =
         Setting.create PanelProps.children [ for item in items -> (view item).WithKey(box (key item)) ]
+
+[<AutoOpen>]
+module StyleExtensions =
+    type Style with
+        /// A style for elements of any type: `Style.any [ Style.cls compact ] [ Layoutable.margin 2.0 ]`.
+        static member any (parts: SelectorPart list) (settings: Setting<Layoutable> list) : Style =
+            Style.Create(Selector.build ValueNone parts, [| for s in settings -> struct (s.Prop, s.Value) |])

@@ -44,6 +44,19 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal IsLayout = false with get, set
     /// Made with `Prop.local`: private per-element data, left out of `Element.Values`.
     member val internal IsLocal = false with get, set
+    /// Changing it can change which styles match the element (and everything inside it).
+    member val internal Restyles = false with get, set
+    /// A style's selector tests its value (`Style.prop`, `Style.where`, `States.ofProp`): a change
+    /// of the element's own value matches it again.
+    member val internal TestedByStyles = false with get, set
+    /// ... and an ancestor part does (`Style.inside`/`Style.parent`): a change matches the subtree.
+    member val internal TestedByAncestorStyles = false with get, set
+    /// Holds an inline state block (`Button.on States.hover [ ... ]`): part of the element's styles.
+    member val internal IsStateBlock = false with get, set
+    /// The `styles` setting (a list of styles for the element and its subtree).
+    member val internal IsStyles = false with get, set
+    /// Styles can't set it (children, and what decides matching or identity).
+    member val internal NotStylable = false with get, set
     /// Equality of two values of this property's type.
     member internal _.Same(a: obj, b: obj) = same a b
     override _.ToString() = name
@@ -123,6 +136,8 @@ module LayoutProps =
     /// Can take keyboard focus (Tab stops here; a press focuses it). Render, so turning it off
     /// gets a frame, after which the focus manager lets go.
     let focusable = Prop<bool>("Focusable", false, Affects.Render, PropKind.Value)
+    /// The element's style classes: plain names, matched by `Style.cls "name"`.
+    let classes = Prop<string list>("Classes", [], Affects.Nothing, PropKind.Value)
 
     let private keyHandler name = Prop<(KeyEventArgs -> unit) voption>(name, ValueNone, Affects.Nothing, PropKind.Value)
     let onKeyDown = keyHandler "OnKeyDown"
@@ -133,12 +148,16 @@ module LayoutProps =
     do
         for p in [ margin :> Prop; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment; verticalAlignment; isVisible; clipToBounds ] do
             p.IsLayout <- true
+        for p in [ name :> Prop; classes; isEnabled ] do
+            p.Restyles <- true
+        for p in [ name :> Prop; classes; key ] do
+            p.NotStylable <- true
 
     /// What `Element.Values` lists even at the property's default: the properties every element has
     /// that say something about its layout or input (not the handlers or the key).
     let internal common: Prop list =
         [ name; margin; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment
-          verticalAlignment; isVisible; clipToBounds; isEnabled; isHitTestVisible; focusable; cursor ]
+          verticalAlignment; isVisible; clipToBounds; isEnabled; isHitTestVisible; focusable; cursor; classes ]
 
 /// The engine's typed copy of an element's layout properties (read on every measure and arrange).
 [<Struct>]

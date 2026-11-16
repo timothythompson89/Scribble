@@ -66,3 +66,5 @@ module Border =
         ]
 
     let create (settings: Setting<Border> list) : View = View.Create(Type, settings)
+    /// A style for Borders: `Border.style [ Style.cls "c"; States.hover ] [ Border.margin 4.0 ]` (this type exactly).
+    let style (parts: SelectorPart list) (settings: Setting<Border> list) : Style = Style.forType Type parts settings
