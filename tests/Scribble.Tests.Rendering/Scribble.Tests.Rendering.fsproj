@@ -22,8 +22,10 @@
     <Compile Include="../../samples/Shared/Counter/LayersTab.fs" Link="LayersTab.fs" />
     <Compile Include="../../samples/Shared/Counter/StylesTab.fs" Link="StylesTab.fs" />
     <Compile Include="../../samples/Shared/Counter/Counter.fs" Link="Counter.fs" />
+    <Compile Include="../../samples/Shared/IconGallery.fs" Link="IconGallery.fs" />
     <Compile Include="CounterTests.fs" />
     <Compile Include="PhoneTests.fs" />
+    <Compile Include="IconGalleryTests.fs" />
     <Compile Include="ButtonTests.fs" />
     <Compile Include="IconRenderingTests.fs" />
     <Compile Include="LayerTests.fs" />
@@ -39,6 +41,7 @@
     <ProjectReference Include="../../src/Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
     <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
     <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
     <ProjectReference Include="../../src/Scribble.Text.Emoji/Scribble.Text.Emoji.fsproj" />
   </ItemGroup>
 </Project>

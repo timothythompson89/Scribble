@@ -91,3 +91,46 @@ type IconRenderingTests(fixture: TextFixture) =
         match Snapshot.check "icons@2x" image with
         | Some error -> Assert.Fail error
         | None -> ()
+
+/// Material Symbols (the opt-in package): a row of outlined icons above the same ones filled,
+/// at 20 and 40 DIPs, at 1x and 2x.
+type MaterialRenderingTests(fixture: TextFixture) =
+    interface IClassFixture<TextFixture>
+
+    [<Theory>]
+    [<InlineData(1.0)>]
+    [<InlineData(2.0)>]
+    member _.``Material icons``(scale: float) =
+        let icons =
+            [ Scribble.Icons.Material.home; Scribble.Icons.Material.star; Scribble.Icons.Material.favorite
+              Scribble.Icons.Material.settings; Scribble.Icons.Material.search; Scribble.Icons.Material.delete
+              Scribble.Icons.Material.cloud; Scribble.Icons.Material.person ]
+        let row size (icons: Icon list) =
+            StackPanel.create [
+                StackPanel.orientation Horizontal
+                StackPanel.spacing 12.0
+                StackPanel.children [ for i in icons -> IconView.create [ IconView.icon i; IconView.size size ] ]
+            ]
+        let view =
+            StackPanel.create [
+                StackPanel.margin 16.0
+                StackPanel.spacing 12.0
+                StackPanel.children [
+                    row 20.0 icons
+                    row 20.0 (icons |> List.map Scribble.Icons.Material.filled)
+                    row 40.0 icons
+                    row 40.0 (icons |> List.map Scribble.Icons.Material.filled)
+                ]
+            ]
+        let tree = ElementTree(fixture.Text, Scale = scale)
+        tree.Theme <- ValueSome(Theme.dark [])
+        tree.Update view
+        tree.UpdateLayout(Size.Create(460.0, 190.0))
+        let size: PixelSize = { Width = int (460.0 * scale); Height = int (190.0 * scale) }
+        let image =
+            fixture.Gpu.Device.RenderOffscreen(size, scale, fun f ->
+                f.Clear(Color.Hex 0x181825)
+                tree.Render f.DrawList)
+        match Snapshot.check $"material@{scale}x" image with
+        | Some error -> Assert.Fail error
+        | None -> ()

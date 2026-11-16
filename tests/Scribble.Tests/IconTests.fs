@@ -191,3 +191,30 @@ let ``a Button with an icon makes room for it and centers icon and text together
     let rightRoom = 200.0 - (textBounds.X + textBounds.Width)
     Assert.InRange(abs (leftRoom - rightRoom), 0.0, 1.0) // within layout rounding
     Assert.Equal(iconRect.X + 18.0 + 8.0, textBounds.X, 3)
+
+[<Fact>]
+let ``Inter's cap height and x-height come from its OS/2 table`` () =
+    let face = Fonts.Regular().Face
+    Assert.Equal(1490, face.CapHeight)
+    Assert.Equal(1118, face.XHeight)
+
+[<Fact>]
+let ``beside text the icon sits at the text's optical middle, a little below the button's middle`` () =
+    let tree = ElementTree(textSystem ())
+    let withText = Button.create [ Button.icon square; Button.text "Pause" ]
+    let bigText = Button.create [ Button.icon square; Button.text "Pause"; Button.fontSize 28.0 ]
+    let iconOnly = Button.create [ Button.icon square ]
+    let withContent = Button.create [ Button.icon square; Button.content (Border.create [ Border.height 20.0 ]) ]
+    tree.Update(StackPanel.create [ StackPanel.children [ withText; bigText; iconOnly; withContent ] ])
+    frame tree
+    let b = tree.Root.Value.Children
+    // How far the icon's middle sits below the middle of the button's inside (padding 7 + border 1 top and bottom).
+    let below (button: Element) =
+        let r = button.Get ButtonProps.iconRect
+        (r.Y + r.Height / 2.0) - (8.0 + (button.Bounds.Height - 16.0) / 2.0)
+    // Inter: (ascender - line height / 2 - (cap height + x-height) / 4) / units per em
+    // = (1984 - 1239 - 652) / 2048 = 93/2048 em.
+    Assert.Equal(93.0 / 2048.0 * 14.0, below b[0], 3)
+    Assert.Equal(93.0 / 2048.0 * 28.0, below b[1], 3)
+    Assert.Equal(0.0, below b[2], 3)
+    Assert.Equal(0.0, below b[3], 3)

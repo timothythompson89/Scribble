@@ -714,3 +714,116 @@ equality, settings as static members): the C#-in-F# shape M3b removed from eleme
 
 Built 2026-11-16, verified by Tim the same day: no pixel changes (all 45 rendering tests unchanged); 269 unit tests pass (the toggle test now
 checks that flips set).
+
+## M7b step 2: the Material Symbols package (agreed 2026-11-16)
+
+Measured from Tim's `MaterialIconData.cs`: 4,304 icons, outlined and filled (431 KB and 362 KB Brotli; 3.0 M and
+2.1 M characters of path data), in Google's 960 × 960 box; no camelCase collisions; 7 names are F# keywords.
+Agreed (recommendations; these replace point 4 of "Decisions for M7b" where they differ):
+1. `Material.home`: static members on a `Material` type, each made when used (not module values, which would create
+   all 4,304 icons, and decode the set, on first use of any).
+2. Filled: `Material.star |> Material.filled` (and `Material.outlined`), not `Material.star.Filled`. A filled icon's
+   name is "star-filled", so `Icon.describe` writes the Avalonia spec format ("star-filled-rotate90").
+3. Keyword names in double backticks (``Material.``class`` ``).
+4. `Material.icon "star-filled-rotate90"` reads the spec format (options from the end; '-' or ' ' in the name means
+   '_'); unknown names throw an ArgumentException saying where names are; `Material.tryIcon` gives a voption;
+   `Material.names ()` lists them.
+5. Data: two embedded Brotli resources (no base64), each decoded on first use into UTF-8 bytes plus a name index;
+   a path's string made (and cached) when first asked for; thread-safe.
+6. `tools/GenerateMaterial.fsx` reads Tim's file and writes the resources and `Material.fs` (no doc comment per
+   member).
+7. Samples: Counter's switch uses `Material.lightMode`/`darkMode`; Hello's toolbar buttons get icons. The inspector
+   keeps its own eight copied paths.
+8. Credit (© Google, Apache 2.0) in the generated file, the project description and the README.
+9. Tests: all 8,608 paths parse; spec text both ways; filled/outlined; keywords; unknown names; a rendering grid.
+10. Naming (Tim asked whether the namespace should be `Scribble.Icons.Material`; kept as is, 2026-11-16): an icon
+    set's package is `Scribble.Icons.<Set>`, and inside it the type `<Set>` sits in the namespace `Scribble.Icons`,
+    so the type's full name is the package name. Apps write `open Scribble.Icons`, then `Material.home`. A
+    `Scribble.Icons.Material` namespace would clash with the type, forcing a rename (`Icons.home`); several sets
+    would then each bring a same-named type; and the `.filled`/`.outlined` shortcuts would need the longer open.
+    One `open Scribble.Icons` lets later sets sit beside it (`Lucide.home`).
+
+Changed the same day (Tim tried it in the browser: "IOCompressionBrotli_PlatformNotSupported"): the browser's .NET
+has no `BrotliStream`, so point 5 became **plain text** resources (`Data/outlined.txt`, `filled.txt`), Tim's choice
+of three (measured: Deflate would have made the browser download 1.37 MB and the desktop data 1.37 MB; plain text
+gives a 0.58 MB browser download, since the publish Brotli-compresses the DLL, and +5 MB on the desktop; carrying
+both formats would have put 5.8 MB in every app). Reading a set is now a copy and an index: under 1 ms at steady
+state. The Counter browser download is 2.44 MB (1.86 MB without icons). Desktop and NativeAOT checks had passed
+because they have Brotli; the browser is where the package must be tried.
+
+Changed again the same day (Tim: "just for icons, I'm okay with the member access shortcuts like
+Material.home.filled"): point 2 now also has `.filled` and `.outlined` as extension properties on `Icon`
+(`MaterialExtensions.fs`, an AutoOpen module, so `open Scribble.Icons` brings them), lowercase as Tim wrote them.
+They're the same functions as `Material.filled`/`outlined`, which stay for piping; on a non-Material icon they
+return it unchanged. Only for icons: elsewhere settings stay functions.
+
+Found while testing this: 108 unit tests failed now and then (first seen after a full build; reproduced about one
+run in four with `DOTNET_TieredCompilation=0`): "static data being accessed recursively" in `$Palette`'s
+initializer. `ThemeToken`'s id counter was a `static let mutable`, which F# initializes with Props.fs's file
+initialization and checks on use; when two threads first used tokens and Props.fs at once, the runtime let one
+see the file half done and the check threw (a framework bug, not only a test one: since M7 step 2b). Fixed by
+moving the counters of `ThemeToken`, `Prop` and `Font` into small holder types (`Ids`, `FontIds`) with plain
+`[<DefaultValue>] static val mutable` fields, incremented under a lock (F# wouldn't take those fields' address for
+`Interlocked`). 15 stressed runs in a row then passed.
+
+Icon and text alignment (Tim: "are the icons and text not perfectly aligned in the center on the hello sample
+buttons"; measured at 3×: the icon was exactly centered and as tall as the capitals, but "Pause"'s lowercase
+middle sat 1.5 DIPs lower, so the label looked low). Options: leave it (Material's own rule), an optical nudge, or
+align to the lowercase. **Tim chose the nudge**: beside a TextBlock (`Button.text`) the icon's middle goes to
+halfway between the middle of the capitals and of the lowercase, for one line centered in the slot:
+`(ascender - lineHeight / 2 - (capHeight + xHeight) / 4) × size / unitsPerEm` below the middle (Inter: 93/2048 em,
+0.64 DIP at 14 px). An icon alone or beside other content stays centered. `FontFace.CapHeight`/`XHeight` are new
+(OS/2 version 2+, else the tops of 'H' and 'x', else 70% / 50% of the em). Measured after: the Pause icon's middle
+went from 218.5 to 220.5 px (target 221.25; the rest is pixel snapping). Two unit tests (276); the pictures with
+icon-and-text buttons regenerated (hello, hello-phone, counter ones, icons@1x/2x). Regenerating on Tim's GPU also
+changed the dashboard and inspector pictures by anti-aliasing only (made on lavapipe; no icon-and-text buttons in
+them); those were restored.
+
+Icons sample (Tim asked for "an Icon sample project that just shows all of the material icons in a
+scrollviewer"; recommendations agreed): `samples/Shared/IconGallery.fs` with a desktop host
+(`Scribble.Samples.Icons`) and a browser host (`.Icons.Browser`, port 5282, also served by `tools/Scribble.Serve`).
+Tiles of 112 × 76 DIPs (icon at 24, Google's name below, trimmed) in the samples' WrapPanel inside a ScrollViewer;
+Outlined/Filled switch; a click shows the F# member (`memberName` repeats the generator's rule; a unit test checks
+it against `Material`'s members). The grid is a `useMemo` on Filled, so picking an icon re-runs the component but
+the differ skips the identical grid View. Measured at steady state (best of 5, Debug build, RTX 4070 Ti):
+17,228 elements; building it 90 ms, Outlined/Filled 28 ms, a pick under 0.1 ms, the draw list 1.05 ms (only what's
+visible is drawn), two re-layouts 6 ms. Fast enough without paging or virtualization (ListBox in M8 will virtualize).
+Tests: `icon-gallery@1x` picture and the timings (IconGalleryTests.fs); 277 unit, 49 rendering tests.
+
+Scrolling cost (Tim: the Icons sample was "super slow on browser and phone"; publishing with WebAssembly AOT
+(`Scribble.Serve -- --aot`) "definitely made a difference", scrolling was where he still felt it). Measured on the
+desktop, a scroll step cost 0.48 ms of layout plus about 1.2 ms of drawing, both growing with the element count
+(17,228): about 0.78 ms of the drawing was skipping the 4,300 off-screen tiles, partly because every tile read
+`scale`, and the theme's transition on `scale` made each read a second lookup. Agreed (option A, Core, before any
+sample-only fix):
+1. **An element that only moves isn't arranged again.** Children are positioned relative to their parent and an
+   arrange stage sees only the size, so `Element.Arrange` with an unchanged size (after pixel rounding) and nothing
+   invalidated updates the bounds and skips the stage. Scrolling moves the content: its subtree is no longer
+   re-arranged (the WrapPanel no longer re-places 4,304 tiles). Layout per scroll step: 0.48 ms → 0.00.
+2. **Drawing tests the clip first**, then (only for an element off screen) its plain `scale` without the transition
+   lookup, and the transitioned value only if it has a tween. Elements scaled above 1, or easing back, are still
+   drawn off screen as before. Off-screen skipping: about 0.78 → 0.59 ms (measured alone; full runs are noisy). The
+   rest is visiting each tile: only virtualization (M8) removes it.
+Two unit tests (279). Still to try: whether that's enough on Tim's phone with AOT; if not, the next step is the
+sample's own `IconGrid` element drawing only the visible rows (option B), until M8's virtualizing ListBox.
+A dragging scrollbar thumb stays in M8 (Tim, 2026-11-16).
+
+**For M8's virtualization** (Tim, 2026-11-16, left for M8 after the scrolling work): "it really sucks to work
+with in html-based web UIs. Like scrolling to an item is not usually a thing you can do if virtualization is turned
+on, at least not from the blazor libraries I've used." So a virtualized list must keep what a plain one can do:
+scroll to an item by index or key (also one never realized), bring the focused item into view, keyboard navigation
+across unrealized items, and a stable scrollbar (sizes estimated, then corrected without jumps). Plan it from those
+requirements rather than as a later add-on.
+
+Built 2026-11-16, verified by Tim the same day (Windows, browser and phone, with the browser published AOT).
+`src/Scribble.Icons.Material` (`MaterialData.fs` hand-written,
+`Material.fs` generated: the `Material` type plus a same-named module with `filled`, `outlined`, `icon`, `tryIcon`,
+`names`, as for elements). Found while testing: with an option given twice ("star-filled-outlined") the later one now
+wins (reading from the end, the Avalonia parser let the earlier win). Measurements: the generated file compiles in
+seconds; a set decodes in about 5 ms on the desktop at steady state (first run 6 ms); the outlined set takes 3.3 MB
+of memory; the Counter browser sample's Brotli download went from 1.86 MB to 2.74 MB (the package's wasm file is
+0.88 MB compressed; unused, the package is trimmed away entirely); a NativeAOT Counter publish has only FSharp.Core's
+two warnings, and the exe runs. Hello's toolbar with icons needs about 1,040 DIPs beside the title, so at its default
+960 DIPs it now sits on its own row below the title (the SplitRow at work). Tests: 5 new unit tests (274), 2 new
+rendering tests (47: `material@1x`, `material@2x`); `hello@1x`, `hello-phone@3x`, `counter-demo@1x`,
+`counter-demo-light@1x` regenerated and checked by eye. Wasm AOT size not measured (the interpreted publish was).

@@ -22,5 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Scribble.Browser/Scribble.Browser.fsproj" />
     <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
   </ItemGroup>
 </Project>

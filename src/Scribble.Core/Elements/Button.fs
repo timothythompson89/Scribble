@@ -67,6 +67,21 @@ module Button =
             h <- max h (d.Height + iy)
         Size.Create(w, h)
 
+    /// How far below the slot's middle a text's optical middle sits: halfway between the middle of
+    /// its capitals and the middle of its lowercase letters, for one line centered in the slot. An icon
+    /// beside text is centered there, since lowercase-heavy labels look low beside an exactly centered
+    /// icon. Only for a TextBlock (`Button.text`); other content keeps the icon centered.
+    let private textNudge (ctx: ArrangeContext) =
+        if ctx.Children.Count = 0 || not (obj.ReferenceEquals(ctx.Children[0].Type, TextBlock.Type)) then 0.0
+        else
+            let text = ctx.Children[0]
+            let font = text.Get InheritedProps.font
+            let face = font.Face
+            let em = text.Get InheritedProps.fontSize / float face.UnitsPerEm
+            let lineHeight = float (face.Ascender - face.Descender + face.LineGap)
+            // From the line box's middle down to the baseline, then up to the optical middle.
+            (float face.Ascender - lineHeight / 2.0 - float (face.CapHeight + face.XHeight) / 4.0) * em
+
     /// Border's arrange; with an icon, the icon and the content form one centered row.
     let private arrange (ctx: ArrangeContext) (size: Size) =
         let p, t = ctx.Get BorderProps.padding, ctx.Get BorderProps.borderThickness
@@ -82,7 +97,7 @@ module Button =
             let row = if ctx.Children.Count > 0 then icon + gap + content else icon
             // Rounded half-up, like layout, so the icon and the content keep their exact gap.
             let left = Math.Floor(slot.X + max 0.0 ((slot.Width - row) / 2.0) + 0.5)
-            ctx.SetLocal(ButtonProps.iconRect, Rect.Create(left, slot.Y, icon, slot.Height))
+            ctx.SetLocal(ButtonProps.iconRect, Rect.Create(left, slot.Y + textNudge ctx, icon, slot.Height))
             for child in ctx.Children do
                 ctx.Arrange(child, Rect.Create(left + icon + gap, slot.Y, content, slot.Height))
 

@@ -5,6 +5,7 @@ module Scribble.Samples.HelloApp
 
 open System
 open Scribble.Core
+open Scribble.Icons
 open Scribble.Samples
 
 type Model =
@@ -60,11 +61,16 @@ let private toolbar model dispatch =
         WrapPanel.spacing 8.0
         WrapPanel.lineSpacing 8.0
         WrapPanel.children [
-            Button.create [ Button.text (if model.Animating then "Pause" else "Resume"); Button.onClick (fun _ -> dispatch TogglePause) ]
-            Button.create [ Button.text "Restart"; Button.onClick (fun _ -> dispatch Restart) ]
-            Button.create [ Button.text "Remove card"; Button.onClick (fun _ -> dispatch RemoveCard) ]
-            Button.create [ Button.text "Add card"; Button.onClick (fun _ -> dispatch AddCard) ]
-            Button.create [ Button.text "Shuffle"; Button.onClick (fun _ -> dispatch Shuffle) ]
+            // Icons: Material Symbols (Scribble.Icons.Material).
+            Button.create [
+                Button.icon (if model.Animating then Material.pause else Material.playArrow)
+                Button.text (if model.Animating then "Pause" else "Resume")
+                Button.onClick (fun _ -> dispatch TogglePause)
+            ]
+            Button.create [ Button.icon Material.restartAlt; Button.text "Restart"; Button.onClick (fun _ -> dispatch Restart) ]
+            Button.create [ Button.icon Material.remove; Button.text "Remove card"; Button.onClick (fun _ -> dispatch RemoveCard) ]
+            Button.create [ Button.icon Material.add; Button.text "Add card"; Button.onClick (fun _ -> dispatch AddCard) ]
+            Button.create [ Button.icon Material.shuffle; Button.text "Shuffle"; Button.onClick (fun _ -> dispatch Shuffle) ]
         ]
     ]
 

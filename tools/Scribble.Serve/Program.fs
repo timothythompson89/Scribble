@@ -5,7 +5,7 @@
 ///   dotnet run --project tools/Scribble.Serve -- --no-build   serve what was published last
 ///   dotnet run --project tools/Scribble.Serve -- --self-signed   no certificate authority to install (warnings instead)
 ///
-/// Hello is on port 5280, Counter on 5281 (HTTPS); port 5279 (plain HTTP) offers the certificate to
+/// Hello is on port 5280, Counter on 5281, Icons on 5282 (HTTPS); port 5279 (plain HTTP) offers the certificate to
 /// install on other devices. Published files and certificates go to `artifacts/serve` (git-ignored).
 module Scribble.Serve.Program
 
@@ -26,7 +26,8 @@ type private Sample = { Name: string; Project: string; Port: int }
 
 let private samples =
     [ { Name = "hello"; Project = "samples/Scribble.Samples.Browser"; Port = 5280 }
-      { Name = "counter"; Project = "samples/Scribble.Samples.Counter.Browser"; Port = 5281 } ]
+      { Name = "counter"; Project = "samples/Scribble.Samples.Counter.Browser"; Port = 5281 }
+      { Name = "icons"; Project = "samples/Scribble.Samples.Icons.Browser"; Port = 5282 } ]
 
 let private certificatePort = 5279
 

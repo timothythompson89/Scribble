@@ -3,11 +3,16 @@ namespace Scribble.Text
 open System
 open System.Threading
 
+/// Id counters as plain static fields: a `static let` takes part in F#'s file initialization, which
+/// failed ("static data accessed recursively") when several threads first used the type at once.
+type internal FontIds private () =
+    [<DefaultValue>] static val mutable private next: int
+    static member Next() = lock typeof<FontIds> (fun () -> FontIds.next <- FontIds.next + 1; FontIds.next)
+
 /// A font Scribble can draw with: the parsed face plus identity for caches and shapers.
 [<Sealed>]
 type Font(name: string, data: byte[]) =
-    static let mutable nextId = 0
-    let id = Interlocked.Increment &nextId
+    let id = FontIds.Next()
     let face = FontFace data
 
     /// Unique per Font instance; caches and shapers key on it.

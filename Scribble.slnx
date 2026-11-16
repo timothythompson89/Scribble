@@ -9,6 +9,7 @@
     <Project Path="src/Scribble.Core/Scribble.Core.fsproj" />
     <Project Path="src/Scribble.Desktop/Scribble.Desktop.fsproj" />
     <Project Path="src/Scribble.Inspector/Scribble.Inspector.fsproj" />
+    <Project Path="src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
     <Project Path="src/Scribble.Platform/Scribble.Platform.fsproj" />
     <Project Path="src/Scribble.Platform.Win32/Scribble.Platform.Win32.fsproj" />
     <Project Path="src/Scribble.Rendering/Scribble.Rendering.fsproj" />
@@ -25,6 +26,8 @@
     <Project Path="samples/Scribble.Samples.Browser/Scribble.Samples.Browser.fsproj" />
     <Project Path="samples/Scribble.Samples.Counter/Scribble.Samples.Counter.fsproj" />
     <Project Path="samples/Scribble.Samples.Counter.Browser/Scribble.Samples.Counter.Browser.fsproj" />
+    <Project Path="samples/Scribble.Samples.Icons/Scribble.Samples.Icons.fsproj" />
+    <Project Path="samples/Scribble.Samples.Icons.Browser/Scribble.Samples.Icons.Browser.fsproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Scribble.Serve/Scribble.Serve.fsproj" />

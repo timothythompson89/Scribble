@@ -64,11 +64,18 @@ module internal Interpolation =
                 | ValueNone, ValueNone -> box (ValueNone: BoxShadow voption))
         else ValueNone
 
+/// Id counters as plain static fields: a `static let` takes part in F#'s file initialization, which
+/// failed ("static data accessed recursively") when several threads first used the type at once.
+type internal Ids private () =
+    [<DefaultValue>] static val mutable private token: int
+    [<DefaultValue>] static val mutable private prop: int
+    static member NextToken() = lock typeof<Ids> (fun () -> Ids.token <- Ids.token + 1; Ids.token)
+    static member NextProp() = lock typeof<Ids> (fun () -> Ids.prop <- Ids.prop + 1; Ids.prop)
+
 /// A named value a theme gives (`ThemeValue<'T>`; the built-in ones are in `Palette`).
 [<AbstractClass>]
 type ThemeToken internal (name: string, defaultBoxed: obj) =
-    static let mutable lastId = 0
-    let id = Interlocked.Increment(&lastId)
+    let id = Ids.NextToken()
     member _.Name = name
     member internal _.Id = id
     member internal _.DefaultBoxed = defaultBoxed
@@ -113,8 +120,7 @@ type internal ThemeRef(token: ThemeToken, convert: (obj -> obj) voption) =
 /// Define properties once, as module-level values, with `Prop.define` (see Element.fs).
 [<AbstractClass>]
 type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed: obj, same: obj -> obj -> bool, lerp: (obj -> obj -> float -> obj) voption) =
-    static let mutable lastId = 0
-    let id = Interlocked.Increment(&lastId)
+    let id = Ids.NextProp()
     // This property's transition duration, as a property of its own (`Style.transition`), made on first use.
     let mutable transition: Prop<TimeSpan voption> voption = ValueNone
 

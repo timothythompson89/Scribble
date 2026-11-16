@@ -910,14 +910,17 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         if prop.TestedByStyles && not (prop.Same(before, after)) then
             this.RequestRestyle(prop.TestedByAncestorStyles, false)
 
+    /// The value without any transition easing it (the value it's heading to).
+    member private this.Untransitioned<'T>(prop: Prop<'T>) : 'T =
+        match find prop.Id with
+        | -1 ->
+            if styleKeys.Length > 0 || prop.Inherits then unbox<'T> (this.Resolve(this.BaseOf prop))
+            elif elementType.Defaults.Length = 0 then prop.Default
+            else unbox<'T> (this.Resolve(this.DefaultOf prop))
+        | i -> unbox<'T> (this.Resolve values[i])
+
     member this.Get<'T>(prop: Prop<'T>) : 'T =
-        let value =
-            match find prop.Id with
-            | -1 ->
-                if styleKeys.Length > 0 || prop.Inherits then unbox<'T> (this.Resolve(this.BaseOf prop))
-                elif elementType.Defaults.Length = 0 then prop.Default
-                else unbox<'T> (this.Resolve(this.DefaultOf prop))
-            | i -> unbox<'T> (this.Resolve values[i])
+        let value = this.Untransitioned prop
         if prop.Transition.IsSome then this.Transitioned(prop, value) else value
 
     /// The current value, boxed: the element's own, else a style's, else the default (a theme's
@@ -1231,18 +1234,31 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                       | VerticalAlignment.Center
                       | VerticalAlignment.Stretch -> (availH - h) / 2.0
                 // Round the edges, not the size, so neighbours never overlap or leave gaps.
+                let before = bounds
                 bounds <- Rect.FromEdges(Element.RoundToPixels(x, s), Element.RoundToPixels(y, s), Element.RoundToPixels(x + w, s), Element.RoundToPixels(y + h, s))
-                elementType.Arrange (ArrangeContext this) (Size.Create(bounds.Width, bounds.Height))
+                // Children sit relative to this element, and its arrange stage sees only its size:
+                // moved but not resized (scrolled, say), with nothing else changed, its children
+                // stay where they are and the stage isn't run again.
+                if not (arrangeValid && bounds.Width = before.Width && bounds.Height = before.Height) then
+                    elementType.Arrange (ArrangeContext this) (Size.Create(bounds.Width, bounds.Height))
             arrangeValid <- true
 
     member this.Render(list: DrawList) =
-        let scale = this.Get LayoutProps.scale
         // Skipped when it can't show (scrolled out of a ScrollViewer, outside a clip): its bounds,
         // grown by what elements draw outside themselves (shadows, focus rings), lie outside the
-        // clip. Always drawn when it grows (scale above 1) or has its own transform.
+        // clip. Always drawn when it grows (scale above 1, or easing back from it) or has its own
+        // transform. The clip test comes first and the scale is read plainly after it (no
+        // transition lookup unless it has a running one): most elements in a long scrolled list
+        // are off screen, and this is all they cost.
         let canShow () =
-            scale > 1.0 || elementType.Transform.IsSome || list.CanShow(bounds.Inflate Element.RenderOverflow)
+            list.CanShow(bounds.Inflate Element.RenderOverflow)
+            || elementType.Transform.IsSome
+            || this.Untransitioned LayoutProps.scale > 1.0
+            || (match transitions with
+                | ValueSome d when d.ContainsKey LayoutProps.scale.Id -> this.Get LayoutProps.scale > 1.0
+                | _ -> false)
         if not bounds.IsEmpty && lv.IsVisible && canShow () then
+            let scale = this.Get LayoutProps.scale
             list.PushTranslate(bounds.X, bounds.Y)
             let opacity = this.Get LayoutProps.opacity
             if opacity < 1.0 then list.PushOpacity opacity

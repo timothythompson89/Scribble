@@ -204,3 +204,60 @@ let ``10,000 elements lay out quickly, and a single change is cheap`` () =
     Assert.Equal(before + 15, measures (cell 0))
     Assert.Equal(before + 30, measures (cell 5000))
     Console.WriteLine($"10k elements: full {full:F2} ms, one change {single:F3} ms")
+
+/// Counts its arrange and render stages.
+let mutable private arranged = 0
+let mutable private rendered = 0
+let private countingType =
+    Element.define "Counting" [
+        Element.arrange (fun _ _ -> arranged <- arranged + 1)
+        Element.render (fun _ _ -> rendered <- rendered + 1)
+    ]
+let private counting (settings: Setting<Layoutable> list) = View.Create(countingType, settings)
+
+[<Fact>]
+let ``an element that only moves isn't arranged again; one that changes size is`` () =
+    let tree = ElementTree(textSystem ())
+    let view (above: float) (width: float) =
+        StackPanel.create [
+            StackPanel.children [
+                Border.create [ Border.height above ]
+                counting [ Layoutable.width width; Layoutable.height 20.0; Layoutable.horizontalAlignment HorizontalAlignment.Left ]
+            ]
+        ]
+    tree.Update(view 10.0 50.0)
+    tree.UpdateLayout(Size.Create(200.0, 200.0))
+    let element = tree.Root.Value.Children[1]
+    arranged <- 0
+    // Moved down by 30: new bounds, but its arrange stage (and so its children) isn't run again.
+    tree.Update(view 40.0 50.0)
+    tree.UpdateLayout(Size.Create(200.0, 200.0))
+    Assert.Equal(40.0, element.Bounds.Y)
+    Assert.Equal(0, arranged)
+    // Wider: arranged again.
+    tree.Update(view 40.0 80.0)
+    tree.UpdateLayout(Size.Create(200.0, 200.0))
+    Assert.Equal(1, arranged)
+
+[<Fact>]
+let ``an element off screen is skipped unless it's scaled up past its bounds`` () =
+    let tree = ElementTree(textSystem ())
+    let view scale =
+        ScrollViewer.create [
+            ScrollViewer.height 100.0
+            ScrollViewer.content (
+                StackPanel.create [
+                    StackPanel.children [
+                        Border.create [ Border.height 200.0 ]
+                        // 100 DIPs below the clip: further than the 64 DIPs elements may draw outside themselves.
+                        counting [ Layoutable.height 100.0; Layoutable.scale scale ]
+                    ]
+                ]
+            )
+        ]
+    for scale, drawn in [ 1.0, 0; 0.97, 0; 4.0, 1 ] do
+        tree.Update(view scale)
+        tree.UpdateLayout(Size.Create(200.0, 300.0))
+        rendered <- 0
+        tree.Render(DrawList 1.0)
+        Assert.Equal(drawn, rendered)

@@ -273,6 +273,28 @@ type FontFace(data: byte[]) =
             more <- flags &&& 0x20 <> 0
         contours.ToArray()
 
+    /// The top of a character's outline in font units, if the font has it.
+    let outlineTop (codepoint: int) =
+        let contours = readOutline (glyphIndex codepoint) 0
+        if contours.Length = 0 then ValueNone
+        else ValueSome(contours |> Array.collect id |> Array.map (fun p -> p.Y) |> Array.max |> int)
+
+    /// Cap height and x-height: OS/2 (version 2 and later), else the tops of 'H' and 'x', else 70%
+    /// and 50% of the em.
+    let capAndXHeight =
+        lazy (
+            let fromTable =
+                match tryTable "OS/2" with
+                | ValueSome os2 when u16 os2 >= 2 && i16 (os2 + 88) > 0 && i16 (os2 + 86) > 0 ->
+                    ValueSome(struct (i16 (os2 + 88), i16 (os2 + 86)))
+                | _ -> ValueNone
+            match fromTable with
+            | ValueSome v -> v
+            | ValueNone ->
+                let cap = outlineTop (int 'H') |> ValueOption.defaultValue (unitsPerEm * 7 / 10)
+                let x = outlineTop (int 'x') |> ValueOption.defaultValue (unitsPerEm / 2)
+                struct (cap, x))
+
     member _.Data = data
     member _.UnitsPerEm = unitsPerEm
     member _.GlyphCount = glyphCount
@@ -281,6 +303,10 @@ type FontFace(data: byte[]) =
     /// Distance from the baseline to the bottom of the line box, in font units (negative).
     member _.Descender = descender
     member _.LineGap = lineGap
+    /// Height of capital letters above the baseline, in font units.
+    member _.CapHeight = let struct (cap, _) = capAndXHeight.Value in cap
+    /// Height of lowercase letters such as 'x' above the baseline, in font units.
+    member _.XHeight = let struct (_, x) = capAndXHeight.Value in x
 
     /// Horizontal advance of a glyph, in font units.
     member _.Advance(glyph: int) =

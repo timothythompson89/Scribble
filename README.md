@@ -190,10 +190,19 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      inspector (F12). In the Styles tab, forcing `selected` on an unselected chip makes it look selected.
 12. The title (an app value, `WindowTitle.current`; verified): the window, or the browser tab, is called "Counter – Elmish" at
    the start and names whichever tab you select. A popped-out inspector ("Inspector – Counter – …") follows it.
-13. Icons (M7b step 1, verified): the Light/Dark switch shows a sun (or, in light, a moon) before its text, in the button's text
-   color: light grey in dark, dark in light; it fades with the button when hovered or pressed like the text.
-   Inspector: pick the switch; its `icon` property shows `sun` or `moon`.
+13. Icons: the Light/Dark switch shows Material's `light_mode` (or, in light, `dark_mode`) before its text, in the
+   button's text color: light grey in dark, dark in light; it fades with the button when hovered or pressed like the
+   text. Inspector: pick the switch; its `icon` property shows `light_mode` or `dark_mode`. (Hello's toolbar buttons
+   have Material icons too.)
 The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
+
+The icon gallery (`dotnet run --project samples/Scribble.Samples.Icons`; browser: `samples/Scribble.Samples.Icons.Browser`,
+port 5282) shows all 4,304 Material Symbols in a ScrollViewer, in tiles that wrap to the window's width:
+
+1. Outlined/Filled switches every icon (about 30 ms here: 17,000 elements, no virtualization yet).
+2. A click on a tile shows the F# to write for it above the grid: `Material.arrowUpward`, with `.filled` when
+   filled, ``Material.``class`` `` for keywords, `Material._10k` for a leading digit.
+3. Tiles light up under the pointer; scrolling (wheel, scrollbar, a finger on a phone) is smooth.
 
 ## Run the browser sample
 
@@ -237,7 +246,7 @@ dotnet run --project tools/Scribble.Serve -- --aot           # WebAssembly AOT (
 dotnet run --project tools/Scribble.Serve -- --self-signed   # nothing to install; each device warns instead
 ```
 
-It prints the addresses: Hello on port 5280, Counter on 5281 (HTTPS). The first time, the tool makes a small
+It prints the addresses: Hello on port 5280, Counter on 5281, Icons on 5282 (HTTPS). The first time, the tool makes a small
 certificate authority for this machine (kept in `artifacts/serve/certificates`, git-ignored). Install its
 certificate once on each device: open `http://<this machine>:5279/` there, download it, and follow the steps on
 that page (Windows, Android, iPhone/iPad, macOS). The server's own certificate is made fresh on every run, naming
@@ -681,7 +690,36 @@ Button.create [ Button.icon menu; Button.text "Menu" ]                   // icon
 - Color: the inherited `foreground` (so themes, styles and `opacity` apply); `IconView.foreground` sets its own.
 - Rendering: rasterized once per pixel size into the glyph atlas, like text; sharp at any scale, drawn in the same
   single draw call. `Button.iconSize` (default 18) sets a button's icon size.
-- An icon set is just a module of icon values. Coming next: the opt-in Material Symbols package.
+- Beside `Button.text`, the icon sits at the text's optical middle (halfway between the middle of its capitals
+  and of its lowercase letters, from the font's OS/2 cap height and x-height): about 0.6 DIP below the button's
+  middle at 14 px, since mostly-lowercase labels look low beside an exactly centered icon. An icon alone, or
+  beside other content, stays centered.
+- An icon set is just a module of icon values.
+
+**Material Symbols** (opt-in package `Scribble.Icons.Material`): Google's 4,304 Material Symbols (Outlined style,
+weight 400), each outlined or filled. © Google, Apache License 2.0: credit them in your app.
+
+```fsharp
+open Scribble.Icons
+
+Button.create [ Button.icon Material.home; Button.text "Home" ]
+IconView.create [ IconView.icon Material.star.filled ]   // .outlined goes back
+icons |> List.map Material.filled          // the same as functions, for piping
+Material.arrowUpward |> Icon.rotate 90.0
+Material._10k                              // a leading digit gets "_"
+Material.``class``                         // the 7 names that are F# keywords: class, done, event, function, public, select, try
+Material.icon "star-filled-rotate90"       // from text (name, then options: filled, outlined, rotateN, fliph, flipv)
+Material.tryIcon name                      // ValueNone for unknown names (Material.icon throws)
+Material.names ()                          // every name
+```
+
+- Names are Google's (https://fonts.google.com/icons) in camelCase. `Icon.describe` gives text `Material.icon` reads
+  back ("star-filled-rotate90"); a filled icon's name is "star-filled".
+- Size: the paths are stored as plain text (the browser's .NET has no Brotli decoder), so the package adds about
+  5 MB to a desktop app, and about 0.6 MB to a browser app's download (a browser publish Brotli-compresses it; 1.6 MB
+  where a server only offers gzip). Only when an icon is used: unused, it's trimmed away. A set is read the first
+  time one of its icons is used (under 1 ms on a desktop; outlined takes about 3.3 MB of memory, filled about 2 MB).
+- Regenerated from Tim's Avalonia `MaterialIconData.cs` by `dotnet fsi tools/GenerateMaterial.fsx [path]`.
 
 ### Elements and layout
 
@@ -762,6 +800,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer; layers; App settings and runtime |
 | `src/Scribble.Desktop` | `App.run`: the desktop platform, WebGPU renderer and HarfBuzz shaping in one reference |
 | `src/Scribble.Inspector` | Opt-in inspector: `Inspector.enable [ ... ]` (element tree of every layer, pick mode, highlight, properties, frame stats) |
+| `src/Scribble.Icons.Material` | Opt-in Material Symbols: `Material.home`, `Material.filled`, `Material.icon "name"` (© Google, Apache 2.0) |
 | `src/Scribble.Browser` | `App.runInBrowser`: the browser equivalents |
 | `src/Scribble.Platform` | Window, event, DPI and frame-clock abstractions |
 | `src/Scribble.Platform.Win32` | Win32 backend, hand-written P/Invoke |
@@ -779,6 +818,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | `samples/Scribble.Samples.Hello` | Desktop host |
 | `samples/Scribble.Samples.Browser` | Browser host (WebAssembly) |
 | `samples/Scribble.Samples.Counter`, `.Counter.Browser` | The counter, desktop and browser (one-line Program.fs each) |
+| `samples/Shared/IconGallery.fs`, `samples/Scribble.Samples.Icons`, `.Icons.Browser` | The Material Symbols gallery and its two hosts |
 | `tests/*` | Unit and rendering tests |
 
 ## Interop rules
