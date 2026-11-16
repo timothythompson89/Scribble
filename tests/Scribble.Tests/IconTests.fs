@@ -218,3 +218,74 @@ let ``beside text the icon sits at the text's optical middle, a little below the
     Assert.Equal(93.0 / 2048.0 * 28.0, below b[1], 3)
     Assert.Equal(0.0, below b[2], 3)
     Assert.Equal(0.0, below b[3], 3)
+
+/// A cursor's image at a scale (Cursor.fromIcon gives Cursor.Image).
+let private cursorAt (cursor: Cursor) (scale: float) =
+    match cursor with
+    | Cursor.Image image -> image.Render scale
+    | other -> failwith ("not an image cursor: " + string other)
+
+/// BGRA at (x, y).
+let private pixel (b: Scribble.Platform.CursorBitmap) (x: int) (y: int) =
+    let i = (y * b.Width + x) * 4
+    b.Pixels[i], b.Pixels[i + 1], b.Pixels[i + 2], b.Pixels[i + 3]
+
+[<Fact>]
+let ``an icon cursor is the icon in white with a black outline, pointing at its center`` () =
+    let b = cursorAt (Cursor.fromIcon square []) 1.0
+    // 24 pixels plus a 1-pixel outline all round; the hotspot is the center, moved by the outline.
+    Assert.Equal(26, b.Width)
+    Assert.Equal(26, b.Height)
+    Assert.Equal(13, b.HotspotX)
+    Assert.Equal(13, b.HotspotY)
+    Assert.Equal((255uy, 255uy, 255uy, 255uy), pixel b 13 13)
+    // The outline beside the square: black, opaque.
+    Assert.Equal((0uy, 0uy, 0uy, 255uy), pixel b 0 13)
+    // Diagonally off the square's corner the outline is softer.
+    let _, _, _, corner = pixel b 0 0
+    Assert.InRange(corner, 100uy, 200uy)
+
+[<Fact>]
+let ``an icon cursor scales with the window, and its settings change size, hotspot, colors and outline`` () =
+    let red = Color.Hex 0xFF0000
+    let c = Cursor.fromIcon square [ Cursor.size 16.0; Cursor.hotspot (2.0, 14.0); Cursor.fill red; Cursor.outlineWidth 2.0 ]
+    let b = cursorAt c 2.0
+    // 16 DIPs at 2x = 32 pixels, plus a 4-pixel outline each side.
+    Assert.Equal(40, b.Width)
+    Assert.Equal(4 + 4, b.HotspotX)
+    Assert.Equal(4 + 28, b.HotspotY)
+    Assert.Equal((0uy, 0uy, 255uy, 255uy), pixel b 20 20)
+    // No outline: no room for one either.
+    let plain = cursorAt (Cursor.fromIcon square [ Cursor.outline Color.Transparent ]) 1.0
+    Assert.Equal(24, plain.Width)
+    Assert.Equal(12, plain.HotspotX)
+
+[<Fact>]
+let ``icon cursors with the same icon and settings are equal, so platforms make each once`` () =
+    let star = Icon.fromPath "M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z" [ Icon.name "star" ]
+    let heart = Icon.fromPath "M12 21C6 16 2 12 2 8a5 5 0 0 1 10-1 5 5 0 0 1 10 1c0 4-4 8-10 13z" [ Icon.name "heart" ]
+    let a = Cursor.fromIcon star [ Cursor.size 32.0 ]
+    let b = Cursor.fromIcon star [ Cursor.size 32.0 ]
+    Assert.Equal(a, b)
+    Assert.Equal(a.GetHashCode(), b.GetHashCode())
+    Assert.NotEqual(a, Cursor.fromIcon star [ Cursor.size 24.0 ])
+    Assert.NotEqual(a, Cursor.fromIcon (star |> Icon.rotate 90.0) [ Cursor.size 32.0 ])
+    Assert.NotEqual(a, Cursor.fromIcon heart [ Cursor.size 32.0 ])
+
+[<Fact>]
+let ``platforms keep only the cursors used most recently, never releasing the one just asked for`` () =
+    let released = System.Collections.Generic.List<int>()
+    let made = System.Collections.Generic.List<string>()
+    let cache = Scribble.Platform.RecentCache<string, int>(2, released.Add)
+    let get (k: string) = cache.GetOrAdd(k, fun () -> made.Add k; k.Length)
+    get "a" |> ignore
+    get "bb" |> ignore
+    get "a" |> ignore            // a is now the most recent
+    get "ccc" |> ignore          // so bb (the least recent) goes
+    Assert.Equal<int list>([ 2 ], List.ofSeq released)
+    Assert.Equal(2, cache.Count)
+    get "a" |> ignore            // still kept: not made again
+    Assert.Equal<string list>([ "a"; "bb"; "ccc" ], List.ofSeq made)
+    cache.Clear()                // the window closes: everything goes
+    Assert.Equal<int list>([ 1; 2; 3 ], List.ofSeq released |> List.sort)
+    Assert.Equal(0, cache.Count)

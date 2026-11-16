@@ -178,17 +178,7 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
         match icons.TryGetValue key with
         | true, entry -> entry
         | _ ->
-            // Center the viewBox on the origin, flip, rotate clockwise, scale to the box, move into it.
-            let scale = sizePx / max viewBox.Width viewBox.Height
-            let cx, cy = viewBox.X + viewBox.Width / 2.0, viewBox.Y + viewBox.Height / 2.0
-            let fx, fy = (if flipH then -1.0 else 1.0), (if flipV then -1.0 else 1.0)
-            let angle = rotation * Math.PI / 180.0
-            let c, s = cos angle, sin angle
-            let half = sizePx / 2.0
-            let map (x: float) (y: float) =
-                let x, y = (x - cx) * fx, (y - cy) * fy
-                struct ((x * c - y * s) * scale + half, (x * s + y * c) * scale + half)
-            let bitmap = rasterizePath path map
+            let bitmap = rasterizeIcon path (viewBox.X, viewBox.Y, viewBox.Width, viewBox.Height) sizePx rotation flipH flipV
             if bitmap.Width = 0 then
                 let entry = struct (bitmap, 0, 0)
                 icons[key] <- entry

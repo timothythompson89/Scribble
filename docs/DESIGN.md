@@ -827,3 +827,41 @@ two warnings, and the exe runs. Hello's toolbar with icons needs about 1,040 DIP
 960 DIPs it now sits on its own row below the title (the SplitRow at work). Tests: 5 new unit tests (274), 2 new
 rendering tests (47: `material@1x`, `material@2x`); `hello@1x`, `hello-phone@3x`, `counter-demo@1x`,
 `counter-demo-light@1x` regenerated and checked by eye. Wasm AOT size not measured (the interpreted publish was).
+
+## M7b step 3: image cursors (agreed 2026-11-16)
+
+Agreed (recommendations; the groundwork from 2026-11-15 stands: the OS shows the cursor, never our frame):
+1. Icon cursors only for now; bitmap cursors wait for Image (M8), though the platform contract already takes pixels.
+2. `Cursor.fromIcon icon [ Cursor.size; Cursor.hotspot (x, y); Cursor.fill; Cursor.outline; Cursor.outlineWidth ]`,
+   a `Cursor` value used with `Layoutable.cursor` like the built-in ones. The settings are static extension members
+   on the platform's `Cursor` (in Core), so they read `Cursor.size` with no module clashing with the alias.
+3. Look: white fill, 1-DIP black outline (the shape grown by the width, softer on diagonals), 24 DIPs, hotspot at
+   the center unless set.
+4. Rasterized at the window's scale, made again on a scale change. Following the Windows cursor-size setting:
+   later (Tim agreed).
+5. Platform contract: `Cursor.Image of CursorImage` with `Key` and `Render: scale -> CursorBitmap` (premultiplied
+   BGRA, size, hotspot in pixels); equality by key, so moves never re-make one. The key holds the icon's
+   description, view box, settings, and the path data's length and hash (not the data: a 4,304-tile list of
+   cursors would carry megabytes of keys).
+6. Win32: `CreateIconIndirect` from a 32-bit top-down DIB (straight alpha) and an all-zero mask; cached per
+   (key, DPI) per window and destroyed with it; on WM_DPICHANGED the one for the new DPI is shown.
+7. Browser: JavaScript makes PNG data URLs (canvas) of the image at the page's density and at 1x, and uses
+   `image-set(url(sharp) Nx, url(1x) 1x) hx hy, auto` when `CSS.supports` takes it (hotspot in CSS pixels, from
+   the 1x image), else the 1x image. Re-made on ScaleChanged.
+8. Demo: in the Icons sample every tile's icon is its cursor.
+9. Tests: unit tests for the bitmap (sizes, hotspots, fill and outline pixels at 1x and 2x, no outline) and equality,
+   and that hovering gives the window the image cursor and moves keep the same value.
+
+Verified by Tim on Windows and in the browser 2026-11-16. Leak check (Tim asked, same day): the Win32 cache had
+no limit, and each cursor costs 1 USER and 3 GDI handles of the process's 10,000 each, so hovering about 3,300
+different tiles would have exhausted GDI for the whole process (measured: 3,000 cursors = +2,999 USER, +8,997 GDI).
+Both platforms now keep the 32 cursors used last (`Scribble.Platform.RecentCache`: releases the least recent, never
+the one just asked for, i.e. the one showing) and release the rest (DestroyIcon; the browser forgets the data URLs
+in JS). Measured again with a real window and 4 rounds of 3,000 cursors: USER +31, GDI +93, managed heap flat,
+everything freed on close. A cursor made again after eviction costs about 0.3 ms. The icon placement (center, flip, rotate, scale) moved from TextSystem into
+`Rasterizer.rasterizeIcon`, shared by the screen and cursors. The inspector shows an image cursor as "icon <name>".
+Checked: cursor images by eye (colorize and edit, 1x and 2x: white, black outline, hotspot), a NativeAOT publish of
+the Icons sample (no new warnings; it runs). Not checked by me: the cursors on screen (Win32 and the browser,
+including a monitor with another scale and the browser's hotspot with image-set). Cost: giving each of the
+gallery's 4,304 tiles a cursor value made building it about 15% slower (113 → 130 ms, Debug); fine for a demo.
+283 unit tests, 50 rendering tests.

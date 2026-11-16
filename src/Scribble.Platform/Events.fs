@@ -56,6 +56,33 @@ type Key =
     /// Anything else, by name (the browser's `key` name, or "VK" and the Win32 code in hex).
     | Other of name: string
 
+/// A cursor image for one scale: premultiplied BGRA pixels, rows top to bottom, and the hotspot
+/// (the pixel that points) in pixels from the top-left.
+type CursorBitmap =
+    { Width: int
+      Height: int
+      HotspotX: int
+      HotspotY: int
+      Pixels: byte[] }
+
+/// A cursor drawn by the app (`Cursor.fromIcon` in Core), shown by the OS as a hardware cursor.
+/// The platform renders it for its window's scale (and again when the scale changes) and keeps
+/// what it made by key: two images with the same key are the same cursor.
+[<CustomEquality; NoComparison>]
+type CursorImage =
+    { /// What the image looks like, as text; equal keys mean equal images.
+      Key: string
+      /// The image at a scale (1.0 = 96 DPI).
+      Render: float -> CursorBitmap }
+
+    override this.Equals(other: obj) =
+        match other with
+        | :? CursorImage as o -> String.Equals(this.Key, o.Key, StringComparison.Ordinal)
+        | _ -> false
+
+    override this.GetHashCode() = StringComparer.Ordinal.GetHashCode this.Key
+    override this.ToString() = this.Key
+
 /// The pointer's look over a window. Elements choose one with `Layoutable.cursor`.
 [<RequireQualifiedAccess>]
 type Cursor =
@@ -74,6 +101,8 @@ type Cursor =
     | ResizeDiagonal
     | NotAllowed
     | Wait
+    /// The app's own image (`Cursor.fromIcon` in Core).
+    | Image of CursorImage
 
 /// Events a platform window raises. The core never sees OS messages, only these.
 ///

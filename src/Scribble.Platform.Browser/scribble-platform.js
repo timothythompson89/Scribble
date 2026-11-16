@@ -108,6 +108,52 @@ export function setCursor(index) {
   if (canvas) canvas.style.cursor = cursors[index] || "default";
 }
 
+// Image cursors (Cursor.Image): CSS values by id, made once per image and density.
+const imageCursors = new Map();
+
+// Premultiplied BGRA bytes (a .NET MemoryView, valid only during the call) as a PNG data URL.
+function cursorPng(width, height, pixels) {
+  const src = pixels.slice();
+  const c = document.createElement("canvas");
+  c.width = width;
+  c.height = height;
+  const ctx = c.getContext("2d");
+  const image = ctx.createImageData(width, height);
+  const d = image.data;
+  for (let i = 0; i < src.length; i += 4) {
+    const a = src[i + 3];
+    if (a === 0) continue;
+    d[i] = Math.min(255, Math.round((src[i + 2] * 255) / a));
+    d[i + 1] = Math.min(255, Math.round((src[i + 1] * 255) / a));
+    d[i + 2] = Math.min(255, Math.round((src[i] * 255) / a));
+    d[i + 3] = a;
+  }
+  ctx.putImageData(image, 0, 0);
+  return c.toDataURL("image/png");
+}
+
+// The image at the screen's density and at 1x (hotspots in their own pixels). Where the browser
+// takes image-set in cursors, the sharp one is used (its hotspot in CSS pixels, the 1x one's);
+// elsewhere the 1x image.
+export function makeImageCursor(id, width, height, hotX, hotY, pixels, width1, height1, hotX1, hotY1, pixels1, density) {
+  const one = `url("${cursorPng(width1, height1, pixels1)}")`;
+  let css = `${one} ${hotX1} ${hotY1}, auto`;
+  if (density !== 1) {
+    const sharp = `image-set(url("${cursorPng(width, height, pixels)}") ${density}x, ${one} 1x) ${hotX1} ${hotY1}, auto`;
+    if (CSS.supports("cursor", sharp)) css = sharp;
+  }
+  imageCursors.set(id, css);
+}
+
+// Forgets an image cursor the page no longer keeps (its data URLs go with it).
+export function forgetImageCursor(id) {
+  imageCursors.delete(id);
+}
+
+export function setImageCursor(id) {
+  if (canvas) canvas.style.cursor = imageCursors.get(id) || "default";
+}
+
 function pointerKind(e) {
   return e.pointerType === "touch" ? 1 : e.pointerType === "pen" ? 2 : 0;
 }

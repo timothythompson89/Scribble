@@ -18,6 +18,15 @@ module internal PlatformJs =
     let requestFrame = JsFunction(ModuleName, "requestFrame", T.void', [])
     let setTitle = JsFunction(ModuleName, "setTitle", T.void', [ T.string ])
     let setCursor = JsFunction(ModuleName, "setCursor", T.void', [ T.double ])
+    let makeImageCursor =
+        JsFunction(
+            ModuleName,
+            "makeImageCursor",
+            T.void',
+            [ T.double; T.double; T.double; T.double; T.double; T.bytes; T.double; T.double; T.double; T.double; T.bytes; T.double ]
+        )
+    let setImageCursor = JsFunction(ModuleName, "setImageCursor", T.void', [ T.double ])
+    let forgetImageCursor = JsFunction(ModuleName, "forgetImageCursor", T.void', [ T.double ])
     let claimKey = JsFunction(ModuleName, "claimKey", T.void', [ T.string ])
     let createCanvas = JsFunction(ModuleName, "createCanvas", T.doubles, [ T.string ])
     let removeCanvas = JsFunction(ModuleName, "removeCanvas", T.void', [])
@@ -50,6 +59,39 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
     let mutable closed = false
     let mutable frameRequested = false
     let mutable cursor = Cursor.Default
+    /// Image cursors made in scribble-platform.js, by key and density: the 32 used most recently
+    /// (each holds two PNG data URLs in the page), the rest forgotten there too.
+    let imageCursorIds =
+        RecentCache<struct (string * float), int>(32, fun id ->
+            PlatformJs.callDouble PlatformJs.forgetImageCursor (float id) |> ignore)
+    let mutable lastImageCursorId = 0
+
+    /// Shows an image cursor, made at the page's density (and at 1x) the first time.
+    let showImage (image: CursorImage) =
+        let density = PlatformJs.call0 PlatformJs.scale |> returnedDouble
+        let id =
+            imageCursorIds.GetOrAdd(struct (image.Key, density), fun () ->
+                lastImageCursorId <- lastImageCursorId + 1
+                let id = lastImageCursorId
+                let sharp = image.Render density
+                let one = if density = 1.0 then sharp else image.Render 1.0
+                let f = PlatformJs.makeImageCursor
+                let args = f.Args()
+                args[2].ToJS(float id)
+                args[3].ToJS(float sharp.Width)
+                args[4].ToJS(float sharp.Height)
+                args[5].ToJS(float sharp.HotspotX)
+                args[6].ToJS(float sharp.HotspotY)
+                args[7].ToJS(Span<byte> sharp.Pixels)
+                args[8].ToJS(float one.Width)
+                args[9].ToJS(float one.Height)
+                args[10].ToJS(float one.HotspotX)
+                args[11].ToJS(float one.HotspotY)
+                args[12].ToJS(Span<byte> one.Pixels)
+                args[13].ToJS density
+                f.Invoke args
+                id)
+        PlatformJs.callDouble PlatformJs.setImageCursor (float id) |> ignore
 
     member _.FrameRequested = frameRequested && not closed
 
@@ -65,6 +107,12 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
                 onEvent event
                 // Draw before the browser paints, so the new canvas size never shows stale pixels.
                 this.DeliverFrame()
+            | ScaleChanged _ ->
+                onEvent event
+                // An image cursor is made per density: show the one for the new density.
+                match cursor with
+                | Cursor.Image image -> showImage image
+                | _ -> ()
             | _ -> onEvent event
 
     interface IWindow with
@@ -107,7 +155,10 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
                     | Cursor.NotAllowed -> 7
                     | Cursor.Wait -> 8
                     | Cursor.ResizeDiagonal -> 9
-                PlatformJs.callDouble PlatformJs.setCursor (float index) |> ignore
+                    | Cursor.Image _ -> -1
+                match value with
+                | Cursor.Image image -> showImage image
+                | _ -> PlatformJs.callDouble PlatformJs.setCursor (float index) |> ignore
 
         member _.ClaimKey(key: Key, modifiers: Modifiers) =
             // The browser's `key` name, lower case, as scribble-platform.js compares it.

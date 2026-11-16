@@ -287,3 +287,23 @@ let ``a click carries its source and the modifiers held at release`` () =
     let e = Assert.Single clicks
     Assert.Equal(ClickSource.Pointer Mouse, e.Source)
     Assert.True(e.Modifiers.HasFlag Modifiers.Shift)
+
+[<Fact>]
+let ``an icon cursor is the window's cursor over its element, and stays the same value as the pointer moves`` () =
+    let pointer = Icon.fromPath "M0 0h24v24H0z" [ Icon.name "square" ]
+    let view =
+        StackPanel.create [
+            StackPanel.children [
+                Border.create [ Border.height 40.0; Border.cursor (Cursor.fromIcon pointer [ Cursor.hotspot (0.0, 0.0) ]) ]
+                Border.create [ Border.height 40.0 ]
+            ]
+        ]
+    let w, _, _ = show view
+    move w 50 20
+    let first = w.Cursor
+    Assert.Equal(Cursor.fromIcon pointer [ Cursor.hotspot (0.0, 0.0) ], first)
+    move w 60 25
+    // The same value: a platform compares and keeps what it made.
+    Assert.Equal(first, w.Cursor)
+    move w 50 60
+    Assert.Equal(Cursor.Default, w.Cursor)

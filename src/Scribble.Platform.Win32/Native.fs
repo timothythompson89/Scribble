@@ -300,6 +300,49 @@ extern int KillTimer(nativeint hwnd, nativeint uIDEvent)
 [<DllImport("gdi32.dll", ExactSpelling = true)>]
 extern nativeint GetStockObject(int i)
 
+// Image cursors: a 32-bit top-down DIB with straight alpha plus an all-zero mask, made into a
+// cursor by CreateIconIndirect (and freed with DestroyIcon).
+
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type ICONINFO =
+    { mutable fIcon: int
+      mutable xHotspot: uint32
+      mutable yHotspot: uint32
+      mutable hbmMask: nativeint
+      mutable hbmColor: nativeint }
+
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type BITMAPINFOHEADER =
+    { mutable biSize: uint32
+      mutable biWidth: int
+      mutable biHeight: int
+      mutable biPlanes: uint16
+      mutable biBitCount: uint16
+      mutable biCompression: uint32
+      mutable biSizeImage: uint32
+      mutable biXPelsPerMeter: int
+      mutable biYPelsPerMeter: int
+      mutable biClrUsed: uint32
+      mutable biClrImportant: uint32 }
+
+let BI_RGB = 0u
+let DIB_RGB_COLORS = 0u
+
+[<DllImport("gdi32.dll", ExactSpelling = true)>]
+extern nativeint CreateDIBSection(nativeint hdc, BITMAPINFOHEADER* pbmi, uint32 usage, nativeint* ppvBits, nativeint hSection, uint32 offset)
+
+[<DllImport("gdi32.dll", ExactSpelling = true)>]
+extern nativeint CreateBitmap(int nWidth, int nHeight, uint32 nPlanes, uint32 nBitCount, nativeint lpBits)
+
+[<DllImport("gdi32.dll", ExactSpelling = true)>]
+extern int DeleteObject(nativeint ho)
+
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern nativeint CreateIconIndirect(ICONINFO* piconinfo)
+
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern int DestroyIcon(nativeint hIcon)
+
 // ---------------------------------------------------------------------------------------------
 // Message parameter helpers (the C macros)
 // ---------------------------------------------------------------------------------------------

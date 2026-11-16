@@ -3,6 +3,7 @@ namespace Scribble.Platform.Win32
 #nowarn "9"
 
 open System
+open System.Runtime.InteropServices
 open Microsoft.FSharp.NativeInterop
 open Scribble.Platform
 open Scribble.Platform.Win32.Native
@@ -28,6 +29,11 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
     let mutable trackingLeave = false
     let mutable cursor = Cursor.Default
     let cursorHandles = System.Collections.Generic.Dictionary<Cursor, nativeint>()
+    /// Image cursors by key and DPI: the 32 used most recently (each costs one USER and three GDI
+    /// handles of the process's 10,000 each, so they can't pile up); the rest destroyed, and all of
+    /// them with the window.
+    let imageCursors =
+        RecentCache<struct (string * uint32), nativeint>(32, fun h -> if h <> 0n then DestroyIcon h |> ignore)
 
     let scale () = float dpi / float USER_DEFAULT_SCREEN_DPI
 
@@ -75,7 +81,49 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
             if c > 0u && c < 0xFFFFu then Key.Char(Char.ToLowerInvariant(char c))
             else Key.Other("VK" + vk.ToString("X2"))
 
-    let cursorHandle (c: Cursor) =
+    /// A cursor from an app's image: straight-alpha 32-bit color plus an all-zero mask. 0 if it failed.
+    let makeImageCursor (b: CursorBitmap) =
+        if b.Width <= 0 || b.Height <= 0 then 0n
+        else
+            let mutable header =
+                { biSize = uint32 sizeof<BITMAPINFOHEADER>; biWidth = b.Width; biHeight = -b.Height; biPlanes = 1us
+                  biBitCount = 32us; biCompression = BI_RGB; biSizeImage = 0u; biXPelsPerMeter = 0
+                  biYPelsPerMeter = 0; biClrUsed = 0u; biClrImportant = 0u }
+            let mutable bits = 0n
+            let color = CreateDIBSection(0n, &&header, DIB_RGB_COLORS, &&bits, 0n, 0u)
+            if color = 0n then 0n
+            else
+                // Windows wants straight alpha in cursors; ours is premultiplied.
+                let pixels = Array.zeroCreate<byte> (b.Width * b.Height * 4)
+                for i in 0..4 .. pixels.Length - 4 do
+                    let a = int b.Pixels[i + 3]
+                    if a > 0 then
+                        let straight (c: byte) = byte (min 255 ((int c * 255 + a / 2) / a))
+                        pixels[i] <- straight b.Pixels[i]
+                        pixels[i + 1] <- straight b.Pixels[i + 1]
+                        pixels[i + 2] <- straight b.Pixels[i + 2]
+                        pixels[i + 3] <- byte a
+                Marshal.Copy(pixels, 0, bits, pixels.Length)
+                // Monochrome rows are padded to 16 bits.
+                let maskBytes = Array.zeroCreate<byte> (((b.Width + 15) / 16) * 2 * b.Height)
+                use maskPtr = fixed maskBytes
+                let mask = CreateBitmap(b.Width, b.Height, 1u, 1u, NativePtr.toNativeInt maskPtr)
+                let mutable info =
+                    { fIcon = 0; xHotspot = uint32 (max 0 b.HotspotX); yHotspot = uint32 (max 0 b.HotspotY)
+                      hbmMask = mask; hbmColor = color }
+                let cursor = CreateIconIndirect(&&info)
+                DeleteObject color |> ignore
+                DeleteObject mask |> ignore
+                cursor
+
+    let rec cursorHandle (c: Cursor) =
+        match c with
+        | Cursor.Image image ->
+            // Made for this DPI the first time it's needed here, then kept while used recently.
+            // The one asked for last (the one showing) is never the one destroyed.
+            let h = imageCursors.GetOrAdd(struct (image.Key, dpi), fun () -> makeImageCursor (image.Render(scale ())))
+            if h = 0n then cursorHandle Cursor.Default else h
+        | _ ->
         match cursorHandles.TryGetValue c with
         | true, h -> h
         | _ ->
@@ -91,6 +139,7 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
                 | Cursor.ResizeUpDown -> IDC_SIZENS
                 | Cursor.NotAllowed -> IDC_NO
                 | Cursor.Wait -> IDC_WAIT
+                | Cursor.Image _ -> IDC_ARROW
             let h = LoadCursorW(0n, id)
             cursorHandles[c] <- h
             h
@@ -188,6 +237,10 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
         | WM_DPICHANGED ->
             dpi <- uint32 (loWord wParam)
             onEvent (ScaleChanged(scale ()))
+            // An image cursor is made per scale: show the one for the new scale.
+            match cursor with
+            | Cursor.Image _ when trackingLeave || pressedButtons > 0 -> SetCursor(cursorHandle cursor) |> ignore
+            | _ -> ()
             // Windows suggests a rect that keeps the window the same physical size in DIPs.
             let suggested = NativePtr.read (NativePtr.ofNativeInt<RECT> lParam)
             SetWindowPos(
@@ -212,6 +265,8 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
 
         | WM_DESTROY ->
             closed <- true
+            // Not shown any more: the window is gone. (Windows frees what the system loads itself.)
+            imageCursors.Clear()
             onDestroyed hwnd
             ValueSome 0n
 

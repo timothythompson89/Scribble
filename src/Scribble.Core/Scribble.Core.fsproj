@@ -8,6 +8,7 @@
     <Compile Include="InputTypes.fs" />
     <Compile Include="Props.fs" />
     <Compile Include="Icon.fs" />
+    <Compile Include="Cursor.fs" />
     <Compile Include="Palette.fs" />
     <Compile Include="Dispatcher.fs" />
     <Compile Include="AppValue.fs" />

@@ -17,10 +17,13 @@ let memberName (name: string) =
     let camel = if Char.IsDigit camel[0] then "_" + camel else camel
     if keywords.Contains camel then "``" + camel + "``" else camel
 
-/// One tile: the icon above its name; a click picks it.
+/// One tile: the icon above its name; a click picks it. Over it, the pointer becomes that icon (a
+/// cursor made from it, pointing at its center), to see how it works as a cursor.
 let private tile (name: string) (filled: bool) (pick: string -> unit) =
     let icon = Material.icon name
+    let icon = if filled then icon.filled else icon
     Border.create [
+        Border.cursor (Cursor.fromIcon icon [])
         Border.width 112.0
         Border.height 76.0
         Border.cornerRadius 6.0
@@ -32,7 +35,7 @@ let private tile (name: string) (filled: bool) (pick: string -> unit) =
                 StackPanel.spacing 8.0
                 StackPanel.children [
                     IconView.create [
-                        IconView.icon (if filled then icon.filled else icon)
+                        IconView.icon icon
                         IconView.size 24.0
                         IconView.horizontalAlignment HorizontalAlignment.Center
                     ]

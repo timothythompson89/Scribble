@@ -202,7 +202,9 @@ port 5282) shows all 4,304 Material Symbols in a ScrollViewer, in tiles that wra
 1. Outlined/Filled switches every icon (about 30 ms here: 17,000 elements, no virtualization yet).
 2. A click on a tile shows the F# to write for it above the grid: `Material.arrowUpward`, with `.filled` when
    filled, ``Material.``class`` `` for keywords, `Material._10k` for a leading digit.
-3. Tiles light up under the pointer; scrolling (wheel, scrollbar, a finger on a phone) is smooth.
+3. Tiles light up under the pointer, and the pointer becomes that tile's icon (white with a black outline,
+   pointing at its center): a quick way to see how any icon works as a cursor. Scrolling (wheel, a finger on a
+   phone) is smooth.
 
 ## Run the browser sample
 
@@ -720,6 +722,22 @@ Material.names ()                          // every name
   where a server only offers gzip). Only when an icon is used: unused, it's trimmed away. A set is read the first
   time one of its icons is used (under 1 ms on a desktop; outlined takes about 3.3 MB of memory, filled about 2 MB).
 - Regenerated from Tim's Avalonia `MaterialIconData.cs` by `dotnet fsi tools/GenerateMaterial.fsx [path]`.
+
+**Cursors from icons:** any icon can be the pointer, shown by the OS (a hardware cursor: no lag, no extra frames,
+past the window's edge while dragging):
+
+```fsharp
+let picker = Cursor.fromIcon Material.colorize [ Cursor.hotspot (3.0, 21.0) ]   // define once, as a value
+Border.create [ Border.cursor picker; ... ]
+```
+
+- Default look: white with a 1-DIP black outline (shows on any background), 24 DIPs, pointing at its center.
+  Settings: `Cursor.size`, `Cursor.hotspot (x, y)` (DIPs from the icon's top-left), `Cursor.fill`,
+  `Cursor.outline` (transparent for none), `Cursor.outlineWidth`.
+- Made for the window's scale, and again when the window moves to a screen with another scale. Equal settings make
+  equal cursors, so platforms make each once and keep the 32 used last (Win32 `CreateIconIndirect`; in the browser a PNG in CSS `cursor`,
+  sharp through `image-set` where the browser takes it). Phones have no cursor.
+- Not yet: following the Windows cursor-size setting; cursors from bitmaps (with Image, M8).
 
 ### Elements and layout
 

@@ -193,6 +193,10 @@ module internal Format =
         | Cursor.ResizeDiagonal -> "resize diagonal"
         | Cursor.NotAllowed -> "not allowed"
         | Cursor.Wait -> "wait"
+        // Cursor.fromIcon's key starts "icon|<the icon's description>|...".
+        | Cursor.Image image ->
+            let parts = image.Key.Split('|', 3)
+            if parts.Length > 1 && parts[0] = "icon" then "icon " + parts[1] else "image"
 
     let private shadow (s: BoxShadow) =
         "blur " + number s.Blur + " at " + number s.OffsetX + ", " + number s.OffsetY

@@ -233,6 +233,21 @@ let private flattenPath (contours: PathContour[]) (map: float -> float -> struct
 let rasterizePath (path: PathGeometry) (map: float -> float -> struct (float * float)) : GlyphBitmap =
     rasterizeLines (flattenPath path.Contours map)
 
+/// Rasterizes an icon into a `sizePx` square: the viewBox (x, y, width, height) centered,
+/// flipped, rotated clockwise by `rotation` degrees and scaled to fit. The bitmap's Left/Top are
+/// relative to the square's top-left.
+let rasterizeIcon (path: PathGeometry) (viewX: float, viewY: float, viewWidth: float, viewHeight: float) (sizePx: float) (rotation: float) (flipH: bool) (flipV: bool) : GlyphBitmap =
+    let scale = sizePx / max viewWidth viewHeight
+    let cx, cy = viewX + viewWidth / 2.0, viewY + viewHeight / 2.0
+    let fx, fy = (if flipH then -1.0 else 1.0), (if flipV then -1.0 else 1.0)
+    let angle = rotation * Math.PI / 180.0
+    let c, s = cos angle, sin angle
+    let half = sizePx / 2.0
+    let map (x: float) (y: float) =
+        let x, y = (x - cx) * fx, (y - cy) * fy
+        struct ((x * c - y * s) * scale + half, (x * s + y * c) * scale + half)
+    rasterizePath path map
+
 /// Rasterizes a color glyph (COLR v0): each layer is an outline glyph in one color, painted
 /// bottom to top with "over" blending. Returns premultiplied RGBA bytes.
 /// Layers in the foreground color (no palette color) are painted with `foreground`.
