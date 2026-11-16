@@ -17,6 +17,7 @@
     <Compile Include="../../samples/Shared/Counter.fs" Link="Counter.fs" />
     <Compile Include="CounterTests.fs" />
     <Compile Include="ButtonTests.fs" />
+    <Compile Include="LayerTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />

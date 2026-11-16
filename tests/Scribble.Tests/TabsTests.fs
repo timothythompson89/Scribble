@@ -27,10 +27,10 @@ let private click (scope: Element) (label: string) =
         all scope |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && firstText e = label)
     (target.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
 
-/// The demo's StackPanel: the tab row, then the three pages.
+/// The demo's StackPanel: the tab row, then the four pages.
 let private parts (t: ElementTree) =
     let panel = t.Root.Value.Children[0]
-    panel.Children[0], [ for i in 1..3 -> panel.Children[i] ]
+    panel.Children[0], [ for i in 1..4 -> panel.Children[i] ]
 
 let private texts (e: Element) =
     [ for x in all e do if obj.ReferenceEquals(x.Type, TextBlock.Type) then x.Get TextProps.text ]
@@ -41,7 +41,7 @@ let ``only the selected page shows, and switching tabs keeps every page's state`
     tree.Update(Scribble.Samples.Counter.demo ())
     frame tree
     let tabs, pages = parts tree
-    Assert.Equal<bool list>([ true; false; false ], [ for p in pages -> p.IsVisible ])
+    Assert.Equal<bool list>([ true; false; false; false ], [ for p in pages -> p.IsVisible ])
 
     // Change the Elmish page, then switch to the List page and change it too.
     click pages[0] "+"
@@ -49,7 +49,7 @@ let ``only the selected page shows, and switching tabs keeps every page's state`
     frame tree
     click tabs "List"
     frame tree
-    Assert.Equal<bool list>([ false; false; true ], [ for p in pages -> p.IsVisible ])
+    Assert.Equal<bool list>([ false; false; true; false ], [ for p in pages -> p.IsVisible ])
     click pages[2] "Add"
     frame tree
     Assert.Contains("Cherries", texts pages[2]) |> ignore
@@ -58,7 +58,7 @@ let ``only the selected page shows, and switching tabs keeps every page's state`
     click tabs "Elmish"
     frame tree
     let tabs2, pages2 = parts tree
-    Assert.Equal<bool list>([ true; false; false ], [ for p in pages2 -> p.IsVisible ])
+    Assert.Equal<bool list>([ true; false; false; false ], [ for p in pages2 -> p.IsVisible ])
     Assert.True(List.forall2 (fun (a: Element) b -> obj.ReferenceEquals(a, b)) pages pages2)
     Assert.Contains("Count: 2", texts pages2[0])
     click tabs2 "List"

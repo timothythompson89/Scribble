@@ -24,6 +24,7 @@ type AppConfig<'Msg> internal () =
     member val internal OnKey: (Key -> Modifiers -> 'Msg option) list = [] with get, set
     member val internal OnFrame: (FrameTime -> 'Msg option) list = [] with get, set
     member val internal OnError: (exn -> unit) voption = ValueNone with get, set
+    member val internal Layers: LayerSetting list list = [] with get, set
     /// Makes the program, given the runtime's side of it.
     member val internal Program: (ProgramHost -> ProgramRunner<'Msg>) voption = ValueNone with get, set
 
@@ -105,6 +106,11 @@ type App =
     /// awaited. By default they're written to the console and the app keeps running.
     static member onError<'Msg>(handler: exn -> unit) : AppSetting<'Msg> = AppSetting(fun c -> c.OnError <- ValueSome handler)
 
+    /// A layer above the app: `App.layer [ Layer.view (toasts ()) ]`, or a modal one with
+    /// `Layer.modal true`. Its view is fixed (components inside keep their own state); see `Layer`.
+    static member layer<'Msg>(settings: LayerSetting list) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.Layers <- c.Layers @ [ settings ])
+
     /// Turns key presses into messages: `App.onKey (fun key mods -> match key with Key.Space -> Some Pause | _ -> None)`.
     /// Runs last, only for keys nothing in the view handled (a focused button takes Space and
     /// Enter; Tab moves focus), and never for repeats.
@@ -184,6 +190,8 @@ type App =
                 ElementHost.beforeFrame beforeFrame
             ]
         host.Value <- ValueSome h
+        for layer in config.Layers do
+            h.AddLayer layer |> ignore
         Console.WriteLine($"Scribble: {device.Description}, {shaper.Name} shaping, {platform.Name}")
         window.Show()
         window.RequestFrame()

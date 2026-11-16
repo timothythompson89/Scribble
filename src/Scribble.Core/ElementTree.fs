@@ -99,8 +99,17 @@ type ElementTree(text: TextSystem) =
 
     member _.Render(list: DrawList) = root |> ValueOption.iter (fun r -> r.Render list)
 
-    /// The deepest visible element under a point (DIPs, tree coordinates).
-    /// Purely geometric for now; input routing arrives in Milestone 5.
+    /// True when the tree shows anything: a visible element that isn't just a component's host
+    /// (a modal layer showing nothing blocks nothing).
+    member _.HasVisibleContent =
+        let rec shows (e: Element) =
+            e.IsVisible && (e.ComponentState.IsNone || e.Children |> Seq.exists shows)
+        match root with
+        | ValueSome r -> shows r
+        | ValueNone -> false
+
+    /// The deepest visible element under a point (DIPs, tree coordinates). A component's host
+    /// element is only hit through what the component shows (it fills its slot, but draws nothing).
     member _.HitTest(x: float, y: float) : Element voption =
         let rec hit (e: Element) (ox: float) (oy: float) =
             if not e.IsVisible then ValueNone
@@ -115,7 +124,9 @@ type ElementTree(text: TextSystem) =
                     while found.IsNone && i >= 0 do
                         found <- hit children[i] left top
                         i <- i - 1
-                    if found.IsSome then found else ValueSome e
+                    if found.IsSome then found
+                    elif e.ComponentState.IsSome then ValueNone
+                    else ValueSome e
                 else ValueNone
         match root with
         | ValueSome r -> hit r 0.0 0.0

@@ -61,8 +61,11 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
 
     /// What the pointer is over at `p`. While an element holds the press, only it, what's inside it
     /// and its ancestors count (so dragging off a button doesn't light up its neighbours).
+    let mutable isCovered: Point -> bool = fun _ -> false
+
     let overAt (s: PointerState) (p: Point) =
-        let route = routeOf (tree.HitTest(p.X, p.Y))
+        // Under another layer (while this one holds a press): over nothing here.
+        let route = if isCovered p then [] else routeOf (tree.HitTest(p.X, p.Y))
         match s.Captured with
         | ValueSome c when isAttached c -> route |> List.filter (fun e -> c.Contains e || e.Contains c)
         | _ -> route
@@ -119,7 +122,8 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         for e in pressing do
             if not (contains s.Pressing e) then e.ChangePointersPressing 1
         s.Pressing <- pressing
-        if s.Kind = PointerKind.Mouse then updateCursor next
+        // Only while the pointer is over this tree: another layer may own the cursor now.
+        if s.Kind = PointerKind.Mouse && s.Position.IsSome then updateCursor next
 
     /// The element events go to: the one holding the press, else the deepest one under the pointer.
     let target (s: PointerState) =
@@ -199,6 +203,11 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
 
     let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome
 
+    /// True where another layer has the pointer (set by the host when the tree is a layer).
+    member _.IsCovered
+        with get () = isCovered
+        and set v = isCovered <- v
+
     member _.PointerMoved(kind: PointerKind, id: int, position: Point, modifiers: Modifiers) =
         let s = stateFor kind id
         s.Position <- ValueSome position
@@ -252,7 +261,15 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         refresh s
         clicked |> ValueOption.iter (fun e -> click e (ClickSource.Pointer kind) modifiers)
 
-    /// The pointer left the window (or a touch ended).
+    /// The pointer is now at `position` over this tree without having moved (it came from another
+    /// layer, or the layer above it went away): hover and cursor update, no move event.
+    member _.PointerAt(kind: PointerKind, id: int, position: Point, modifiers: Modifiers) =
+        let s = stateFor kind id
+        s.Position <- ValueSome position
+        s.Modifiers <- modifiers
+        setOver s (overAt s position)
+
+    /// The pointer left the window (or a touch ended, or it moved to another layer).
     member _.PointerExited(kind: PointerKind, id: int) =
         let s = stateFor kind id
         if s.Buttons = 0 then
@@ -266,9 +283,21 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         endPress s
         refresh s
 
+    /// Preview from the root down, then up from the element under the pointer: each element's
+    /// `onWheel` setting, then its type's own wheel behavior (a ScrollViewer scrolling).
     member _.Wheel(position: Point, deltaX: float, deltaY: float, modifiers: Modifiers) =
         let route = routeOf (tree.HitTest(position.X, position.Y))
-        routed route (ValueSome LayoutProps.onPreviewWheel) LayoutProps.onWheel (WheelEventArgs(position, deltaX, deltaY, modifiers)) |> ignore
+        let args = WheelEventArgs(position, deltaX, deltaY, modifiers)
+        for e in List.rev route do
+            if not args.IsHandled then invoke e LayoutProps.onPreviewWheel args args
+        for e in route do
+            if not args.IsHandled then invoke e LayoutProps.onWheel args args
+            if not args.IsHandled then
+                match e.Type.Wheel with
+                | ValueSome f ->
+                    args.Origin <- e.PositionInTree
+                    f (InputContext e) args
+                | ValueNone -> ()
 
     /// After layout: things may have moved, appeared or gone under a pointer that stood still.
     member _.Refresh() =

@@ -44,7 +44,12 @@ type ElementType =
       Defaults: struct (Prop * obj)[]
       /// A visual-only transform around the element and its children, in the element's own
       /// coordinates (layout and hit testing ignore it).
-      Transform: (RenderContext -> Transform) voption }
+      Transform: (RenderContext -> Transform) voption
+      /// Draws on top of the children (a scrollbar), in the element's own coordinates.
+      RenderAfter: (RenderContext -> DrawList -> unit) voption
+      /// The type's own wheel behavior (scrolling): runs on each element of the route after that
+      /// element's `onWheel` setting, if nothing handled the wheel yet.
+      Wheel: (InputContext -> WheelEventArgs -> unit) voption }
 
     override t.ToString() = t.Name
 
@@ -53,6 +58,8 @@ type ElementType =
         { Name = "Element"
           Defaults = [||]
           Transform = ValueNone
+          RenderAfter = ValueNone
+          Wheel = ValueNone
           Measure =
             fun ctx available ->
                 let mutable w, h = 0.0, 0.0
@@ -122,6 +129,21 @@ and [<Struct>] RenderContext internal (element: Element) =
     /// A color that fades to `target` over `duration` whenever the target changes.
     member _.Animate(key: string, target: Color, duration: TimeSpan, ?easing: float -> float) : Color =
         element.Animate(key, target, duration, defaultArg easing Easing.easeOut, Lerp.color)
+
+/// What an element type's own input handling can do: read properties, keep private state, and
+/// ask for a new arrange or a new frame.
+and [<Struct>] InputContext internal (element: Element) =
+    member _.Get<'T>(prop: Prop<'T>) : 'T = element.Get prop
+    /// The element's size.
+    member _.Size: Size =
+        let b: Rect = element.Bounds
+        Size.Create(b.Width, b.Height)
+    /// Stores private data (a scroll offset) without invalidating anything; see `Prop.local`.
+    member _.SetLocal<'T>(prop: Prop<'T>, value: 'T) = element.SetLocal(prop, value)
+    /// Children need new positions (the scroll offset changed).
+    member _.InvalidateArrange() = element.InvalidateArrange()
+    /// Only appearance changed.
+    member _.InvalidateVisual() = element.InvalidateVisual()
 
 /// What a component's input carries (its function and props); equal inputs don't re-run it.
 and [<AbstractClass>] internal ComponentInput() =
@@ -692,6 +714,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                 for child in children do
                     child.Render list
                 if clip then list.PopClip()
+            match elementType.RenderAfter with
+            | ValueSome f -> f (RenderContext this) list
+            | ValueNone -> ()
             if transformed then list.PopTransform()
             list.PopTransform()
 
@@ -750,6 +775,14 @@ module Element =
     /// not their layout or where they take input), in the element's own coordinates. For effects
     /// like a pressed button sinking: see `Transform.ScaleAround`.
     let transform (f: RenderContext -> Transform) = ElementPart(fun t -> { t with Transform = ValueSome f })
+
+    /// Draws on top of the children (a scrollbar, an overlay), in the element's own coordinates.
+    let renderAfter (f: RenderContext -> DrawList -> unit) = ElementPart(fun t -> { t with RenderAfter = ValueSome f })
+
+    /// The type's own wheel behavior, such as scrolling. It runs as the wheel event bubbles, after
+    /// each element's own `onWheel` setting, so a view's handler can take the wheel first; call
+    /// `e.Handle()` when the element used it (an outer scroller then stays put).
+    let wheel (f: InputContext -> WheelEventArgs -> unit) = ElementPart(fun t -> { t with Wheel = ValueSome f })
 
     /// Values for this element type's properties when a view doesn't set them (a view's own
     /// settings win; removing one from a later view goes back to these). Not for child properties.

@@ -102,6 +102,15 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
 6. Nothing redraws while you don't click; an animation draws until it arrives, then stops. A pending load or
    "+1 in a second" draws one frame when it finishes, not continuously while waiting.
 7. Tab, Enter and Space work as in the Hello sample.
+8. The Layers tab (layers and ScrollViewer, M6 step 1):
+   - The list scrolls with the wheel (or touchpad) and stops at both ends; a thin bar on the right shows where you
+     are. Rows are cut off cleanly at the edges, and the wheel elsewhere on the page does nothing.
+   - "Show a toast" puts a blue toast at the bottom right for 2.5 seconds; several stack up. The app keeps
+     working everywhere except on the toast itself (a toast over the list or a button blocks only its own area).
+   - "Open a modal layer" dims the window and shows a dialog. Nothing below reacts: no hover, no clicks, no wheel,
+     and Tab cycles only through the dialog's two buttons (the app's focus ring goes away and comes back after).
+     "Toast" in the dialog shows a toast under the dimming; Close brings the app back exactly as it was.
+   - Hover a button, then open the dialog without moving the mouse: the button stops looking hovered.
 The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
 
 ## Run the browser sample
@@ -319,6 +328,35 @@ match square with
 - **The dispatcher** (`Scribble.Core.Dispatcher`: `Post`, `InvokeAsync`, `CheckAccess`, `RunPending`) is what all
   of this uses; apps rarely need it. A host that owns its loop (a game engine) calls `RunPending()` each tick.
 
+### Layers
+
+Toasts, popups, dialogs and the inspector go in layers: element trees drawn above the app, each filling the
+window and laid out on its own (a layer never moves the app).
+
+```fsharp
+App.layer [ Layer.name "Toasts"; Layer.view (toasts ()) ]
+App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (dialog ()) ]
+```
+
+- **Pointer:** goes to the topmost layer with an element under it and falls through everywhere else, so give a
+  layer's content a size or an alignment (a toast aligned to the bottom right) rather than letting it stretch over
+  the window. A component's own host element doesn't count, only what it shows. A press stays with its layer
+  until release; dragged over another layer, it's over nothing in its own.
+- **Modal:** `Layer.modal true` takes all pointer and keyboard input while the layer shows something; showing
+  nothing (hidden content), it blocks nothing, so a dialog layer can stay in place.
+- **Keyboard:** each layer has its own focus and Tab order. Keys go to the layer last clicked, unless a modal layer
+  is above it; the other layers' focus rings hide until they get the keyboard back.
+- **Order:** the app is 0, `Layer.order` defaults to 100; equal orders stack in the order added.
+- **At run time:** `host.AddLayer [ ... ]` returns the `Layer` (`Update view`, `Focused`, `MoveFocus`), and
+  `host.RemoveLayer layer` takes it away (its components stop). For now a layer's view is fixed; an element that
+  shows view content in a layer from wherever it's declared (and Dialog, Toast) come with M8.
+
+**ScrollViewer** (basic, from M6): `ScrollViewer.create [ ScrollViewer.height 300.0; ScrollViewer.content list ]`
+scrolls its content vertically with the wheel when it's taller than the ScrollViewer, clips it, and draws a thin
+position bar. Give it a bounded height. At either end the wheel passes to whatever is outside it. Horizontal
+scrolling, dragging the bar, keyboard and touch come with M8. Element authors: `Element.wheel` (a type's own wheel
+behavior, after the view's `onWheel`) and `Element.renderAfter` (drawn over the children) are what it uses.
+
 ### Elements and layout
 
 Widths and heights (and their min/max) take a number of DIPs, a `Length`, or a string:
@@ -392,7 +430,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 
 | Project | Purpose |
 | --- | --- |
-| `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button; App settings and runtime |
+| `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer; layers; App settings and runtime |
 | `src/Scribble.Desktop` | `App.run`: the desktop platform, WebGPU renderer and HarfBuzz shaping in one reference |
 | `src/Scribble.Browser` | `App.runInBrowser`: the browser equivalents |
 | `src/Scribble.Platform` | Window, event, DPI and frame-clock abstractions |

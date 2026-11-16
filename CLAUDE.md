@@ -163,11 +163,11 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). Last counts: 150 unit tests,
-31 rendering tests (after M5b).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). Last counts: 165 unit tests,
+32 rendering tests (after M6 step 1).
 
 Remaining milestones: M6 inspector (next), M7 styles, M7b icons, M8 core controls
-(Grid, DockPanel, ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, TabControl), M9 TextBox, M10 hot reload; later:
+(Grid, DockPanel, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
 
 ### M5: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M5")
@@ -205,6 +205,24 @@ when off the UI thread (inline when the tree has no dispatcher, as in bare `Elem
 `ctx.useAsync(deps, fun d ct -> task|async)` → `AsyncValue.Loading|Loaded|Failed` (version counter drops late
 results). Tests drain the fake platform's wakes by hand (`AsyncTests.fs`; use a real `Thread` for "other thread",
 since `Task.Run(...).Wait()` can run inline).
+
+### M6: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M6")
+
+Three steps, each tried by Tim before the next:
+1. **Layers** (done, verified by Tim on Windows and in the browser 2026-11-15; `Layer.fs`, `Elements/ScrollViewer.fs`; `Layer.modal` is the only switch, a modal layer blocks only while it shows something, component hosts aren't hit themselves) in Core: an ordered stack of element trees above the app (app, popups/toasts, modal, inspector on
+   top), each with its own focus scope; options *pass-through* (pointer falls through where the layer has nothing)
+   and *modal* (blocks everything below, keyboard too); public setting so packages can add layers. Plus a basic
+   public vertical `ScrollViewer` (wheel, clip, thin scrollbar) brought forward from M8.
+2. **Inspector** (`Scribble.Inspector`, opt-in: `Inspector.enable [ ... ]`, samples enable it; built from Scribble
+   elements): floating panel docked right/left over the app (the app's layout never changes), tree of all layers,
+   pick mode (Ctrl+Shift+C; the click doesn't reach the app), devtools-style highlight; F12 toggles (check the
+   browser lets us keep F12).
+3. **Properties panel**: values with source (view / type default / prop default), layout numbers, states,
+   component hook values, frame stats. Format values with our own code: never `string`/`ToString()` on F#
+   records or unions (`%A`, crashes under NativeAOT). Rows only for expanded nodes, refresh at most ~10/s; measure
+   the Hello dashboard with it open.
+
+Dialog, Toast and the "show this in a layer" element are M8.
 
 ### Later notes
 
