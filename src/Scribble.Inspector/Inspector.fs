@@ -265,6 +265,14 @@ module internal Format =
 [<Sealed>]
 type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     let changed = Event<unit>()
+    /// Bumped by every change except the panel's own geometry (moving, resizing, the divider), so
+    /// the tree and properties aren't rebuilt while the panel is dragged.
+    let mutable contentVersion = 0
+    let notify () =
+        contentVersion <- contentVersion + 1
+        changed.Trigger()
+    /// Only the panel's place or size changed.
+    let moved () = changed.Trigger()
     let expanded = HashSet<Element>(HashIdentity.Reference)
     let seenRoots = HashSet<Element>(HashIdentity.Reference)
     let collapsedLayers = HashSet<Layer>(HashIdentity.Reference)
@@ -290,8 +298,10 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     let popOut = Event<unit>()
     let popIn = Event<unit>()
     let mutable showDefaults = false
+    /// Elements with states forced from the panel (cleared when the inspector closes).
+    let forcedOn = HashSet<Element>(HashIdentity.Reference)
     /// The properties' share of the panel, in DIPs (the divider changes it).
-    let mutable propertiesHeight = 240.0
+    let mutable propertiesHeight = 300.0
     // Frame stats. They're shown as of the last refresh only: the inspector's own frames must not
     // update them, or every frame showing new stats would make new stats (frames forever).
     let mutable lastStats: FrameStats voption = ValueNone
@@ -351,7 +361,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
                 "layout " + s.LayoutMilliseconds.ToString("0.00", inv) + " · render " + s.RenderMilliseconds.ToString("0.00", inv)
                 + " ms · " + s.Shapes.ToString("N0", inv) + " shapes · " + frames
             | ValueNone -> frames
-        changed.Trigger()
+        notify ()
 
     /// The topmost element under a point in any layer but the inspector's own.
     let elementAt (p: Point) =
@@ -364,6 +374,8 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         found
 
     member _.Changed = changed.Publish
+    /// Changes with everything but the panel's geometry (see `notify`).
+    member _.ContentVersion = contentVersion
     member _.IsOpen = isOpen
     member _.IsPicking = picking
     member _.Hovered = hovered
@@ -372,7 +384,9 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
 
     member _.Own
         with get () = own
-        and set v = own <- v
+        and set v =
+            own <- v
+            notify () // the tree leaves its own layers out
 
     /// What the highlight shows: the hovered element (a row or, in pick mode, the app), else the selection.
     member _.Target =
@@ -381,6 +395,11 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
             match alive hovered with
             | ValueSome e -> ValueSome e
             | ValueNone -> alive selected
+
+    /// The highlight shows the selection, not something pointed at: then it's only an outline,
+    /// so the element's own looks (hover tint, press, forced states) stay visible.
+    member this.TargetIsSelection =
+        isOpen && (alive hovered).IsNone && this.Target.IsSome
 
     member _.IsExpanded(e: Element) = expanded.Contains e
     member _.IsCollapsed(l: Layer) = collapsedLayers.Contains l
@@ -408,6 +427,8 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         // Hiding a popped-out inspector closes its window (the panel goes back in for next time).
         if isOpen && mode = PanelMode.PoppedOut then this.PopIn()
         isOpen <- not isOpen
+        // Closing it leaves no state forced in the app.
+        if not isOpen then this.ClearForced()
         picking <- picking && isOpen
         hovered <- ValueNone
         refresh ()
@@ -421,7 +442,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     member _.StopPicking() =
         picking <- false
         hovered <- ValueNone
-        changed.Trigger()
+        notify ()
 
     // --- Where the panel is ------------------------------------------------------------------
 
@@ -444,11 +465,11 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     member _.Dock(value: DockSide) =
         side <- value
         mode <- PanelMode.Docked
-        changed.Trigger()
+        notify ()
 
     member this.ToggleCollapsed() =
         collapsed <- not collapsed
-        changed.Trigger()
+        notify ()
 
     member this.PopOut() =
         if this.CanPopOut && mode <> PanelMode.PoppedOut then
@@ -456,14 +477,14 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
             mode <- PanelMode.PoppedOut
             isOpen <- true
             popOut.Trigger()
-            changed.Trigger()
+            notify ()
 
     /// Back into the app's window, where it was before.
     member _.PopIn() =
         if mode = PanelMode.PoppedOut then
             mode <- modeBeforePopOut
             popIn.Trigger()
-            changed.Trigger()
+            notify ()
 
     /// A press on the title area (move), the corner grip or a docked panel's inner edge. Two
     /// quick presses on the title area collapse or expand the panel instead.
@@ -501,20 +522,20 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
                 if mode = PanelMode.Docked && abs dx + abs dy > 4.0 then mode <- PanelMode.Floating
                 if mode = PanelMode.Floating then
                     floating <- keepInside (Rect.Create(r.X + dx, r.Y + dy, r.Width, r.Height))
-                    changed.Trigger()
+                    moved ()
             | DragKind.Split ->
                 // Up makes the properties taller.
                 propertiesHeight <- max PanelSize.minProperties (r.Height - dy)
                 propertiesHeight <- this.PropertiesHeight
-                changed.Trigger()
+                moved ()
             | DragKind.ResizeCorner ->
                 floating <- keepInside (Rect.Create(r.X, r.Y, r.Width + dx, r.Height + dy))
-                changed.Trigger()
+                moved ()
             | DragKind.ResizeEdge ->
                 let s = windowSize ()
                 let w = r.Width + (if side = DockSide.Right then -dx else dx)
                 dockedWidth <- clamp PanelSize.minWidth (s.Width - 2.0 * PanelSize.gap) w
-                changed.Trigger()
+                moved ()
         | ValueNone -> ()
 
     member _.EndDrag() = drag <- ValueNone
@@ -526,7 +547,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
 
     member _.ToggleShowDefaults() =
         showDefaults <- not showDefaults
-        changed.Trigger()
+        notify ()
 
     /// The properties' height, kept small enough to leave the tree some room in the app's window.
     member _.PropertiesHeight =
@@ -544,11 +565,11 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
 
     member _.ToggleExpanded(e: Element) =
         if not (expanded.Remove e) then expanded.Add e |> ignore
-        changed.Trigger()
+        notify ()
 
     member _.ToggleLayer(l: Layer) =
         if not (collapsedLayers.Remove l) then collapsedLayers.Add l |> ignore
-        changed.Trigger()
+        notify ()
 
     /// Selects an element and expands the rows down to it.
     member _.Select(e: Element) =
@@ -563,13 +584,34 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
             match l.Tree.Root with
             | ValueSome r when obj.ReferenceEquals(r, top) -> collapsedLayers.Remove l |> ignore
             | _ -> ()
-        changed.Trigger()
+        notify ()
+
+    // --- Forced states ------------------------------------------------------------------------
+
+    /// Forces `s` on `e`, or stops forcing it (looks only; see `element.ForceState`).
+    member _.ToggleForced(e: Element, s: ElementState) =
+        let on = not (e.ForcedStates |> List.exists (fun f -> obj.ReferenceEquals(f, s)))
+        e.ForceState(s, on)
+        if on then forcedOn.Add e |> ignore
+        elif e.ForcedStates.IsEmpty then forcedOn.Remove e |> ignore
+        notify ()
+
+    /// Some element has forced states.
+    member _.HasForced = forcedOn.Count > 0
+
+    /// Stops forcing states everywhere (also when the inspector closes or goes away).
+    member _.ClearForced() =
+        if forcedOn.Count > 0 then
+            for e in forcedOn do
+                e.ClearForcedStates()
+            forcedOn.Clear()
+            notify ()
 
     /// Clears the selection (the panel shows its hint again).
     member _.Deselect() =
         if selected.IsSome then
             selected <- ValueNone
-            changed.Trigger()
+            notify ()
 
     /// A click on a tree row: selects it, or deselects it when it's already selected.
     member this.ClickRow(e: Element) =
@@ -580,13 +622,13 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     member _.HoverRow(e: Element) =
         if not picking then
             hovered <- ValueSome e
-            changed.Trigger()
+            notify ()
 
     member _.LeaveRow(e: Element) =
         match hovered with
         | ValueSome h when not picking && obj.ReferenceEquals(h, e) ->
             hovered <- ValueNone
-            changed.Trigger()
+            notify ()
         | _ -> ()
 
     /// Pick mode: the pointer moved to `p` (window DIPs).
@@ -599,7 +641,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
             | _ -> false
         if not same then
             hovered <- e
-            changed.Trigger()
+            notify ()
 
     /// Pick mode: a press at `p` selects what's there and ends pick mode.
     member this.PickSelect(p: Point) =
@@ -607,7 +649,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         hovered <- ValueNone
         match elementAt p with
         | ValueSome e -> this.Select e
-        | ValueNone -> changed.Trigger()
+        | ValueNone -> notify ()
 
     /// Shortcuts, seen before any layer gets the key.
     member this.OnKey (key: Key) (mods: Modifiers) =
@@ -668,13 +710,16 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
 
 module internal HighlightProps =
     let target = Prop.define "Target" (ValueNone: Element voption) Affects.Render
+    let outlineOnly = Prop.define "OutlineOnly" false Affects.Render
 
-/// Draws the devtools-style highlight over an element (bounds, margin, a label with the size).
+/// Draws the devtools-style highlight over an element (bounds, margin, a label with the size), or
+/// just a thin outline around it (the selection, while nothing is pointed at).
 /// Reads the target's position while drawing, so it's exact in every frame.
 [<AbstractClass>]
 type internal Highlight =
     inherit Layoutable
     static member target<'k when 'k :> Highlight>(value: Element voption) : Setting<'k> = Setting.create HighlightProps.target value
+    static member outlineOnly<'k when 'k :> Highlight>(value: bool) : Setting<'k> = Setting.create HighlightProps.outlineOnly value
 
 module internal Highlight =
     let private boxColor = Color.Hex 0x6FA8DC
@@ -686,6 +731,25 @@ module internal Highlight =
             let p = t.PositionInTree
             let b = t.Bounds
             let r = Rect.Create(p.X, p.Y, b.Width, b.Height)
+            if ctx.Get HighlightProps.outlineOnly then
+                // Corner marks 3 DIPs outside the element, like a viewfinder: the sides stay clear, so
+                // its edges, border and shadow show, and the corners still show its exact extent.
+                // Blue on a dark edge, so they stand out on light, dark and blue alike.
+                let t, gap = 2.0, 3.0
+                let o = Rect.Create(r.X - gap - t, r.Y - gap - t, r.Width + 2.0 * (gap + t), r.Height + 2.0 * (gap + t))
+                // Arms up to 8 long, shorter on small elements so the marks never meet.
+                let armX, armY = min 8.0 (o.Width / 2.0 - 1.0), min 8.0 (o.Height / 2.0 - 1.0)
+                let marks (grow: float) (color: Color) =
+                    let bar (x: float) (y: float) (w: float) (h: float) =
+                        list.FillRect(Rect.Create(x - grow, y - grow, w + 2.0 * grow, h + 2.0 * grow), color)
+                    let right, bottom = o.X + o.Width, o.Y + o.Height
+                    bar o.X o.Y armX t; bar o.X o.Y t armY                                   // top left
+                    bar (right - armX) o.Y armX t; bar (right - t) o.Y t armY                // top right
+                    bar o.X (bottom - t) armX t; bar o.X (bottom - armY) t armY              // bottom left
+                    bar (right - armX) (bottom - t) armX t; bar (right - t) (bottom - armY) t armY // bottom right
+                marks 1.0 (Color.Hex 0x11111B)
+                marks 0.0 boxColor
+            else
             let m = t.Get LayoutProps.margin
             let outerWidth = r.Width + m.Left + m.Right
             if m.Top > 0.0 then list.FillRect(Rect.Create(r.X - m.Left, r.Y - m.Top, outerWidth, m.Top), marginColor)
@@ -761,6 +825,50 @@ module internal Grip =
 
     let create (settings: Setting<Grip> list) = View.Create(Type, settings)
 
+/// Children left to right, wrapping onto the next line when the width runs out (the state toggles;
+/// until M8's wrap panel). Lines are as tall as their tallest child; children are centered in them.
+[<AbstractClass>]
+type internal WrapRow =
+    inherit Panel
+
+module internal WrapRow =
+    let private gap = 4.0
+
+    /// Each child's top-left and the size used, given each child's size.
+    let private place (width: float) (sizes: Size list) =
+        let mutable x, y, line = 0.0, 0.0, 0.0
+        let spots =
+            [ for s in sizes do
+                  if x > 0.0 && x + s.Width > width then
+                      x <- 0.0
+                      y <- y + line + gap
+                      line <- 0.0
+                  yield (x, y)
+                  x <- x + s.Width + gap
+                  line <- max line s.Height ]
+        spots, y + line
+
+    let Type =
+        Element.define "InspectorWrapRow" [
+            Element.measure (fun ctx available ->
+                let sizes = [ for c in ctx.Children -> ctx.Measure(c, Size.Create(available.Width, Double.PositiveInfinity)) ]
+                let _, height = place available.Width sizes
+                let widest = if sizes.IsEmpty then 0.0 else sizes |> List.sumBy (fun s -> s.Width + gap)
+                Size.Create(min available.Width widest, height))
+            Element.arrange (fun ctx size ->
+                let children = List.ofSeq ctx.Children
+                let sizes = [ for c in children -> ctx.DesiredSize c ]
+                let spots, _ = place size.Width sizes
+                // Line heights, to center each child in its line.
+                let lines = Dictionary<float, float>()
+                for (_, y), s in List.zip spots sizes do
+                    lines[y] <- max s.Height (match lines.TryGetValue y with | true, h -> h | _ -> 0.0)
+                for c, ((x, y), s) in List.zip children (List.zip spots sizes) do
+                    ctx.Arrange(c, Rect.Create(x, y + (lines[y] - s.Height) / 2.0, s.Width, s.Height)))
+        ]
+
+    let create (settings: Setting<WrapRow> list) = View.Create(Type, settings)
+
 module internal CheckMarkProps =
     let isChecked = Prop.define "IsChecked" false Affects.Render
 
@@ -797,6 +905,10 @@ module internal CheckMark =
 /// The panel component's props: the shared state, and whether it fills the pop-out window.
 type internal PanelProps = { State: InspectorState; IsPoppedOut: bool }
 
+/// Props for the parts that only change with the content (`InspectorState.ContentVersion`), not
+/// with the panel's place or size: equal props, no re-run.
+type internal SectionProps = { State: InspectorState; Version: int }
+
 // --- The views ---------------------------------------------------------------------------------------
 
 module internal Views =
@@ -807,6 +919,10 @@ module internal Views =
     let private typeColor = Color.Hex 0x8AB4F8
     let private componentColor = Color.Hex 0xC792EA
     let private nameColor = Color.Hex 0xF2C27B
+    /// Forced states: their toggles (background) and the tree's marker (text). Teal, apart from the
+    /// selection's blue, components' purple and names' yellow.
+    let private forcedColor = Color.Hex 0x1F7A70
+    let private forcedTextColor = Color.Hex 0x5CC8B8
     let private hintColor = Color.Hex 0xB8B8C8
     let private indentStep = 12.0
 
@@ -880,6 +996,7 @@ module internal Views =
                             chevron hasChildren isOpen
                             text (Format.label e) (fade (if e.ComponentName.IsSome then componentColor else typeColor))
                             if e.Name.Length > 0 then text ("#" + e.Name) (fade nameColor)
+                            if not e.ForcedStates.IsEmpty then text "• forced" forcedTextColor
                             if not isOpen then
                                 let hint = Format.hint e
                                 if hint.Length > 0 then text hint (fade hintColor)
@@ -1051,7 +1168,9 @@ module internal Views =
         | ValueSource.View -> "view"
         | ValueSource.Code -> "code"
         | ValueSource.Style -> "style"
+        | ValueSource.Theme -> "theme"
         | ValueSource.TypeDefault -> "type"
+        | ValueSource.Inherited -> "inherited"
         | ValueSource.Default -> "default"
 
     /// A checkbox made of a Button (focusable, Space and Enter work) with the box and a label.
@@ -1081,6 +1200,79 @@ module internal Views =
         ]
 
     /// What the selected element is: states, layout numbers, properties and a component's hooks.
+    /// The selected element's name and the Deselect button, above the scrolling properties (so
+    /// they stay in view).
+    let private selectionHeader (state: InspectorState) =
+        match state.Selected with
+        | ValueNone -> None
+        | ValueSome e ->
+            Some(
+                StackPanel.create [
+                    StackPanel.orientation Horizontal
+                    StackPanel.spacing 6.0
+                    StackPanel.margin (Thickness.Create(10.0, 6.0, 10.0, 2.0))
+                    StackPanel.children [
+                        yield
+                            TextBlock.create [
+                                TextBlock.text (Format.label e)
+                                TextBlock.font (Fonts.SemiBold())
+                                TextBlock.foreground (if e.ComponentName.IsSome then componentColor else typeColor)
+                            ]
+                        if e.Name.Length > 0 then yield text ("#" + e.Name) nameColor
+                        // Pushes the deselect button to the right edge.
+                        yield Border.create [ Border.width "1*" ]
+                        // Not "×": the title bar's × closes the whole inspector.
+                        if state.HasForced then yield smallButton "Clear forced" false state.ClearForced
+                        yield smallButton "Deselect" false state.Deselect
+                    ]
+                ]
+            )
+
+    /// One state as a toggle: teal while forced, bright while on for real, dim while off. A click
+    /// forces it on, or stops forcing it.
+    let private stateChip (label: string) (isOn: bool) (isForced: bool) (onClick: unit -> unit) =
+        Border.create [
+            Border.padding (6.0, 1.0)
+            Border.cornerRadius 4.0
+            Border.borderThickness 1.0
+            Border.borderBrush (if isForced || isOn then Color.Transparent else Color.White.WithAlpha 0.14f)
+            Border.background (
+                if isForced then forcedColor
+                elif isOn then Color.White.WithAlpha 0.12f
+                else Color.Transparent
+            )
+            Border.cursor Cursor.Hand
+            Border.on States.hover [ Border.overlay (Color.White.WithAlpha 0.08f) ]
+            Border.onClick (fun _ -> onClick ())
+            Border.child (
+                TextBlock.create [
+                    TextBlock.text label
+                    TextBlock.fontSize 12.0
+                    TextBlock.foreground (if isForced || isOn then Color.White else dim)
+                ]
+            )
+        ]
+
+    /// The STATES section: every state, built-in and custom (`States.define`, `States.ofProp`), as
+    /// toggles that force them, so one that is off can be forced too.
+    let private statesLine (state: InspectorState) (e: Element) =
+        let active = e.ActiveStates
+        let forced = e.ForcedStates
+        let has (list: ElementState list) (s: ElementState) = list |> List.exists (fun x -> obj.ReferenceEquals(x, s))
+        let shown = builtInStates @ List.ofArray (States.customStates ())
+        // Its own section (under the STATES heading), across the whole width.
+        WrapRow.create [
+            WrapRow.margin (Thickness.Create(10.0, 2.0, 10.0, 2.0))
+            WrapRow.children [
+                for s in shown do
+                    // Forced states test as on: "on" here means on for real.
+                    let isForced = has forced s
+                    let isOn = has active s && not isForced
+                    stateChip s.Name isOn isForced (fun () -> state.ToggleForced(e, s))
+                if not e.IsVisible then text "hidden" hintColor
+            ]
+        ]
+
     let private properties (state: InspectorState) =
         match state.Selected with
         | ValueNone ->
@@ -1094,41 +1286,25 @@ module internal Views =
         | ValueSome e ->
             let p = e.PositionInTree
             let b = e.Bounds
-            let states =
-                [ if e.IsPointerOver then "hovered"
-                  if e.IsPressed then "pressed"
-                  if e.IsFocused then (if e.IsFocusVisible then "focused (visible)" else "focused")
-                  if e.IsEnabled then "enabled" else "disabled"
-                  if not e.IsVisible then "hidden"
-                  // Custom states (`States.define`, `States.ofProp`), by name.
-                  for s in e.ActiveStates do
-                      if not (List.exists (fun b -> obj.ReferenceEquals(b, s)) builtInStates) then s.Name ]
+            // What the theme can set here (in any state) always shows, even at its default; a "from
+            // theme ..." line appears under it once a theme style applies.
+            let themed = e.ThemedProperties
+            let themedRules (p: Prop) =
+                themed |> List.tryPick (fun t -> if obj.ReferenceEquals(t.Prop, p) then Some t.Selectors else None)
+            let all = e.Values
+            let missing =
+                [ for t in themed do
+                      if not (all |> List.exists (fun v -> obj.ReferenceEquals(v.Prop, t.Prop))) then
+                          { Prop = t.Prop; Value = e.GetBoxed t.Prop; Source = ValueSource.Default; Selector = "" } ]
             let values =
-                e.Values
-                |> List.filter (fun v -> state.ShowDefaults || v.Source <> ValueSource.Default)
-                |> List.sortBy (fun v -> if v.Source = ValueSource.Default then 1 else 0)
+                all @ missing
+                |> List.filter (fun v -> state.ShowDefaults || v.Source <> ValueSource.Default || (themedRules v.Prop).IsSome)
+                |> List.sortBy (fun v ->
+                    if v.Source <> ValueSource.Default then 0
+                    elif (themedRules v.Prop).IsSome then 1
+                    else 2)
             let hooks = e.Hooks
-            [ yield
-                  StackPanel.create [
-                      StackPanel.orientation Horizontal
-                      StackPanel.spacing 6.0
-                      StackPanel.margin (Thickness.Create(10.0, 6.0, 10.0, 2.0))
-                      StackPanel.children [
-                          yield
-                              TextBlock.create [
-                                  TextBlock.text (Format.label e)
-                                  TextBlock.font (Fonts.SemiBold())
-                                  TextBlock.foreground (if e.ComponentName.IsSome then componentColor else typeColor)
-                              ]
-                          if e.Name.Length > 0 then yield text ("#" + e.Name) nameColor
-                          // Pushes the deselect button to the right edge.
-                          yield Border.create [ Border.width "1*" ]
-                          // Not "×": the title bar's × closes the whole inspector.
-                          yield smallButton "Deselect" false state.Deselect
-                      ]
-                  ]
-              yield wrappingLine "states" (String.Join(" · ", states)) hintColor
-              yield heading "LAYOUT"
+            [ yield heading "LAYOUT"
               yield line "offered" (Format.sizeOf e.OfferedSize) hintColor ""
               yield line "desired" (Format.sizeOf e.DesiredSize) hintColor ""
               yield line "bounds" (Format.number b.X + ", " + Format.number b.Y + "  " + Format.size b.Width b.Height) hintColor "parent"
@@ -1143,15 +1319,17 @@ module internal Views =
                           if classes.IsEmpty then "none" else String.Join(" ", classes |> List.map (fun c -> "." + c))
                       | value -> state.Format value
                   yield line (settingName v.Prop) shown (if isDefault then dim else Color.White) (sourceText v.Source)
-                  // Which style set it, under the value.
-                  if v.Source = ValueSource.Style then
+                  // Which style set it, under the value (`from Button:hover`; the source says style or theme).
+                  let under = if v.Source = ValueSource.Style || v.Source = ValueSource.Theme then "from " + v.Selector else ""
+                  if under.Length > 0 then
                       yield
                           TextBlock.create [
-                              TextBlock.margin (Thickness.Create(138.0, -3.0, 10.0, 3.0))
-                              TextBlock.text ("from " + v.Selector)
+                              // Under the value column only (the source column stays clear); wraps.
+                              TextBlock.margin (Thickness.Create(138.0, -3.0, 62.0, 3.0))
+                              TextBlock.text under
                               TextBlock.fontSize 11.0
                               TextBlock.foreground dim
-                              TextBlock.textTrimming CharacterEllipsis
+                              TextBlock.textWrapping Wrap
                           ]
               if not hooks.IsEmpty then
                   yield heading "HOOKS"
@@ -1163,9 +1341,38 @@ module internal Views =
                       yield line h.Kind value Color.White ""
               yield Border.create [ Border.height 8.0 ] ]
 
+    // The tree, the selection's name row and the properties are components re-run only when the
+    // content changes, so dragging or resizing the panel only moves it (in the browser, rebuilding
+    // them on every pointer move made dragging lag).
+    let private treeSection =
+        Component.define "InspectorTree" (fun _ (p: SectionProps) ->
+            StackPanel.create [ StackPanel.items (p.State.Rows()) rowKey (row p.State) ])
+
+    /// The selection's name, Deselect and its STATES: kept above the scrolling properties, so the
+    /// state toggles stay in view while scrolling.
+    let private selectionSection =
+        Component.define "InspectorSelection" (fun _ (p: SectionProps) ->
+            match selectionHeader p.State, p.State.Selected with
+            | Some h, ValueSome e ->
+                StackPanel.create [
+                    StackPanel.children [
+                        h
+                        heading "STATES"
+                        statesLine p.State e
+                        // Where the scrolling part starts.
+                        Border.create [ Border.margin (Thickness.Create(0.0, 6.0, 0.0, 0.0)); Border.height 1.0; Border.background (Color.White.WithAlpha 0.06f) ]
+                    ]
+                ]
+            | _ -> Border.create [])
+
+    let private propertiesSection =
+        Component.define "InspectorProperties" (fun _ (p: SectionProps) ->
+            StackPanel.create [ StackPanel.children (properties p.State) ])
+
     /// The header, the tree, the selected element's properties and the frame stats (only the
     /// header when collapsed).
     let private content (state: InspectorState) (isPoppedOut: bool) (fillWidth: bool) =
+        let section: SectionProps = { State = state; Version = state.ContentVersion }
         StackPanel.create [
             if fillWidth then StackPanel.width "1*"
             StackPanel.children [
@@ -1174,13 +1381,21 @@ module internal Views =
                     yield
                         ScrollViewer.create [
                             ScrollViewer.height "1*"
-                            ScrollViewer.content (StackPanel.create [ StackPanel.items (state.Rows()) rowKey (row state) ])
+                            ScrollViewer.content (treeSection section)
                         ]
                     yield divider state
+                    // The divider sets the height of the whole area: the selection's name stays put
+                    // at the top, the rest scrolls.
                     yield
-                        ScrollViewer.create [
-                            ScrollViewer.height state.PropertiesHeight
-                            ScrollViewer.content (StackPanel.create [ StackPanel.children (properties state) ])
+                        StackPanel.create [
+                            StackPanel.height state.PropertiesHeight
+                            StackPanel.children [
+                                selectionSection section
+                                ScrollViewer.create [
+                                    ScrollViewer.height "1*"
+                                    ScrollViewer.content (propertiesSection section)
+                                ]
+                            ]
                         ]
                     yield footer state (not isPoppedOut && state.Mode = PanelMode.Floating)
             ]
@@ -1255,7 +1470,7 @@ module internal Views =
                 Border.onPointerDown (fun a ->
                     state.PickSelect a.Position
                     a.Handle())
-                Border.child (Highlight.create [ Highlight.target target ])
+                Border.child (Highlight.create [ Highlight.target target; Highlight.outlineOnly state.TargetIsSelection ])
             ])
 
 /// An inspector for Scribble apps: a panel over the app (it never changes the app's layout) with
@@ -1299,6 +1514,10 @@ type Inspector =
             host.AddLayer [ Layer.name "Inspector highlight"; Layer.order (Int32.MaxValue - 1); Layer.appStyles false; Layer.view (Views.highlight state) ]
         let panelLayer =
             host.AddLayer [ Layer.name "Inspector"; Layer.order Int32.MaxValue; Layer.appStyles false; Layer.view (Views.panel { State = state; IsPoppedOut = false }) ]
+        // Its own theme, whatever the app's is (its layers ignore the app's styles and theme).
+        let theme = Theme.dark []
+        highlightLayer.Tree.Theme <- ValueSome theme
+        panelLayer.Tree.Theme <- ValueSome theme
         state.Own <- [ highlightLayer; panelLayer ]
         let toggleKey, toggleMods = options.ToggleKey
         let pickKey, pickMods = options.PickKey
@@ -1334,6 +1553,7 @@ type Inspector =
                 let window = platform.CreateWindow(windowOptions, onEvent)
                 let hostSettings =
                     [ yield ElementHost.background (Color.Hex 0x1B1B2A)
+                      yield ElementHost.theme theme
                       match host.Dispatcher with
                       | ValueSome d -> yield ElementHost.dispatcher d
                       | ValueNone -> () ]
@@ -1358,6 +1578,7 @@ type Inspector =
                 for s in subscriptions do
                     s.Dispose()
                 closeWindow ()
+                state.ClearForced()
                 host.RemoveLayer highlightLayer
                 host.RemoveLayer panelLayer }
 

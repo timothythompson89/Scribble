@@ -4,3 +4,6 @@ obj/
 native/
 *.user
 *.DotSettings.user
+
+# The current "what to check" list (rewritten after each piece of work; local only)
+docs/CHECKLIST.md

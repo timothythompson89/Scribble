@@ -24,6 +24,7 @@ type ButtonTests(fixture: TextFixture) =
                 ]
             ]
         let tree = ElementTree(fixture.Text)
+        tree.Theme <- ValueSome(Theme.dark [])
         tree.Update view
         let buttons = tree.Root.Value.Children
         // What the input router does for a pointer over (and pressing) these two.

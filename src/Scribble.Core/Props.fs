@@ -26,14 +26,54 @@ type internal PropKind =
     /// Holds a component's input (its function and props): a change runs the component.
     | Component = 3
 
+/// How values of the types transitions can animate blend (`a` at 0, `b` at 1), boxed.
+module internal Interpolation =
+    let private lerp (a: float) (b: float) (t: float) = a + (b - a) * t
+
+    let color (a: Scribble.Rendering.Color) (b: Scribble.Rendering.Color) (t: float) =
+        let t = float32 t
+        Scribble.Rendering.Color.Rgba(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t, a.A + (b.A - a.A) * t)
+
+    let private shadow (a: BoxShadow) (b: BoxShadow) (t: float) =
+        { Blur = lerp a.Blur b.Blur t
+          OffsetX = lerp a.OffsetX b.OffsetX t
+          OffsetY = lerp a.OffsetY b.OffsetY t
+          Spread = lerp a.Spread b.Spread t
+          Color = color a.Color b.Color t }
+
+    /// The blend for values of type `t`, if transitions can animate it.
+    let forType (t: Type) : (obj -> obj -> float -> obj) voption =
+        if t = typeof<float> then ValueSome(fun a b x -> box (lerp (unbox a) (unbox b) x))
+        elif t = typeof<Scribble.Rendering.Color> then ValueSome(fun a b x -> box (color (unbox a) (unbox b) x))
+        elif t = typeof<Scribble.Rendering.CornerRadius> then
+            ValueSome(fun a b x ->
+                let a, b = unbox<Scribble.Rendering.CornerRadius> a, unbox<Scribble.Rendering.CornerRadius> b
+                let r: Scribble.Rendering.CornerRadius =
+                    { TopLeft = lerp a.TopLeft b.TopLeft x
+                      TopRight = lerp a.TopRight b.TopRight x
+                      BottomRight = lerp a.BottomRight b.BottomRight x
+                      BottomLeft = lerp a.BottomLeft b.BottomLeft x }
+                box r)
+        elif t = typeof<BoxShadow voption> then
+            // A missing shadow blends as the other one, fully transparent.
+            ValueSome(fun a b x ->
+                match unbox<BoxShadow voption> a, unbox<BoxShadow voption> b with
+                | ValueSome s, ValueSome u -> box (ValueSome(shadow s u x))
+                | ValueSome s, ValueNone -> box (ValueSome(shadow s { s with Color = s.Color.WithAlpha 0.0f } x))
+                | ValueNone, ValueSome u -> box (ValueSome(shadow { u with Color = u.Color.WithAlpha 0.0f } u x))
+                | ValueNone, ValueNone -> box (ValueNone: BoxShadow voption))
+        else ValueNone
+
 /// A property key: a name, a default value and what changing it affects. Elements store values
 /// for the properties set on them; everything else reads as the default.
 ///
 /// Define properties once, as module-level values, with `Prop.define` (see Element.fs).
 [<AbstractClass>]
-type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed: obj, same: obj -> obj -> bool) =
+type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed: obj, same: obj -> obj -> bool, lerp: (obj -> obj -> float -> obj) voption) =
     static let mutable lastId = 0
     let id = Interlocked.Increment(&lastId)
+    // This property's transition duration, as a property of its own (`Style.transition`), made on first use.
+    let mutable transition: Prop<TimeSpan voption> voption = ValueNone
 
     member _.Name = name
     member _.Affects = affects
@@ -57,8 +97,31 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal IsStyles = false with get, set
     /// Styles can't set it (children, and what decides matching or identity).
     member val internal NotStylable = false with get, set
+    /// Inherited: without a value of its own (or from a style or its type), an element takes its
+    /// nearest ancestor's, else its theme's (`foreground`, `font`, `fontSize`).
+    member val internal Inherits = false with get, set
+    /// The `theme` setting: changing it re-matches styles and inherited values below.
+    member val internal IsTheme = false with get, set
     /// Equality of two values of this property's type.
     member internal _.Same(a: obj, b: obj) = same a b
+    /// How two values blend, when transitions can animate this property's type.
+    member internal _.Lerp = lerp
+    /// Its transition duration property, once a style has used `Style.transition` on it.
+    member internal _.Transition = transition
+
+    /// Its transition duration property (made on first use; properties are shared across threads).
+    member internal this.TransitionProp: Prop<TimeSpan voption> =
+        match transition with
+        | ValueSome p -> p
+        | ValueNone ->
+            lock this (fun () ->
+                match transition with
+                | ValueSome p -> p
+                | ValueNone ->
+                    let p = Prop<TimeSpan voption>("Transition " + name, ValueNone, Affects.Nothing, PropKind.Value)
+                    transition <- ValueSome p
+                    p)
+
     override _.ToString() = name
 
     /// A property: name, default value, and what changing it affects.
@@ -73,8 +136,17 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
 
 /// A property key whose values are of type 'T.
 and [<Sealed>] Prop<'T> internal (name: string, defaultValue: 'T, affects: Affects, kind: PropKind) =
-    inherit Prop(name, affects, kind, box defaultValue, fun a b -> EqualityComparer<'T>.Default.Equals(unbox<'T> a, unbox<'T> b))
+    inherit Prop(
+        name, affects, kind, box defaultValue,
+        (fun a b -> EqualityComparer<'T>.Default.Equals(unbox<'T> a, unbox<'T> b)),
+        Interpolation.forType typeof<'T>)
     member _.Default = defaultValue
+
+/// Where elements find base values for inherited properties: a theme (`Layoutable.theme`,
+/// `App.theme`). Implemented by `Theme`.
+type IThemeSource =
+    /// The base value of an inherited property (text color, font, size), if the theme has one.
+    abstract TryBase: prop: Prop -> obj voption
 
 /// A property value for an element of kind 'k ('k is a marker type such as Border, so a Border
 /// setting can't be put on a TextBlock). Made by the setting functions, e.g. `Border.background`.
@@ -138,6 +210,13 @@ module LayoutProps =
     let focusable = Prop<bool>("Focusable", false, Affects.Render, PropKind.Value)
     /// The element's style classes: plain names, matched by `Style.cls "name"`.
     let classes = Prop<string list>("Classes", [], Affects.Nothing, PropKind.Value)
+    /// Fades the element and everything inside it (0 to 1); each shape fades on its own.
+    let opacity = Prop<float>("Opacity", 1.0, Affects.Render, PropKind.Value)
+    /// Draws the element and everything inside it larger or smaller around its center; layout and
+    /// hit testing don't change.
+    let scale = Prop<float>("Scale", 1.0, Affects.Render, PropKind.Value)
+    /// The theme for the element and everything inside it (its styles and base text values).
+    let theme = Prop<IThemeSource voption>("Theme", ValueNone, Affects.Measure, PropKind.Value)
 
     let private keyHandler name = Prop<(KeyEventArgs -> unit) voption>(name, ValueNone, Affects.Nothing, PropKind.Value)
     let onKeyDown = keyHandler "OnKeyDown"
@@ -150,14 +229,25 @@ module LayoutProps =
             p.IsLayout <- true
         for p in [ name :> Prop; classes; isEnabled ] do
             p.Restyles <- true
-        for p in [ name :> Prop; classes; key ] do
+        for p in [ name :> Prop; classes; key; theme ] do
             p.NotStylable <- true
+        theme.IsTheme <- true
 
     /// What `Element.Values` lists even at the property's default: the properties every element has
     /// that say something about its layout or input (not the handlers or the key).
     let internal common: Prop list =
         [ name; margin; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment
           verticalAlignment; isVisible; clipToBounds; isEnabled; isHitTestVisible; focusable; cursor; classes ]
+
+/// Text settings every element has and passes down to the text inside it (TextBlock reads them).
+module InheritedProps =
+    let font = Prop<Scribble.Text.Font>("Font", Scribble.Text.Fonts.Regular(), Affects.Measure, PropKind.Value)
+    let fontSize = Prop<float>("FontSize", 14.0, Affects.Measure, PropKind.Value)
+    let foreground = Prop<Scribble.Rendering.Color>("Foreground", Scribble.Rendering.Color.Black, Affects.Render, PropKind.Value)
+
+    do
+        for p in [ font :> Prop; fontSize; foreground ] do
+            p.Inherits <- true
 
 /// The engine's typed copy of an element's layout properties (read on every measure and arrange).
 [<Struct>]

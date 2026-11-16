@@ -375,39 +375,73 @@ let ``the properties show the selection's values and sources, defaults only when
     Assert.Equal(("100px", "view"), shownFor panel "width")
     Assert.Equal(("left", "view"), shownFor panel "horizontalAlignment")
     Assert.Equal(("handler", "view"), shownFor panel "onClick")
-    Assert.Equal("type", snd (shownFor panel "background")) // Button's own look
+    Assert.Equal(("#3A3A55", "theme"), shownFor panel "background") // the theme's Button look
+    Assert.Contains("from Button", texts panel)
+    // What the theme can set shows even at its default (with no line under it until a theme style applies).
+    Assert.Equal(("transparent", "default"), shownFor panel "overlay")
+    Assert.DoesNotContain(texts panel, fun t -> t.StartsWith "theme sets it") // no line under it until a theme style applies
     Assert.DoesNotContain("margin", texts panel) // a property default: hidden at first
     clickButton w panel "Show defaults"
     Assert.Equal(("0", "default"), shownFor panel "margin")
     clickButton w panel "Show defaults"
     Assert.DoesNotContain("margin", texts panel)
-    Assert.Contains("enabled", texts panel |> List.filter (fun t -> t.Contains "enabled"))
+    // The states line lists every built-in state as a toggle.
+    for s in [ "hover"; "pressed"; "focus"; "focus-visible"; "disabled" ] do
+        Assert.Contains(s, texts panel)
     Assert.Contains(texts panel, fun t -> t.Contains "shapes") // frame stats
 
-// On only while a test sets it (states are global, and other tests' elements are tested too).
-let mutable private longStatesOn = false
-let private longStates =
-    [ for i in 1 .. 6 -> States.define ("a-rather-long-custom-state-" + i.ToString()) (fun _ -> longStatesOn) ]
+[<Fact>]
+let ``every state is listed, off ones too, and a long states section wraps`` () =
+    // Custom states are global: every element's STATES section lists them, so these are removed
+    // again at the end (or they'd crowd the other tests' panels).
+    let longStates = [ for i in 1 .. 6 -> States.define ("a-rather-long-custom-state-" + i.ToString()) (fun _ -> false) ]
+    try
+        let log = List<string>()
+        let w, _, panel = start log
+        pickAppButton w
+        // The states section: the row of toggles under the STATES heading.
+        let rec statesRow (e: Element) =
+            if e.Type.Name = "InspectorWrapRow" then Some e
+            else e.Children |> Seq.tryPick statesRow
+        let row = panel.Tree.Root.Value |> statesRow |> Option.get
+        // Off, yet listed (so they can be forced).
+        for i in 1 .. 6 do
+            Assert.Contains("a-rather-long-custom-state-" + i.ToString(), texts panel)
+        // Several lines, within the panel.
+        Assert.True(row.Bounds.Height > 60.0)
+        Assert.True(row.Bounds.Right <= (panelBox panel).Bounds.Width)
+    finally
+        for s in longStates do
+            States.remove s
 
 [<Fact>]
-let ``a long states line wraps instead of being cut off`` () =
+let ``a state toggle forces the state's look until it's cleared or the inspector closes`` () =
     let log = List<string>()
-    let w, _, panel = start log
+    let w, host, panel = start log
     pickAppButton w
-    // The row whose first cell reads "states"; its second cell is the value.
-    let rec statesLabel (e: Element) =
-        if e.Type.Name = "TextBlock" && e.Get TextProps.text = "states" then Some e
-        else e.Children |> Seq.tryPick statesLabel
-    let line () = (panel.Tree.Root.Value |> statesLabel |> Option.get).Parent.Value
-    Assert.Equal(20.0, (line ()).Bounds.Height) // one line: as tall as the others
-    longStatesOn <- true
-    try
-        clickButton w panel "Show defaults" // rebuilds the panel
-        Assert.Contains("a-rather-long-custom-state-6", (line ()).Children[1].Get TextProps.text)
-        Assert.True((line ()).Bounds.Height > 40.0)
-    finally
-        longStatesOn <- false
-    Assert.Equal(6, longStates.Length)
+    let button = (find "appButton" host.Tree.Root.Value).Value
+    Assert.Equal(Color.Transparent, button.Get BorderProps.overlay)
+    clickButton w panel "hover"
+    Assert.True(button.ForcedStates |> List.exists (fun s -> obj.ReferenceEquals(s, States.hover)))
+    Assert.False button.IsPointerOver // looks only: input still sees the real state
+    Assert.DoesNotContain("hover (forced)", texts panel) // shown by color, not words
+    Assert.Contains("• forced", texts panel) // marked in the tree
+    let overlay = button.Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, BorderProps.overlay))
+    Assert.Equal(ValueSource.Theme, overlay.Source) // the hover look applies (fading in)
+    Assert.Equal("Button:hover", overlay.Selector)
+    clickButton w panel "hover" // toggles it off again
+    Assert.Empty(button.ForcedStates)
+    clickButton w panel "pressed"
+    Assert.True(button.ActiveStates |> List.exists (fun s -> obj.ReferenceEquals(s, States.pressed)))
+    clickButton w panel "Clear forced"
+    Assert.Empty(button.ForcedStates)
+    Assert.DoesNotContain("Clear forced", texts panel)
+    // Closing the inspector clears what's forced.
+    clickButton w panel "disabled"
+    Assert.Equal(0.5, button.Get LayoutProps.opacity)
+    openPanel w // F12 closes it
+    Assert.Empty(button.ForcedStates)
+    Assert.Equal(1.0, button.Get LayoutProps.opacity)
 
 [<Fact>]
 let ``Deselect, or clicking the selected row again, clears the selection`` () =
@@ -448,10 +482,31 @@ let ``dragging the divider gives the properties more room`` () =
         let siblings = divider.Parent.Value.Children
         let i = Seq.findIndex (fun c -> obj.ReferenceEquals(c, divider)) siblings
         siblings[i + 1].Bounds.Height
-    Assert.Equal(240.0, properties ())
+    Assert.Equal(300.0, properties ())
     let p = divider.PositionInTree
-    dragFrom w (p.X + 100.0, p.Y + 3.0) (p.X + 100.0, p.Y - 47.0)
-    Assert.Equal(290.0, properties ())
+    // Down makes them shorter.
+    dragFrom w (p.X + 100.0, p.Y + 3.0) (p.X + 100.0, p.Y + 53.0)
+    Assert.Equal(250.0, properties ())
     // Never so tall that the tree disappears: the window is 500 high.
-    dragFrom w (p.X + 100.0, p.Y - 47.0) (p.X + 100.0, 0.0)
+    dragFrom w (p.X + 100.0, p.Y + 53.0) (p.X + 100.0, 0.0)
     Assert.Equal(484.0 - 170.0, properties ())
+
+[<Fact>]
+let ``the selection is only outlined, so its own looks stay visible; something pointed at is filled`` () =
+    let log = List<string>()
+    let w, host, _ = start log
+    let highlight () =
+        let layer = host.Layers |> Seq.find (fun l -> l.Name = "Inspector highlight")
+        let rec find (e: Element) =
+            if obj.ReferenceEquals(e.Type, Highlight.Type) then Some e else e.Children |> Seq.tryPick find
+        layer.Tree.Root.Value |> find |> Option.get
+    // Picking: whatever is under the pointer gets the full highlight.
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    move w 50.0 20.0
+    settle w
+    Assert.False((highlight ()).Get HighlightProps.outlineOnly)
+    // Picked: the selection gets just an outline.
+    click w 50.0 20.0
+    settle w
+    Assert.True((highlight ()).Get HighlightProps.outlineOnly)

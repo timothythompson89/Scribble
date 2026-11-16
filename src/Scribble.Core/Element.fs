@@ -29,6 +29,14 @@ type IElementRoot =
     abstract RequestRestyle: element: obj * deep: bool * stateChange: bool -> unit
     /// Something in the tree uses styles (a `styles` setting or an inline state block).
     abstract StylesUsed: unit -> unit
+    /// The tree's theme (`App.theme`), for inherited base values; elements can set their own.
+    abstract Theme: IThemeSource voption
+
+[<AutoOpen>]
+module internal StyleMarks =
+    /// Put before a theme style's selector text by the style engine, so `Values` can say `Theme`.
+    [<Literal>]
+    let ThemeMark = "theme "
 
 /// Where an element's property value comes from (`Element.Values`).
 [<RequireQualifiedAccess>]
@@ -37,10 +45,14 @@ type ValueSource =
     | View
     /// Set from code (`element.Set`), not by the view.
     | Code
-    /// A matching style (`PropertyValue.Selector` says which).
+    /// A matching style of the app's or an element's (`PropertyValue.Selector` says which).
     | Style
+    /// One of the theme's styles (`PropertyValue.Selector` says which: `Button:hover`).
+    | Theme
     /// The element type's default (`Element.defaults`), e.g. Button's background.
     | TypeDefault
+    /// Passed down from an ancestor or the theme (`foreground`, `font`, `fontSize`).
+    | Inherited
     /// The property's own default.
     | Default
 
@@ -147,16 +159,16 @@ and [<Struct>] RenderContext internal (element: Element) =
         Size.Create(b.Width, b.Height)
     member _.Text: TextSystem = element.TextSystem
     /// The pointer is over the element (or something inside it).
-    member _.IsPointerOver = element.IsPointerOver
+    member _.IsPointerOver = element.IsPointerOver || element.HasForcedHoverInside
     /// The element got a left-button press that hasn't been released, and the pointer is over it.
-    member _.IsPressed = element.IsPressed
+    member _.IsPressed = element.IsPressed || element.LooksForced 2
     /// False when the element or one of its ancestors has `isEnabled false`.
-    member _.IsEnabled = element.IsEnabled
+    member _.IsEnabled = element.IsEnabled && not element.HasForcedDisabledAbove
     /// The element has keyboard focus (however it got it).
-    member _.IsFocused = element.IsFocused
+    member _.IsFocused = element.IsFocused || element.LooksForced 4
     /// The element has focus and the user is using the keyboard: draw a focus ring
     /// (`FocusRing.draw`). False after a pointer press and while the window is inactive.
-    member _.IsFocusVisible = element.IsFocusVisible
+    member _.IsFocusVisible = element.IsFocusVisible || element.LooksForced 8
     /// The current frame's time.
     member _.Time = element.Time
 
@@ -234,6 +246,10 @@ and View internal (elementType: ElementType, settings: struct (Prop * obj)[]) =
 and [<Sealed>] Element internal (elementType: ElementType) =
     static let empty: Element[] = [||]
     static let clamp (value: float) (low: float) (high: float) = max low (min value high)
+    // How many elements anywhere have a forced hover or disabled (`ForceState`): while none do, the
+    // walks that spread them (hover up to ancestors, disabled down) are skipped.
+    static let mutable forcedHovers = 0
+    static let mutable forcedDisableds = 0
     /// A component's input (set by its view) and its rendered content (the view it returned).
     static let componentInput = Prop<obj>("Component", obj (), Affects.Nothing, PropKind.Component)
     static let componentContent = Prop<View voption>("Content", ValueNone, Affects.Measure, PropKind.Child)
@@ -278,8 +294,15 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     let mutable focusVisible = false
     /// Space is held on the focused element (it looks pressed until Space comes up).
     let mutable keyPressed = false
+    // States a tool forced on (the inspector): ElementState values (declared after Element), and
+    // the built-in ones as flags for RenderContext (1 hover, 2 pressed, 4 focus, 8 focus-visible,
+    // 16 disabled). Looks only: input reads the real states.
+    let mutable forced: obj list = []
+    let mutable forcedLooks = 0
     /// Values animated by the render function (`ctx.Animate`), by key; created on first use.
     let mutable animations: Dictionary<string, obj> voption = ValueNone
+    /// Running or finished transitions (`Style.transition`), by property id; created on first use.
+    let mutable transitions: Dictionary<int, obj> voption = ValueNone
     let mutable componentState: ComponentState voption = ValueNone
 
     let find (id: int) =
@@ -461,8 +484,15 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                         | ValueSome vw when vw.Has p -> ValueSource.View
                         | _ -> ValueSource.Code
                     values[own], source, ""
-                elif fromStyle >= 0 then styleValues[fromStyle], ValueSource.Style, styleSelectors[fromStyle]
+                elif fromStyle >= 0 then
+                    // The style engine marks the theme's selectors with "theme " (see StyleEngine.apply).
+                    let s = styleSelectors[fromStyle]
+                    if s.StartsWith(ThemeMark, StringComparison.Ordinal) then styleValues[fromStyle], ValueSource.Theme, s.Substring ThemeMark.Length
+                    else styleValues[fromStyle], ValueSource.Style, s
                 elif typeHas p then this.DefaultOf p, ValueSource.TypeDefault, ""
+                elif p.Inherits then
+                    let v = this.FromAbove p
+                    v, (if p.Same(v, p.DefaultBoxed) then ValueSource.Default else ValueSource.Inherited), ""
                 else p.DefaultBoxed, ValueSource.Default, ""
             result.Add { Prop = p; Value = value; Source = source; Selector = selector }
         for i in 0 .. count - 1 do
@@ -471,6 +501,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             if shown p then add p
         for struct (p, _) in elementType.Defaults do
             if shown p then add p
+        // Text settings passed down from above (only when something above sets them).
+        for p in [ InheritedProps.foreground :> Prop; InheritedProps.font; InheritedProps.fontSize ] do
+            if not (p.Same(this.FromAbove p, p.DefaultBoxed)) && shown p then add p
         for p in LayoutProps.common do
             if shown p then add p
         List.ofSeq result
@@ -543,6 +576,49 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     member _.IsFocused = focused
     /// Has focus and should show it (the keyboard is in use and the window is active).
     member _.IsFocusVisible = focused && focusVisible
+
+    /// The states forced on by a tool (`element.ForceState`), as ElementState values.
+    member internal _.Forced = forced
+
+    /// Replaces the forced states (and the built-in ones' flags); styles match again.
+    member internal this.SetForced(states: obj list, looks: int) =
+        let changed flag = (forcedLooks &&& flag) <> (looks &&& flag)
+        // Elements are UI-thread-only, so plain counts do (the walks only run while one is forced).
+        let delta flag = if not (changed flag) then 0 elif looks &&& flag <> 0 then 1 else -1
+        forcedHovers <- forcedHovers + delta 1
+        forcedDisableds <- forcedDisableds + delta 16
+        let hoverChanged, disabledChanged = changed 1, changed 16
+        forced <- states
+        forcedLooks <- looks
+        this.InvalidateVisual()
+        // A forced disabled reaches everything inside (as `isEnabled false` does); a forced hover
+        // reaches the ancestors (as the pointer over a child does): those match again too.
+        this.RequestRestyle(disabledChanged, true)
+        if hoverChanged then
+            let mutable p = parent
+            while p.IsSome do
+                p.Value.RequestRestyle(false, true)
+                p <- p.Value.Parent
+
+    /// A built-in state forced on (see `forcedLooks`), for RenderContext.
+    member internal _.LooksForced(flag: int) = forcedLooks &&& flag <> 0
+
+    /// Looks hovered because of a forced hover on it or something inside it (the pointer over a
+    /// child is over its ancestors too).
+    member internal this.HasForcedHoverInside =
+        forcedHovers > 0
+        && (let rec any (e: Element) = e.LooksForced 1 || e.Children |> Seq.exists any
+            any this)
+
+    /// Looks disabled because of a forced disabled on it or an ancestor (as `isEnabled false`).
+    member internal this.HasForcedDisabledAbove =
+        forcedDisableds > 0
+        && (let mutable e = ValueSome this
+            let mutable found = false
+            while not found && e.IsSome do
+                found <- e.Value.LooksForced 16
+                e <- e.Value.Parent
+            found)
 
     member internal this.SetFocusState(isFocused: bool, isVisible: bool) =
         let before = this.IsFocused, this.IsFocusVisible
@@ -622,11 +698,111 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             i <- i + 1
         if i < defaults.Length then (let struct (_, v) = defaults[i] in v) else prop.DefaultBoxed
 
-    /// The value without a setting of its own: a matching style's, else the default.
+    /// Its type's default for `prop`, if the type has one.
+    member private _.TryTypeDefault(prop: Prop) : obj voption =
+        let defaults = elementType.Defaults
+        let mutable i = 0
+        while i < defaults.Length && (let struct (p, _) = defaults[i] in p.Id <> prop.Id) do
+            i <- i + 1
+        if i < defaults.Length then (let struct (_, v) = defaults[i] in ValueSome v) else ValueNone
+
+    /// The base value its own `theme` setting gives an inherited property, if any.
+    member private _.OwnThemeBase(prop: Prop) : obj voption =
+        match find LayoutProps.theme.Id with
+        | -1 -> ValueNone
+        | i ->
+            match values[i] with
+            | :? (IThemeSource voption) as t when t.IsSome -> t.Value.TryBase prop
+            | _ -> ValueNone
+
+    /// An inherited property's value from above: its own theme's base value, else its parent's
+    /// value, else the tree's theme's, else the property's default.
+    member private this.FromAbove(prop: Prop) : obj =
+        match this.OwnThemeBase prop with
+        | ValueSome v -> v
+        | ValueNone ->
+            match parent with
+            | ValueSome p -> p.Resolved prop
+            | ValueNone ->
+                match root with
+                | ValueSome r when r.Theme.IsSome ->
+                    match r.Theme.Value.TryBase prop with
+                    | ValueSome v -> v
+                    | ValueNone -> prop.DefaultBoxed
+                | _ -> prop.DefaultBoxed
+
+    /// An inherited property's value here: own, else a style's, else the type's default, else from above.
+    member internal this.Resolved(prop: Prop) : obj =
+        match find prop.Id with
+        | -1 -> this.BaseOf prop
+        | i -> values[i]
+
+    /// The value without a setting of its own: a matching style's, else the type's default, else
+    /// (inherited properties) the value from above, else the property's default.
     member private this.BaseOf(prop: Prop) : obj =
         match findStyle prop.Id with
-        | -1 -> this.DefaultOf prop
+        | -1 ->
+            if prop.Inherits then
+                match this.TryTypeDefault prop with
+                | ValueSome v -> v
+                | ValueNone -> this.FromAbove prop
+            else this.DefaultOf prop
         | i -> styleValues[i]
+
+    /// True when the element decides `prop` itself (own value, a style's or its type's default), so
+    /// a change above doesn't reach it or anything inside it.
+    member private this.HoldsInherited(prop: Prop) =
+        find prop.Id >= 0 || findStyle prop.Id >= 0 || (this.TryTypeDefault prop).IsSome || (this.OwnThemeBase prop).IsSome
+
+    /// An inherited property's value changed here: redo what it affects for every element inside
+    /// that takes it from here.
+    member private this.InheritedChanged(prop: Prop) =
+        for c in children do
+            if not (c.HoldsInherited prop) then
+                c.Invalidate prop.Affects
+                c.InheritedChanged prop
+
+    /// Redoes what changing a value with this effect needs.
+    member private this.Invalidate(affects: Affects) =
+        match affects with
+        | Affects.Measure -> this.InvalidateMeasure()
+        | Affects.Arrange -> this.InvalidateArrange()
+        | Affects.Render -> this.InvalidateVisual()
+        | _ -> ()
+
+    /// Every inherited property may have changed here and below (a theme came or went).
+    member private this.AllInheritedChanged() =
+        for p in [ InheritedProps.font :> Prop; InheritedProps.fontSize; InheritedProps.foreground ] do
+            this.Invalidate p.Affects
+            this.InheritedChanged p
+
+    /// The value shown now: while a transition (`Style.transition`) runs, between the old value and `value`.
+    member private this.Transitioned<'T>(prop: Prop<'T>, value: 'T) : 'T =
+        match this.Get prop.TransitionProp with
+        | ValueNone -> value
+        | ValueSome duration ->
+            let all =
+                match transitions with
+                | ValueSome d -> d
+                | ValueNone ->
+                    let d = Dictionary<int, obj>()
+                    transitions <- ValueSome d
+                    d
+            let tween =
+                match all.TryGetValue prop.Id with
+                | true, (:? Tween<'T> as t) -> t
+                | _ ->
+                    let lerp = prop.Lerp.Value
+                    let t = Tween<'T>((fun a b x -> unbox<'T> (lerp (box a) (box b) x)), value)
+                    all[prop.Id] <- box t
+                    t
+            let now = this.Time
+            let shown = tween.Update(value, now, duration, Easing.easeOut)
+            if tween.IsMoving now then
+                match root with
+                | ValueSome r -> r.AfterFrame(fun () -> this.InvalidateVisual())
+                | ValueNone -> ()
+            shown
 
     /// The value without styles: its own, else the default. What property selectors test, so a
     /// style can't change whether it (or another style) matches.
@@ -641,12 +817,14 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             this.RequestRestyle(prop.TestedByAncestorStyles, false)
 
     member this.Get<'T>(prop: Prop<'T>) : 'T =
-        match find prop.Id with
-        | -1 ->
-            if styleKeys.Length > 0 then unbox<'T> (this.BaseOf prop)
-            elif elementType.Defaults.Length = 0 then prop.Default
-            else unbox<'T> (this.DefaultOf prop)
-        | i -> unbox<'T> values[i]
+        let value =
+            match find prop.Id with
+            | -1 ->
+                if styleKeys.Length > 0 || prop.Inherits then unbox<'T> (this.BaseOf prop)
+                elif elementType.Defaults.Length = 0 then prop.Default
+                else unbox<'T> (this.DefaultOf prop)
+            | i -> unbox<'T> values[i]
+        if prop.Transition.IsSome then this.Transitioned(prop, value) else value
 
     /// The current value, boxed: the element's own, else a style's, else the default.
     member this.GetBoxed(prop: Prop) : obj =
@@ -665,16 +843,14 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// Redoes what a value change affects (layout copy, invalidation, style matching).
     member private this.ValueChanged(prop: Prop) =
         if prop.IsLayout then this.RefreshLayoutValues()
-        match prop.Affects with
-        | Affects.Measure -> this.InvalidateMeasure()
-        | Affects.Arrange -> this.InvalidateArrange()
-        | Affects.Render -> this.InvalidateVisual()
-        | _ -> ()
-        if prop.IsStyles || prop.IsStateBlock then
+        this.Invalidate prop.Affects
+        if prop.Inherits then this.InheritedChanged prop
+        if prop.IsTheme then this.AllInheritedChanged()
+        if prop.IsStyles || prop.IsStateBlock || prop.IsTheme then
             match root with
             | ValueSome r -> r.StylesUsed()
             | ValueNone -> ()
-        if prop.Restyles || prop.IsStyles then this.RequestRestyle(true, false)
+        if prop.Restyles || prop.IsStyles || prop.IsTheme then this.RequestRestyle(true, false)
         elif prop.IsStateBlock then this.RequestRestyle(false, false)
 
     /// Removes the element's own value (a setting the view dropped, or Reset).
@@ -723,17 +899,24 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     member internal this.ApplyStyleValues(newKeys: Prop[], newValues: obj[], newSelectors: string[]) =
         let oldKeys, oldValues = styleKeys, styleValues
         let changed = List<Prop>()
+        // What shows without a style value.
+        let fallback (p: Prop) =
+            if p.Inherits then
+                match this.TryTypeDefault p with
+                | ValueSome v -> v
+                | ValueNone -> this.FromAbove p
+            else this.DefaultOf p
         let check (p: Prop) =
             // The element's own value hides any style value.
             if find p.Id = -1 && not (changed.Contains p) then
                 let before =
                     match Array.tryFindIndex (fun (k: Prop) -> k.Id = p.Id) oldKeys with
                     | Some i -> oldValues[i]
-                    | None -> this.DefaultOf p
+                    | None -> fallback p
                 let after =
                     match Array.tryFindIndex (fun (k: Prop) -> k.Id = p.Id) newKeys with
                     | Some i -> newValues[i]
-                    | None -> this.DefaultOf p
+                    | None -> fallback p
                 if not (p.Same(before, after)) then changed.Add p
         for p in oldKeys do check p
         for p in newKeys do check p
@@ -748,6 +931,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             if affects.HasFlag Affects.Measure then this.InvalidateMeasure()
             elif affects.HasFlag Affects.Arrange then this.InvalidateArrange()
             elif affects.HasFlag Affects.Render then this.InvalidateVisual()
+            for p in changed do
+                if p.Inherits then this.InheritedChanged p
 
     member internal this.SetValue(prop: Prop, value: obj) =
         this.VerifyAccess()
@@ -951,8 +1136,17 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             arrangeValid <- true
 
     member this.Render(list: DrawList) =
-        if not bounds.IsEmpty && lv.IsVisible then
+        let scale = this.Get LayoutProps.scale
+        // Skipped when it can't show (scrolled out of a ScrollViewer, outside a clip): its bounds,
+        // grown by what elements draw outside themselves (shadows, focus rings), lie outside the
+        // clip. Always drawn when it grows (scale above 1) or has its own transform.
+        let canShow () =
+            scale > 1.0 || elementType.Transform.IsSome || list.CanShow(bounds.Inflate Element.RenderOverflow)
+        if not bounds.IsEmpty && lv.IsVisible && canShow () then
             list.PushTranslate(bounds.X, bounds.Y)
+            let opacity = this.Get LayoutProps.opacity
+            if opacity < 1.0 then list.PushOpacity opacity
+            if scale <> 1.0 then list.PushTransform(Transform.ScaleAround(scale, bounds.Width / 2.0, bounds.Height / 2.0))
             let transformed =
                 match elementType.Transform with
                 | ValueSome f ->
@@ -970,7 +1164,13 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | ValueSome f -> f (RenderContext this) list
             | ValueNone -> ()
             if transformed then list.PopTransform()
+            if scale <> 1.0 then list.PopTransform()
+            if opacity < 1.0 then list.PopOpacity()
             list.PopTransform()
+
+    /// How far outside its bounds an element may draw (DIPs): shadows and focus rings. One whose
+    /// bounds, grown by this, lie outside the clip isn't drawn.
+    static member val RenderOverflow = 64.0 with get, set
 
     override _.ToString() = elementType.Name
 

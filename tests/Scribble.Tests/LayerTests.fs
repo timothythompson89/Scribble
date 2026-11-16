@@ -292,3 +292,26 @@ let ``when a dialog closes, the keyboard goes back to the app and its focus look
     Assert.True appButton.IsFocused
     key w Key.Enter
     Assert.Equal<string list>([ "dialogButton"; "appButton" ], List.ofSeq log)
+
+[<Fact>]
+let ``rows scrolled out of a ScrollViewer aren't drawn`` () =
+    let tree = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    let mutable drawn = 0
+    // Counts its renders (one call per frame it's drawn in).
+    let counted =
+        Element.define "Counted" [
+            Element.measure (fun _ _ -> Size.Create(100.0, 20.0))
+            Element.render (fun _ list ->
+                drawn <- drawn + 1
+                list.FillRect(Rect.Create(0.0, 0.0, 100.0, 20.0), Color.White))
+        ]
+    tree.Update(
+        ScrollViewer.create [
+            ScrollViewer.height 100.0
+            ScrollViewer.content (StackPanel.create [ StackPanel.children [ for _ in 1 .. 50 -> View.Create(counted, ([]: Setting<Layoutable> list)) ] ])
+        ]
+    )
+    tree.UpdateLayout(Size.Create(200.0, 300.0))
+    tree.Render(DrawList(1.0))
+    // 5 rows show; rows within 64 DIPs below (shadows and rings may reach in) are drawn too.
+    Assert.InRange(drawn, 5, 9)

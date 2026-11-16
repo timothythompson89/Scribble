@@ -8,9 +8,17 @@ open Scribble.Rendering
 ///         ...
 ///         if ctx.IsFocusVisible then FocusRing.draw ctx list (CornerRadius.Uniform 6.0))
 ///
-/// The look is fixed until styles (Milestone 7): a 2 DIP accent ring, 2 DIPs outside the element.
+/// A 2 DIP ring, 2 DIPs outside the element, in the `focusRingColor` (inherited; the theme sets it).
 module FocusRing =
+    /// The default ring color.
     let color = Color.Hex 0x7AA2F7
+
+    /// The ring's color (inherited: the theme gives its base value).
+    let colorProp =
+        let p = Prop.define "FocusRingColor" color Affects.Render
+        p.Inherits <- true
+        p
+
     let thickness = 2.0
     /// The gap between the element's edge and the ring.
     let offset = 2.0
@@ -24,4 +32,4 @@ module FocusRing =
         let radius =
             { TopLeft = outer radius.TopLeft; TopRight = outer radius.TopRight
               BottomRight = outer radius.BottomRight; BottomLeft = outer radius.BottomLeft }
-        list.StrokeRect(Rect.Create(-grow, -grow, size.Width + 2.0 * grow, size.Height + 2.0 * grow), radius, thickness, color)
+        list.StrokeRect(Rect.Create(-grow, -grow, size.Width + 2.0 * grow, size.Height + 2.0 * grow), radius, thickness, ctx.Get colorProp)

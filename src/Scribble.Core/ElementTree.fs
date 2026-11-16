@@ -21,6 +21,7 @@ type ElementTree(text: TextSystem) =
     // Styles: the app's (every element), whether anything in the tree uses styles (until then
     // restyle requests are ignored), whether a style tests an ancestor's state, and the queue.
     let mutable appStyles: Style list = []
+    let mutable theme: Theme voption = ValueNone
     let mutable stylesInUse = false
     let mutable ancestorStates = false
     let restyleQueue = Collections.Generic.List<Element>()
@@ -95,6 +96,28 @@ type ElementTree(text: TextSystem) =
                 | ValueSome r -> (this :> IElementRoot).RequestRestyle(box r, true, false)
                 | ValueNone -> ()
 
+    /// The theme for the whole tree (`App.theme`; the host sets it on its layers): its styles sit
+    /// below every other style, and it gives the base text color, font and size. Elements can
+    /// set their own (`theme`) for what's inside them.
+    member this.Theme
+        with get () = theme
+        and set (value: Theme voption) =
+            let same =
+                match value, theme with
+                | ValueSome a, ValueSome b -> obj.ReferenceEquals(a, b)
+                | ValueNone, ValueNone -> true
+                | _ -> false
+            if not same then
+                theme <- value
+                stylesInUse <- stylesInUse || value.IsSome
+                match root with
+                | ValueSome r ->
+                    // Base text values change everywhere; styles are matched again.
+                    r.InvalidateAll()
+                    (this :> IElementRoot).RequestRestyle(box r, true, false)
+                | ValueNone -> ()
+                onInvalidated ()
+
     /// Matches styles for elements that asked (joined the tree, changed classes or states, ...),
     /// parents before children. Part of UpdateLayout, after components run.
     member this.RunScheduledStyles() =
@@ -120,8 +143,8 @@ type ElementTree(text: TextSystem) =
                     if queued then
                         let scopes = StyleEngine.scopesAbove e
                         let found =
-                            if deep then StyleEngine.applyDeep appStyles scopes e
-                            else StyleEngine.apply appStyles scopes e
+                            if deep then StyleEngine.applyDeep theme appStyles scopes e
+                            else StyleEngine.apply theme appStyles scopes e
                         if found then ancestorStates <- true
 
     /// Runs what asked to run after the frame (effects, animations asking for the next frame).
@@ -189,6 +212,7 @@ type ElementTree(text: TextSystem) =
             onInvalidated ()
         member _.AfterFrame action = afterFrame.Add action
         member _.Dispatcher = dispatcher
+        member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)
         member this.RequestRestyle(element, deep, stateChange) =
             if stylesInUse then
                 let e = element :?> Element

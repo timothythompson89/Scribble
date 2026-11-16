@@ -15,6 +15,25 @@ let private shape (list: DrawList) index =
        Clip = [ at 20; at 21; at 22; at 23 ] |}
 
 [<Fact>]
+let ``opacity multiplies the alpha of fills and borders, nested, until popped`` () =
+    let list = DrawList(1.0)
+    let square = Rect.Create(0.0, 0.0, 10.0, 10.0)
+    list.PushOpacity 0.5
+    list.FillRect(square, Color.White)
+    list.PushOpacity 0.5
+    list.FillRect(square, Color.White.WithAlpha 0.8f)
+    list.PopOpacity()
+    list.FillRect(square, Color.White)
+    list.PopOpacity()
+    list.FillRect(square, Color.White)
+    let alpha i = (shape list i).Fill[3]
+    Assert.Equal(0.5, alpha 0, 5)
+    Assert.Equal(0.2, alpha 1, 5)
+    Assert.Equal(0.5, alpha 2, 5)
+    Assert.Equal(1.0, alpha 3, 5)
+    Assert.Equal(1.0, list.Opacity)
+
+[<Fact>]
 let ``rects are scaled to pixels and snapped to whole pixels`` () =
     let list = DrawList(1.5)
     list.FillRect(Rect.Create(10.0, 10.0, 21.0, 7.0), Color.White)

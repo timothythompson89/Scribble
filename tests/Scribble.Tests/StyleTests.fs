@@ -138,13 +138,14 @@ let ``a state on an ancestor re-matches what's inside`` () =
     let t = tree [ TextBlock.style [ Style.inside Button.Type [ States.hover ] ] [ TextBlock.foreground red ] ]
     let root = show t (Button.create [ Button.content (TextBlock.create [ TextBlock.name "label" ]) ])
     let label = find "label" root
-    Assert.Equal(Color.Black, label.Get TextProps.foreground)
+    // Inherited from the Button's own text color.
+    Assert.Equal(Color.Hex 0xE6E6F0, label.Get TextProps.foreground)
     root.ChangePointersOver 1
     layout t
     Assert.Equal(red, label.Get TextProps.foreground)
     root.ChangePointersOver -1
     layout t
-    Assert.Equal(Color.Black, label.Get TextProps.foreground)
+    Assert.Equal(Color.Hex 0xE6E6F0, label.Get TextProps.foreground)
 
 [<Fact>]
 let ``disabled follows isEnabled on an ancestor`` () =

@@ -31,6 +31,7 @@ type CounterTests(fixture: TextFixture) =
     [<Fact>]
     member _.``the components demo``() =
         let tree = ElementTree(fixture.Text)
+        tree.Theme <- ValueSome(Theme.dark []) // as in the app: Reset (disabled) fades
         tree.Update(Scribble.Samples.Counter.demo ())
         tree.UpdateLayout(Size.Create(520.0, 520.0))
         let size: PixelSize = { Width = 520; Height = 520 }

@@ -21,6 +21,7 @@
     <Compile Include="Elements/TextBlock.fs" />
     <Compile Include="Elements/Button.fs" />
     <Compile Include="Elements/ScrollViewer.fs" />
+    <Compile Include="Theme.fs" />
     <Compile Include="Component.fs" />
     <Compile Include="Layer.fs" />
     <Compile Include="ElementHost.fs" />

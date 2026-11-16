@@ -18,7 +18,8 @@ type internal ElementHostOptions =
     { Background: Color
       Dispatcher: Dispatcher voption
       BeforeFrame: unit -> unit
-      Styles: Style list }
+      Styles: Style list
+      Theme: Theme voption }
 
 /// One setting for `ElementHost.create`: `ElementHost.background (Color.Hex 0x181825)`.
 [<Struct>]
@@ -81,7 +82,9 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         let tree = layer.Tree
         tree.Scale <- window.Scale
         tree.Dispatcher <- options.Dispatcher
-        if layer.UsesAppStyles then tree.Styles <- options.Styles
+        if layer.UsesAppStyles then
+            tree.Styles <- options.Styles
+            tree.Theme <- options.Theme
         tree.OnInvalidated <-
             fun () ->
                 layerChanged.Trigger layer
@@ -183,6 +186,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
 
     /// Styles for every layer (except those with `Layer.appStyles false`); `App.styles` sets them.
     static member styles(value: Style list) = ElementHostSetting(fun o -> { o with Styles = value })
+
+    /// The theme for every layer (except those with `Layer.appStyles false`); `App.theme` sets it.
+    /// Default: `Theme.dark []`.
+    static member theme(value: Theme) = ElementHostSetting(fun o -> { o with Theme = ValueSome value })
 
     member _.Window = window
 
@@ -405,6 +412,6 @@ module ElementHost =
     /// A host for `window`, drawing with `device` and `text`:
     /// `ElementHost.create window device text [ ElementHost.background (Color.Hex 0x181825) ]`.
     let create (window: IWindow) (device: IRenderDevice) (text: TextSystem) (settings: ElementHostSetting list) =
-        let defaults = { Background = Color.Black; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = [] }
+        let defaults = { Background = Color.Black; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = []; Theme = ValueSome defaultTheme.Value }
         let options = settings |> List.fold (fun o (ElementHostSetting apply) -> apply o) defaults
         new ElementHost(window, device, text, options)

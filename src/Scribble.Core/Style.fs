@@ -49,7 +49,8 @@ and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop:
         p
 
     member _.Name = name
-    member internal _.Test(e: Element) = test e
+    /// On for real, or forced on by a tool (`element.ForceState`).
+    member internal this.Test(e: Element) = (e.Forced |> List.exists (fun s -> obj.ReferenceEquals(s, this))) || test e
     member internal _.BlockProp = blockProp
     /// The property it reads (`States.ofProp`), so an ancestor part testing it can be re-matched.
     member internal _.Prop = prop
@@ -75,7 +76,7 @@ and [<Sealed>] internal StateBlock(state: ElementState, settings: struct (Prop *
 /// The built-in states, and `States.define` for an element type's own.
 module States =
     /// The pointer is over the element or something inside it.
-    let hover = ElementState("hover", (fun e -> e.IsPointerOver), ValueNone)
+    let hover = ElementState("hover", (fun e -> e.IsPointerOver || e.HasForcedHoverInside), ValueNone)
     /// Pressed with the left button (and the pointer still over it), or Space held while focused.
     let pressed = ElementState("pressed", (fun e -> e.IsPressed), ValueNone)
     /// Has keyboard focus.
@@ -83,7 +84,7 @@ module States =
     /// Has focus and shows it (the keyboard is in use).
     let focusVisible = ElementState("focus-visible", (fun e -> e.IsFocusVisible), ValueNone)
     /// `isEnabled false` on the element or one of its ancestors.
-    let disabled = ElementState("disabled", (fun e -> not e.IsEnabled), ValueNone)
+    let disabled = ElementState("disabled", (fun e -> not e.IsEnabled || e.HasForcedDisabledAbove), ValueNone)
 
     // Every custom state made, in order, for `element.ActiveStates` (states are usually made at
     // module level, possibly on several threads at once).
@@ -93,8 +94,11 @@ module States =
         lock custom (fun () -> custom.Add s)
         s
 
-    /// The custom states made so far (a copy).
-    let internal customStates () = lock custom (fun () -> custom.ToArray())
+    /// Every custom state made so far (`define`, `ofProp`), in order (a copy; for tools).
+    let customStates () = lock custom (fun () -> custom.ToArray())
+
+    /// Forgets a custom state (tests that make their own, so they don't show in other tests).
+    let internal remove (s: ElementState) = lock custom (fun () -> custom.Remove s |> ignore)
 
     /// An element type's own state, tested by any function. Call `element.RefreshStates()` when it
     /// may have changed, so styles are matched again. For a state that only reads a property, use
@@ -127,6 +131,29 @@ module ElementStateExtensions =
                       with _ ->
                           false
                   if on then s ]
+
+        /// States forced on by `ForceState`.
+        member this.ForcedStates: ElementState list = [ for s in this.Forced -> s :?> ElementState ]
+
+        /// Forces a state on (or stops forcing it), for tools such as the inspector: styles match
+        /// as if the element were in it and render functions see it (`ctx.IsPointerOver`), but
+        /// input doesn't (a forced `pressed` doesn't click, a forced `disabled` doesn't block). Like the
+        /// real states, a forced `disabled` also disables everything inside the element and a forced
+        /// `hover` also hovers its ancestors; other states apply to this element only.
+        member this.ForceState(state: ElementState, on: bool) =
+            let others = this.ForcedStates |> List.filter (fun s -> not (obj.ReferenceEquals(s, state)))
+            let states = if on then others @ [ state ] else others
+            let flag (s: ElementState) =
+                if obj.ReferenceEquals(s, States.hover) then 1
+                elif obj.ReferenceEquals(s, States.pressed) then 2
+                elif obj.ReferenceEquals(s, States.focused) then 4
+                elif obj.ReferenceEquals(s, States.focusVisible) then 8
+                elif obj.ReferenceEquals(s, States.disabled) then 16
+                else 0
+            this.SetForced([ for s in states -> box s ], states |> List.sumBy flag)
+
+        /// Stops forcing every state.
+        member this.ClearForcedStates() = if not this.Forced.IsEmpty then this.SetForced([], 0)
 
 
 module internal Selector =
@@ -302,6 +329,15 @@ type Style internal (rules: Rule[], description: string) =
     static member on<'k> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> =
         Setting.create state.BlockProp (ValueSome(StateBlock(state, [| for s in settings -> struct (s.Prop, s.Value) |])))
 
+    /// Fades `prop` from its old value to its new one over `duration` whenever it changes (not when
+    /// the element first appears), inside a style's settings:
+    /// `Style.transition BorderProps.overlay (TimeSpan.FromMilliseconds 100.0)`. Only properties
+    /// that affect drawing alone (colors, numbers, shadows, corner radius, `opacity`, `scale`).
+    static member transition<'k, 'T> (prop: Prop<'T>) (duration: TimeSpan) : Setting<'k> =
+        if prop.Kind <> PropKind.Value || prop.Lerp.IsNone || (prop.Affects <> Affects.Render && prop.Affects <> Affects.Nothing) then
+            invalidArg "prop" (prop.Name + " can't have a transition: only properties that affect drawing alone (colors, numbers, shadows, corner radius) can.")
+        Setting.create prop.TransitionProp (ValueSome duration)
+
 module StyleProps =
     /// Styles for the element and everything inside it.
     let styles =
@@ -309,6 +345,77 @@ module StyleProps =
         p.IsStyles <- true
         p.NotStylable <- true
         p
+
+/// A theme's colors and sizes (what `Theme.dark [ ... ]` settings change).
+type internal ThemePalette =
+    { Background: Scribble.Rendering.Color
+      Surface: Scribble.Rendering.Color
+      Control: Scribble.Rendering.Color
+      Border: Scribble.Rendering.Color
+      Text: Scribble.Rendering.Color
+      TextDim: Scribble.Rendering.Color
+      Accent: Scribble.Rendering.Color
+      Danger: Scribble.Rendering.Color
+      FocusRing: Scribble.Rendering.Color
+      CornerRadius: float
+      Font: Scribble.Text.Font
+      FontSize: float }
+
+/// One setting for a theme: `Theme.dark [ Theme.accent (Color.Hex 0x3D59A1) ]`.
+[<Sealed>]
+type ThemeSetting internal (apply: ThemePalette -> ThemePalette) =
+    member internal _.Apply(p: ThemePalette) = apply p
+
+/// A theme: the built-in looks as styles below every other style, and the base text color, font
+/// and size. Made with `Theme.dark [ ... ]`; used with `App.theme` or any element's `theme`. Its
+/// colors are readable, so app styles can use the palette (`theme.Accent`). Build a theme once and
+/// keep it (its styles are made once per theme).
+[<Sealed>]
+type Theme internal (palette: ThemePalette, build: Theme -> struct (Style list * struct (Prop * obj)[])) as this =
+    let built = lazy (build this)
+
+    /// Behind everything (the window).
+    member _.Background = palette.Background
+    /// Panels and cards.
+    member _.Surface = palette.Surface
+    /// Controls such as buttons.
+    member _.Control = palette.Control
+    /// Controls' borders.
+    member _.Border = palette.Border
+    member _.Text = palette.Text
+    /// Secondary text.
+    member _.TextDim = palette.TextDim
+    member _.Accent = palette.Accent
+    member _.Danger = palette.Danger
+    member _.FocusRing = palette.FocusRing
+    member _.CornerRadius = palette.CornerRadius
+    member _.Font = palette.Font
+    member _.FontSize = palette.FontSize
+    member internal _.Palette = palette
+
+    /// The built-in looks (matched below every other style).
+    member internal _.Styles: Style list = let struct (s, _) = built.Value in s
+
+    interface IThemeSource with
+        member _.TryBase(prop: Prop) =
+            let struct (_, bases) = built.Value
+            let mutable i = 0
+            while i < bases.Length && (let struct (p, _) = bases[i] in p.Id <> prop.Id) do
+                i <- i + 1
+            if i < bases.Length then (let struct (_, v) = bases[i] in ValueSome v) else ValueNone
+
+    static member background(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Background = value })
+    static member surface(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Surface = value })
+    static member control(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Control = value })
+    static member border(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Border = value })
+    static member text(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Text = value })
+    static member textDim(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with TextDim = value })
+    static member accent(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Accent = value })
+    static member danger(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Danger = value })
+    static member focusRing(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with FocusRing = value })
+    static member cornerRadius(value: float) = ThemeSetting(fun p -> { p with CornerRadius = value })
+    static member font(value: Scribble.Text.Font) = ThemeSetting(fun p -> { p with Font = value })
+    static member fontSize(value: float) = ThemeSetting(fun p -> { p with FontSize = value })
 
 /// Matches styles to elements (ElementTree runs it at the start of layout).
 module internal StyleEngine =
@@ -322,9 +429,28 @@ module internal StyleEngine =
             p <- p.Value.Parent
         scopes
 
-    /// Matches one element: the app's styles, then the ancestors' (outermost first), then its own
-    /// `styles`, then its inline blocks; later wins. Returns true when a rule tested an ancestor's state.
-    let apply (appStyles: Style list) (scopes: Style list list) (e: Element) =
+    /// The styles of the theme that applies to `e`: the nearest `theme` setting (on it or above),
+    /// else the tree's.
+    let themeStyles (treeTheme: Theme voption) (e: Element) : Style list =
+        let mutable found: Theme voption = ValueNone
+        let mutable p = ValueSome e
+        while found.IsNone && p.IsSome do
+            match p.Value.UnstyledValue LayoutProps.theme with
+            | :? (IThemeSource voption) as t when t.IsSome ->
+                match t.Value with
+                | :? Theme as th -> found <- ValueSome th
+                | _ -> ()
+            | _ -> ()
+            p <- p.Value.Parent
+        match found, treeTheme with
+        | ValueSome t, _
+        | ValueNone, ValueSome t -> t.Styles
+        | ValueNone, ValueNone -> []
+
+    /// Matches one element: its theme's styles, then the app's, then the ancestors' (outermost
+    /// first), then its own `styles`, then its inline blocks; later wins. Returns true when a rule
+    /// tested an ancestor's state.
+    let apply (treeTheme: Theme voption) (appStyles: Style list) (scopes: Style list list) (e: Element) =
         let keys = List<Prop>()
         let values = List<obj>()
         let selectors = List<string>()
@@ -348,6 +474,12 @@ module internal StyleEngine =
             for s in styles do
                 for r in s.Rules do
                     take r
+        let themed = themeStyles treeTheme e
+        if not themed.IsEmpty then
+            takeAll themed
+            // Mark where these came from (`Values` reports them as ValueSource.Theme).
+            for i in 0 .. selectors.Count - 1 do
+                selectors[i] <- ThemeMark + selectors[i]
         takeAll appStyles
         for scope in scopes do
             takeAll scope
@@ -363,12 +495,48 @@ module internal StyleEngine =
         e.ApplyStyleValues(keys.ToArray(), values.ToArray(), selectors.ToArray())
         ancestorStates
 
+    /// The tree's theme (as set on the element tree), if any.
+    let treeTheme (e: Element) : Theme voption =
+        match e.Root with
+        | ValueSome r ->
+            match r.Theme with
+            | ValueSome(:? Theme as t) -> ValueSome t
+            | _ -> ValueNone
+        | ValueNone -> ValueNone
+
     /// Matches an element and everything inside it (their queued requests are done too).
-    let rec applyDeep (appStyles: Style list) (scopes: Style list list) (e: Element) =
+    let rec applyDeep (treeTheme: Theme voption) (appStyles: Style list) (scopes: Style list list) (e: Element) =
         e.TakeRestyle() |> ignore
-        let mutable found = apply appStyles scopes e
+        let mutable found = apply treeTheme appStyles scopes e
         let own = e.Get StyleProps.styles
         let inner = if own.IsEmpty then scopes else scopes @ [ own ]
         for c in e.Children do
-            if applyDeep appStyles inner c then found <- true
+            if applyDeep treeTheme appStyles inner c then found <- true
         found
+
+/// A property the element's theme can set on it, and the rules that set it (`Button:hover`).
+type ThemedProperty = { Prop: Prop; Selectors: string list }
+
+[<AutoOpen>]
+module ThemedPropertyExtensions =
+    type Element with
+        /// The properties the element's theme (the nearest `theme`, else the tree's) can set on its
+        /// type, in any state or class, with the rules that set them, for tools such as the
+        /// inspector. Walks the theme's styles, so don't call it per frame.
+        member this.ThemedProperties: ThemedProperty list =
+            let order = List<Prop>()
+            let selectors = Dictionary<int, List<string>>()
+            for s in StyleEngine.themeStyles (StyleEngine.treeTheme this) this do
+                for r in s.Rules do
+                    let forType =
+                        match r.Selector.Type with
+                        | ValueSome t -> obj.ReferenceEquals(t, this.Type)
+                        | ValueNone -> true
+                    if forType then
+                        for p in r.Keys do
+                            match selectors.TryGetValue p.Id with
+                            | true, l -> if not (l.Contains r.Text) then l.Add r.Text
+                            | _ ->
+                                order.Add p
+                                selectors[p.Id] <- List<string>([ r.Text ])
+            [ for p in order -> { Prop = p; Selectors = List.ofSeq selectors[p.Id] } ]

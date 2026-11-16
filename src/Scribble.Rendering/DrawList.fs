@@ -35,6 +35,9 @@ type DrawList(scale: float) =
     let mutable transform = rootTransform
     let noClip = Rect.FromEdges(-1e7, -1e7, 1e7, 1e7)
     let mutable clip = noClip
+    let opacities = Collections.Generic.Stack<float32>()
+    // Multiplies the alpha of every shape drawn (PushOpacity), 1 when none is active.
+    let mutable opacity = 1.0f
 
     let ensureCapacity () =
         if (count + 1) * floatsPerShape > data.Length then
@@ -50,6 +53,8 @@ type DrawList(scale: float) =
     let pushKind (kind: float) (rect: Rect) (radii: CornerRadius) (fill: Color) (border: Color) (borderWidth: float) (sigma: float) =
         // Skip shapes that are fully clipped away or invisible.
         let reach = 1.0 + 3.0 * sigma
+        let fill = if opacity < 1.0f then fill.WithAlpha(fill.A * opacity) else fill
+        let border = if opacity < 1.0f then border.WithAlpha(border.A * opacity) else border
         if not (rect.Inflate(reach).Intersect(clip).IsEmpty) && (fill.A > 0.0f || (border.A > 0.0f && borderWidth > 0.0)) then
             ensureCapacity ()
             let i = count * floatsPerShape
@@ -110,8 +115,10 @@ type DrawList(scale: float) =
         count <- 0
         transforms.Clear()
         clips.Clear()
+        opacities.Clear()
         transform <- rootTransform
         clip <- noClip
+        opacity <- 1.0f
 
     // --- Transforms and clips ----------------------------------------------------------------
 
@@ -131,9 +138,28 @@ type DrawList(scale: float) =
         clips.Push clip
         clip <- clip.Intersect(snapRect (transform.Apply rect))
 
+    /// Whether anything drawn inside `rect` (DIPs, under the current transform) can show: false
+    /// when it lies entirely outside the current clip. Elements use it to skip drawing what a
+    /// ScrollViewer has scrolled out of view.
+    member _.CanShow(rect: Rect) = not ((transform.Apply rect).Intersect(clip).IsEmpty)
+
     member _.PopClip() =
         if clips.Count = 0 then invalidOp "PopClip without a matching PushClip."
         clip <- clips.Pop()
+
+    /// Fades everything drawn until PopOpacity: each shape's alpha (fill, border, glyph) is
+    /// multiplied by `value` (and by any opacity already active). Shapes fade one by one, so where
+    /// they overlap they show through each other (not a group fade).
+    member _.PushOpacity(value: float) =
+        opacities.Push opacity
+        opacity <- opacity * float32 (max 0.0 (min 1.0 value))
+
+    member _.PopOpacity() =
+        if opacities.Count = 0 then invalidOp "PopOpacity without a matching PushOpacity."
+        opacity <- opacities.Pop()
+
+    /// The opacity currently multiplied into every shape (1 = none).
+    member _.Opacity = float opacity
 
     // --- Glyphs ------------------------------------------------------------------------------
 

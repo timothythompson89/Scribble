@@ -65,6 +65,21 @@ type Layoutable =
     static member isEnabled<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.isEnabled value
     /// The pointer's look over this element (and inside it, unless something there sets its own).
     static member cursor<'k when 'k :> Layoutable>(value: Cursor) : Setting<'k> = Setting.create LayoutProps.cursor (ValueSome value)
+    /// Fades this element and everything inside it (0 to 1). Each shape fades on its own, so where
+    /// shapes overlap they show through each other.
+    static member opacity<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create LayoutProps.opacity value
+    /// Draws this element and everything inside it larger or smaller around its center (1 = as is);
+    /// layout and hit testing don't change. Button's press is `Button.on States.pressed [ Button.scale 0.97 ]`.
+    static member scale<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create LayoutProps.scale value
+    /// The theme for this element and everything inside it (instead of the app's): its looks and
+    /// base text color, font and size. Switching is the view returning a different theme.
+    static member theme<'k when 'k :> Layoutable>(value: Theme) : Setting<'k> = Setting.create LayoutProps.theme (ValueSome(value :> IThemeSource))
+    /// Text color for this element and the text inside it (inherited).
+    static member foreground<'k when 'k :> Layoutable>(value: Scribble.Rendering.Color) : Setting<'k> = Setting.create InheritedProps.foreground value
+    /// Font for the text inside this element (inherited).
+    static member font<'k when 'k :> Layoutable>(value: Scribble.Text.Font) : Setting<'k> = Setting.create InheritedProps.font value
+    /// Font size in DIPs for the text inside this element (inherited).
+    static member fontSize<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create InheritedProps.fontSize value
 
     /// The pointer came over this element (or something inside it). Not routed.
     static member onPointerEnter<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =

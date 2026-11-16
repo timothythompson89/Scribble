@@ -35,6 +35,7 @@ type AppConfig<'Msg> internal () =
     member val internal OnError: (exn -> unit) voption = ValueNone with get, set
     member val internal Layers: LayerSetting list list = [] with get, set
     member val internal Styles: Style list = [] with get, set
+    member val internal Theme: Theme voption = ValueNone with get, set
     member val internal OnStart: (AppContext -> unit) list = [] with get, set
     /// Makes the program, given the runtime's side of it.
     member val internal Program: (ProgramHost -> ProgramRunner<'Msg>) voption = ValueNone with get, set
@@ -120,6 +121,11 @@ type App =
     /// Styles for the whole app (every layer but those with `Layer.appStyles false`); later ones win
     /// over earlier ones, and styles set on elements win over these. Several `App.styles` add up.
     static member styles<'Msg>(value: Style list) : AppSetting<'Msg> = AppSetting(fun c -> c.Styles <- c.Styles @ value)
+
+    /// The theme for the whole app (every layer but those with `Layer.appStyles false`): the
+    /// built-in looks, below every other style, and the base text color, font and size. Default:
+    /// `Theme.dark []`. To switch themes while running, set an element's `theme` from the model.
+    static member theme<'Msg>(value: Theme) : AppSetting<'Msg> = AppSetting(fun c -> c.Theme <- ValueSome value)
 
     /// A layer above the app: `App.layer [ Layer.view (toasts ()) ]`, or a modal one with
     /// `Layer.modal true`. Its view is fixed (components inside keep their own state); see `Layer`.
@@ -209,6 +215,7 @@ type App =
                 ElementHost.dispatcher dispatcher
                 ElementHost.beforeFrame beforeFrame
                 ElementHost.styles config.Styles
+                ElementHost.theme (match config.Theme with ValueSome t -> t | ValueNone -> defaultTheme.Value)
             ]
         host.Value <- ValueSome h
         for layer in config.Layers do

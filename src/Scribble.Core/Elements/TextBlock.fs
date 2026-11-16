@@ -5,9 +5,10 @@ open Scribble.Text
 
 module TextProps =
     let text = Prop.define "Text" "" Affects.Measure
-    let font = Prop.define "Font" (Fonts.Regular()) Affects.Measure
-    let fontSize = Prop.define "FontSize" 14.0 Affects.Measure
-    let foreground = Prop.define "Foreground" Color.Black Affects.Render
+    /// Inherited: set on any element, it reaches the text inside (`Border.foreground c`).
+    let font = InheritedProps.font
+    let fontSize = InheritedProps.fontSize
+    let foreground = InheritedProps.foreground
     /// Horizontal alignment of each line within the element.
     let textAlignment = Prop.define "TextAlignment" TextAlignment.Start Affects.Render
     let textWrapping = Prop.define "TextWrapping" NoWrap Affects.Measure
@@ -22,9 +23,6 @@ module TextProps =
 type TextBlock =
     inherit Layoutable
     static member text<'k when 'k :> TextBlock>(value: string) : Setting<'k> = Setting.create TextProps.text (if isNull value then "" else value)
-    static member font<'k when 'k :> TextBlock>(value: Font) : Setting<'k> = Setting.create TextProps.font value
-    static member fontSize<'k when 'k :> TextBlock>(value: float) : Setting<'k> = Setting.create TextProps.fontSize value
-    static member foreground<'k when 'k :> TextBlock>(value: Color) : Setting<'k> = Setting.create TextProps.foreground value
     static member textAlignment<'k when 'k :> TextBlock>(value: TextAlignment) : Setting<'k> = Setting.create TextProps.textAlignment value
     static member textWrapping<'k when 'k :> TextBlock>(value: TextWrapping) : Setting<'k> = Setting.create TextProps.textWrapping value
     static member textTrimming<'k when 'k :> TextBlock>(value: TextTrimming) : Setting<'k> = Setting.create TextProps.textTrimming value
@@ -54,9 +52,8 @@ module TextBlock =
             Element.render (fun ctx list ->
                 match ctx.Get TextProps.layout with
                 | ValueSome l when (ctx.Get TextProps.text).Length > 0 ->
+                    // Disabled text is dimmed by the theme (`TextBlock:disabled [ opacity ]`).
                     let color = ctx.Get TextProps.foreground
-                    // Disabled text is dimmed (a themeable look comes with styles in M7).
-                    let color = if ctx.IsEnabled then color else color.WithAlpha(color.A * 0.45f)
                     ctx.Text.DrawLayout(list, l, 0.0, 0.0, ctx.Size.Width, ctx.Get TextProps.textAlignment, color)
                 | _ -> ())
         ]

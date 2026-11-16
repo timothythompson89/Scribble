@@ -18,6 +18,11 @@ was kept on claude.ai until 2026-11-15); this file is the working summary.
 - Keep `docs/DESIGN.md` and `README.md` current at the end of each milestone (status, decisions, what to check).
 - When a milestone is done, report: what changed, results (tests, pixel checks, timings), what couldn't be
   verified, and exactly what Tim should try.
+- **What Tim should try goes in `docs/CHECKLIST.md`** (Tim, 2026-11-16): overwrite it each time something is
+  finished, with only the steps for checking that work (checkboxes, grouped by area, how to run it at the top),
+  not items Tim has already verified (keep anything finished but not yet checked, updated to the current
+  behaviour). When Tim asks for "the checklist", point to it and summarize; the README keeps its long-lived
+  "What to check" sections.
 
 ## Build, run, test (Windows)
 
@@ -70,6 +75,7 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 - **Rendering:** everything is one instanced draw call per frame. Shapes are 96-byte instances in a storage buffer
   (SDF rounded rects, borders, Gaussian shadows, per-shape pixel clip); glyphs are shape kinds that sample an R8
   coverage atlas (2048²) or an RGBA color atlas (1024²). Edges snap to physical pixels by default (`Precise` opts out).
+  Elements whose bounds + `Element.RenderOverflow` (64 DIPs) lie outside the clip aren't rendered (scrolled-out rows).
 - **Text:** own parser (cmap 4/12, glyf incl. composites, COLR v0/CPAL), font-rs-style accumulation rasterizer, 4
   horizontal subpixel positions, no hinting; HarfBuzz shaping cached per string; fallback per grapheme cluster.
 - **Frames on request only:** windows call `RequestFrame()`; nothing draws while nothing changes. `ElementHost`
@@ -135,6 +141,8 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 - Core's `Cursor`, `Modifiers`, `MouseButton`, `PointerKind` are aliases of the Scribble.Platform types.
 - Rider's F# project view hides linked files whose `Link` has a folder (`Link="Counter/Common.fs"`): link shared
   files flat (`Link="Common.fs"`), as the samples and tests do.
+- Making an internal F# value public in Core once left the Inspector seeing it as internal (stale reference assembly
+  after an incremental build: FS1094); `dotnet build --no-incremental` fixed it.
 - Rider once silently overwrote `Directory.Build.props`; if a fix "doesn't take", check the file on disk. For the
   browser samples Rider's default browser must be "First listed" (Blazor launch quirk).
 
@@ -170,11 +178,12 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). Last counts: 208 unit tests,
-35 rendering tests (after M7 step 1 with property selectors).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 step 1 (styles) and step 2a (themes; inspector: forcing states, themed properties, selection corner marks) are done and verified (2026-11-16). Last counts: 227 unit tests,
+35 rendering tests (after M7 step 2a).
 
-Remaining milestones: M7 styles (next), M7b icons, M8 core controls
-(Grid, DockPanel, Canvas, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
+Remaining milestones: M7 styles (next: plan step 2b), M7c custom title bars (Win32 first; the popped-out
+inspector looks like the docked panel; see DESIGN.md), M7b icons, M8 core controls
+(Grid, DockPanel, Canvas, dashed lines in the renderer, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
 
 ### M5: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M5")
@@ -252,9 +261,16 @@ Two steps, each tried by Tim before the next:
    `UpdateLayout` after components; a tree ignores requests until something uses styles. **A setting the view
    drops is now removed** (`ClearValue`), not stored at its default, so styles show through. Styles can't set
    children/classes/styles/name/key. `ValueSource.Style` + `PropertyValue.Selector` for the inspector.
-2. **Themes**: `Theme` record, `Theme.dark/light`, built-in looks as theme styles (Button's hover/press tint moves
-   from its render function into styles), `Style.transition` for appearance properties, inherited
-   foreground/font/fontSize; default theme must keep existing screenshots pixel-identical.
+2. **Themes** (decisions in DESIGN.md, "Decisions for M7 step 2"). **2a done, verified by Tim on Windows and in the browser
+   2026-11-16, with the inspector changes since step 1** (`Theme.fs`, `Theme` in Style.fs): `Theme.dark [ Theme.accent c; ... ]` (settings, readable palette),
+   `App.theme`/`ElementHost.theme` (hosts default to one shared `Theme.dark []`; a bare `ElementTree` has none) and
+   an element `theme` setting (nearest wins); theme styles are matched first (own > inline > styles > app styles >
+   theme > type defaults). State looks are general settings in the theme's styles: `Border.overlay` (hover/press
+   tint), `opacity` (disabled; per-shape alpha via `DrawList.PushOpacity`), `scale` + `shadow` (press); Button's
+   render is Border's plus the focus ring. Inherited `foreground`/`font`/`fontSize` (Layoutable settings; own >
+   styles > type default > ancestor > theme base > prop default; `ValueSource.Inherited`). `Style.transition prop
+   duration` (render-only props with an interpolator; tween starts when the new value is first read, frames only
+   while moving). 2b next: `Theme.light`, Light/Dark switch in the Counter demo.
 
 ### Later notes
 

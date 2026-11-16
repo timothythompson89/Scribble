@@ -131,7 +131,12 @@ let ``a click dispatches, rebuilds once and then goes idle`` () =
     release w 20 30
     Assert.True(w.DeliverFrame())
     Assert.Equal("Count: 1", label ())
-    // Nothing else changed: no further frames.
+    // The theme's hover tint fades in (100 ms) under the pointer; after that, nothing changes:
+    // no further frames.
+    let watch = Diagnostics.Stopwatch.StartNew()
+    while w.DeliverFrame() && watch.ElapsedMilliseconds < 2000L do
+        Threading.Thread.Sleep 10
+    Assert.True(watch.ElapsedMilliseconds < 2000L, "frames kept coming after the hover fade")
     Assert.False(w.DeliverFrame())
 
 [<Fact>]

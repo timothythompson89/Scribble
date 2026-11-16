@@ -83,7 +83,8 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
    tree of every layer (the app first; types in blue, components in purple, `#names` in amber, a TextBlock's text
    in quotes, hidden elements dimmed). The app doesn't move or resize while it's open.
    - Click a triangle to fold or unfold a row; click a row to select it. Hovering a row highlights its element in
-     the app: a blue box, any margin in orange, and a label with the type and size.
+     the app: a blue box, any margin in orange, and a label with the type and size. The selected element gets only
+     blue corner marks a little outside it (no fill, no label, sides clear), so its own looks and edges stay visible.
    - Ctrl+Shift+C (or "Pick") starts pick mode: a crosshair, the element under the pointer is highlighted, and a
      click selects it (the tree opens down to it) without reaching the app. Escape cancels.
    - "Dock left"/"Dock right" moves the panel; "Close" or F12 hides it. The app keeps working everywhere the panel
@@ -151,12 +152,33 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      states line ends with `selected`, and its `background` is "from Border.chip:selected". Unselect it and
      `selected` goes away.
    - "Compact buttons" swaps the page's style list: every button on the page gets smaller padding; again to undo.
-   - "Disable Danger" fades it (Button's own disabled look); hover and click no longer work on it.
+   - "Disable Danger" fades it (the theme's disabled look); hover and click no longer work on it.
    - With the inspector (F12): pick Primary: its `classes` reads `.primary`, and its `background` shows `style`,
      "from Button.primary". Pick a line of the card's text: `foreground` comes "from Border.card TextBlock"; hover
      the card and it changes to "from Border.card:hover TextBlock".
    - To clear the inspector's selection, click "Deselect" next to the element's name, or click its tree row again:
      the panel shows its "Click a row, or Pick…" hint.
+10. Themes (M7 step 2a, verified; the looks now come from `Theme.dark`, the default):
+   - At rest, everything looks as before, in both samples and the inspector.
+   - Hovering a button now **fades** its tint in and out (100 ms) instead of switching at once; the tint is a touch
+     softer on the border. Pressing still sinks it to 97% with a flattening shadow (now a style with transitions);
+     holding Space does the same. Primary and Danger keep their colors and get the same hover and press.
+   - Disabled buttons (Reset at zero, "Disable Danger") fade as before; their label is barely lighter (50%).
+   - Moving between buttons quickly draws only while a fade runs, then stops (the frame counter in the title goes
+     idle).
+   - Inspector: pick a button and hover it: `overlay` shows `theme`, "from Button:hover"; `background` is `theme`,
+     "from Button" (Primary's: `style`, "from Button.primary": the app's own style). Pick a button's label: `foreground` shows
+     `inherited`. Tab focus rings and the Layers tab's scrollbar look as before.
+   - Inspector: a button at rest still lists what the theme can set, without "Show defaults": `overlay`
+     (transparent, `default`), `scale`, `opacity`, `shadow`, with no line under them; hover it and `overlay` gets
+     `theme`, "from Button:hover". Plain defaults like `margin` stay behind "Show defaults".
+   - Forcing states: pick a button; the STATES section shows toggles (hover, pressed, focus, focus-visible, disabled,
+     and every custom state, such as `selected`).
+     Click "hover": it turns teal, the button looks hovered with the mouse
+     elsewhere, the tree marks it "• forced" and its `overlay` shows `theme`, "from Button:hover"; scroll the panel freely.
+     "pressed" sinks it, "focus-visible" draws the ring, "disabled" fades it, yet the button still clicks. Click a
+     toggle again to stop forcing; "Clear forced" (next to Deselect) stops them all, and so does closing the
+     inspector (F12). In the Styles tab, forcing `selected` on an unselected chip makes it look selected.
 The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
 
 ## Run the browser sample
@@ -496,11 +518,39 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
   again by itself); any other state is `States.define "name" (fun e -> ...)`, and `element.RefreshStates()` says it
   may have changed.
 - The inspector shows a value a style set as `style`, with the selector under it (`from Button.primary:hover`). Its
-  own layers ignore `App.styles` (`Layer.appStyles false`). Its states line lists custom states that are on, by
-  name, after the built-in ones (`element.ActiveStates`: every state made so far, tested on demand; a custom
-  state whose test throws for that element is left out).
-- Not yet (M7 step 2): themes, so Button's hover and press tint is still computed by Button itself (a `:hover`
-  background on a Button gets that tint on top); transitions; text color and font passing down to text inside.
+  own layers ignore `App.styles` (`Layer.appStyles false`). Its STATES section is a row of toggles: every built-in
+  state and every custom one (`States.customStates ()`; bright when on, `element.ActiveStates`). Clicking one forces it on, for looks
+  only (styles and render functions see it, input doesn't), so you can inspect hover or pressed with the mouse
+  elsewhere; tools can do the same with `element.ForceState(state, true)`. Forced states spread like real ones: a
+  forced `disabled` reaches everything inside the element, a forced `hover` its ancestors.
+
+**Themes** (M7 step 2a). The built-in looks are styles made by a theme, matched below every other style:
+
+```fsharp
+let theme = Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.cornerRadius 8.0 ]   // Theme.dark [] is the default
+App.run [ App.theme theme; ... ]
+Border.create [ Border.theme otherTheme; Border.child (...) ]       // a different theme for what's inside
+Button.style [ Style.cls "primary" ] [ Button.background theme.Accent ]  // the palette is readable
+```
+
+- **Precedence:** own value > inline blocks > styles > `App.styles` > the theme > type defaults. Hosts made by hand
+  (`ElementHost.create`) get `Theme.dark []` too; a bare `ElementTree` has none (types' base looks, no state looks).
+- **State looks are general settings**, so app styles can change them:
+  - `Border.overlay`: a translucent color laid over the whole box (background and border), used for hover and
+    press. The theme lightens on hover (white at 8%) and darkens on press (black at 20%) this way, so the look
+    works whatever the background color is, and a class color like `.primary` keeps its state looks.
+    Transparent by default: `Button.style [ States.hover ] [ Button.overlay (Color.White.WithAlpha 0.15f) ]`.
+  - `opacity` (disabled) and `scale` plus `shadow` (the press): `Button.style [ States.pressed ] [ Button.scale 0.9 ]`
+    presses deeper.
+- **Inherited text settings:** `foreground`, `font` and `fontSize` on any element reach the text inside
+  (`Border.foreground c`, `Button.foreground c` for its label): own value, then styles, then the type default, then
+  the nearest ancestor's, then the theme's.
+- **Transitions:** `Style.transition BorderProps.overlay (TimeSpan.FromMilliseconds 100.0)` in a style's settings
+  fades that property on every change (not on first show). Only properties that affect drawing alone (colors,
+  numbers, shadows, corner radius, `opacity`, `scale`); others throw. Frames only while one runs.
+- The inspector shows values from the theme's styles as `theme` ("from Button:hover"), the app's and elements' styles as
+  `style`, and inherited text values as `inherited` (`ValueSource.Theme`, `Style`, `Inherited` in `element.Values`).
+  It keeps its own dark theme whatever the app's is.
 
 ### Elements and layout
 

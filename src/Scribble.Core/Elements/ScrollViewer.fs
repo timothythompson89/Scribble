@@ -5,6 +5,8 @@ open Scribble.Rendering
 
 module ScrollViewerProps =
     let content = Prop.child "Content"
+    /// The scrollbar thumb's color (the theme sets it).
+    let thumb = Prop.define "Thumb" (Color.White.WithAlpha 0.3f) Affects.Render
     /// How far the content is scrolled, in DIPs (kept by the element; the wheel changes it).
     let internal offset = Prop.local "ScrollOffset" 0.0
     /// The content's height and the visible height after the last arrange.
@@ -21,6 +23,8 @@ module ScrollViewerProps =
 type ScrollViewer =
     inherit Layoutable
     static member content<'k when 'k :> ScrollViewer>(value: View) : Setting<'k> = Setting.create ScrollViewerProps.content (ValueSome value)
+    /// The scrollbar thumb's color.
+    static member thumb<'k when 'k :> ScrollViewer>(value: Color) : Setting<'k> = Setting.create ScrollViewerProps.thumb value
 
 module ScrollViewer =
     /// DIPs scrolled per wheel notch (about three lines of text).
@@ -60,7 +64,7 @@ module ScrollViewer =
                     let travel = ctx.Get ScrollViewerProps.offset / maxOffset extent viewport
                     let y = barInset + (track - thumb) * travel
                     let x = ctx.Size.Width - barInset - barWidth
-                    list.FillRoundedRect(Rect.Create(x, y, barWidth, thumb), CornerRadius.Uniform(barWidth / 2.0), Color.White.WithAlpha 0.3f))
+                    list.FillRoundedRect(Rect.Create(x, y, barWidth, thumb), CornerRadius.Uniform(barWidth / 2.0), ctx.Get ScrollViewerProps.thumb))
             Element.wheel (fun ctx e ->
                 let extent, viewport = ctx.Get ScrollViewerProps.extent, ctx.Get ScrollViewerProps.viewport
                 let offset = ctx.Get ScrollViewerProps.offset

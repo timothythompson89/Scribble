@@ -265,3 +265,61 @@ let ``in an app, effects run after the frame and the state they set gets its own
     let host = app :?> ElementHost
     Assert.Equal("loaded", firstText host.Tree.Root.Value)
     Assert.False(w.DeliverFrame())
+
+// --- ctx.Animate: a value animated inside a render function (no property behind it) -----------------
+
+module private AnimatedProps =
+    let target = Prop.define "Target" 0.0 Affects.Render
+
+/// Draws nothing; remembers the animated value its render function saw.
+let mutable private seen = Double.NaN
+
+let private animatedType =
+    Element.define "Animated" [
+        Element.measure (fun _ _ -> Size.Create(10.0, 10.0))
+        Element.render (fun ctx _ -> seen <- ctx.Animate("glide", ctx.Get AnimatedProps.target, ms 100.0, Easing.linear))
+    ]
+
+[<Fact>]
+let ``ctx.Animate moves over its duration, asks for frames while it moves, then stops`` () =
+    let t = tree ()
+    let mutable invalidated = 0
+    t.OnInvalidated <- fun () -> invalidated <- invalidated + 1
+    let view (target: float) =
+        let settings: Setting<Layoutable> list = [ Setting.create AnimatedProps.target target ]
+        View.Create(animatedType, settings)
+    let draw () =
+        t.UpdateLayout(Size.Create(100.0, 100.0))
+        t.Render(Scribble.Rendering.DrawList(1.0))
+    t.Time <- TimeSpan.Zero
+    t.Update(view 0.0)
+    draw ()
+    Assert.Equal(0.0, seen) // the first target is taken at once
+    t.RunAfterFrame()
+    t.Update(view 10.0)
+    draw ()
+    Assert.Equal(0.0, seen) // just started
+    // While it moves, each frame asks for the next one.
+    invalidated <- 0
+    t.RunAfterFrame()
+    Assert.True(invalidated > 0)
+    t.Time <- ms 50.0
+    draw ()
+    Assert.Equal(5.0, seen, 6)
+    t.RunAfterFrame()
+    // A new target midway heads there from where it is.
+    t.Update(view 0.0)
+    draw ()
+    Assert.Equal(5.0, seen, 6)
+    t.Time <- ms 100.0
+    draw ()
+    Assert.Equal(2.5, seen, 6)
+    t.Time <- ms 150.0
+    draw ()
+    Assert.Equal(0.0, seen)
+    // Arrived: no more frames.
+    t.RunAfterFrame()
+    invalidated <- 0
+    draw ()
+    t.RunAfterFrame()
+    Assert.Equal(0, invalidated)
