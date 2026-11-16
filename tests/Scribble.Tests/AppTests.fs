@@ -49,8 +49,8 @@ type FakePlatform() =
     interface IPlatform with
         member _.Name = "fake"
         member _.SupportsMultipleWindows = false
-        member this.CreateWindow(_, onEvent) =
-            let w = new FakeWindow(onEvent)
+        member this.CreateWindow(options, onEvent) =
+            let w = new FakeWindow(onEvent, TitleText = options.Title)
             this.Window <- Some w
             w :> IWindow
         member _.Run() = ()
@@ -164,6 +164,28 @@ let ``onFrame animates while the model changes and stops when it doesn't`` () =
         frames <- frames + 1
     // Three ticks change the model; the fourth doesn't, so the loop goes idle.
     Assert.True(frames >= 4 && frames <= 6, $"{frames} frames")
+    Assert.False(w.DeliverFrame())
+
+[<Fact>]
+let ``an animation driven by time starts without input, though the first frame's Delta is zero`` () =
+    // Like the Hello sample: the model only moves by the time that passed.
+    let mutable deltas = []
+    let w, _, _ =
+        start [ App.program 0.0 (fun (d: float) t -> t + d) (fun t _ -> TextBlock.create [ TextBlock.text (string t) ])
+                App.onFrame (fun time ->
+                    deltas <- deltas @ [ time.Delta ]
+                    Threading.Thread.Sleep 2 // so the next frame has time behind it
+                    Some time.Delta.TotalSeconds) ]
+    let mutable frames = 0
+    while w.DeliverFrame() && frames < 5 do
+        frames <- frames + 1
+    Assert.Equal(TimeSpan.Zero, deltas.Head)
+    Assert.Equal(5, frames) // still going after the zero first frame
+
+[<Fact>]
+let ``without onFrame the first frame asks for no other`` () =
+    let w, _, _ = start [ counter ]
+    Assert.True(w.DeliverFrame())
     Assert.False(w.DeliverFrame())
 
 [<Fact>]

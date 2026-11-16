@@ -22,7 +22,9 @@ type internal InspectorOptions =
       IsOpen: bool
       /// Where the pop-out window comes from (none: no pop-out).
       Platform: IPlatform voption
-      AppTitle: string voption
+      /// Name the pop-out after `WindowTitle.current` and follow it (in an app), else after the
+      /// window's title when it opens.
+      FollowAppTitle: bool
       /// The app's own formatting, tried before ours (`Inspector.format`).
       Format: obj -> string voption }
 
@@ -32,7 +34,7 @@ type internal InspectorOptions =
           PickKey = (Key.Char 'c', Modifiers.Control ||| Modifiers.Shift)
           IsOpen = false
           Platform = ValueNone
-          AppTitle = ValueNone
+          FollowAppTitle = false
           Format = fun _ -> ValueNone }
 
 /// Where the panel is.
@@ -1529,6 +1531,8 @@ type Inspector =
 
         // The pop-out window: its own host on the same device and text system, showing the panel.
         let popped: (ElementHost * IDisposable) voption ref = ref ValueNone
+        let appTitle () =
+            if options.FollowAppTitle then host.AppValues.Get WindowTitle.current else host.Window.Title
         let closeWindow () =
             match popped.Value with
             | ValueSome(h, keys) ->
@@ -1548,7 +1552,7 @@ type Inspector =
                         | CloseRequested -> state.PopIn() // closes the window
                         | _ -> h.HandleEvent e |> ignore
                     | ValueNone -> ()
-                let title = "Inspector – " + (options.AppTitle |> ValueOption.defaultValue host.Window.Title)
+                let title = "Inspector – " + appTitle ()
                 let size: DipSize = { Width = 440.0; Height = 720.0 }
                 // Owned by the app's window: it stays above it (also after clicks in the app), minimizes
                 // with it, and has no taskbar button of its own.
@@ -1575,7 +1579,11 @@ type Inspector =
               state.PopOutRequested.Subscribe(fun () -> openWindow ())
               state.PopInRequested.Subscribe(fun () -> closeWindow ())
               // Closing the app closes the pop-out too (otherwise its window keeps the app running).
-              host.Closed.Subscribe(fun () -> closeWindow ()) ]
+              host.Closed.Subscribe(fun () -> closeWindow ())
+              // The pop-out keeps the app's title in its own.
+              if options.FollowAppTitle then
+                  host.AppValues.Subscribe(WindowTitle.current, fun t ->
+                      popped.Value |> ValueOption.iter (fun (h, _) -> h.Window.Title <- "Inspector – " + t)) ]
         { new IDisposable with
             member _.Dispose() =
                 for s in subscriptions do
@@ -1589,5 +1597,5 @@ type Inspector =
     /// its settings. Leave it out of release builds with `#if DEBUG` if you like.
     static member enable<'Msg>(settings: InspectorSetting list) : AppSetting<'Msg> =
         App.onStart (fun ctx ->
-            let fromApp = InspectorSetting(fun o -> { o with Platform = ValueSome ctx.Platform; AppTitle = ValueSome ctx.Title })
+            let fromApp = InspectorSetting(fun o -> { o with Platform = ValueSome ctx.Platform; FollowAppTitle = true })
             Inspector.attach (ctx.Host, fromApp :: settings) |> ignore)

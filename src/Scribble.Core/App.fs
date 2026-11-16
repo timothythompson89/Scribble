@@ -16,11 +16,11 @@ type internal ProgramHost = { Changed: unit -> unit; Dispatcher: Dispatcher; App
 /// What `App.onStart` handlers get: the running app's host and platform, for packages that plug
 /// into the app (the inspector adds layers and may open a window of its own).
 [<Sealed>]
-type AppContext internal (host: ElementHost, platform: IPlatform, title: string) =
+type AppContext internal (host: ElementHost, platform: IPlatform) =
     member _.Host = host
     member _.Platform = platform
-    /// The app's title (`App.title`).
-    member _.Title = title
+    /// The window's title now (`WindowTitle.current`, started by `App.title`), without the stats.
+    member _.Title = host.AppValues.Get WindowTitle.current
     /// The app values (`AppValue.define`), shared by the app's windows and layers.
     member _.AppValues = host.AppValues
     /// An app value: `ctx.Get compactMode`.
@@ -30,7 +30,6 @@ type AppContext internal (host: ElementHost, platform: IPlatform, title: string)
 
 /// Everything App settings configure.
 type AppConfig<'Msg> internal () =
-    member val internal Title = "Scribble" with get, set
     member val internal Size: DipSize = { Width = 960.0; Height = 600.0 } with get, set
     member val internal Background: Color voption = ValueNone with get, set
     member val internal Fonts: Font list = [] with get, set
@@ -60,7 +59,11 @@ type App =
             if dispatcher.CheckAccess() then handle msg else dispatcher.Post(fun () -> dispatch msg)
         dispatch
 
-    static member title<'Msg>(value: string) : AppSetting<'Msg> = AppSetting(fun c -> c.Title <- value)
+    /// The window's title (the tab's in the browser). It's the starting value of `WindowTitle.current`,
+    /// an app value: change it while running with `ctx.useAppValue WindowTitle.current`,
+    /// `AppContext.Set(WindowTitle.current, t)` or `Cmd.setAppValue WindowTitle.current t`.
+    static member title<'Msg>(value: string) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(WindowTitle.current, value) ])
 
     /// Window size in DIPs (desktop; in the browser the canvas fills the page).
     static member size<'Msg>(width: float, height: float) : AppSetting<'Msg> =
@@ -73,7 +76,7 @@ type App =
     /// Fallback fonts for characters the main fonts lack, e.g. `[ Scribble.Text.Emoji.Twemoji() ]`.
     static member fonts<'Msg>(fallbacks: Font list) : AppSetting<'Msg> = AppSetting(fun c -> c.Fonts <- fallbacks)
 
-    /// Adds frames per second and layout time to the window title.
+    /// Adds frames per second and layout time after the window title.
     static member showStats<'Msg>(value: bool) : AppSetting<'Msg> = AppSetting(fun c -> c.ShowStats <- value)
 
     /// Closes the window on Escape, unless something in the view handled the key.
@@ -158,7 +161,9 @@ type App =
     static member onKey<'Msg>(handler: Key -> Modifiers -> 'Msg option) : AppSetting<'Msg> = AppSetting(fun c -> c.OnKey <- c.OnKey @ [ handler ])
 
     /// Runs at the start of every frame. Frames only happen when something asked for one, so an
-    /// animation keeps going by changing the model on each frame and stops when it doesn't.
+    /// animation keeps going by changing the model on each frame and stops when it doesn't. The
+    /// first frame's `Delta` is zero; the app draws a second frame after it, so a model that only
+    /// moves with time still gets going.
     static member onFrame<'Msg>(handler: FrameTime -> 'Msg option) : AppSetting<'Msg> =
         AppSetting(fun c -> c.OnFrame <- c.OnFrame @ [ handler ])
 
@@ -195,11 +200,15 @@ type App =
                 match handler value with
                 | Some msg -> runner.Dispatch msg
                 | None -> ()
-        let updateTitle (h: ElementHost) =
+        // The window's title: `WindowTitle.current`, plus the stats when shown (refreshed once a second).
+        let stats = ref ""
+        let applyTitle (window: IWindow) =
+            window.Title <- values.Get(WindowTitle.current) + stats.Value
+        let updateStats (h: ElementHost) =
             if config.ShowStats then
                 let s = h.LastFrame
-                h.Window.Title <-
-                    $"{config.Title} · {frameRate.FramesPerSecond:F0} fps · layout {s.LayoutMilliseconds:F2} ms · {s.Shapes} shapes"
+                stats.Value <- $" · {frameRate.FramesPerSecond:F0} fps · layout {s.LayoutMilliseconds:F2} ms · {s.Shapes} shapes"
+                applyTitle h.Window
 
         let onEvent (event: PlatformEvent) =
             match host.Value with
@@ -217,16 +226,22 @@ type App =
                 | _ -> ()
             | ValueNone -> ()
 
-        let window = platform.CreateWindow({ WindowOptions.Default with Title = config.Title; Size = config.Size }, onEvent)
+        let window =
+            platform.CreateWindow({ WindowOptions.Default with Title = values.Get WindowTitle.current; Size = config.Size }, onEvent)
+        // Lives as long as the values (the app's), so it's never removed.
+        values.Subscribe(WindowTitle.current, fun _ -> applyTitle window) |> ignore
         let beforeFrame () =
             match host.Value with
             | ValueSome(h: ElementHost) ->
                 let time = clock.Tick()
                 send config.OnFrame time
+                // The first frame has no time behind it (Delta zero), so an animation can't move yet
+                // and its model doesn't change: ask for one more frame, or it would wait for input.
+                if time.Number = 0L && not config.OnFrame.IsEmpty then h.Window.RequestFrame()
                 if dirty.Value then
                     dirty.Value <- false
                     h.Update(runner.View())
-                if frameRate.Add time then updateTitle h
+                if frameRate.Add time then updateStats h
             | ValueNone -> ()
         let h =
             ElementHost.create window device text [
@@ -240,7 +255,7 @@ type App =
         for layer in config.Layers do
             h.AddLayer layer |> ignore
         for handler in config.OnStart do
-            handler (AppContext(h, platform, config.Title))
+            handler (AppContext(h, platform))
         Console.WriteLine($"Scribble: {device.Description}, {shaper.Name} shaping, {platform.Name}")
         window.Show()
         window.RequestFrame()

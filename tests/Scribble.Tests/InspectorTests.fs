@@ -265,6 +265,10 @@ let ``Pop out moves the panel into a window of its own, which closes with the ap
     Assert.Equal(2, platform.Windows.Count)
     let popped = platform.Windows[1]
     Assert.Equal("Inspector – Test", popped.TitleText)
+    // It follows the app's title (`WindowTitle.current`).
+    host.AppValues.Set(WindowTitle.current, "Renamed")
+    Assert.Equal("Inspector – Renamed", popped.TitleText)
+    Assert.Equal("Renamed", w.TitleText)
     // Owned by the app's window, so it stays above it.
     Assert.True(platform.Options[1].Owner |> ValueOption.exists (fun o -> obj.ReferenceEquals(o, w)))
     Assert.True(platform.Options[0].Owner.IsNone)

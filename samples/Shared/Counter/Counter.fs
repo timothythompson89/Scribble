@@ -27,6 +27,9 @@ let private pages =
       "Layers", [ LayersTab.layersPage ]
       "Styles", [ StylesTab.stylesPage () ] ]
 
+/// The window title's start; the selected tab's name follows it.
+let private appTitle = "Counter"
+
 /// The selected tab's look: the theme's accent, whichever theme is in use.
 let private tabStyles = [ Button.style [ Style.cls "selected" ] [ Button.background Palette.accent; Button.foreground Palette.onAccent ] ]
 
@@ -48,6 +51,11 @@ let private themeSwitch =
 let demo =
     Component.define "Demo" (fun ctx () ->
         let selected = ctx.useState 0
+        // The window's (or browser tab's) title is an app value too; it names the selected tab.
+        let windowTitle = ctx.useAppValue WindowTitle.current
+        let select i =
+            selected.Set i
+            windowTitle.Set(appTitle + " – " + fst pages[i])
         StackPanel.create [
             StackPanel.children [
                 yield StackPanel.create [
@@ -62,7 +70,7 @@ let demo =
                                 yield Button.width 72.0
                                 // The selected tab gets a class; the tab row's styles color it.
                                 if i = selected.Current then yield Button.classes [ "selected" ]
-                                yield Button.onClick (fun _ -> selected.Set i)
+                                yield Button.onClick (fun _ -> select i)
                             ]
                         // Takes the space that's left, so the switch sits at the right.
                         Border.create [ Border.width "1*" ]
@@ -77,9 +85,9 @@ let demo =
             ]
         ])
 
-/// Components and app values (the theme) hold all the state, so the app has no messages of its own (hence `unit`).
+/// Components and app values (the theme, the title) hold all the state, so the app has no messages of its own (hence `unit`).
 let app: AppSetting<unit> list =
-    [ App.title "Counter"
+    [ App.title (appTitle + " – " + fst pages[0])
       App.size (520.0, 520.0)
       App.theme darkTheme
       App.view (demo ())

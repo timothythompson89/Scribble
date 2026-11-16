@@ -178,8 +178,8 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme tokens and app values) is done and verified (2026-11-16). Last counts: 244 unit tests,
-37 rendering tests (after M7 step 2b).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme tokens and app values) is done and verified (2026-11-16). Last counts: 249 unit tests,
+37 rendering tests (after the window title app value and the first-frame fix).
 
 Remaining milestones: M7c custom title bars (Win32 first; the popped-out
 inspector looks like the docked panel; see DESIGN.md), M7b icons, M8 core controls
@@ -285,6 +285,9 @@ Two steps, each tried by Tim before the next:
    every layer's tree gets it; a bare `ElementTree` has its own); `App.value v x`, `AppContext.Get/Set`,
    `Cmd.setAppValue` (Cmd effects receive the store). Components first run before joining the tree, so
    `Element.RealizingIn` (thread-static) tells them which tree is being built. Decisions in DESIGN.md.
+   **Window title as an app value (done, verified by Tim 2026-11-16):** `WindowTitle.current` (AppValue.fs);
+   `App.title` sets its start; `App.start` follows it (stats appended); `AppContext.Title` reads it; the popped-out
+   inspector follows it. Public `AppValues.Subscribe(value, fun v -> ...)`. Counter demo titles the selected tab.
 
 ### Later notes
 

@@ -79,3 +79,16 @@ type AppValues() =
         l.Add listener
         { new IDisposable with
             member _.Dispose() = l.Remove listener |> ignore }
+
+    /// Calls `listener` with the new value whenever it changes (on the UI thread), until the result
+    /// is disposed. For code outside components (components use `ctx.useAppValue`).
+    member this.Subscribe<'T>(value: AppValue<'T>, listener: 'T -> unit) : IDisposable =
+        this.Subscribe(value.Id, fun () -> listener (this.Get value))
+
+/// The window's title (the tab's title in the browser), an app value.
+module WindowTitle =
+    /// The window's title: `App.title "Counter"` sets its starting value (default "Scribble");
+    /// change it from anywhere with `ctx.useAppValue WindowTitle.current` (`.Set "Counter – Styles"`),
+    /// `AppContext.Set(WindowTitle.current, t)` or `Cmd.setAppValue WindowTitle.current t`.
+    /// `App.showStats` adds its numbers after it.
+    let current: AppValue<string> = AppValue.define "WindowTitle" "Scribble"

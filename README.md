@@ -187,6 +187,8 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      "pressed" sinks it, "focus-visible" draws the ring, "disabled" fades it, yet the button still clicks. Click a
      toggle again to stop forcing; "Clear forced" (next to Deselect) stops them all, and so does closing the
      inspector (F12). In the Styles tab, forcing `selected` on an unselected chip makes it look selected.
+12. The title (an app value, `WindowTitle.current`; verified): the window, or the browser tab, is called "Counter – Elmish" at
+   the start and names whichever tab you select. A popped-out inspector ("Inspector – Counter – …") follows it.
 The browser version is `samples/Scribble.Samples.Counter.Browser` (port 5281).
 
 ## Run the browser sample
@@ -278,7 +280,7 @@ The app holds the model (`App.program init update view`, the Elmish pattern). Me
 the view is rebuilt on the next frame, once, however many messages arrived, and not at all if the model didn't
 change. Other app settings: `App.title`, `App.size`, `App.background`, `App.fonts` (fallbacks such as Twemoji),
 `App.showStats`, `App.closeOnEscape`, `App.onKey` and `App.onFrame` (animation: frames continue only while the
-model keeps changing). `Button` is a Border with a default look that lightens under the pointer, darkens while
+model keeps changing; the first frame's `Delta` is zero, and a second frame follows it). `Button` is a Border with a default look that lightens under the pointer, darkens while
 pressed and fades when disabled; it takes keyboard focus, and Enter or Space clicks it.
 
 ### Pointer input
@@ -397,6 +399,11 @@ App.run [ App.value compactMode true; ... ]                      // optional sta
 - The app's data belongs in its Elmish model; app values are for UI-wide things (a compact layout, the selected
   section, the signed-in user's name). The two work together. The window's theme is one: `Theme.current` (see
   Styles). The inspector lists `useAppValue CompactMode` with its value among a component's hooks.
+- The window's title (the tab's title in the browser) is one too: `WindowTitle.current`. `App.title` sets where it
+  starts; `ctx.useAppValue WindowTitle.current` then `.Set "Counter – Styles"` (or `AppContext.Set`,
+  `Cmd.setAppValue`) renames the window. `App.showStats` adds its numbers after the current title.
+- Code outside components can watch a value: `values.Subscribe(compactMode, fun v -> ...)` (dispose the result to
+  stop).
 
 ### Async
 

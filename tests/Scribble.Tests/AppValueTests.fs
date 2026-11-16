@@ -172,3 +172,57 @@ let ``the Counter demo's switch sets Theme.current, and the window and its layer
     Assert.Equal<string list>([ "Dark" ], texts (switch ()))
     for l in host.Layers do
         Assert.Same(light, l.Tree.Theme.Value)
+
+[<Fact>]
+let ``the window title is an app value: App.title starts it, sets change the window's title`` () =
+    let mutable context: AppContext voption = ValueNone
+    let seen = List<string>()
+    let platform, device = new FakePlatform(), new FakeDevice()
+    use app =
+        App.start (platform, device, new FixedShaper(), [ App.title "Start"; App.view (Border.create []); App.onStart (fun c -> context <- ValueSome c) ])
+    let w = platform.Window.Value
+    let host = app :?> ElementHost
+    Assert.Equal("Start", w.TitleText)
+    Assert.Equal("Start", context.Value.Title)
+    use _ = host.AppValues.Subscribe(WindowTitle.current, fun t -> seen.Add t)
+    // Through AppContext: at once, and AppContext.Title follows.
+    context.Value.Set(WindowTitle.current, "Second")
+    Assert.Equal("Second", w.TitleText)
+    Assert.Equal("Second", context.Value.Title)
+    // An equal value changes nothing.
+    context.Value.Set(WindowTitle.current, "Second")
+    // From another thread: queued to the UI thread.
+    let other = Thread(fun () -> host.AppValues.Set(WindowTitle.current, "Third"))
+    other.Start()
+    other.Join()
+    Assert.Equal("Second", w.TitleText)
+    platform.RunWake()
+    Assert.Equal("Third", w.TitleText)
+    Assert.Equal<string list>([ "Second"; "Third" ], List.ofSeq seen)
+
+[<Fact>]
+let ``without App.title the window is called Scribble; with showStats the stats follow the current title`` () =
+    let w, _, app = start [ App.view (Border.create []) ]
+    Assert.Equal("Scribble", w.TitleText)
+    let w2, _, app2 = start [ App.title "Stats"; App.showStats true; App.view (Border.create []) ]
+    let host = app2 :?> ElementHost
+    host.AppValues.Set(WindowTitle.current, "Renamed")
+    w2.DeliverFrame() |> ignore
+    // The stats are added once a second, after whatever the title is now.
+    Assert.StartsWith("Renamed", w2.TitleText)
+    app.Dispose()
+    app2.Dispose()
+
+[<Fact>]
+let ``the Counter demo's title names the selected tab`` () =
+    let w, _, app = start Scribble.Samples.Counter.app
+    let host = app :?> ElementHost
+    w.DeliverFrame() |> ignore
+    Assert.Equal("Counter – Elmish", w.TitleText)
+    let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }
+    let tab =
+        all host.Tree.Root.Value
+        |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && texts e = [ "Styles" ])
+    (tab.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
+    Assert.Equal("Counter – Styles", w.TitleText)
+    app.Dispose()
