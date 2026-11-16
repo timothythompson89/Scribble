@@ -225,6 +225,25 @@ dotnet serve -d samples/Scribble.Samples.Browser/bin/Release/net10.0/publish/www
 
 The browser console's first line says `Scribble browser build: WebAssembly AOT` (or `interpreted`).
 
+### On other devices (phones, tablets, other computers)
+
+WebGPU only runs on secure pages: `https://`, or `http://localhost` on the same machine. So another device needs
+HTTPS with a certificate it trusts. `tools/Scribble.Serve` does this:
+
+```powershell
+dotnet run --project tools/Scribble.Serve                    # publish both samples, then serve them
+dotnet run --project tools/Scribble.Serve -- --no-build      # serve what was published last
+dotnet run --project tools/Scribble.Serve -- --aot           # WebAssembly AOT (publishing takes minutes)
+dotnet run --project tools/Scribble.Serve -- --self-signed   # nothing to install; each device warns instead
+```
+
+It prints the addresses: Hello on port 5280, Counter on 5281 (HTTPS). The first time, the tool makes a small
+certificate authority for this machine (kept in `artifacts/serve/certificates`, git-ignored). Install its
+certificate once on each device: open `http://<this machine>:5279/` there, download it, and follow the steps on
+that page (Windows, Android, iPhone/iPad, macOS). The server's own certificate is made fresh on every run, naming
+this machine and its current addresses. Windows asks once whether to let the tool through the firewall: allow it
+on private networks.
+
 How the browser backend talks to JavaScript: F# can't run .NET's `[JSImport]` generator, so
 `Scribble.Platform.Browser/Js.fs` calls the API that generator emits (`JSFunctionBinding`) directly.
 Each library's JavaScript is embedded in its DLL and loaded as a `data:` URL, so apps ship no extra files.
@@ -460,10 +479,15 @@ App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (
   shows view content in a layer from wherever it's declared (and Dialog, Toast) come with M8.
 
 **ScrollViewer** (basic, from M6): `ScrollViewer.create [ ScrollViewer.height 300.0; ScrollViewer.content list ]`
-scrolls its content vertically with the wheel when it's taller than the ScrollViewer, clips it, and draws a thin
-position bar. Give it a bounded height. At either end the wheel passes to whatever is outside it. Horizontal
-scrolling, dragging the bar, keyboard and touch come with M8. Element authors: `Element.wheel` (a type's own wheel
-behavior, after the view's `onWheel`) and `Element.renderAfter` (drawn over the children) are what it uses.
+scrolls its content vertically with the wheel or a finger when it's taller than the ScrollViewer, clips it, and
+draws a thin position bar. Give it a bounded height. At either end the wheel passes to whatever is outside it. A
+finger that moves more than 8 DIPs (mostly up or down) after touching down scrolls: the content follows it,
+without momentum yet, even at an end. The press it started on is canceled, so a button under it doesn't click, and
+nothing inside reacts to the finger sliding over it; a shorter touch is a tap, and a sideways drag stays a press. Horizontal
+scrolling, momentum, dragging the bar and keyboard come with M8. Element authors: `Element.wheel` (a type's own
+wheel behavior, after the view's `onWheel`), `Element.pan` (a type's own touch-drag behavior: return true to take
+the drag, and it keeps the finger; not used when a view's `onPointerDown` handled the press) and
+`Element.renderAfter` (drawn over the children) are what it uses.
 
 ### Inspector
 

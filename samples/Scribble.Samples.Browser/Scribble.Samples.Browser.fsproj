@@ -21,6 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../Shared/Adaptive.fs" Link="Adaptive.fs" />
     <Compile Include="../Shared/Dashboard.fs" Link="Dashboard.fs" />
     <Compile Include="../Shared/HelloApp.fs" Link="HelloApp.fs" />
     <Compile Include="Program.fs" />

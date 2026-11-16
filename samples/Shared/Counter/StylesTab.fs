@@ -5,6 +5,7 @@ module Scribble.Samples.CounterDemo.StylesTab
 open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
+open Scribble.Samples
 open Scribble.Samples.CounterDemo.Common
 
 /// A property of our own for the chips below (M8's toggle controls will have one built in). Styles
@@ -67,20 +68,21 @@ let stylesPage =
             StackPanel.margin (24.0, 16.0, 24.0, 0.0)
             StackPanel.spacing 12.0
             StackPanel.children [
-                TextBlock.create [ TextBlock.text "Classes, a hover block, text inside cards, inline blocks"; TextBlock.foreground Palette.textDim ]
-                StackPanel.create [
-                    StackPanel.orientation Horizontal
-                    StackPanel.spacing 8.0
-                    StackPanel.children [
+                TextBlock.create [ TextBlock.text "Classes, a hover block, text inside cards, inline blocks"; TextBlock.foreground Palette.textDim; TextBlock.textWrapping TextWrapping.Wrap ]
+                // WrapPanels (Adaptive.fs): the rows wrap on a phone.
+                WrapPanel.create [
+                    WrapPanel.spacing 8.0
+                    WrapPanel.lineSpacing 8.0
+                    WrapPanel.children [
                         Button.create [ Button.text "Plain" ]
                         Button.create [ Button.classes [ "primary" ]; Button.text "Primary" ]
                         Button.create [ Button.classes [ "danger" ]; Button.text "Danger"; Button.isEnabled (not disabled.Current) ]
                     ]
                 ]
-                StackPanel.create [
-                    StackPanel.orientation Horizontal
-                    StackPanel.spacing 8.0
-                    StackPanel.children [
+                WrapPanel.create [
+                    WrapPanel.spacing 8.0
+                    WrapPanel.lineSpacing 8.0
+                    WrapPanel.children [
                         Button.create [
                             Button.text (if compact.Current then "Normal buttons" else "Compact buttons")
                             Button.onClick (fun _ -> compact.Update not)
@@ -98,30 +100,31 @@ let stylesPage =
                             StackPanel.spacing 4.0
                             StackPanel.children [
                                 TextBlock.create [ TextBlock.text "A card"; TextBlock.font (Fonts.SemiBold()) ]
-                                TextBlock.create [ TextBlock.text "Its text is styled because it's inside a card;" ]
-                                TextBlock.create [ TextBlock.text "hover the card and the border and text light up." ]
+                                TextBlock.create [ TextBlock.text "Its text is styled because it's inside a card;" ; TextBlock.textWrapping TextWrapping.Wrap ]
+                                TextBlock.create [ TextBlock.text "hover the card and the border and text light up." ; TextBlock.textWrapping TextWrapping.Wrap ]
                             ]
                         ]
                     )
                 ]
-                TextBlock.create [ TextBlock.text "Text outside the card keeps its own color."; TextBlock.foreground Palette.textDim ]
+                TextBlock.create [ TextBlock.text "Text outside the card keeps its own color."; TextBlock.foreground Palette.textDim; TextBlock.textWrapping TextWrapping.Wrap ]
                 Border.create [
-                    Border.height 40.0
+                    Border.minHeight 40.0
                     Border.cornerRadius 6.0
                     Border.on States.hover [ Border.background hover ]
                     Border.child (
                         TextBlock.create [
                             TextBlock.text "Hover me: Border.on States.hover [ ... ], a style right in the view"
                             TextBlock.foreground Palette.textDim
-                            TextBlock.margin (12.0, 0.0)
+                            TextBlock.textWrapping TextWrapping.Wrap
+                            TextBlock.margin (12.0, 8.0)
                             TextBlock.verticalAlignment VerticalAlignment.Center
                         ]
                     )
                 ]
-                StackPanel.create [
-                    StackPanel.orientation Horizontal
-                    StackPanel.spacing 8.0
-                    StackPanel.children [
+                WrapPanel.create [
+                    WrapPanel.spacing 8.0
+                    WrapPanel.lineSpacing 8.0
+                    WrapPanel.children [
                         chipView "Fast"
                         chipView "Quiet"
                         chipView "Cheap"

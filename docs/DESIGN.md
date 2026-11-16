@@ -637,3 +637,59 @@ Idea for M5 (agreed 2026-11-15, see the M5 decisions): a tactile pressed look fo
 - [ ] Apps made only of components have no messages, so `App.view (root ())` needs `AppSetting<unit> list`. Perhaps `App.run` overloads or non-generic view-only settings.
 - [ ] `RenderOffscreen` must become async for the browser (readback uses `mapAsync`). Decide before screenshot tests run in the browser.
 - [x] Browser key codes: `e.key` mapped to the portable `Key` (M5 step 2, 2026-11-15).
+
+## Serving the browser samples to the local network (2026-11-16)
+
+Tim asked for a way to open the browser samples from other devices. WebGPU needs a secure context (HTTPS, or
+http://localhost), so plain HTTP on a LAN address can't work. Agreed (recommendations):
+1. HTTPS through a local certificate authority the tool makes once (`artifacts/serve/certificates`), installed once
+   per device from a plain-HTTP page on port 5279 with instructions; server certificate re-made each run for the
+   machine name, `.local` name and current IPv4 addresses (397 days, the most Apple accepts). `--self-signed`
+   as a fallback (click through warnings; not certain every browser grants WebGPU then).
+2. Two ports as in development: Hello 5280, Counter 5281.
+3. Interpreted by default, `--aot` for WebAssembly AOT.
+4. Publishes every run (Release, into `artifacts/serve/<name>`); `--no-build` serves the last publish.
+5. No firewall changes by the tool; it prints a reminder.
+
+Built as `tools/Scribble.Serve` (F#, ASP.NET Core Kestrel, in the solution under /tools/; a dev tool, not shipped).
+Serves the publish's `.br`/`.gz` copies when accepted, `application/wasm`, no caching. Checked here: both samples
+answer over https://192.168.x.x with the CA verifying the chain (curl), `.wasm` arrives brotli-compressed with the
+right type, the certificate page and download work. Verified by Tim with his phone (2026-11-16).
+
+WebGPU on phones (found on Tim's Android phone, 2026-11-16): the samples showed only a black page (errors went
+to the console, which phones don't show), so both samples' `main.js` now also print errors on the page. The cause
+was "no suitable GPU adapter": GPUs with only OpenGL ES get WebGPU's reduced *compatibility* feature level, and
+only when asked. `scribble-webgpu.js` now asks for it when the normal request returns nothing, and requests one
+storage buffer per shader stage (compatibility's default allows none; a GPU offering none gets a clear error).
+Compatibility mode also rejects `@interpolate(flat)` (first-vertex sampling), so `shapes.wgsl` uses
+`@interpolate(flat, either)` (each shape's six vertices carry the same index, so nothing changes; desktop
+rendering tests are unchanged). Verified by Tim on the phone.
+
+## Phone-friendly samples (2026-11-16)
+
+Agreed (recommendations):
+1. Touch on the page: the canvas already had `touch-action: none`; the page also gets `overscroll-behavior: none`
+   (no pull-to-refresh or bounce).
+2. Touch drag scrolling brought forward from M8 (only that; momentum, the draggable bar and horizontal scrolling
+   stay in M8): a new element-type stage `Element.pan (fun ctx dx dy -> moved)`, beside `Element.wheel`. The input
+   router remembers, for a touch press, the elements under it whose type pans; once the finger is 8 DIPs from where
+   it went down, the deepest one that takes the drag (given the movement so far, then each move) gets the
+   finger: it becomes the capture, and the press under it is canceled (no click, pressed looks go). Not for the
+   mouse, and not when a view's `onPointerDown` handled the press (it wants the drag). Changed after Tim tried
+   it (the cards a finger slid over at the end of the list reacted): while a finger pans, nothing inside the
+   panning element gets hover or pressed states; and a ScrollViewer takes any mostly vertical drag when it has
+   something to scroll, even at an end (as phones do), so a sideways drag or content that fits stays a press.
+3. Hello: the toolbar goes below the title when both don't fit on the top bar's row (`SplitRow`), the toolbar
+   wraps (`WrapPanel`), the subtitle trims, and the cards are in a ScrollViewer taking the rest of the window.
+   This also fixes the old overlap below ~800 DIPs wide.
+4. Counter: the tabs wrap (`WrapPanel`), and the Light/Dark switch goes below them when they don't fit
+   (`SplitRow`); headings and the Styles tab's texts wrap, its button and chip rows are WrapPanels.
+5. Checks: unit tests for touch panning; rendering tests of both samples at 390 × 844 DIPs, 3×.
+
+Built 2026-11-16, verified by Tim on his phone and the desktop the same day. `WrapPanel` and `SplitRow` are sample code
+(`samples/Shared/Adaptive.fs`), written as an app would write its own elements; a real WrapPanel may join M8. A
+WrapPanel row is as tall as its tallest child and every child on it gets that height (the last row takes any extra
+height it's given), which kept Counter's tab row pixel-identical at its usual size. All existing snapshots
+unchanged (the dashboard still matches the hand-drawn version). Tests: 5 new unit tests (269), 6 new rendering
+tests (45: `hello-phone@3x`, `counter-phone-<tab>@3x`, checked by eye; each Counter tab also checks nothing
+reaches past the right edge).

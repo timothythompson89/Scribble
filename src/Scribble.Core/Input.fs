@@ -22,6 +22,13 @@ type internal PointerState(kind: PointerKind, id: int) =
     member val Pressing: Element list = [] with get, set
     /// The element whose onClick runs if the left button comes up over it.
     member val Clickable: Element voption = ValueNone with get, set
+    /// Where a touch press started, while a drag from there could still become a pan.
+    member val PanStart: Point voption = ValueNone with get, set
+    /// The elements under that press whose type pans (deepest first).
+    member val PanCandidates: Element list = [] with get, set
+    /// The element panning with this finger, and where the finger was at the last pan.
+    member val Panning: Element voption = ValueNone with get, set
+    member val PanLast = Point.Zero with get, set
 
 /// Where `MoveFocus` goes. Tab is Next, Shift+Tab Previous; arrow directions come later.
 [<RequireQualifiedAccess>]
@@ -66,8 +73,10 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
     let overAt (s: PointerState) (p: Point) =
         // Under another layer (while this one holds a press): over nothing here.
         let route = if isCovered p then [] else routeOf (tree.HitTest(p.X, p.Y))
-        match s.Captured with
-        | ValueSome c when isAttached c -> route |> List.filter (fun e -> c.Contains e || e.Contains c)
+        match s.Panning, s.Captured with
+        // A finger scrolling: what it slides over inside the scroller doesn't react.
+        | ValueSome c, _ when isAttached c -> route |> List.filter (fun e -> e.Contains c)
+        | _, ValueSome c when isAttached c -> route |> List.filter (fun e -> c.Contains e || e.Contains c)
         | _ -> route
 
     let invoke (e: Element) (prop: Prop<('a -> unit) voption>) (args: 'a) (origin: RoutedEventArgs) =
@@ -136,6 +145,39 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         s.Captured <- ValueNone
         s.PressRoute <- []
         s.Clickable <- ValueNone
+        s.PanStart <- ValueNone
+        s.PanCandidates <- []
+        s.Panning <- ValueNone
+
+    /// How far (DIPs) a finger moves before its press becomes a pan.
+    let panThreshold = 8.0
+
+    let pan (e: Element) (dx: float) (dy: float) =
+        match e.Type.Pan with
+        | ValueSome f when isAttached e && e.IsEnabled -> f (InputContext e) dx dy
+        | _ -> false
+
+    /// A touch drag: the panning element follows the finger; before that, once the finger is far
+    /// enough from where it went down, the deepest element that takes the drag gets it, and the
+    /// press underneath is canceled (no click, no pressed look).
+    let trackPan (s: PointerState) (position: Point) =
+        match s.Panning, s.PanStart with
+        | ValueSome e, _ ->
+            let dx, dy = position.X - s.PanLast.X, position.Y - s.PanLast.Y
+            s.PanLast <- position
+            pan e dx dy |> ignore
+        | ValueNone, ValueSome start when s.Buttons > 0 ->
+            let dx, dy = position.X - start.X, position.Y - start.Y
+            if dx * dx + dy * dy >= panThreshold * panThreshold then
+                match s.PanCandidates |> List.tryFind (fun e -> pan e dx dy) with
+                | Some e ->
+                    s.Panning <- ValueSome e
+                    s.PanLast <- position
+                    s.Captured <- ValueSome e
+                    s.PressRoute <- []
+                    s.Clickable <- ValueNone
+                | None -> ()
+        | _ -> ()
 
     let refresh (s: PointerState) =
         match s.Position with
@@ -212,6 +254,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         let s = stateFor kind id
         s.Position <- ValueSome position
         s.Modifiers <- modifiers
+        trackPan s position
         setOver s (overAt s position)
         routed (routeOf (target s)) ValueNone LayoutProps.onPointerMove (pointerArgs s ValueNone) |> ignore
 
@@ -227,13 +270,18 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             // puts the ring away until the keyboard is used again.
             keyboardMode <- false
             setFocus (route |> List.tryFind canFocus |> Option.toValueOption)
-        let previewHandler = routed route (ValueSome LayoutProps.onPreviewPointerDown) LayoutProps.onPointerDown (pointerArgs s (ValueSome button))
+        let args = pointerArgs s (ValueSome button)
+        let previewHandler = routed route (ValueSome LayoutProps.onPreviewPointerDown) LayoutProps.onPointerDown args
         if s.Buttons = 0 then
             // The element that took the press in Preview gets it; otherwise the deepest one.
             s.Captured <-
                 match previewHandler with
                 | ValueSome e -> ValueSome e
                 | ValueNone -> List.tryHead route |> Option.toValueOption
+            // A finger may drag to pan, unless a handler took the press (it wants the drag itself).
+            if kind = PointerKind.Touch && not args.IsHandled then
+                s.PanCandidates <- route |> List.filter (fun e -> e.Type.Pan.IsSome)
+                s.PanStart <- if s.PanCandidates.IsEmpty then ValueNone else ValueSome position
         s.Buttons <- s.Buttons + 1
         if button = MouseButton.Left && previewHandler.IsNone then
             s.PressRoute <- route

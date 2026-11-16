@@ -232,42 +232,49 @@ let card (index: int) (progress: float) (hovered: bool) (onHover: int option -> 
 let private dot (color: int) =
     Border.create [ Border.width 12.0; Border.height 12.0; Border.cornerRadius 6.0; Border.background (Color.Hex color) ]
 
+/// The top bar: dots, title and subtitle on a 56-high row, and the toolbar (if any) at its right
+/// end, or, when the window is too narrow for both (a phone), on its own rows below the title.
 let private topBar (toolbar: View option) =
+    let titleRow =
+        Layers.create [
+            Layers.height 56.0
+            Layers.children [
+                StackPanel.create [
+                    StackPanel.orientation Horizontal
+                    StackPanel.spacing 10.0
+                    StackPanel.verticalAlignment VerticalAlignment.Top
+                    StackPanel.margin (24.0, 22.0, 0.0, 0.0)
+                    StackPanel.children [ dot 0xF38BA8; dot 0xF9E2AF; dot 0xA6E3A1 ]
+                ]
+                StackPanel.create [
+                    StackPanel.orientation Horizontal
+                    StackPanel.spacing 12.0
+                    StackPanel.margin (106.0, 0.0, 0.0, 0.0)
+                    StackPanel.children [
+                        TextBlock.create (at 0.0 17.0 @ [ TextBlock.text "Scribble"; TextBlock.font semi; TextBlock.fontSize 17.0; TextBlock.foreground textPrimary ])
+                        TextBlock.create (
+                            at 0.0 21.0
+                            @ [ TextBlock.text "Milestone 4 · views and the differ ✨"
+                                TextBlock.fontSize 13.0
+                                TextBlock.foreground textSecondary
+                                // The rest of the row, with "…" where it runs out (a phone).
+                                TextBlock.width "1*"
+                                TextBlock.textTrimming CharacterEllipsis ])
+                    ]
+                ]
+            ]
+        ]
     Border.create [
         Border.name "top bar"
-        Border.height 56.0
         Border.background topBarFill
         Border.child (
-            Layers.create [
-                Layers.children [
-                    StackPanel.create [
-                        StackPanel.orientation Horizontal
-                        StackPanel.spacing 10.0
-                        StackPanel.verticalAlignment VerticalAlignment.Top
-                        StackPanel.margin (24.0, 22.0, 0.0, 0.0)
-                        StackPanel.children [ dot 0xF38BA8; dot 0xF9E2AF; dot 0xA6E3A1 ]
-                    ]
-                    StackPanel.create [
-                        StackPanel.orientation Horizontal
-                        StackPanel.spacing 12.0
-                        StackPanel.margin (106.0, 0.0, 0.0, 0.0)
-                        StackPanel.children [
-                            TextBlock.create (at 0.0 17.0 @ [ TextBlock.text "Scribble"; TextBlock.font semi; TextBlock.fontSize 17.0; TextBlock.foreground textPrimary ])
-                            TextBlock.create (
-                                at 0.0 21.0
-                                @ [ TextBlock.text "Milestone 4 · views and the differ ✨"
-                                    TextBlock.fontSize 13.0
-                                    TextBlock.foreground textSecondary ])
-                        ]
-                    ]
+            SplitRow.create [
+                SplitRow.endMargin (0.0, 0.0, 16.0, 0.0)
+                SplitRow.wrapMargin (24.0, 0.0, 16.0, 16.0)
+                SplitRow.children [
+                    titleRow
                     match toolbar with
-                    | Some t ->
-                        StackPanel.create [
-                            StackPanel.horizontalAlignment HorizontalAlignment.Right
-                            StackPanel.verticalAlignment VerticalAlignment.Center
-                            StackPanel.margin (0.0, 0.0, 16.0, 0.0)
-                            StackPanel.children [ t ]
-                        ]
+                    | Some t -> t
                     | None -> ()
                 ]
             ])
@@ -282,12 +289,18 @@ let view (seconds: float) (hovered: int option) (order: int list) (toolbar: View
         StackPanel.children [
             topBar toolbar
             Border.create [ Border.height 1.0; Border.background cardBorder ]
-            // 24 DIPs below the top bar's bottom edge (the 1 DIP divider sits inside that gap).
-            CardGrid.create [
-                CardGrid.name "cards"
-                CardGrid.margin (24.0, 23.0, 24.0, 24.0)
-                // Keyed by card index, so a card keeps its element when the order changes.
-                CardGrid.items order id (fun i -> card i (progressAt i seconds) (hovered = Some i) onHover)
+            // The rest of the window; the cards scroll (wheel or finger) when they don't all fit.
+            ScrollViewer.create [
+                ScrollViewer.name "card scroller"
+                ScrollViewer.height "1*"
+                ScrollViewer.content (
+                    // 24 DIPs below the top bar's bottom edge (the 1 DIP divider sits inside that gap).
+                    CardGrid.create [
+                        CardGrid.name "cards"
+                        CardGrid.margin (24.0, 23.0, 24.0, 24.0)
+                        // Keyed by card index, so a card keeps its element when the order changes.
+                        CardGrid.items order id (fun i -> card i (progressAt i seconds) (hovered = Some i) onHover)
+                    ])
             ]
         ]
     ]

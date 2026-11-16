@@ -13,12 +13,13 @@ module ScrollViewerProps =
     let internal extent = Prop.local "ScrollExtent" 0.0
     let internal viewport = Prop.local "ScrollViewport" 0.0
 
-/// Shows one child, scrolled vertically with the mouse wheel when it's taller than the space the
-/// ScrollViewer gets. Give it a bounded height (a fixed height, a Star share, or a place that
+/// Shows one child, scrolled vertically with the mouse wheel or a finger drag when it's taller than
+/// the space the ScrollViewer gets. Give it a bounded height (a fixed height, a Star share, or a place that
 /// stretches it, like a layer or a window): with unlimited height it simply grows to fit.
 ///
-/// Basic for now (vertical, wheel, a thin scrollbar that shows the position); horizontal
-/// scrolling, dragging the scrollbar, keyboard and touch come with the other controls.
+/// Basic for now (vertical, wheel, touch drag without momentum, a thin scrollbar that shows the
+/// position); horizontal scrolling, momentum, dragging the scrollbar and keyboard come with the
+/// other controls.
 [<AbstractClass>]
 type ScrollViewer =
     inherit Layoutable
@@ -76,6 +77,17 @@ module ScrollViewer =
                     ctx.SetLocal(ScrollViewerProps.offset, next)
                     ctx.InvalidateArrange()
                     e.Handle())
+            Element.pan (fun ctx dx dy ->
+                let extent, viewport = ctx.Get ScrollViewerProps.extent, ctx.Get ScrollViewerProps.viewport
+                let offset = ctx.Get ScrollViewerProps.offset
+                // The content follows the finger: a drag down shows what's above.
+                let next = Math.Clamp(offset - dy, 0.0, maxOffset extent viewport)
+                if next <> offset then
+                    ctx.SetLocal(ScrollViewerProps.offset, next)
+                    ctx.InvalidateArrange()
+                // Takes a mostly vertical drag whenever there's something to scroll, even at an end
+                // (as phones do); a sideways drag, or content that fits, stays a press.
+                extent > viewport && abs dy >= abs dx)
             Element.defaults [ Layoutable.clipToBounds true ]
         ]
 

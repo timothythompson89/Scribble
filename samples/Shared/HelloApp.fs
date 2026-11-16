@@ -55,10 +55,11 @@ let update msg model =
     | Hover card -> { model with Hovered = card }
 
 let private toolbar model dispatch =
-    StackPanel.create [
-        StackPanel.orientation Horizontal
-        StackPanel.spacing 8.0
-        StackPanel.children [
+    // A row of buttons that wraps onto more rows on a narrow screen.
+    WrapPanel.create [
+        WrapPanel.spacing 8.0
+        WrapPanel.lineSpacing 8.0
+        WrapPanel.children [
             Button.create [ Button.text (if model.Animating then "Pause" else "Resume"); Button.onClick (fun _ -> dispatch TogglePause) ]
             Button.create [ Button.text "Restart"; Button.onClick (fun _ -> dispatch Restart) ]
             Button.create [ Button.text "Remove card"; Button.onClick (fun _ -> dispatch RemoveCard) ]

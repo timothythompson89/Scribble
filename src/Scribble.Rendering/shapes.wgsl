@@ -30,7 +30,7 @@ struct Shape {
 struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) local: vec2f,                       // position relative to the shape's centre
-  @location(1) @interpolate(flat) index: u32,
+  @location(1) @interpolate(flat, either) index: u32,  // "either": the same for all six vertices; WebGPU compatibility mode (OpenGL ES phones) allows only this
 }
 
 @vertex

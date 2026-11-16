@@ -41,11 +41,30 @@ export async function init(powerPreference, shaderSource, atlasSize, colorAtlasS
     throw new Error("WebGPU is not available in this browser (try a recent Chrome, Edge or Firefox).");
   }
   // Only pass the option when asked: Chrome warns about it on Windows, where it's ignored.
-  const adapter = await navigator.gpu.requestAdapter(powerPreference ? { powerPreference } : {});
+  const options = powerPreference ? { powerPreference } : {};
+  let adapter = await navigator.gpu.requestAdapter(options);
+  let compatibility = false;
+  if (!adapter) {
+    // Devices with only OpenGL ES (many Android phones) offer WebGPU's reduced "compatibility"
+    // feature level, and only to pages that ask for it.
+    adapter = await navigator.gpu.requestAdapter({ ...options, featureLevel: "compatibility" });
+    compatibility = !!adapter;
+  }
   if (!adapter) throw new Error("WebGPU: no suitable GPU adapter.");
-  device = await adapter.requestDevice({ label: "Scribble device" });
+  // Shapes live in a storage buffer read by both shader stages. Compatibility mode's default
+  // allows none outside compute, so ask for what this adapter can do.
+  const requiredLimits = {};
+  for (const name of ["maxStorageBuffersInVertexStage", "maxStorageBuffersInFragmentStage"]) {
+    const value = adapter.limits[name];
+    if (value === undefined) continue;
+    if (value < 1) throw new Error(`WebGPU: this GPU allows no storage buffers in shaders (${name} = 0), which Scribble needs.`);
+    requiredLimits[name] = 1;
+  }
+  device = await adapter.requestDevice({ label: "Scribble device", requiredLimits });
   const info = adapter.info || {};
-  adapterInfo = [info.vendor, info.architecture, info.description].filter((s) => s).join(" ") || "unknown adapter";
+  adapterInfo =
+    ([info.vendor, info.architecture, info.description].filter((s) => s).join(" ") || "unknown adapter") +
+    (compatibility ? ", compatibility mode" : "");
   // The canvas format the browser composites fastest; never an sRGB format, which matches
   // Scribble's rule of writing sRGB color values as-is.
   format = navigator.gpu.getPreferredCanvasFormat();

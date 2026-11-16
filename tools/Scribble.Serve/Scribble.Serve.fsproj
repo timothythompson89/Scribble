@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    Serves the browser samples to the local network over HTTPS (WebGPU needs a secure context).
+    How to run it and its options are at the top of Program.fs. A development tool: not part of
+    Scribble, never shipped.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Certificates.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+</Project>

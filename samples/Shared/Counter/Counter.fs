@@ -12,12 +12,18 @@
 module Scribble.Samples.Counter
 
 open Scribble.Rendering
+open Scribble.Text
 open Scribble.Core
 open Scribble.Samples.CounterDemo.Common
 open Scribble.Samples.CounterDemo
 
 let private heading (text: string) =
-    TextBlock.create [ TextBlock.text text; TextBlock.foreground Palette.textDim; TextBlock.margin (24.0, 16.0, 24.0, 0.0) ]
+    TextBlock.create [
+        TextBlock.text text
+        TextBlock.foreground Palette.textDim
+        TextBlock.textWrapping TextWrapping.Wrap // onto more lines on a phone
+        TextBlock.margin (24.0, 16.0, 24.0, 0.0)
+    ]
 
 /// The demo's pages: tab title, then the page.
 let private pages =
@@ -66,23 +72,30 @@ let demo =
             windowTitle.Set(appTitle + " – " + fst pages[i])
         StackPanel.create [
             StackPanel.children [
-                yield StackPanel.create [
-                    StackPanel.orientation Horizontal
-                    StackPanel.spacing 4.0
-                    StackPanel.margin (24.0, 16.0, 24.0, 0.0)
-                    StackPanel.styles tabStyles
-                    StackPanel.children [
-                        for i, (title, _) in List.indexed pages do
-                            Button.create [
-                                yield Button.text title
-                                yield Button.width 72.0
-                                // The selected tab gets a class; the tab row's styles color it.
-                                if i = selected.Current then yield Button.classes [ "selected" ]
-                                yield Button.onClick (fun _ -> select i)
+                // The tabs, and the switch at the right end; on a narrow screen (a phone) the tabs
+                // wrap onto more rows and the switch goes below them (Adaptive.fs).
+                yield SplitRow.create [
+                    SplitRow.gap 4.0
+                    SplitRow.wrapMargin (0.0, 8.0, 0.0, 0.0)
+                    SplitRow.margin (24.0, 16.0, 24.0, 0.0)
+                    SplitRow.styles tabStyles
+                    SplitRow.children [
+                        WrapPanel.create [
+                            WrapPanel.spacing 4.0
+                            WrapPanel.lineSpacing 4.0
+                            WrapPanel.children [
+                                for i, (title, _) in List.indexed pages do
+                                    Button.create [
+                                        yield Button.text title
+                                        yield Button.width 72.0
+                                        // The selected tab gets a class; the tab row's styles color it.
+                                        if i = selected.Current then yield Button.classes [ "selected" ]
+                                        yield Button.onClick (fun _ -> select i)
+                                    ]
                             ]
-                        // Takes the space that's left, so the switch sits at the right.
-                        Border.create [ Border.width "1*" ]
-                        themeSwitch ()
+                        ]
+                        // Left-aligned when it's on its own row.
+                        Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.child (themeSwitch ()) ]
                     ]
                 ]
                 // Pages by position: the same ones in the same places, so switching only flips

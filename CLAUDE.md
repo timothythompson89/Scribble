@@ -36,6 +36,7 @@ dotnet run --project samples/Scribble.Samples.Browser            # http://localh
 dotnet run --project samples/Scribble.Samples.Counter.Browser    # http://localhost:5281
 dotnet publish samples/Scribble.Samples.Hello -c Release         # NativeAOT exe (needs VS C++ tools)
 dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   # wasm AOT (wasm-tools workload)
+dotnet run --project tools/Scribble.Serve      # both browser samples to the local network over HTTPS (see README)
 ```
 
 - Screenshot tests compare against PNGs in `tests/Scribble.Tests.Rendering/References` with a tolerance (channel
@@ -67,8 +68,9 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 | `src/Scribble.Core` | Views, differ, elements, layout, styles, themes, components, app values, Border/StackPanel/TextBlock/Button/ScrollViewer, App settings and runtime |
 | `src/Scribble.Desktop` / `src/Scribble.Browser` | `App.run` / `App.runInBrowser`: one reference brings platform, GPU and shaping |
 | `src/Scribble.Inspector` | Opt-in inspector (`Inspector.enable [ ... ]`): panel and highlight layers, tree, pick mode |
-| `samples/Shared` | Dashboard, HelloApp, Counter (shared by desktop and browser hosts) |
+| `samples/Shared` | Dashboard, HelloApp, Counter (shared by desktop and browser hosts); Adaptive.fs: the samples' own `WrapPanel` and `SplitRow` for narrow screens |
 | `tests/Scribble.Tests`, `tests/Scribble.Tests.Rendering` | Unit tests; GPU screenshot tests |
+| `tools/Scribble.Serve` | Dev tool: publishes the browser samples and serves them to the local network over HTTPS (own CA) |
 
 ## Architecture in brief
 
@@ -178,8 +180,8 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme tokens and app values) is done and verified (2026-11-16). Last counts: 264 unit tests,
-39 rendering tests (after M7b step 1 and the inspector toolbar).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme tokens and app values) is done and verified (2026-11-16). Last counts: 269 unit tests,
+45 rendering tests (after the phone-friendly samples, verified by Tim on his phone).
 
 Remaining milestones (M7c custom title bars was skipped, 2026-11-16; see DESIGN.md): M7b icons (decisions in
 DESIGN.md, "Decisions for M7b"; step 1, icons in Core, done and verified 2026-11-16: `PathGeometry` in Text,
@@ -302,6 +304,9 @@ Two steps, each tried by Tim before the next:
   `Scribble.Icons.Material` package. Open: names/casing, pluggable sets, .svg import. Also custom cursors: a
   `Cursor.Image` (bitmap + hotspot, e.g. from an icon) shown by the OS as a hardware cursor, never drawn in-frame.
 - Known issues: shrinking a window briefly flashes black at the edge with Vulkan on NVIDIA (D3D12 only slightly
-  better; left as is). The Hello toolbar overlaps the subtitle below ~800 DIPs wide (needs Grid/DockPanel).
+  better; left as is).
+- Phones (2026-11-16): the samples fit 390-DIP-wide screens (`PhoneTests.fs` renders them at 390 × 844, 3×);
+  touch drags scroll a ScrollViewer (`Element.pan`); WebGPU compatibility mode is requested when full WebGPU
+  isn't offered (OpenGL ES phones), which is why `shapes.wgsl` uses `@interpolate(flat, either)`.
 - Open questions: license (MIT or Apache 2.0) before the first public push; is "Scribble" free on NuGet;
   `RenderOffscreen` must become async for browser screenshot tests.

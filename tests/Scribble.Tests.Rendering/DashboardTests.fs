@@ -98,12 +98,13 @@ type DashboardTests(fixture: TextFixture) =
         let size = Size.Create(760.0, 520.0)
         tree.Update(view 0.0 None allCards None ignore)
         tree.UpdateLayout size
-        let grid = tree.Root.Value.Children[2]
+        let scroller = tree.Root.Value.Children[2]
+        let grid = scroller.Children[0]
         let card = grid.Children[3]
         let content = card.Children[0]
         let before, contentBefore = card.Bounds, content.Bounds
         // Somewhere inside card 3, in tree coordinates.
-        let hit = tree.HitTest(grid.Bounds.X + card.Bounds.X + 50.0, grid.Bounds.Y + card.Bounds.Y + 50.0)
+        let hit = tree.HitTest(scroller.Bounds.X + grid.Bounds.X + card.Bounds.X + 50.0, scroller.Bounds.Y + grid.Bounds.Y + card.Bounds.Y + 50.0)
         Assert.Equal(Some 3, cardAt hit)
         tree.Update(view 0.0 (cardAt hit) allCards None ignore)
         tree.UpdateLayout size
@@ -121,7 +122,7 @@ type DashboardTests(fixture: TextFixture) =
         let tree = ElementTree(fixture.Text)
         let model = HelloApp.init
         tree.Update(HelloApp.view model ignore)
-        let grid () = tree.Root.Value.Children[2]
+        let grid () = tree.Root.Value.Children[2].Children[0] // inside the ScrollViewer
         let byName () = dict [ for c in grid().Children -> c.Name, c ]
         let before = byName ()
         // Shuffle: same cards, new order, each still the same element.

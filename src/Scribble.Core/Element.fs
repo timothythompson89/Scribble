@@ -105,7 +105,10 @@ type ElementType =
       RenderAfter: (RenderContext -> DrawList -> unit) voption
       /// The type's own wheel behavior (scrolling): runs on each element of the route after that
       /// element's `onWheel` setting, if nothing handled the wheel yet.
-      Wheel: (InputContext -> WheelEventArgs -> unit) voption }
+      Wheel: (InputContext -> WheelEventArgs -> unit) voption
+      /// The type's own touch-drag behavior (scrolling by finger): given how far the finger moved
+      /// (x, y in DIPs), returns true if the element takes the drag. See `Element.pan`.
+      Pan: (InputContext -> float -> float -> bool) voption }
 
     override t.ToString() = t.Name
 
@@ -116,6 +119,7 @@ type ElementType =
           Transform = ValueNone
           RenderAfter = ValueNone
           Wheel = ValueNone
+          Pan = ValueNone
           Measure =
             fun ctx available ->
                 let mutable w, h = 0.0, 0.0
@@ -1331,6 +1335,16 @@ module Element =
     /// each element's own `onWheel` setting, so a view's handler can take the wheel first; call
     /// `e.Handle()` when the element used it (an outer scroller then stays put).
     let wheel (f: InputContext -> WheelEventArgs -> unit) = ElementPart(fun t -> { t with Wheel = ValueSome f })
+
+    /// The type's own touch-drag behavior, such as scrolling. Once a finger pressed on (or inside)
+    /// the element moves past a small threshold, this gets the movement so far and then every
+    /// further move (x, y in DIPs; positive is right and down). Return true when the element takes
+    /// the drag (a scroller: it has something to scroll that way, even if it's already at the end):
+    /// it then keeps the finger until it lifts, the press underneath is canceled (no click), and
+    /// what the finger slides over inside it doesn't react. Return false to leave the drag alone
+    /// (to an outer element, or to stay a press). Later calls' results don't matter.
+    /// Not used when a view's `onPointerDown` handled the press, and never for the mouse.
+    let pan (f: InputContext -> float -> float -> bool) = ElementPart(fun t -> { t with Pan = ValueSome f })
 
     /// Values for this element type's properties when a view doesn't set them (a view's own
     /// settings win; removing one from a later view goes back to these). Not for child properties.

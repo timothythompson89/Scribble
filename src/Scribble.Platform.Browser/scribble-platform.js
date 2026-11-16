@@ -139,7 +139,11 @@ export function createCanvas(id) {
     canvas.id = id;
     document.body.appendChild(canvas);
   }
+  // touch-action none: every touch comes to Scribble (no browser panning or zooming, no double-tap
+  // zoom); overscroll-behavior none on the page: no pull-to-refresh or bounce.
   Object.assign(canvas.style, { position: "fixed", inset: "0", width: "100%", height: "100%", display: "block", touchAction: "none", outline: "none" });
+  document.documentElement.style.overscrollBehavior = "none";
+  document.body.style.overscrollBehavior = "none";
   canvas.tabIndex = 0;
 
   const dpr = window.devicePixelRatio || 1;

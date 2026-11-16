@@ -11,6 +11,7 @@
     <Compile Include="ClearTests.fs" />
     <Compile Include="ShapeTests.fs" />
     <Compile Include="TextRenderingTests.fs" />
+    <Compile Include="../../samples/Shared/Adaptive.fs" Link="Adaptive.fs" />
     <Compile Include="../../samples/Shared/Dashboard.fs" Link="Dashboard.fs" />
     <Compile Include="../../samples/Shared/HelloApp.fs" Link="HelloApp.fs" />
     <Compile Include="DashboardTests.fs" />
@@ -22,6 +23,7 @@
     <Compile Include="../../samples/Shared/Counter/StylesTab.fs" Link="StylesTab.fs" />
     <Compile Include="../../samples/Shared/Counter/Counter.fs" Link="Counter.fs" />
     <Compile Include="CounterTests.fs" />
+    <Compile Include="PhoneTests.fs" />
     <Compile Include="ButtonTests.fs" />
     <Compile Include="IconRenderingTests.fs" />
     <Compile Include="LayerTests.fs" />

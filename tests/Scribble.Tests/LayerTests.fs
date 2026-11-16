@@ -252,6 +252,117 @@ let ``a ScrollViewer keeps its offset within range when its content shrinks`` ()
     w.DeliverFrame() |> ignore
     Assert.Equal(-100.0, content.Bounds.Y)
 
+
+// --- Touch panning -------------------------------------------------------------------------------
+
+let private touchDown (w: FakeWindow) x y = w.Send(PointerPressed(Touch, 1, { X = x; Y = y }, MouseButton.Left, Modifiers.None))
+let private touchMove (w: FakeWindow) x y = w.Send(PointerMoved(Touch, 1, { X = x; Y = y }, Modifiers.None))
+let private touchUp (w: FakeWindow) x y =
+    w.Send(PointerReleased(Touch, 1, { X = x; Y = y }, MouseButton.Left, Modifiers.None))
+    w.Send(PointerExited(Touch, 1))
+
+/// The 200×100 scroller again, with ten 40-high buttons that log their clicks, and an optional
+/// pointer-down handler on the first one.
+let private buttonScroller (clicks: List<string>) (takesPress: bool) =
+    ScrollViewer.create [
+        ScrollViewer.name "scroller"
+        ScrollViewer.width 200.0
+        ScrollViewer.height 100.0
+        ScrollViewer.horizontalAlignment HorizontalAlignment.Left
+        ScrollViewer.verticalAlignment VerticalAlignment.Top
+        ScrollViewer.content (
+            StackPanel.create [
+                StackPanel.name "content"
+                StackPanel.children [
+                    for i in 0..9 ->
+                        Button.create [
+                            Button.name $"row{i}"
+                            Button.height 40.0
+                            Button.horizontalAlignment HorizontalAlignment.Stretch
+                            Button.onClick (fun _ -> clicks.Add $"row{i}")
+                            if takesPress && i = 0 then Button.onPointerDown (fun e -> e.Handle())
+                        ]
+                ]
+            ]
+        )
+    ]
+
+[<Fact>]
+let ``a finger dragging past the threshold scrolls a ScrollViewer and cancels the press under it`` () =
+    let clicks = List<string>()
+    let w, host = start [ App.view (buttonScroller clicks false) ]
+    let content, row0 = named host "content", named host "row0"
+    touchDown w 50.0 30.0
+    Assert.True row0.IsPressed
+    touchMove w 50.0 25.0 // 5 DIPs: still a press
+    w.DeliverFrame() |> ignore
+    Assert.Equal(0.0, content.Bounds.Y)
+    Assert.True row0.IsPressed
+    touchMove w 50.0 10.0 // 20 DIPs: a pan; the content catches up with the finger
+    w.DeliverFrame() |> ignore
+    Assert.Equal(-20.0, content.Bounds.Y)
+    Assert.False row0.IsPressed
+    touchMove w 50.0 -40.0 // off the scroller: it keeps the finger
+    w.DeliverFrame() |> ignore
+    Assert.Equal(-70.0, content.Bounds.Y)
+    touchMove w 50.0 -400.0 // past the end: stops there
+    w.DeliverFrame() |> ignore
+    Assert.Equal(-300.0, content.Bounds.Y)
+    touchUp w 50.0 -400.0
+    Assert.Empty clicks
+
+[<Fact>]
+let ``a short touch drag stays a tap`` () =
+    let clicks = List<string>()
+    let w, host = start [ App.view (buttonScroller clicks false) ]
+    touchDown w 50.0 30.0
+    touchMove w 53.0 25.0
+    touchUp w 53.0 25.0
+    w.DeliverFrame() |> ignore
+    Assert.Equal(0.0, (named host "content").Bounds.Y)
+    Assert.Equal<string list>([ "row0" ], List.ofSeq clicks)
+
+[<Fact>]
+let ``a vertical drag at an end is still a scroll, and what the finger slides over doesn't react`` () =
+    let clicks = List<string>()
+    let w, host = start [ App.view (buttonScroller clicks false) ]
+    touchDown w 50.0 10.0
+    touchMove w 50.0 35.0 // down at the top: nothing above to show, but the scroller takes the finger
+    touchMove w 50.0 75.0 // over row1 now
+    w.DeliverFrame() |> ignore
+    Assert.Equal(0.0, (named host "content").Bounds.Y)
+    Assert.False (named host "row0").IsPressed
+    Assert.False (named host "row1").IsPointerOver
+    touchUp w 50.0 75.0
+    Assert.Empty clicks
+
+[<Fact>]
+let ``a sideways drag stays a press`` () =
+    let clicks = List<string>()
+    let w, host = start [ App.view (buttonScroller clicks false) ]
+    touchDown w 50.0 10.0
+    touchMove w 80.0 12.0
+    w.DeliverFrame() |> ignore
+    Assert.True (named host "row0").IsPressed
+    touchUp w 80.0 12.0
+    Assert.Equal<string list>([ "row0" ], List.ofSeq clicks)
+
+[<Fact>]
+let ``the mouse never pans, and neither does a touch whose press a handler took`` () =
+    let clicks = List<string>()
+    let w, host = start [ App.view (buttonScroller clicks true) ]
+    let content = named host "content"
+    press w 50.0 60.0
+    move w 50.0 10.0
+    release w 50.0 10.0
+    w.DeliverFrame() |> ignore
+    Assert.Equal(0.0, content.Bounds.Y)
+    touchDown w 50.0 30.0 // row0 handles its pointer down
+    touchMove w 50.0 0.0
+    touchUp w 50.0 0.0
+    w.DeliverFrame() |> ignore
+    Assert.Equal(0.0, content.Bounds.Y)
+
 // --- Rules found while building the demo ------------------------------------------------------------
 
 [<Fact>]

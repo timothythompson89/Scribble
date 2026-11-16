@@ -21,6 +21,7 @@
     <Compile Include="KeyboardTests.fs" />
     <Compile Include="ComponentTests.fs" />
     <Compile Include="AsyncTests.fs" />
+    <Compile Include="../../samples/Shared/Adaptive.fs" Link="Adaptive.fs" />
     <Compile Include="../../samples/Shared/Counter/Common.fs" Link="Common.fs" />
     <Compile Include="../../samples/Shared/Counter/ElmishTab.fs" Link="ElmishTab.fs" />
     <Compile Include="../../samples/Shared/Counter/LoadTab.fs" Link="LoadTab.fs" />
