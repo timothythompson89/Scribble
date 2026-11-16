@@ -64,6 +64,49 @@ module internal Interpolation =
                 | ValueNone, ValueNone -> box (ValueNone: BoxShadow voption))
         else ValueNone
 
+/// A named value a theme gives (`ThemeValue<'T>`; the built-in ones are in `Palette`).
+[<AbstractClass>]
+type ThemeToken internal (name: string, defaultBoxed: obj) =
+    static let mutable lastId = 0
+    let id = Interlocked.Increment(&lastId)
+    member _.Name = name
+    member internal _.Id = id
+    member internal _.DefaultBoxed = defaultBoxed
+    override _.ToString() = name
+
+/// A value a theme gives, by name: `Palette.surface`, or an app's own made with
+/// `ThemeValue.define "CardLine" (Color.Hex 0x34345A)`. Settings take one in place of a value
+/// (`Border.background Palette.surface`) and read it from the nearest theme; a theme sets it with
+/// `Theme.set`. Define tokens once, as module-level values.
+[<Sealed>]
+type ThemeValue<'T> internal (name: string, defaultValue: 'T) =
+    inherit ThemeToken(name, box defaultValue)
+    /// Used when the theme doesn't set it, and when there is no theme.
+    member _.Default = defaultValue
+
+module ThemeValue =
+    /// A value themes can set (`Theme.set token v`), with the value used when one doesn't.
+    let define (name: string) (defaultValue: 'T) = ThemeValue<'T>(name, defaultValue)
+
+/// What a setting stores for a token: the token and, when the property's type differs from the
+/// token's (a shadow stored as `BoxShadow voption`), a fixed conversion. Equal when both are the
+/// same, so a view that sets the same token again changes nothing.
+[<Sealed; AllowNullLiteral>]
+type internal ThemeRef(token: ThemeToken, convert: (obj -> obj) voption) =
+    member _.Token = token
+    member _.Convert = convert
+    member _.Apply(value: obj) = match convert with ValueSome f -> f value | ValueNone -> value
+    override _.Equals(other: obj) =
+        match other with
+        | :? ThemeRef as r ->
+            obj.ReferenceEquals(r.Token, token)
+            && (match r.Convert, convert with
+                | ValueSome a, ValueSome b -> obj.ReferenceEquals(a, b)
+                | ValueNone, ValueNone -> true
+                | _ -> false)
+        | _ -> false
+    override _.GetHashCode() = token.Id
+
 /// A property key: a name, a default value and what changing it affects. Elements store values
 /// for the properties set on them; everything else reads as the default.
 ///
@@ -102,8 +145,12 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal Inherits = false with get, set
     /// The `theme` setting: changing it re-matches styles and inherited values below.
     member val internal IsTheme = false with get, set
-    /// Equality of two values of this property's type.
-    member internal _.Same(a: obj, b: obj) = same a b
+    /// Equality of two values of this property's type (a token reference equals only itself).
+    member internal _.Same(a: obj, b: obj) =
+        match a, b with
+        | (:? ThemeRef as r), _ -> r.Equals b
+        | _, (:? ThemeRef) -> false
+        | _ -> same a b
     /// How two values blend, when transitions can animate this property's type.
     member internal _.Lerp = lerp
     /// Its transition duration property, once a style has used `Style.transition` on it.
@@ -147,6 +194,8 @@ and [<Sealed>] Prop<'T> internal (name: string, defaultValue: 'T, affects: Affec
 type IThemeSource =
     /// The base value of an inherited property (text color, font, size), if the theme has one.
     abstract TryBase: prop: Prop -> obj voption
+    /// A token's value in this theme (its default when the theme doesn't set it).
+    abstract Resolve: token: ThemeToken -> obj
 
 /// A property value for an element of kind 'k ('k is a marker type such as Border, so a Border
 /// setting can't be put on a TextBlock). Made by the setting functions, e.g. `Border.background`.
@@ -163,6 +212,15 @@ type Setting<'k> =
 module Setting =
     /// A setting of `prop` to `value`. Element authors use this to write setting functions.
     let create (prop: Prop<'T>) (value: 'T) : Setting<'k> = { Prop = prop; Value = box value }
+
+    /// A setting of `prop` to a theme's value (`Palette.surface`, or the app's own token), read from
+    /// the nearest theme. Element authors use this for a setting's token overload.
+    let fromTheme (prop: Prop<'T>) (token: ThemeValue<'T>) : Setting<'k> = { Prop = prop; Value = ThemeRef(token, ValueNone) }
+
+    /// The same for a property whose type differs from the token's: `convert` (a module-level
+    /// function, so equal settings compare equal) turns the token's value into the property's.
+    let internal fromThemeWith (prop: Prop<'T>) (token: ThemeValue<'U>) (convert: obj -> obj) : Setting<'k> =
+        { Prop = prop; Value = ThemeRef(token, ValueSome convert) }
 
 /// Properties every element has.
 module LayoutProps =

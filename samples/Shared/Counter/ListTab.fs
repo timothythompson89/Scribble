@@ -6,6 +6,7 @@ open System
 open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
+open Scribble.Samples.CounterDemo.Common
 
 let private barWidth = 120.0
 
@@ -13,7 +14,7 @@ let private barWidth = 120.0
 let counter =
     Component.define "Counter" (fun ctx (name: string) ->
         let count = ctx.useState 0
-        let fill = ctx.useAnimated(float (min 10 (abs count.Current)) / 10.0, TimeSpan.FromMilliseconds 250.0)
+        let filled = ctx.useAnimated(float (min 10 (abs count.Current)) / 10.0, TimeSpan.FromMilliseconds 250.0)
         StackPanel.create [
             StackPanel.orientation Horizontal
             StackPanel.spacing 8.0
@@ -21,7 +22,6 @@ let counter =
                 TextBlock.create [
                     TextBlock.text name
                     TextBlock.width 80.0
-                    TextBlock.foreground Color.White
                     TextBlock.verticalAlignment VerticalAlignment.Center
                 ]
                 Button.create [ Button.text "−"; Button.width 32.0; Button.onClick (fun _ -> count.Update(fun c -> c - 1)) ]
@@ -29,7 +29,6 @@ let counter =
                     TextBlock.text (string count.Current)
                     TextBlock.width 32.0
                     TextBlock.textAlignment TextAlignment.Center
-                    TextBlock.foreground Color.White
                     TextBlock.verticalAlignment VerticalAlignment.Center
                 ]
                 Button.create [ Button.text "+"; Button.width 32.0; Button.onClick (fun _ -> count.Update(fun c -> c + 1)) ]
@@ -39,13 +38,13 @@ let counter =
                     Border.margin (8.0, 0.0, 0.0, 0.0)
                     Border.verticalAlignment VerticalAlignment.Center
                     Border.cornerRadius 4.0
-                    Border.background (Color.Hex 0x2A2A3C)
+                    Border.background track
                     Border.child (
                         Border.create [
-                            Border.width (barWidth * fill)
+                            Border.width (barWidth * filled)
                             Border.horizontalAlignment HorizontalAlignment.Left
                             Border.cornerRadius 4.0
-                            Border.background (if count.Current < 0 then Color.Hex 0xF7768E else Color.Hex 0x7AA2F7)
+                            Border.background (if count.Current < 0 then error else fill)
                         ]
                     )
                 ]

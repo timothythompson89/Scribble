@@ -23,9 +23,9 @@ let slowLoad =
         let square = ctx.useAsync(n.Current, slowSquare)
         let result, color =
             match square with
-            | AsyncValue.Loading -> "loading…", dim
-            | AsyncValue.Loaded v -> $"{n.Current}² = {v}", Color.White
-            | AsyncValue.Failed e -> e.Message, Color.Hex 0xF7768E
+            | AsyncValue.Loading -> "loading…", Palette.textDim
+            | AsyncValue.Loaded v -> $"{n.Current}² = {v}", Palette.text
+            | AsyncValue.Failed e -> e.Message, error
         StackPanel.create [
             StackPanel.orientation Horizontal
             StackPanel.spacing 8.0
@@ -36,7 +36,6 @@ let slowLoad =
                     TextBlock.text (string n.Current)
                     TextBlock.width 32.0
                     TextBlock.textAlignment TextAlignment.Center
-                    TextBlock.foreground Color.White
                     TextBlock.verticalAlignment VerticalAlignment.Center
                 ]
                 Button.create [ Button.text "+"; Button.width 32.0; Button.onClick (fun _ -> n.Update(fun v -> v + 1)) ]

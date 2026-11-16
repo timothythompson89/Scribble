@@ -6,24 +6,24 @@ open System.Threading.Tasks
 /// subscriptions. Returned next to the model from `init` and `update` with `App.programWithCmd`
 /// and `ctx.useElmishWithCmd`.
 [<Struct>]
-type Cmd<'Msg> = internal Cmd of effects: (('Msg -> unit) -> unit) list
+type Cmd<'Msg> = internal Cmd of effects: (AppValues -> ('Msg -> unit) -> unit) list
 
 module Cmd =
     /// Nothing to do.
     let none<'Msg> : Cmd<'Msg> = Cmd []
 
     /// Sends a message straight after this update.
-    let ofMsg (msg: 'Msg) : Cmd<'Msg> = Cmd [ fun dispatch -> dispatch msg ]
+    let ofMsg (msg: 'Msg) : Cmd<'Msg> = Cmd [ fun _ dispatch -> dispatch msg ]
 
     /// Several commands, run in order.
     let batch (cmds: Cmd<'Msg> list) : Cmd<'Msg> = Cmd(cmds |> List.collect (fun (Cmd effects) -> effects))
 
     /// A command for a child's messages, as a command for the parent's (`Cmd.map ChildMsg cmd`).
     let map (f: 'A -> 'Msg) (Cmd effects: Cmd<'A>) : Cmd<'Msg> =
-        Cmd [ for effect in effects -> fun dispatch -> effect (f >> dispatch) ]
+        Cmd [ for effect in effects -> fun values dispatch -> effect values (f >> dispatch) ]
 
     /// Anything that sends messages, now or later, from any thread: `Cmd.ofSub (fun dispatch -> ...)`.
-    let ofSub (subscribe: ('Msg -> unit) -> unit) : Cmd<'Msg> = Cmd [ subscribe ]
+    let ofSub (subscribe: ('Msg -> unit) -> unit) : Cmd<'Msg> = Cmd [ fun _ dispatch -> subscribe dispatch ]
 
     /// Runs a task and sends `ofSuccess result` or `ofError exn` when it finishes:
     /// `Cmd.ofTask api.Load id Loaded LoadFailed`.
@@ -54,9 +54,12 @@ module Cmd =
                 }
             ))
 
+    /// Sets an app value (`AppValue.define`) for the whole app: `Cmd.setAppValue compactMode true`.
+    let setAppValue (value: AppValue<'T>) (next: 'T) : Cmd<'Msg> = Cmd [ fun values _ -> values.Set(value, next) ]
+
     /// Runs a command's effects with `dispatch`. Errors (from an effect, or from a dispatch that
     /// happens later) go to `onError` instead of being lost.
-    let internal execute (onError: exn -> unit) (dispatch: 'Msg -> unit) (Cmd effects: Cmd<'Msg>) =
+    let internal execute (onError: exn -> unit) (values: AppValues) (dispatch: 'Msg -> unit) (Cmd effects: Cmd<'Msg>) =
         let safeDispatch msg =
             try
                 dispatch msg
@@ -64,6 +67,6 @@ module Cmd =
                 onError e
         for effect in effects do
             try
-                effect safeDispatch
+                effect values safeDispatch
             with e ->
                 onError e

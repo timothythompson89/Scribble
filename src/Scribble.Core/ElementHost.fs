@@ -15,11 +15,12 @@ type FrameStats =
 
 /// What the ElementHost settings configure.
 type internal ElementHostOptions =
-    { Background: Color
+    { Background: Color voption
       Dispatcher: Dispatcher voption
       BeforeFrame: unit -> unit
       Styles: Style list
-      Theme: Theme voption }
+      Theme: Theme voption
+      AppValues: AppValues voption }
 
 /// One setting for `ElementHost.create`: `ElementHost.background (Color.Hex 0x181825)`.
 [<Struct>]
@@ -50,7 +51,10 @@ type internal LayerPointer(kind: PointerKind) =
 [<Sealed>]
 type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSystem, options: ElementHostOptions) =
     let surface = device.CreateSurface(window.Surface, window.ClientSize)
+    // ValueNone: the theme's background (see `ClearColor`).
     let mutable currentBackground = options.Background
+    let sharedValues = match options.AppValues with ValueSome v -> v | ValueNone -> AppValues()
+    do options.Theme |> ValueOption.iter (fun t -> sharedValues.Set(Theme.current, t))
     let mutable stats = { LayoutMilliseconds = 0.0; RenderMilliseconds = 0.0; Shapes = 0 }
     let runBeforeFrame = options.BeforeFrame
     let clock = Stopwatch.StartNew()
@@ -82,9 +86,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         let tree = layer.Tree
         tree.Scale <- window.Scale
         tree.Dispatcher <- options.Dispatcher
+        tree.AppValues <- sharedValues
         if layer.UsesAppStyles then
             tree.Styles <- options.Styles
-            tree.Theme <- options.Theme
+            tree.Theme <- ValueSome(sharedValues.Get Theme.current)
         tree.OnInvalidated <-
             fun () ->
                 layerChanged.Trigger layer
@@ -95,6 +100,18 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         window.RequestFrame()
 
     let app = Layer.Create(text, [ Layer.name "App"; Layer.order 0 ], window.SetCursor)
+
+    // The window's theme follows the app value: layers that take app styles get the new one (their
+    // trees re-style and ask for a frame; the background follows in that frame).
+    let themeSubscription =
+        sharedValues.Subscribe(
+            Theme.current.Id,
+            fun () ->
+                let theme = ValueSome(sharedValues.Get Theme.current)
+                for l in layers do
+                    if l.UsesAppStyles then l.Tree.Theme <- theme
+                window.RequestFrame()
+        )
 
     /// A modal layer blocks what's below it while it shows something.
     let isBlocking (l: Layer) = l.IsModal && l.Tree.HasVisibleContent
@@ -173,8 +190,8 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             if moveTo s id l then l.Input.PointerAt(s.Kind, id, p, s.Modifiers)
         | _ -> ()
 
-    /// Cleared behind the layers every frame. Default: black.
-    static member background(value: Color) = ElementHostSetting(fun o -> { o with Background = value })
+    /// Cleared behind the layers every frame, instead of the theme's background (the default).
+    static member background(value: Color) = ElementHostSetting(fun o -> { o with Background = ValueSome value })
 
     /// The UI thread's dispatcher: components use it for state set from other threads and to
     /// report errors from async work. Without one, state must be set on the UI thread.
@@ -187,9 +204,15 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// Styles for every layer (except those with `Layer.appStyles false`); `App.styles` sets them.
     static member styles(value: Style list) = ElementHostSetting(fun o -> { o with Styles = value })
 
-    /// The theme for every layer (except those with `Layer.appStyles false`); `App.theme` sets it.
-    /// Default: `Theme.dark []`.
+    /// The starting window theme (`Theme.current` in its app values), for every layer except those
+    /// with `Layer.appStyles false`; `App.theme` sets it. Default: `Theme.dark []`.
     static member theme(value: Theme) = ElementHostSetting(fun o -> { o with Theme = ValueSome value })
+
+    /// The app values its layers share (`App.run` gives the app's, shared by its windows). Default: its own.
+    static member appValues(value: AppValues) = ElementHostSetting(fun o -> { o with AppValues = ValueSome value })
+
+    /// The app values every layer shares (`ctx.useAppValue`).
+    member _.AppValues = sharedValues
 
     member _.Window = window
 
@@ -244,13 +267,25 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             layer.Tree.Root <- ValueNone
             window.RequestFrame()
 
-    /// Cleared behind the layers every frame (starts as `ElementHost.background`; may change while
-    /// running).
+    /// Cleared behind the layers every frame instead of the theme's background (starts as
+    /// `ElementHost.background`; ValueNone follows the theme; may change while running).
     member _.Background
         with get () = currentBackground
         and set v =
             currentBackground <- v
             window.RequestFrame()
+
+    /// The window's theme (`Theme.current`, an app value; `App.theme`/`ElementHost.theme` start it).
+    /// It applies to every layer that takes app styles (toasts, dialogs; not the inspector) and
+    /// gives the window's background.
+    member _.WindowTheme: Theme = sharedValues.Get Theme.current
+
+    /// What the window is cleared to: `Background` if set, else the window theme's background
+    /// (`Palette.background`).
+    member this.ClearColor =
+        match currentBackground with
+        | ValueSome c -> c
+        | ValueNone -> this.WindowTheme.Get Palette.background
 
     member _.LastFrame = stats
 
@@ -260,7 +295,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// Shows a view in the app's layer (builds the elements the first time, patches them after that).
     member _.Update(view: View) = app.Update view
 
-    member private _.DrawFrame() =
+    member private this.DrawFrame() =
         let time = clock.Elapsed
         for l in layers do
             l.Tree.Time <- time
@@ -283,7 +318,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         match surface.TryBeginFrame scale with
         | Some frame ->
             use frame = frame
-            frame.Clear currentBackground
+            frame.Clear this.ClearColor
             for l in layers do
                 l.Tree.Render frame.DrawList
             stats <-
@@ -406,12 +441,14 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         | _ -> false
 
     interface System.IDisposable with
-        member _.Dispose() = surface.Dispose()
+        member _.Dispose() =
+            themeSubscription.Dispose()
+            surface.Dispose()
 
 module ElementHost =
     /// A host for `window`, drawing with `device` and `text`:
     /// `ElementHost.create window device text [ ElementHost.background (Color.Hex 0x181825) ]`.
     let create (window: IWindow) (device: IRenderDevice) (text: TextSystem) (settings: ElementHostSetting list) =
-        let defaults = { Background = Color.Black; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = []; Theme = ValueSome defaultTheme.Value }
+        let defaults = { Background = ValueNone; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = []; Theme = ValueNone; AppValues = ValueNone }
         let options = settings |> List.fold (fun o (ElementHostSetting apply) -> apply o) defaults
         new ElementHost(window, device, text, options)

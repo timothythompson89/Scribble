@@ -2,7 +2,6 @@
 /// later (`useElmishWithCmd`, `Cmd.ofAsync`).
 module Scribble.Samples.CounterDemo.ElmishTab
 
-open Scribble.Rendering
 open Scribble.Core
 
 type Msg =
@@ -24,7 +23,7 @@ let view count dispatch =
         StackPanel.margin 24.0
         StackPanel.spacing 16.0
         StackPanel.children [
-            TextBlock.create [ TextBlock.text $"Count: {count}"; TextBlock.fontSize 28.0; TextBlock.foreground Color.White ]
+            TextBlock.create [ TextBlock.text $"Count: {count}"; TextBlock.fontSize 28.0 ]
             StackPanel.create [
                 StackPanel.orientation Horizontal
                 StackPanel.spacing 8.0

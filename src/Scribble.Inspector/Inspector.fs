@@ -1295,7 +1295,7 @@ module internal Views =
             let missing =
                 [ for t in themed do
                       if not (all |> List.exists (fun v -> obj.ReferenceEquals(v.Prop, t.Prop))) then
-                          { Prop = t.Prop; Value = e.GetBoxed t.Prop; Source = ValueSource.Default; Selector = "" } ]
+                          { Prop = t.Prop; Value = e.GetBoxed t.Prop; Source = ValueSource.Default; Selector = ""; Token = "" } ]
             let values =
                 all @ missing
                 |> List.filter (fun v -> state.ShowDefaults || v.Source <> ValueSource.Default || (themedRules v.Prop).IsSome)
@@ -1319,9 +1319,12 @@ module internal Views =
                           if classes.IsEmpty then "none" else String.Join(" ", classes |> List.map (fun c -> "." + c))
                       | value -> state.Format value
                   yield line (settingName v.Prop) shown (if isDefault then dim else Color.White) (sourceText v.Source)
-                  // Which style set it, under the value (`from Button:hover`; the source says style or theme).
-                  let under = if v.Source = ValueSource.Style || v.Source = ValueSource.Theme then "from " + v.Selector else ""
-                  if under.Length > 0 then
+                  // Under the value: the theme token it reads (`Palette.surface`), then which style set
+                  // it (`from Button:hover`; the source says style or theme).
+                  let unders =
+                      [ if v.Token.Length > 0 then v.Token
+                        if v.Source = ValueSource.Style || v.Source = ValueSource.Theme then "from " + v.Selector ]
+                  for under in unders do
                       yield
                           TextBlock.create [
                               // Under the value column only (the source column stays clear); wraps.

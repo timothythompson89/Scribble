@@ -30,6 +30,8 @@
     <Compile Include="TabsTests.fs" />
     <Compile Include="StyleTests.fs" />
     <Compile Include="ThemeTests.fs" />
+    <Compile Include="TokenTests.fs" />
+    <Compile Include="AppValueTests.fs" />
     <Compile Include="LayerTests.fs" />
     <Compile Include="InspectorTests.fs" />
   </ItemGroup>

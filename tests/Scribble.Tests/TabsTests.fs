@@ -27,9 +27,9 @@ let private click (scope: Element) (label: string) =
         all scope |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && firstText e = label)
     (target.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
 
-/// The demo's StackPanel: the tab row, then the four pages.
+/// The demo's StackPanel (inside the Demo component): the tab row, then the pages.
 let private parts (t: ElementTree) =
-    let panel = t.Root.Value.Children[0]
+    let panel = t.Root.Value.Children[0] // Demo, then its StackPanel
     panel.Children[0], [ for i in 1..4 -> panel.Children[i] ]
 
 let private texts (e: Element) =

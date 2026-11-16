@@ -7,7 +7,9 @@
     <Compile Include="Primitives.fs" />
     <Compile Include="InputTypes.fs" />
     <Compile Include="Props.fs" />
+    <Compile Include="Palette.fs" />
     <Compile Include="Dispatcher.fs" />
+    <Compile Include="AppValue.fs" />
     <Compile Include="Cmd.fs" />
     <Compile Include="Animation.fs" />
     <Compile Include="Element.fs" />

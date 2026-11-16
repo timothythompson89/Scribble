@@ -98,6 +98,21 @@ type internal ComponentInstance(element: Element, name: string) =
         else
             invalidOp $"Component '{name}' called more hooks than last time (hook {i + 1}, {kind}). Call hooks unconditionally, in the same order every time."
 
+    /// Puts `next` in place of the hook just asked for (`Slot`).
+    member _.ReplaceSlot<'S when 'S :> HookSlot>(_old: 'S, next: 'S) : 'S =
+        slots[index - 1] <- next
+        next
+
+    /// The app values of the tree it's in.
+    member _.AppValues: AppValues =
+        match element.Root with
+        | ValueSome r -> r.AppValues
+        | ValueNone ->
+            // Its first run: the element hasn't joined the tree yet, which is being built.
+            match Element.Realizing with
+            | ValueSome r -> r.AppValues
+            | ValueNone -> invalidOp $"Component '{name}' used an app value outside a tree."
+
     /// Runs `action` after the frame that drew this run (effects).
     member _.Queue(action: unit -> unit) = pending.Add action
 
@@ -148,25 +163,41 @@ type internal ComponentInstance(element: Element, name: string) =
 /// A piece of state from `ctx.useState`. Setting it re-runs the component on the next frame (an
 /// equal value changes nothing). Set and Update work from any thread: off the UI thread they're
 /// queued to it. Read `Current` on the UI thread.
+/// `ctx.useAppValue` gives the same type, backed by the app's value instead of the component.
 [<Sealed>]
-type State<'T> internal (initial: 'T, instance: ComponentInstance) =
-    let mutable value = initial
+type State<'T> internal (read: unit -> 'T, set: 'T -> unit, onUiThread: (unit -> unit) -> unit) =
 
-    let set (next: 'T) =
-        if not (EqualityComparer<'T>.Default.Equals(value, next)) then
-            instance.Invalidate()
-            value <- next
+    member _.Current = read ()
 
-    member _.Current = value
-
-    member _.Set(next: 'T) = instance.OnUiThread(fun () -> set next)
+    member _.Set(next: 'T) = onUiThread (fun () -> set next)
 
     /// Sets the state from its current value: `count.Update(fun c -> c + 1)`. Use it in handlers
     /// that may run after other changes, so they never work from a stale value (from another
     /// thread, `change` runs on the UI thread with the value current there).
-    member _.Update(change: 'T -> 'T) = instance.OnUiThread(fun () -> set (change value))
+    member _.Update(change: 'T -> 'T) = onUiThread (fun () -> set (change (read ())))
 
-    override _.ToString() = string (box value)
+    override _.ToString() = string (box (read ()))
+
+    /// A component's own state.
+    static member internal Local(initial: 'T, instance: ComponentInstance) =
+        let value = ref initial
+        let set (next: 'T) =
+            if not (EqualityComparer<'T>.Default.Equals(value.Value, next)) then
+                instance.Invalidate()
+                value.Value <- next
+        State<'T>((fun () -> value.Value), set, instance.OnUiThread)
+
+/// `ctx.useAppValue`: subscribed to the app's value while the component lives (from its first run,
+/// so a change before its effects run isn't missed).
+[<Sealed>]
+type internal AppValueSlot<'T>(value: AppValue<'T>, values: AppValues, instance: ComponentInstance) =
+    inherit HookSlot($"useAppValue {value.Name}")
+    let subscription = values.Subscribe(value.Id, fun () -> instance.Invalidate())
+    member _.Value = value
+    member val State = State<'T>((fun () -> values.Get value), (fun next -> values.Set(value, next)), instance.OnUiThread)
+    override _.Inspect _ = struct (ValueSome(box (values.Get value)), "")
+    interface IDisposable with
+        member _.Dispose() = subscription.Dispose()
 
 [<Sealed>]
 type internal StateSlot<'T>(kind: string, state: State<'T>) =
@@ -282,7 +313,20 @@ type ComponentContext internal (instance: ComponentInstance) =
 
     /// A state hook under another name (useElmish keeps its model in one).
     member private _.State<'T>(kind: string, initial: 'T) : State<'T> =
-        (instance.Slot(kind, fun () -> StateSlot<'T>(kind, State<'T>(initial, instance)))).State
+        (instance.Slot(kind, fun () -> StateSlot<'T>(kind, State<'T>.Local(initial, instance)))).State
+
+    /// An app value (`AppValue.define`), shared by every component that uses it: `let light =
+    /// ctx.useAppValue compactMode`, then `compact.Current`, `compact.Set true`. The component re-runs
+    /// when anything sets it (an equal value changes nothing).
+    member _.useAppValue<'T>(value: AppValue<'T>) : State<'T> =
+        let create () = new AppValueSlot<'T>(value, instance.AppValues, instance)
+        let slot = instance.Slot("useAppValue", create)
+        if obj.ReferenceEquals(slot.Value, value) then slot.State
+        else
+            // Another value at this place than last time: subscribe to that one instead.
+            let replaced = instance.ReplaceSlot(slot, create ())
+            (slot :> IDisposable).Dispose()
+            replaced.State
 
     /// A value computed from `deps`, computed again only when `deps` change (F# equality):
     /// `ctx.useMemo(items, fun items -> List.sortBy _.Name items)`.
@@ -320,8 +364,8 @@ type ComponentContext internal (instance: ComponentInstance) =
             instance.OnUiThread(fun () ->
                 let model, cmd = update msg state.Current
                 state.Set model
-                Cmd.execute instance.ReportError dispatch cmd)
-        this.useEffect((), fun () -> Cmd.execute instance.ReportError dispatch (snd init))
+                Cmd.execute instance.ReportError instance.AppValues dispatch cmd)
+        this.useEffect((), fun () -> Cmd.execute instance.ReportError instance.AppValues dispatch (snd init))
         state.Current, dispatch
 
     member private _.Async<'D, 'T>(deps: 'D, start: 'D -> CancellationToken -> Task<'T>) : AsyncValue<'T> =

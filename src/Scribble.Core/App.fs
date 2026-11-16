@@ -11,7 +11,7 @@ open Scribble.Text
 type internal ProgramRunner<'Msg> = { View: unit -> View; Dispatch: 'Msg -> unit; Start: unit -> unit }
 
 /// What a program gets from the runtime: "the view needs rebuilding" and the UI thread's dispatcher.
-type internal ProgramHost = { Changed: unit -> unit; Dispatcher: Dispatcher }
+type internal ProgramHost = { Changed: unit -> unit; Dispatcher: Dispatcher; AppValues: AppValues }
 
 /// What `App.onStart` handlers get: the running app's host and platform, for packages that plug
 /// into the app (the inspector adds layers and may open a window of its own).
@@ -21,12 +21,18 @@ type AppContext internal (host: ElementHost, platform: IPlatform, title: string)
     member _.Platform = platform
     /// The app's title (`App.title`).
     member _.Title = title
+    /// The app values (`AppValue.define`), shared by the app's windows and layers.
+    member _.AppValues = host.AppValues
+    /// An app value: `ctx.Get compactMode`.
+    member _.Get<'T>(value: AppValue<'T>) : 'T = host.AppValues.Get value
+    /// Sets an app value for the whole app (from any thread): `ctx.Set(compactMode, true)`.
+    member _.Set<'T>(value: AppValue<'T>, next: 'T) : unit = host.AppValues.Set(value, next)
 
 /// Everything App settings configure.
 type AppConfig<'Msg> internal () =
     member val internal Title = "Scribble" with get, set
     member val internal Size: DipSize = { Width = 960.0; Height = 600.0 } with get, set
-    member val internal Background = Color.Hex 0x181825 with get, set
+    member val internal Background: Color voption = ValueNone with get, set
     member val internal Fonts: Font list = [] with get, set
     member val internal ShowStats = false with get, set
     member val internal CloseOnEscape = false with get, set
@@ -35,8 +41,8 @@ type AppConfig<'Msg> internal () =
     member val internal OnError: (exn -> unit) voption = ValueNone with get, set
     member val internal Layers: LayerSetting list list = [] with get, set
     member val internal Styles: Style list = [] with get, set
-    member val internal Theme: Theme voption = ValueNone with get, set
     member val internal OnStart: (AppContext -> unit) list = [] with get, set
+    member val internal Values: (AppValues -> unit) list = [] with get, set
     /// Makes the program, given the runtime's side of it.
     member val internal Program: (ProgramHost -> ProgramRunner<'Msg>) voption = ValueNone with get, set
 
@@ -60,8 +66,9 @@ type App =
     static member size<'Msg>(width: float, height: float) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Size <- { Width = width; Height = height })
 
-    /// Cleared behind the view every frame.
-    static member background<'Msg>(value: Color) : AppSetting<'Msg> = AppSetting(fun c -> c.Background <- value)
+    /// Cleared behind the view every frame, instead of the theme's background (the default, which
+    /// follows a theme the view switches to).
+    static member background<'Msg>(value: Color) : AppSetting<'Msg> = AppSetting(fun c -> c.Background <- ValueSome value)
 
     /// Fallback fonts for characters the main fonts lack, e.g. `[ Scribble.Text.Emoji.Twemoji() ]`.
     static member fonts<'Msg>(fallbacks: Font list) : AppSetting<'Msg> = AppSetting(fun c -> c.Fonts <- fallbacks)
@@ -105,10 +112,10 @@ type App =
                             if not (EqualityComparer<'Model>.Default.Equals(next, model.Value)) then
                                 model.Value <- next
                                 host.Changed()
-                            Cmd.execute host.Dispatcher.ReportError dispatch.Value cmd)
+                            Cmd.execute host.Dispatcher.ReportError host.AppValues dispatch.Value cmd)
                     { View = (fun () -> view model.Value dispatch.Value)
                       Dispatch = (fun msg -> dispatch.Value msg)
-                      Start = fun () -> Cmd.execute host.Dispatcher.ReportError dispatch.Value (snd init) }))
+                      Start = fun () -> Cmd.execute host.Dispatcher.ReportError host.AppValues dispatch.Value (snd init) }))
 
     /// A view that never changes (components inside it keep their own state).
     static member view<'Msg>(value: View) : AppSetting<'Msg> =
@@ -124,13 +131,21 @@ type App =
 
     /// The theme for the whole app (every layer but those with `Layer.appStyles false`): the
     /// built-in looks, below every other style, and the base text color, font and size. Default:
-    /// `Theme.dark []`. To switch themes while running, set an element's `theme` from the model.
-    static member theme<'Msg>(value: Theme) : AppSetting<'Msg> = AppSetting(fun c -> c.Theme <- ValueSome value)
+    /// `Theme.dark []`. It's the starting value of `Theme.current`, an app value: switch while running
+    /// with `ctx.useAppValue Theme.current` (`.Set otherTheme`), `AppContext.Set(Theme.current, t)` or
+    /// `Cmd.setAppValue Theme.current t`; the whole window follows (every layer that takes app styles,
+    /// and the background).
+    static member theme<'Msg>(value: Theme) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(Theme.current, value) ])
 
     /// A layer above the app: `App.layer [ Layer.view (toasts ()) ]`, or a modal one with
     /// `Layer.modal true`. Its view is fixed (components inside keep their own state); see `Layer`.
     static member layer<'Msg>(settings: LayerSetting list) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Layers <- c.Layers @ [ settings ])
+
+    /// An app value's starting value (`AppValue.define`): `App.value compactMode true`.
+    static member value<'Msg, 'T> (value: AppValue<'T>) (start: 'T) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(value, start) ])
 
     /// Runs once the window and its host exist (layers added, before the first frame): for
     /// packages that plug into the host, such as `Inspector.enable`.
@@ -164,12 +179,16 @@ type App =
         let dispatcher = Dispatcher(platform.Wake)
         config.OnError |> ValueOption.iter (fun handler -> dispatcher.OnError <- handler)
         platform.SetWakeHandler dispatcher.RunPending
+        // The app values, shared by its windows and layers, with their starting values.
+        let values = AppValues(Dispatcher = ValueSome dispatcher)
+        for set in config.Values do
+            set values
         let requestRebuild () =
             dirty.Value <- true
             host.Value |> ValueOption.iter (fun (h: ElementHost) -> h.Window.RequestFrame())
         let runner =
             match config.Program with
-            | ValueSome make -> make { Changed = requestRebuild; Dispatcher = dispatcher }
+            | ValueSome make -> make { Changed = requestRebuild; Dispatcher = dispatcher; AppValues = values }
             | ValueNone -> { View = (fun () -> Border.create []); Dispatch = ignore; Start = ignore }
         let send (handlers: ('a -> 'Msg option) list) (value: 'a) =
             for handler in handlers do
@@ -211,11 +230,11 @@ type App =
             | ValueNone -> ()
         let h =
             ElementHost.create window device text [
-                ElementHost.background config.Background
+                yield! config.Background |> ValueOption.map ElementHost.background |> ValueOption.toList
                 ElementHost.dispatcher dispatcher
+                ElementHost.appValues values
                 ElementHost.beforeFrame beforeFrame
                 ElementHost.styles config.Styles
-                ElementHost.theme (match config.Theme with ValueSome t -> t | ValueNone -> defaultTheme.Value)
             ]
         host.Value <- ValueSome h
         for layer in config.Layers do

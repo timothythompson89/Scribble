@@ -64,7 +64,7 @@ dotnet publish samples/Scribble.Samples.Browser -c Release -p:BrowserAot=true   
 | `src/Scribble.Text` | TrueType parser, rasterizer, text system, line breaking, wrapping/trimming; Inter built in |
 | `src/Scribble.Text.HarfBuzz` / `.Browser` | Shaping: native HarfBuzz / harfbuzzjs wasm (identical output) |
 | `src/Scribble.Text.Emoji` | Opt-in Twemoji COLRv0 font (CC-BY 4.0 art: apps must credit) |
-| `src/Scribble.Core` | Views, differ, elements, layout, styles, Border/StackPanel/TextBlock/Button/ScrollViewer, App settings and runtime |
+| `src/Scribble.Core` | Views, differ, elements, layout, styles, themes, components, app values, Border/StackPanel/TextBlock/Button/ScrollViewer, App settings and runtime |
 | `src/Scribble.Desktop` / `src/Scribble.Browser` | `App.run` / `App.runInBrowser`: one reference brings platform, GPU and shaping |
 | `src/Scribble.Inspector` | Opt-in inspector (`Inspector.enable [ ... ]`): panel and highlight layers, tree, pick mode |
 | `samples/Shared` | Dashboard, HelloApp, Counter (shared by desktop and browser hosts) |
@@ -178,10 +178,10 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
 (draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
 (lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 step 1 (styles) and step 2a (themes; inspector: forcing states, themed properties, selection corner marks) are done and verified (2026-11-16). Last counts: 227 unit tests,
-35 rendering tests (after M7 step 2a).
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme tokens and app values) is done and verified (2026-11-16). Last counts: 244 unit tests,
+37 rendering tests (after M7 step 2b).
 
-Remaining milestones: M7 styles (next: plan step 2b), M7c custom title bars (Win32 first; the popped-out
+Remaining milestones: M7c custom title bars (Win32 first; the popped-out
 inspector looks like the docked panel; see DESIGN.md), M7b icons, M8 core controls
 (Grid, DockPanel, Canvas, dashed lines in the renderer, rest of ScrollViewer, CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
 animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
@@ -270,7 +270,21 @@ Two steps, each tried by Tim before the next:
    render is Border's plus the focus ring. Inherited `foreground`/`font`/`fontSize` (Layoutable settings; own >
    styles > type default > ancestor > theme base > prop default; `ValueSource.Inherited`). `Style.transition prop
    duration` (render-only props with an interpolator; tween starts when the new value is first read, frames only
-   while moving). 2b next: `Theme.light`, Light/Dark switch in the Counter demo.
+   while moving). **2b done with theme tokens (Tim's choice after reading 2b's first code), verified by Tim on
+   Windows and in the browser 2026-11-16:** `Theme.light`; **tokens** (`ThemeValue<'T>`, `ThemeValue.define "Name" default`; built-ins
+   in `Palette`: surface, accent, text, hoverTint, shadow, cornerRadius, ...) that settings take in place of values
+   (`Border.background Palette.surface`; element authors: `Setting.fromTheme prop token`), resolved from the nearest
+   theme when read (`Element.TokenValue`; each element remembers its nearest theme until a global epoch is bumped by a move or theme change; stored as an internal `ThemeRef`); themes set them (`Theme.set token v`,
+   shorthands `Theme.accent c`); code reads `theme.Get Palette.accent`, render functions `ctx.Theme token`. The
+   built-in looks are one token style list shared by every theme. The window's theme is the built-in app value
+   `Theme.current` (`host.WindowTheme`: layers with app styles and the background follow it; `App.theme` and
+   `ElementHost.theme` set its start; an element's `theme` applies only inside it, the root's too). Counter demo:
+   `App.theme darkTheme`, `App.view (demo ())`; its `ThemeSwitch` sets `Theme.current`. Following the OS setting is later.
+   **App values (done with 2b, verified 2026-11-16):** `AppValue.define "Name" default`; `ctx.useAppValue v`
+   (a `State<'T>`, now backed by functions); one `AppValues` store per app (`App.start` makes it; `ElementHost.appValues`;
+   every layer's tree gets it; a bare `ElementTree` has its own); `App.value v x`, `AppContext.Get/Set`,
+   `Cmd.setAppValue` (Cmd effects receive the store). Components first run before joining the tree, so
+   `Element.RealizingIn` (thread-static) tells them which tree is being built. Decisions in DESIGN.md.
 
 ### Later notes
 

@@ -166,6 +166,14 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    - Disabled buttons (Reset at zero, "Disable Danger") fade as before; their label is barely lighter (50%).
    - Moving between buttons quickly draws only while a fade runs, then stops (the frame counter in the title goes
      idle).
+11. Light and dark (M7 step 2b, verified): the Counter demo has a "Light"/"Dark" button at the right of the tab row.
+   - Light: a light grey window (the window's background follows the theme), white buttons with grey borders, dark
+     text; the selected tab, Primary and Danger keep white text. Hover darkens a button slightly, press darkens it
+     more and sinks it; disabled buttons fade.
+   - Every tab follows: the List tab's bars, the Layers tab's rows, scrollbar, toast and dialog (open it after
+     switching), the Styles tab's cards and chips. "Dark" switches back to exactly the old look (the count and
+     list text is now the theme's text color, a hair softer than white).
+   - The inspector stays dark either way.
    - Inspector: pick a button and hover it: `overlay` shows `theme`, "from Button:hover"; `background` is `theme`,
      "from Button" (Primary's: `style`, "from Button.primary": the app's own style). Pick a button's label: `foreground` shows
      `inherited`. Tab focus rings and the Layers tab's scrollbar look as before.
@@ -369,6 +377,27 @@ StackPanel.items names id counter                                // keyed: state
   Easings: `Easing.linear`, `easeIn`, `easeOut` (the default), `easeInOut`, or any `float -> float`.
 - An app made only of components has no messages: annotate its settings (`let app: AppSetting<unit> list = ...`).
 
+**App values:** state declared once and shared by any component, without passing it down:
+
+```fsharp
+let compactMode = AppValue.define "CompactMode" false            // a name (for the inspector), a default
+
+let compactSwitch = Component.define "CompactSwitch" (fun ctx () ->
+    let compact = ctx.useAppValue compactMode                    // the usual State: .Current, .Set, .Update
+    Button.create [ Button.text (if compact.Current then "Roomy" else "Compact"); Button.onClick (fun _ -> compact.Update not) ])
+
+App.run [ App.value compactMode true; ... ]                      // optional starting value
+```
+
+- Every component that reads it re-runs when it changes (an equal value changes nothing); others don't.
+- One set of values per app, shared by its windows and layers (toasts and dialogs see the same); a bare
+  `ElementTree` has its own (`tree.AppValues`), so tests stay apart.
+- Outside components: `AppContext` from `App.onStart` (`ctx.Get compactMode`, `ctx.Set(compactMode, true)`), and
+  `Cmd.setAppValue compactMode true` from an Elmish update. Sets work from any thread.
+- The app's data belongs in its Elmish model; app values are for UI-wide things (a compact layout, the selected
+  section, the signed-in user's name). The two work together. The window's theme is one: `Theme.current` (see
+  Styles). The inspector lists `useAppValue CompactMode` with its value among a component's hooks.
+
 ### Async
 
 Everything in the UI runs on one thread. Work that waits (files, network, delays) runs elsewhere and comes back:
@@ -530,7 +559,7 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
 let theme = Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.cornerRadius 8.0 ]   // Theme.dark [] is the default
 App.run [ App.theme theme; ... ]
 Border.create [ Border.theme otherTheme; Border.child (...) ]       // a different theme for what's inside
-Button.style [ Style.cls "primary" ] [ Button.background theme.Accent ]  // the palette is readable
+Button.style [ Style.cls "primary" ] [ Button.background Palette.accent ]  // a theme value, by token (below)
 ```
 
 - **Precedence:** own value > inline blocks > styles > `App.styles` > the theme > type defaults. Hosts made by hand
@@ -551,6 +580,47 @@ Button.style [ Style.cls "primary" ] [ Button.background theme.Accent ]  // the 
 - The inspector shows values from the theme's styles as `theme` ("from Button:hover"), the app's and elements' styles as
   `style`, and inherited text values as `inherited` (`ValueSource.Theme`, `Style`, `Inherited` in `element.Values`).
   It keeps its own dark theme whatever the app's is.
+
+**Theme values and light/dark** (M7 step 2b). Colors, shadows, corner radius, font and size can be given by
+**token** instead of by value: the setting then reads the value from the nearest theme, so one view and one style
+list serve every theme, and nothing passes the theme around.
+
+```fsharp
+// The built-in tokens are in Palette; an app declares its own like props:
+let cardLine = ThemeValue.define "CardLine" (Color.Hex 0x34345A)       // the default (no theme, or not set)
+
+let dark  = Theme.dark  [ Theme.set cardLine (Color.Hex 0x34345A) ]      // make themes once
+let light = Theme.light [ Theme.set cardLine (Color.Hex 0xDCDCE6); Theme.accent (Color.Hex 0x2F5BD3) ]
+
+Border.style [ Style.cls "card" ] [
+    Border.background Palette.surface        // a token, not a color: each theme gives its own
+    Border.borderBrush cardLine
+    Style.on States.hover [ Border.borderBrush Palette.accent ]
+]
+
+// The window's theme is an app value, Theme.current: App.theme sets where it starts, and setting it
+// from anywhere switches the whole window (every layer that takes app styles, and the background):
+App.run [ App.theme dark; ... ]
+let themeSwitch = Component.define "ThemeSwitch" (fun ctx () ->
+    let theme = ctx.useAppValue Theme.current
+    let isLight = obj.ReferenceEquals(theme.Current, light)
+    Button.create [ Button.text (if isLight then "Dark" else "Light")
+                    Button.onClick (fun _ -> theme.Set(if isLight then dark else light)) ])
+```
+
+- **`Palette`:** `background`, `surface`, `control`, `border`, `text`, `textDim`, `accent`, `danger`, `onAccent`
+  (text on accent or danger backgrounds, white in both), `focusRing`, `hoverTint`, `pressTint`, `scrollThumb`,
+  `shadow` (a button at rest; the theme flattens it when pressed or disabled), `cornerRadius`, `font`, `fontSize`.
+  Their defaults are the dark theme's values. The built-in looks are written with them, so `Theme.dark` and
+  `Theme.light` differ only in values.
+- **Setting values:** `Theme.set token value`, or the shorthands for the built-ins (`Theme.accent c`,
+  `Theme.cornerRadius 8.0`). The nearest theme decides; a token it doesn't set has its default.
+- **Reading a value in code:** `theme.Get Palette.accent`; in a custom element's render function,
+  `ctx.Theme Palette.accent`. Element authors give a setting a token overload with `Setting.fromTheme prop token`.
+- `App.theme` is the starting theme. Outside components, switch with `AppContext.Set(Theme.current, t)` or
+  `Cmd.setAppValue Theme.current t`. A `theme` on an element applies only inside it (the root's too). A theme switch
+  doesn't animate (hover and press still fade). The inspector shows the token under the value (`Palette.surface`).
+- Not yet: following the OS's light/dark setting (later).
 
 ### Elements and layout
 

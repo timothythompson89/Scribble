@@ -36,9 +36,9 @@ let toasts =
                 Border.create [
                     Border.padding (14.0, 10.0)
                     Border.cornerRadius 8.0
-                    Border.background (Color.Hex 0x3D59A1)
-                    Border.shadow { Blur = 12.0; OffsetX = 0.0; OffsetY = 4.0; Spread = 0.0; Color = Color.Black.WithAlpha 0.5f }
-                    Border.child (TextBlock.create [ TextBlock.text text; TextBlock.foreground Color.White ])
+                    Border.background Palette.accent
+                    Border.shadow floatShadow
+                    Border.child (TextBlock.create [ TextBlock.text text; TextBlock.foreground Palette.onAccent ])
                 ])
         ])
 
@@ -50,7 +50,7 @@ let dialog =
         ctx.useSubscription((), fun () -> dialogRequests.Publish.Subscribe(fun () -> isOpen.Set true))
         Border.create [
             Border.isVisible isOpen.Current
-            Border.background (Color.Black.WithAlpha 0.55f)
+            Border.background scrim
             Border.child (
                 Border.create [
                     Border.width 340.0
@@ -58,17 +58,17 @@ let dialog =
                     Border.verticalAlignment VerticalAlignment.Center
                     Border.padding 20.0
                     Border.cornerRadius 10.0
-                    Border.background (Color.Hex 0x24243A)
-                    Border.shadow { Blur = 24.0; OffsetX = 0.0; OffsetY = 8.0; Spread = 0.0; Color = Color.Black.WithAlpha 0.6f }
+                    Border.background Palette.surface
+                    Border.shadow dialogShadow
                     Border.child (
                         StackPanel.create [
                             StackPanel.spacing 14.0
                             StackPanel.children [
-                                TextBlock.create [ TextBlock.text "A modal layer"; TextBlock.fontSize 18.0; TextBlock.foreground Color.White ]
+                                TextBlock.create [ TextBlock.text "A modal layer"; TextBlock.fontSize 18.0 ]
                                 TextBlock.create [
                                     TextBlock.text "Until this closes, the app below can't be clicked, scrolled or reached with Tab: Tab stays in here."
                                     TextBlock.textWrapping TextWrapping.Wrap
-                                    TextBlock.foreground dim
+                                    TextBlock.foreground Palette.textDim
                                 ]
                                 StackPanel.create [
                                     StackPanel.orientation Horizontal
@@ -92,7 +92,7 @@ let layersPage =
         StackPanel.margin (24.0, 16.0, 24.0, 0.0)
         StackPanel.spacing 12.0
         StackPanel.children [
-            TextBlock.create [ TextBlock.text "Layers above the app, and a ScrollViewer"; TextBlock.foreground dim ]
+            TextBlock.create [ TextBlock.text "Layers above the app, and a ScrollViewer"; TextBlock.foreground Palette.textDim ]
             StackPanel.create [
                 StackPanel.orientation Horizontal
                 StackPanel.spacing 8.0
@@ -113,11 +113,10 @@ let layersPage =
                                 Border.create [
                                     Border.height 30.0
                                     Border.padding (10.0, 0.0)
-                                    Border.background (if i % 2 = 0 then Color.Hex 0x24243A else Color.Hex 0x2A2A42)
+                                    Border.background (if i % 2 = 0 then Palette.surface else rowAlt)
                                     Border.child (
                                         TextBlock.create [
                                             TextBlock.text $"Row {i} of 40"
-                                            TextBlock.foreground Color.White
                                             TextBlock.verticalAlignment VerticalAlignment.Center
                                         ]
                                     )

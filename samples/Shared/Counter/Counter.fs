@@ -2,7 +2,7 @@
 /// line), on five tabs that keep each page's state while another is shown. Each tab has its own
 /// file next to this one (compiled in this order):
 ///
-/// - Common.fs: what the tabs share,
+/// - Common.fs: what the tabs share (the theme tokens and the two themes),
 /// - ElmishTab.fs: an Elmish counter inside a component, with a command (`useElmishWithCmd`),
 /// - LoadTab.fs: a slow load that restarts when its input changes (`useAsync`),
 /// - ListTab.fs: keyed counters with their own state and an animated bar (`useState`, `useAnimated`),
@@ -17,7 +17,7 @@ open Scribble.Samples.CounterDemo.Common
 open Scribble.Samples.CounterDemo
 
 let private heading (text: string) =
-    TextBlock.create [ TextBlock.text text; TextBlock.foreground dim; TextBlock.margin (24.0, 16.0, 24.0, 0.0) ]
+    TextBlock.create [ TextBlock.text text; TextBlock.foreground Palette.textDim; TextBlock.margin (24.0, 16.0, 24.0, 0.0) ]
 
 /// The demo's pages: tab title, then the page.
 let private pages =
@@ -27,7 +27,20 @@ let private pages =
       "Layers", [ LayersTab.layersPage ]
       "Styles", [ StylesTab.stylesPage () ] ]
 
-let private tabStyles = [ Button.style [ Style.cls "selected" ] [ Button.background (Color.Hex 0x3D59A1) ] ]
+/// The selected tab's look: the theme's accent, whichever theme is in use.
+let private tabStyles = [ Button.style [ Style.cls "selected" ] [ Button.background Palette.accent; Button.foreground Palette.onAccent ] ]
+
+/// The Light/Dark button: it switches the window's theme (`Theme.current`, an app value) itself,
+/// wherever it sits; the whole window follows, the toast and dialog layers too.
+let private themeSwitch =
+    Component.define "ThemeSwitch" (fun ctx () ->
+        let theme = ctx.useAppValue Theme.current
+        let isLight = obj.ReferenceEquals(theme.Current, lightTheme)
+        Button.create [
+            Button.text (if isLight then "Dark" else "Light")
+            Button.width 64.0
+            Button.onClick (fun _ -> theme.Set(if isLight then darkTheme else lightTheme))
+        ])
 
 /// Tabs made from what's already there: every page stays in the tree and only the selected one
 /// is visible (`isVisible false` is neither measured, drawn, hit nor focused), so each page keeps
@@ -43,14 +56,17 @@ let demo =
                     StackPanel.margin (24.0, 16.0, 24.0, 0.0)
                     StackPanel.styles tabStyles
                     StackPanel.children [
-                        for i, (title, _) in List.indexed pages ->
+                        for i, (title, _) in List.indexed pages do
                             Button.create [
                                 yield Button.text title
-                                yield Button.width 80.0
+                                yield Button.width 72.0
                                 // The selected tab gets a class; the tab row's styles color it.
                                 if i = selected.Current then yield Button.classes [ "selected" ]
                                 yield Button.onClick (fun _ -> selected.Set i)
                             ]
+                        // Takes the space that's left, so the switch sits at the right.
+                        Border.create [ Border.width "1*" ]
+                        themeSwitch ()
                     ]
                 ]
                 // Pages by position: the same ones in the same places, so switching only flips
@@ -61,10 +77,11 @@ let demo =
             ]
         ])
 
-/// Components hold all the state, so the app has no messages of its own (hence `unit`).
+/// Components and app values (the theme) hold all the state, so the app has no messages of its own (hence `unit`).
 let app: AppSetting<unit> list =
     [ App.title "Counter"
       App.size (520.0, 520.0)
+      App.theme darkTheme
       App.view (demo ())
       App.layer [ Layer.name "Toasts"; Layer.view (LayersTab.toasts ()) ]
       App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (LayersTab.dialog ()) ] ]

@@ -208,6 +208,47 @@ let ``a custom host is made from settings`` () =
     Assert.Equal(1, frames.Value)
     Assert.Equal(Color.Hex 0x123456, device.LastClear)
     Assert.True(obj.ReferenceEquals(dispatcher, host.Dispatcher.Value))
-    host.Background <- Color.White // still changeable while running
+    host.Background <- ValueSome Color.White // still changeable while running
     host.HandleEvent Frame |> ignore
     Assert.Equal(Color.White, device.LastClear)
+
+[<Fact>]
+let ``without a background the window is cleared to the window theme's, which follows Theme.current`` () =
+    let w = new FakeWindow(ignore)
+    let device = new FakeDevice()
+    let light = Theme.light []
+    use host = ElementHost.create w device (TextSystem.create device (new FixedShaper()) []) []
+    host.Update(Border.create [])
+    host.HandleEvent Frame |> ignore
+    Assert.Equal((Theme.dark []).Get Palette.background, device.LastClear) // the default theme
+    w.FrameRequested <- false
+    host.AppValues.Set(Theme.current, light)
+    Assert.True(w.FrameRequested) // the switch asks for a frame
+    host.HandleEvent Frame |> ignore
+    Assert.Equal(light.Get Palette.background, device.LastClear)
+    // A theme on the view's root applies inside it only now, not to the window.
+    host.Update(Border.create [ Border.theme (Theme.dark []) ])
+    host.HandleEvent Frame |> ignore
+    Assert.Equal(light.Get Palette.background, device.LastClear)
+    host.Background <- ValueSome Color.White // an override wins
+    host.HandleEvent Frame |> ignore
+    Assert.Equal(Color.White, device.LastClear)
+
+[<Fact>]
+let ``the window theme reaches every layer with app styles, not the inspector's kind`` () =
+    let w = new FakeWindow(ignore)
+    let device = new FakeDevice()
+    let light = Theme.light []
+    use host = ElementHost.create w device (TextSystem.create device (new FixedShaper()) []) [ ElementHost.theme light ]
+    let toast = host.AddLayer [ Layer.name "Toasts"; Layer.view (TextBlock.create [ TextBlock.text "toast" ]) ]
+    let own = host.AddLayer [ Layer.name "Tool"; Layer.appStyles false; Layer.view (TextBlock.create [ TextBlock.text "tool" ]) ]
+    let text (l: Layer) = l.Tree.Root.Value.Get InheritedProps.foreground
+    host.Update(TextBlock.create [ TextBlock.text "app" ])
+    host.HandleEvent Frame |> ignore
+    Assert.Equal(light.Get Palette.text, text toast) // the starting theme (ElementHost.theme)
+    Assert.Equal(light.Get Palette.text, host.Tree.Root.Value.Get InheritedProps.foreground)
+    Assert.Equal(InheritedProps.foreground.Default, text own) // its own theme only (none here)
+    host.AppValues.Set(Theme.current, Theme.dark [])
+    host.HandleEvent Frame |> ignore
+    Assert.Equal(Palette.text.Default, text toast)
+    Assert.Equal(InheritedProps.foreground.Default, text own)

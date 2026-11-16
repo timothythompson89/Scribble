@@ -112,7 +112,7 @@ let ``an element's theme applies to what's inside it`` () =
                 ]
             ]
         )
-    Assert.Equal(dark.Control, (find "outside" root).Get BorderProps.background)
+    Assert.Equal(dark.Get Palette.control, (find "outside" root).Get BorderProps.background)
     Assert.Equal(red, (find "inside" root).Get BorderProps.background)
     Assert.Equal(green, (find "text" root).Get TextProps.foreground)
 
@@ -293,3 +293,39 @@ let ``a forced hover reaches the ancestors, as the pointer over a child does`` (
     layout t
     Assert.DoesNotContain(States.hover, button.ActiveStates)
     Assert.NotEqual(green, panel.Get BorderProps.background)
+
+[<Fact>]
+let ``the light theme gives dark text, light controls and dark tints`` () =
+    let light = Theme.light []
+    let t = themed light []
+    let root =
+        show t (
+            StackPanel.create [
+                StackPanel.children [
+                    Button.create [ Button.name "b"; Button.content (TextBlock.create [ TextBlock.name "label"; TextBlock.text "Hi" ]) ]
+                    ScrollViewer.create [ ScrollViewer.name "s" ]
+                ]
+            ]
+        )
+    let b = find "b" root
+    Assert.Equal(light.Get Palette.control, b.Get BorderProps.background)
+    Assert.Equal(light.Get Palette.shadow, (b.Get BorderProps.shadow).Value)
+    Assert.Equal(light.Get Palette.text, (find "label" root).Get InheritedProps.foreground)
+    Assert.Equal(light.Get Palette.scrollThumb, (find "s" root).Get ScrollViewerProps.thumb)
+    b.ForceState(States.hover, true)
+    layout t
+    Assert.Equal(light.Get Palette.hoverTint, b.Get BorderProps.overlay)
+    Assert.Equal(Color.Black.WithAlpha 0.05f, light.Get Palette.hoverTint)
+
+[<Fact>]
+let ``the new palette colors are settings`` () =
+    let shadow = { Blur = 9.0; OffsetX = 0.0; OffsetY = 2.0; Spread = 0.0; Color = red }
+    let t =
+        Theme.dark [ Theme.onAccent green; Theme.hoverTint red; Theme.pressTint green; Theme.scrollThumb red; Theme.shadow shadow ]
+    Assert.Equal(green, t.Get Palette.onAccent)
+    Assert.Equal(red, t.Get Palette.hoverTint)
+    Assert.Equal(green, t.Get Palette.pressTint)
+    Assert.Equal(red, t.Get Palette.scrollThumb)
+    Assert.Equal(shadow, t.Get Palette.shadow)
+    Assert.Equal(Color.White, (Theme.dark []).Get Palette.onAccent)
+    Assert.Equal(Color.White, (Theme.light []).Get Palette.onAccent)

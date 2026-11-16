@@ -1,67 +1,91 @@
 namespace Scribble.Core
 
 open System
+open System.Collections.Generic
 open Scribble.Rendering
-open Scribble.Text
 
-/// The built-in looks, as ordinary styles made from a theme's palette.
+/// The built-in looks: ordinary styles that read the theme's values by token, so every theme
+/// shares one list (themes differ only in their values).
 module internal ThemeLooks =
     /// How long hover and pressed tints fade.
     let private tintTime = TimeSpan.FromMilliseconds 100.0
     /// How long a press takes to sink in and spring back.
     let private pressTime = TimeSpan.FromMilliseconds 120.0
+    /// The theme's shadow, flat (pressed or disabled).
+    let private flat: Setting<Button> = Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.flatShadow
 
-    /// Button's resting shadow, and flat (pressed or disabled).
-    let raised = { Blur = 3.0; OffsetX = 0.0; OffsetY = 1.0; Spread = 0.0; Color = Color.Rgba(0.0f, 0.0f, 0.0f, 0.35f) }
-    let flat = { raised with Blur = raised.Blur * 0.4; OffsetY = 0.0 }
+    let private styles =
+        [ Button.style [] [
+              Button.background Palette.control
+              Button.borderBrush Palette.border
+              Button.cornerRadius Palette.cornerRadius
+              Button.foreground Palette.text
+              Button.shadow Palette.shadow
+              Style.transition BorderProps.overlay tintTime
+              Style.transition LayoutProps.scale pressTime
+              Style.transition BorderProps.shadow pressTime
+              Style.on States.hover [ Button.overlay Palette.hoverTint ]
+              // Sinks to 97% around its center and its shadow flattens.
+              Style.on States.pressed [ Button.overlay Palette.pressTint; Button.scale 0.97; flat ]
+              // Last, so it wins over hover and pressed.
+              Style.on States.disabled [ Button.overlay Color.Transparent; Button.opacity 0.5; flat ]
+          ]
+          TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
+          // A disabled Button fades as a whole: its text doesn't fade twice.
+          TextBlock.style [ Style.inside Button.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
+          ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb ] ]
 
-    let build (t: Theme) : struct (Style list * struct (Prop * obj)[]) =
-        let styles =
-            [ Button.style [] [
-                  Button.background t.Control
-                  Button.borderBrush t.Border
-                  Button.cornerRadius t.CornerRadius
-                  Button.foreground t.Text
-                  Style.transition BorderProps.overlay tintTime
-                  Style.transition LayoutProps.scale pressTime
-                  Style.transition BorderProps.shadow pressTime
-                  Style.on States.hover [ Button.overlay (Color.White.WithAlpha 0.08f) ]
-                  // Sinks to 97% around its center and its shadow flattens.
-                  Style.on States.pressed [ Button.overlay (Color.Black.WithAlpha 0.2f); Button.scale 0.97; Button.shadow flat ]
-                  // Last, so it wins over hover and pressed.
-                  Style.on States.disabled [ Button.overlay Color.Transparent; Button.opacity 0.5; Button.shadow flat ]
-              ]
-              TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
-              // A disabled Button fades as a whole: its text doesn't fade twice.
-              TextBlock.style [ Style.inside Button.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
-              ScrollViewer.style [] [ ScrollViewer.thumb (Color.White.WithAlpha 0.3f) ] ]
-        let bases =
-            [| struct (InheritedProps.foreground :> Prop, box t.Text)
-               struct (InheritedProps.font :> Prop, box t.Font)
-               struct (InheritedProps.fontSize :> Prop, box t.FontSize)
-               struct (FocusRing.colorProp :> Prop, box t.FocusRing) |]
-        struct (styles, bases)
+    /// Inherited properties' base values, by token.
+    let private bases: struct (Prop * ThemeToken)[] =
+        [| struct (InheritedProps.foreground :> Prop, Palette.text :> ThemeToken)
+           struct (InheritedProps.font :> Prop, Palette.font :> ThemeToken)
+           struct (InheritedProps.fontSize :> Prop, Palette.fontSize :> ThemeToken)
+           struct (FocusRing.colorProp :> Prop, Palette.focusRing :> ThemeToken) |]
+
+    /// Made once, on first use, for every theme.
+    let all = lazy (styles, bases)
+
+    /// A theme from base values and its settings (later settings win).
+    let make (preset: ThemeSetting list) (settings: ThemeSetting list) =
+        let values = Dictionary<int, obj>()
+        for s in preset @ settings do
+            s.Apply values
+        Theme(values, all)
 
 [<AutoOpen>]
 module ThemeExtensions =
     type Theme with
         /// The dark theme (the default): `Theme.dark []`, or with changes,
-        /// `Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.cornerRadius 8.0 ]`.
-        static member dark(settings: ThemeSetting list) : Theme =
-            let palette: ThemePalette =
-                { Background = Color.Hex 0x181825
-                  Surface = Color.Hex 0x24243A
-                  Control = Color.Hex 0x3A3A55
-                  Border = Color.Hex 0x4A4A68
-                  Text = Color.Hex 0xE6E6F0
-                  TextDim = Color.Hex 0x9A9AB0
-                  Accent = Color.Hex 0x3D59A1
-                  Danger = Color.Hex 0x8C2F39
-                  FocusRing = FocusRing.color
-                  CornerRadius = 6.0
-                  Font = Fonts.Regular()
-                  FontSize = 14.0 }
-            Theme(settings |> List.fold (fun p s -> s.Apply p) palette, ThemeLooks.build)
+        /// `Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.set cardLine (Color.Hex 0x34345A) ]`.
+        /// Its values are the tokens' defaults.
+        static member dark(settings: ThemeSetting list) : Theme = ThemeLooks.make [] settings
 
-    /// The theme hosts use when given none (one instance, so its styles are made once).
+        /// The light theme: `Theme.light []`, or with changes, `Theme.light [ Theme.accent c ]`.
+        static member light(settings: ThemeSetting list) : Theme =
+            ThemeLooks.make
+                [ Theme.background (Color.Hex 0xF3F3F7)
+                  Theme.surface (Color.Hex 0xFFFFFF)
+                  Theme.control (Color.Hex 0xFFFFFF)
+                  Theme.border (Color.Hex 0xC9C9D6)
+                  Theme.text (Color.Hex 0x1E1E2E)
+                  Theme.textDim (Color.Hex 0x5E5E72)
+                  Theme.danger (Color.Hex 0xB3364A)
+                  Theme.focusRing (Color.Hex 0x2F5BD3)
+                  Theme.hoverTint (Color.Black.WithAlpha 0.05f)
+                  Theme.pressTint (Color.Black.WithAlpha 0.1f)
+                  Theme.scrollThumb (Color.Black.WithAlpha 0.3f)
+                  Theme.shadow { Blur = 3.0; OffsetX = 0.0; OffsetY = 1.0; Spread = 0.0; Color = Color.Rgba(0.0f, 0.0f, 0.0f, 0.15f) } ]
+                settings
+
+    /// The theme hosts use when given none (one instance).
     let internal defaultTheme = lazy (Theme.dark [])
+
+    let private current = lazy (AppValue.define "Theme" defaultTheme.Value)
+
+    type Theme with
+        /// The window's theme, an app value: every layer that takes app styles (toasts, dialogs; not
+        /// the inspector) and the window's background follow it. `App.theme t` sets its starting
+        /// value (default `Theme.dark []`); switch from anywhere with `ctx.useAppValue Theme.current`
+        /// (`.Set lightTheme`), `AppContext.Set(Theme.current, t)` or `Cmd.setAppValue Theme.current t`.
+        /// A `theme` on an element applies inside it only.
+        static member current: AppValue<Theme> = current.Value

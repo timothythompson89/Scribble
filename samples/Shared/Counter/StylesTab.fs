@@ -14,40 +14,40 @@ let private isSelected (v: bool) : Setting<Border> = Setting.create selected v
 /// A state read from the property: usable like `States.hover`, and listed by the inspector.
 let private selectedState = States.ofProp "selected" selected id
 
-/// The page's styles: classes, a state block, and text inside cards.
+/// The page's styles: classes, a state block, and text inside cards. Colors are theme tokens, so
+/// one list serves both themes.
 let private normalStyles =
-    [ Button.style [ Style.cls "primary" ] [ Button.background (Color.Hex 0x3D59A1); Button.borderBrush (Color.Hex 0x5A78C8) ]
-      Button.style [ Style.cls "danger" ] [ Button.background (Color.Hex 0x8C2F39); Button.borderBrush (Color.Hex 0xB04450) ]
+    [ Button.style [ Style.cls "primary" ] [ Button.background Palette.accent; Button.borderBrush accentBorder; Button.foreground Palette.onAccent ]
+      Button.style [ Style.cls "danger" ] [ Button.background Palette.danger; Button.borderBrush dangerBorder; Button.foreground Palette.onAccent ]
       Border.style [ Style.cls "card" ] [
-          Border.background (Color.Hex 0x24243A)
-          Border.borderBrush (Color.Hex 0x34345A)
+          Border.background Palette.surface
+          Border.borderBrush line
           Border.borderThickness 1.0
           Border.cornerRadius 8.0
           Border.padding 12.0
           // Highlights while the pointer is anywhere over the card.
-          Style.on States.hover [ Border.borderBrush (Color.Hex 0x8AB4F8) ]
+          Style.on States.hover [ Border.borderBrush highlight ]
       ]
-      TextBlock.style [ Style.inside Border.Type [ Style.cls "card" ] ] [ TextBlock.foreground (Color.Hex 0xE6E6F0) ]
-      TextBlock.style [ Style.inside Border.Type [ Style.cls "card"; States.hover ] ] [ TextBlock.foreground (Color.Hex 0x8AB4F8) ]
+      TextBlock.style [ Style.inside Border.Type [ Style.cls "card" ] ] [ TextBlock.foreground Palette.text ]
+      TextBlock.style [ Style.inside Border.Type [ Style.cls "card"; States.hover ] ] [ TextBlock.foreground highlight ]
       // Chips look selected from their Selected value: through a state made from it (the chip), and
       // a property selector (its text).
       Border.style [ Style.cls "chip" ] [
-          Border.borderBrush (Color.Hex 0x34345A)
+          Border.borderBrush line
           Border.borderThickness 1.0
           Border.cornerRadius 14.0
           Border.padding (12.0, 5.0)
-          Style.on States.hover [ Border.background (Color.Hex 0x2C2C48) ]
+          Style.on States.hover [ Border.background subtle ]
       ]
       Border.style [ Style.cls "chip"; selectedState ] [
-          Border.background (Color.Hex 0x3D59A1)
-          Border.borderBrush (Color.Hex 0x8AB4F8)
-          Style.on States.hover [ Border.background (Color.Hex 0x4A68B4) ]
+          Border.background Palette.accent
+          Border.borderBrush highlight
+          Style.on States.hover [ Border.background accentHover ]
       ]
-      TextBlock.style [ Style.inside Border.Type [ Style.cls "chip" ] ] [ TextBlock.foreground dim ]
-      TextBlock.style [ Style.inside Border.Type [ Style.prop selected true ] ] [ TextBlock.foreground (Color.Hex 0xFFFFFF) ] ]
+      TextBlock.style [ Style.inside Border.Type [ Style.cls "chip" ] ] [ TextBlock.foreground Palette.textDim ]
+      TextBlock.style [ Style.inside Border.Type [ Style.prop selected true ] ] [ TextBlock.foreground Palette.onAccent ] ]
 
-/// The same, plus smaller buttons: switching the page between the two lists is what a theme
-/// switch will look like.
+/// The same, plus smaller buttons: switching the page between the two lists swaps a style list.
 let private compactStyles = normalStyles @ [ Button.style [] [ Button.padding (8.0, 3.0) ] ]
 
 let stylesPage =
@@ -67,7 +67,7 @@ let stylesPage =
             StackPanel.margin (24.0, 16.0, 24.0, 0.0)
             StackPanel.spacing 12.0
             StackPanel.children [
-                TextBlock.create [ TextBlock.text "Classes, a hover block, text inside cards, inline blocks"; TextBlock.foreground dim ]
+                TextBlock.create [ TextBlock.text "Classes, a hover block, text inside cards, inline blocks"; TextBlock.foreground Palette.textDim ]
                 StackPanel.create [
                     StackPanel.orientation Horizontal
                     StackPanel.spacing 8.0
@@ -104,15 +104,15 @@ let stylesPage =
                         ]
                     )
                 ]
-                TextBlock.create [ TextBlock.text "Text outside the card keeps its own color."; TextBlock.foreground dim ]
+                TextBlock.create [ TextBlock.text "Text outside the card keeps its own color."; TextBlock.foreground Palette.textDim ]
                 Border.create [
                     Border.height 40.0
                     Border.cornerRadius 6.0
-                    Border.on States.hover [ Border.background (Color.Hex 0x3D3D60) ]
+                    Border.on States.hover [ Border.background hover ]
                     Border.child (
                         TextBlock.create [
                             TextBlock.text "Hover me: Border.on States.hover [ ... ], a style right in the view"
-                            TextBlock.foreground dim
+                            TextBlock.foreground Palette.textDim
                             TextBlock.margin (12.0, 0.0)
                             TextBlock.verticalAlignment VerticalAlignment.Center
                         ]
@@ -127,7 +127,7 @@ let stylesPage =
                         chipView "Cheap"
                         TextBlock.create [
                             TextBlock.text "Click to toggle: Style.prop selected true"
-                            TextBlock.foreground dim
+                            TextBlock.foreground Palette.textDim
                             TextBlock.verticalAlignment VerticalAlignment.Center
                         ]
                     ]

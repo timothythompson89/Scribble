@@ -346,76 +346,64 @@ module StyleProps =
         p.NotStylable <- true
         p
 
-/// A theme's colors and sizes (what `Theme.dark [ ... ]` settings change).
-type internal ThemePalette =
-    { Background: Scribble.Rendering.Color
-      Surface: Scribble.Rendering.Color
-      Control: Scribble.Rendering.Color
-      Border: Scribble.Rendering.Color
-      Text: Scribble.Rendering.Color
-      TextDim: Scribble.Rendering.Color
-      Accent: Scribble.Rendering.Color
-      Danger: Scribble.Rendering.Color
-      FocusRing: Scribble.Rendering.Color
-      CornerRadius: float
-      Font: Scribble.Text.Font
-      FontSize: float }
-
-/// One setting for a theme: `Theme.dark [ Theme.accent (Color.Hex 0x3D59A1) ]`.
+/// One setting for a theme: `Theme.dark [ Theme.accent c; Theme.set cardLine c ]`.
 [<Sealed>]
-type ThemeSetting internal (apply: ThemePalette -> ThemePalette) =
-    member internal _.Apply(p: ThemePalette) = apply p
+type ThemeSetting internal (apply: Dictionary<int, obj> -> unit) =
+    member internal _.Apply(values: Dictionary<int, obj>) = apply values
 
-/// A theme: the built-in looks as styles below every other style, and the base text color, font
-/// and size. Made with `Theme.dark [ ... ]`; used with `App.theme` or any element's `theme`. Its
-/// colors are readable, so app styles can use the palette (`theme.Accent`). Build a theme once and
-/// keep it (its styles are made once per theme).
+/// A theme: values for theme tokens (`Palette.surface`, an app's own), the built-in looks as
+/// styles below every other style, and base text values. Made with `Theme.dark [ ... ]` or
+/// `Theme.light [ ... ]`; used with `App.theme`, or a `theme` setting on any element (on the app
+/// view's root it applies to the whole window). Settings read its values by token
+/// (`Border.background Palette.surface`); code reads one with `theme.Get Palette.surface`. Build a
+/// theme once and keep it.
 [<Sealed>]
-type Theme internal (palette: ThemePalette, build: Theme -> struct (Style list * struct (Prop * obj)[])) as this =
-    let built = lazy (build this)
-
-    /// Behind everything (the window).
-    member _.Background = palette.Background
-    /// Panels and cards.
-    member _.Surface = palette.Surface
-    /// Controls such as buttons.
-    member _.Control = palette.Control
-    /// Controls' borders.
-    member _.Border = palette.Border
-    member _.Text = palette.Text
-    /// Secondary text.
-    member _.TextDim = palette.TextDim
-    member _.Accent = palette.Accent
-    member _.Danger = palette.Danger
-    member _.FocusRing = palette.FocusRing
-    member _.CornerRadius = palette.CornerRadius
-    member _.Font = palette.Font
-    member _.FontSize = palette.FontSize
-    member internal _.Palette = palette
+type Theme internal (values: Dictionary<int, obj>, looks: Lazy<Style list * struct (Prop * ThemeToken)[]>) =
+    /// A token's value in this theme (its default when the theme doesn't set it).
+    member _.Get<'T>(token: ThemeValue<'T>) : 'T =
+        match values.TryGetValue token.Id with
+        | true, v -> unbox<'T> v
+        | _ -> token.Default
 
     /// The built-in looks (matched below every other style).
-    member internal _.Styles: Style list = let struct (s, _) = built.Value in s
+    member internal _.Styles: Style list = fst looks.Value
 
     interface IThemeSource with
         member _.TryBase(prop: Prop) =
-            let struct (_, bases) = built.Value
+            let bases = snd looks.Value
             let mutable i = 0
             while i < bases.Length && (let struct (p, _) = bases[i] in p.Id <> prop.Id) do
                 i <- i + 1
-            if i < bases.Length then (let struct (_, v) = bases[i] in ValueSome v) else ValueNone
+            if i < bases.Length then
+                let struct (_, token) = bases[i]
+                match values.TryGetValue token.Id with
+                | true, v -> ValueSome v
+                | _ -> ValueSome token.DefaultBoxed
+            else ValueNone
+        member _.Resolve(token: ThemeToken) =
+            match values.TryGetValue token.Id with
+            | true, v -> v
+            | _ -> token.DefaultBoxed
 
-    static member background(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Background = value })
-    static member surface(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Surface = value })
-    static member control(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Control = value })
-    static member border(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Border = value })
-    static member text(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Text = value })
-    static member textDim(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with TextDim = value })
-    static member accent(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Accent = value })
-    static member danger(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with Danger = value })
-    static member focusRing(value: Scribble.Rendering.Color) = ThemeSetting(fun p -> { p with FocusRing = value })
-    static member cornerRadius(value: float) = ThemeSetting(fun p -> { p with CornerRadius = value })
-    static member font(value: Scribble.Text.Font) = ThemeSetting(fun p -> { p with Font = value })
-    static member fontSize(value: float) = ThemeSetting(fun p -> { p with FontSize = value })
+    /// Sets a token's value: a built-in one (`Theme.set Palette.accent c`) or the app's own.
+    static member set<'T> (token: ThemeValue<'T>) (value: 'T) = ThemeSetting(fun d -> d[token.Id] <- box value)
+    static member background(value: Scribble.Rendering.Color) = Theme.set Palette.background value
+    static member surface(value: Scribble.Rendering.Color) = Theme.set Palette.surface value
+    static member control(value: Scribble.Rendering.Color) = Theme.set Palette.control value
+    static member border(value: Scribble.Rendering.Color) = Theme.set Palette.border value
+    static member text(value: Scribble.Rendering.Color) = Theme.set Palette.text value
+    static member textDim(value: Scribble.Rendering.Color) = Theme.set Palette.textDim value
+    static member accent(value: Scribble.Rendering.Color) = Theme.set Palette.accent value
+    static member danger(value: Scribble.Rendering.Color) = Theme.set Palette.danger value
+    static member onAccent(value: Scribble.Rendering.Color) = Theme.set Palette.onAccent value
+    static member focusRing(value: Scribble.Rendering.Color) = Theme.set Palette.focusRing value
+    static member hoverTint(value: Scribble.Rendering.Color) = Theme.set Palette.hoverTint value
+    static member pressTint(value: Scribble.Rendering.Color) = Theme.set Palette.pressTint value
+    static member scrollThumb(value: Scribble.Rendering.Color) = Theme.set Palette.scrollThumb value
+    static member shadow(value: BoxShadow) = Theme.set Palette.shadow value
+    static member cornerRadius(value: float) = Theme.set Palette.cornerRadius value
+    static member font(value: Scribble.Text.Font) = Theme.set Palette.font value
+    static member fontSize(value: float) = Theme.set Palette.fontSize value
 
 /// Matches styles to elements (ElementTree runs it at the start of layout).
 module internal StyleEngine =

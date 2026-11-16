@@ -31,6 +31,8 @@ type IElementRoot =
     abstract StylesUsed: unit -> unit
     /// The tree's theme (`App.theme`), for inherited base values; elements can set their own.
     abstract Theme: IThemeSource voption
+    /// The app's app values (`AppValue`): the host's, shared by its layers; a bare tree has its own.
+    abstract AppValues: AppValues
 
 [<AutoOpen>]
 module internal StyleMarks =
@@ -63,7 +65,9 @@ type PropertyValue =
       Value: obj
       Source: ValueSource
       /// For values from a style: its selector written out (`Button.primary:hover`); otherwise empty.
-      Selector: string }
+      Selector: string
+      /// For a theme's value given by token (`Border.background Palette.surface`): its name; otherwise empty.
+      Token: string }
 
 /// One hook of a component (`Element.Hooks`), in the order the component calls them.
 [<Struct>]
@@ -153,6 +157,8 @@ and [<Struct>] ArrangeContext internal (element: Element) =
 /// What a Render function can do: read properties, its size and its input states.
 and [<Struct>] RenderContext internal (element: Element) =
     member _.Get<'T>(prop: Prop<'T>) : 'T = element.Get prop
+    /// A theme value for drawing (`ctx.Theme Palette.accent`), from the nearest theme.
+    member _.Theme<'T>(token: ThemeValue<'T>) : 'T = unbox<'T> (element.TokenValue token)
     /// The element's size; draw within (0, 0)–(Width, Height).
     member _.Size: Size =
         let b: Rect = element.Bounds
@@ -250,6 +256,10 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     // walks that spread them (hover up to ancestors, disabled down) are skipped.
     static let mutable forcedHovers = 0
     static let mutable forcedDisableds = 0
+    // Bumped by whatever can change an element's nearest theme (a new parent or tree, a `theme`
+    // setting, a tree's theme): a theme an element remembered from an older epoch is looked up again.
+    // One counter for every tree; a bump from another tree only costs a lookup.
+    static let mutable themeEpoch = 0
     /// A component's input (set by its view) and its rendered content (the view it returned).
     static let componentInput = Prop<obj>("Component", obj (), Affects.Nothing, PropKind.Component)
     static let componentContent = Prop<View voption>("Content", ValueNone, Affects.Measure, PropKind.Child)
@@ -303,6 +313,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     let mutable animations: Dictionary<string, obj> voption = ValueNone
     /// Running or finished transitions (`Style.transition`), by property id; created on first use.
     let mutable transitions: Dictionary<int, obj> voption = ValueNone
+    /// Its nearest theme (`NearestTheme`) and the theme epoch it was found in (-1: not yet).
+    let mutable nearestTheme: IThemeSource voption = ValueNone
+    let mutable nearestThemeEpoch = -1
     let mutable componentState: ComponentState voption = ValueNone
 
     let find (id: int) =
@@ -424,6 +437,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// Sets the tree for this element and everything below it. A subtree that joins a tree is
     /// queued for style matching.
     member internal this.SetRoot(r: IElementRoot voption) =
+        Element.ThemesMoved()
         this.SetRootInSubtree r
         match r with
         | ValueSome added -> added.RequestRestyle(box this, true, false)
@@ -494,7 +508,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                     let v = this.FromAbove p
                     v, (if p.Same(v, p.DefaultBoxed) then ValueSource.Default else ValueSource.Inherited), ""
                 else p.DefaultBoxed, ValueSource.Default, ""
-            result.Add { Prop = p; Value = value; Source = source; Selector = selector }
+            let token = match value with :? ThemeRef as r -> r.Token.Name | _ -> ""
+            result.Add { Prop = p; Value = this.Resolve value; Source = source; Selector = selector; Token = token }
         for i in 0 .. count - 1 do
             if shown keys[i] then add keys[i]
         for p in styleKeys do
@@ -715,6 +730,70 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | :? (IThemeSource voption) as t when t.IsSome -> t.Value.TryBase prop
             | _ -> ValueNone
 
+    /// A token's value here: from the nearest theme (this element's or an ancestor's `theme`, else
+    /// the tree's), else the token's default.
+    member internal this.TokenValue(token: ThemeToken) : obj =
+        match this.NearestTheme with
+        | ValueSome t -> t.Resolve token
+        | ValueNone -> token.DefaultBoxed
+
+    /// The theme that decides its tokens: its own `theme`, else its parent's nearest, else the
+    /// tree's. Remembered until something bumps the theme epoch (then found again, through the
+    /// parent's remembered one, so siblings share the work).
+    member internal this.NearestTheme: IThemeSource voption =
+        let epoch = Threading.Volatile.Read(&themeEpoch)
+        if nearestThemeEpoch = epoch then nearestTheme
+        else
+            let found =
+                match this.OwnTheme with
+                | ValueSome t -> ValueSome t
+                | ValueNone ->
+                    match parent with
+                    | ValueSome p -> p.NearestTheme
+                    | ValueNone ->
+                        match root with
+                        | ValueSome r -> r.Theme
+                        | ValueNone -> ValueNone
+            nearestTheme <- found
+            nearestThemeEpoch <- epoch
+            found
+
+    /// Something changed which theme is nearest for some elements: they all look again.
+    static member internal ThemesMoved() = Threading.Interlocked.Increment(&themeEpoch) |> ignore
+
+    /// The tree that new elements are being made for, on this thread: components run the first
+    /// time before their element joins the tree, and need it for app values.
+    [<ThreadStatic; DefaultValue>]
+    static val mutable private realizing: IElementRoot voption
+
+    static member internal Realizing = Element.realizing
+
+    /// Runs `make` with `root` as the tree being built for (when there is one; else the outer one stays).
+    static member internal RealizingIn<'T>(root: IElementRoot voption, make: unit -> 'T) : 'T =
+        if root.IsNone then make ()
+        else
+            let before = Element.realizing
+            Element.realizing <- root
+            try
+                make ()
+            finally
+                Element.realizing <- before
+
+    /// Its own `theme` setting, if any.
+    member internal _.OwnTheme: IThemeSource voption =
+        match find LayoutProps.theme.Id with
+        | -1 -> ValueNone
+        | i ->
+            match values[i] with
+            | :? (IThemeSource voption) as t -> t
+            | _ -> ValueNone
+
+    /// A stored value as read: a token reference becomes the nearest theme's value.
+    member private this.Resolve(value: obj) : obj =
+        match value with
+        | :? ThemeRef as r -> r.Apply(this.TokenValue r.Token)
+        | v -> v
+
     /// An inherited property's value from above: its own theme's base value, else its parent's
     /// value, else the tree's theme's, else the property's default.
     member private this.FromAbove(prop: Prop) : obj =
@@ -734,8 +813,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// An inherited property's value here: own, else a style's, else the type's default, else from above.
     member internal this.Resolved(prop: Prop) : obj =
         match find prop.Id with
-        | -1 -> this.BaseOf prop
-        | i -> values[i]
+        | -1 -> this.Resolve(this.BaseOf prop)
+        | i -> this.Resolve values[i]
 
     /// The value without a setting of its own: a matching style's, else the type's default, else
     /// (inherited properties) the value from above, else the property's default.
@@ -769,6 +848,17 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         | Affects.Arrange -> this.InvalidateArrange()
         | Affects.Render -> this.InvalidateVisual()
         | _ -> ()
+
+    /// The theme here changed (its own `theme` setting, or the tree's): values given by tokens may
+    /// differ everywhere below, fonts and sizes included. Transitions start over at the new values
+    /// (switching themes doesn't fade).
+    member internal this.ThemeChanged() =
+        Element.ThemesMoved()
+        transitions <- ValueNone
+        this.InvalidateMeasure()
+        this.InvalidateVisual()
+        for c in children do
+            c.ThemeChanged()
 
     /// Every inherited property may have changed here and below (a theme came or went).
     member private this.AllInheritedChanged() =
@@ -820,17 +910,18 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         let value =
             match find prop.Id with
             | -1 ->
-                if styleKeys.Length > 0 || prop.Inherits then unbox<'T> (this.BaseOf prop)
+                if styleKeys.Length > 0 || prop.Inherits then unbox<'T> (this.Resolve(this.BaseOf prop))
                 elif elementType.Defaults.Length = 0 then prop.Default
-                else unbox<'T> (this.DefaultOf prop)
-            | i -> unbox<'T> values[i]
+                else unbox<'T> (this.Resolve(this.DefaultOf prop))
+            | i -> unbox<'T> (this.Resolve values[i])
         if prop.Transition.IsSome then this.Transitioned(prop, value) else value
 
-    /// The current value, boxed: the element's own, else a style's, else the default.
+    /// The current value, boxed: the element's own, else a style's, else the default (a theme's
+    /// value for a token).
     member this.GetBoxed(prop: Prop) : obj =
         match find prop.Id with
-        | -1 -> this.BaseOf prop
-        | i -> values[i]
+        | -1 -> this.Resolve(this.BaseOf prop)
+        | i -> this.Resolve values[i]
 
     member this.Set<'k>(setting: Setting<'k>) = this.SetValue(setting.Prop, setting.Value)
     member this.Set<'T>(prop: Prop<'T>, value: 'T) = this.SetValue(prop, box value)
@@ -845,7 +936,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         if prop.IsLayout then this.RefreshLayoutValues()
         this.Invalidate prop.Affects
         if prop.Inherits then this.InheritedChanged prop
-        if prop.IsTheme then this.AllInheritedChanged()
+        if prop.IsTheme then
+            this.AllInheritedChanged()
+            this.ThemeChanged()
         if prop.IsStyles || prop.IsStateBlock || prop.IsTheme then
             match root with
             | ValueSome r -> r.StylesUsed()
@@ -864,7 +957,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                 let old = values[i]
                 remove i
                 this.TestedValueChanged(prop, old, this.DefaultOf prop)
-                if not (prop.Same(old, this.BaseOf prop)) then this.ValueChanged prop
+                if not (prop.Same(this.Resolve old, this.Resolve(this.BaseOf prop))) then this.ValueChanged prop
                 elif prop.IsStateBlock then this.RequestRestyle(false, false)
 
     // --- Styles ----------------------------------------------------------------------------------
@@ -941,7 +1034,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             let old = this.GetBoxed prop
             if prop.TestedByStyles then this.TestedValueChanged(prop, this.UnstyledValue prop, value)
             store prop value
-            if not (prop.Same(old, value)) then this.ValueChanged prop
+            // Compared as read (a token by its value here), so setting the same again is no change.
+            if not (prop.Same(old, this.Resolve value)) then this.ValueChanged prop
         else
             let old =
                 match find prop.Id with
@@ -956,7 +1050,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                         match childSlots |> Array.tryFind (fun struct (p, _) -> obj.ReferenceEquals(p, prop)) with
                         | Some(struct (_, es)) -> es
                         | None -> [||]
-                    let next = Element.Reconcile(current, viewsOf prop.Kind value)
+                    let next = Element.RealizingIn(root, fun () -> Element.Reconcile(current, viewsOf prop.Kind value))
                     let kept = HashSet<Element>(next, HashIdentity.Reference)
                     for e in current do
                         if not (kept.Contains e) then
@@ -984,7 +1078,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                         | Affects.Render -> this.InvalidateVisual()
                         | _ -> ()
 
-    member internal _.SetParent(p: Element voption) = parent <- p
+    member internal _.SetParent(p: Element voption) =
+        parent <- p
+        Element.ThemesMoved()
 
     member internal this.RefreshLayoutValues() =
         lv <-

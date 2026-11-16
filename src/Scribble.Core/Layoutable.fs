@@ -76,10 +76,13 @@ type Layoutable =
     static member theme<'k when 'k :> Layoutable>(value: Theme) : Setting<'k> = Setting.create LayoutProps.theme (ValueSome(value :> IThemeSource))
     /// Text color for this element and the text inside it (inherited).
     static member foreground<'k when 'k :> Layoutable>(value: Scribble.Rendering.Color) : Setting<'k> = Setting.create InheritedProps.foreground value
+    static member foreground<'k when 'k :> Layoutable>(token: ThemeValue<Scribble.Rendering.Color>) : Setting<'k> = Setting.fromTheme InheritedProps.foreground token
     /// Font for the text inside this element (inherited).
     static member font<'k when 'k :> Layoutable>(value: Scribble.Text.Font) : Setting<'k> = Setting.create InheritedProps.font value
+    static member font<'k when 'k :> Layoutable>(token: ThemeValue<Scribble.Text.Font>) : Setting<'k> = Setting.fromTheme InheritedProps.font token
     /// Font size in DIPs for the text inside this element (inherited).
     static member fontSize<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create InheritedProps.fontSize value
+    static member fontSize<'k when 'k :> Layoutable>(token: ThemeValue<float>) : Setting<'k> = Setting.fromTheme InheritedProps.fontSize token
 
     /// The pointer came over this element (or something inside it). Not routed.
     static member onPointerEnter<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =

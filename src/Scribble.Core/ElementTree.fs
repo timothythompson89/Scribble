@@ -15,6 +15,7 @@ type ElementTree(text: TextSystem) =
     let mutable onInvalidated: unit -> unit = ignore
     let mutable time = TimeSpan.Zero
     let mutable dispatcher: Dispatcher voption = ValueNone
+    let mutable appValues = AppValues()
     /// Components whose state changed, with their depth: run at the start of the next layout.
     let scheduled = Collections.Generic.List<struct (int * (unit -> unit))>()
     let afterFrame = Collections.Generic.List<unit -> unit>()
@@ -53,7 +54,7 @@ type ElementTree(text: TextSystem) =
     member this.Update(view: View) =
         match root with
         | ValueSome r when obj.ReferenceEquals(r.Type, view.Type) -> r.Patch view
-        | _ -> this.Root <- ValueSome(Element.Realize view)
+        | _ -> this.Root <- ValueSome(Element.RealizingIn(ValueSome(this :> IElementRoot), fun () -> Element.Realize view))
 
     /// Physical pixels per DIP. Changing it re-lays out everything (rounding and text sizes change).
     member _.Scale
@@ -70,6 +71,12 @@ type ElementTree(text: TextSystem) =
         and set v = time <- v
 
     /// The UI thread's dispatcher (App.start sets it): state set from other threads goes through it.
+    /// The app values its components use (`ctx.useAppValue`): its own until a host gives it the app's.
+    /// Set it before the tree shows components that use them.
+    member _.AppValues
+        with get () = appValues
+        and set (v: AppValues) = appValues <- v
+
     member _.Dispatcher
         with get () = dispatcher
         and set (v: Dispatcher voption) = dispatcher <- v
@@ -114,6 +121,7 @@ type ElementTree(text: TextSystem) =
                 | ValueSome r ->
                     // Base text values change everywhere; styles are matched again.
                     r.InvalidateAll()
+                    r.ThemeChanged()
                     (this :> IElementRoot).RequestRestyle(box r, true, false)
                 | ValueNone -> ()
                 onInvalidated ()
@@ -212,6 +220,7 @@ type ElementTree(text: TextSystem) =
             onInvalidated ()
         member _.AfterFrame action = afterFrame.Add action
         member _.Dispatcher = dispatcher
+        member _.AppValues = appValues
         member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)
         member this.RequestRestyle(element, deep, stateChange) =
             if stylesInUse then
