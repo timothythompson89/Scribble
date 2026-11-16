@@ -427,7 +427,7 @@ let ``the properties show the selection's values and sources, defaults only when
     Assert.Equal(("handler", "view"), shownFor panel "onClick")
     Assert.Equal(("#3A3A55", "theme"), shownFor panel "background") // the theme's Button look
     Assert.Contains("from Button", texts panel)
-    Assert.Contains("Palette.control", texts panel) // the token it reads, under the value
+    Assert.Contains("Palette.control", texts panel) // the theme value it reads, under the value
     // What the theme can set shows even at its default (with no line under it until a theme style applies).
     Assert.Equal(("transparent", "default"), shownFor panel "overlay")
     Assert.DoesNotContain(texts panel, fun t -> t.StartsWith "theme sets it") // no line under it until a theme style applies

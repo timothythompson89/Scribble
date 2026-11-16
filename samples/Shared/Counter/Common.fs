@@ -1,10 +1,10 @@
-/// What the Counter demo's tabs share: its own theme values (tokens) and its two themes.
+/// What the Counter demo's tabs share: its own theme values and its two themes.
 module Scribble.Samples.CounterDemo.Common
 
 open Scribble.Rendering
 open Scribble.Core
 
-// The demo's colors beyond the built-in palette, as theme tokens: settings take them like
+// The demo's colors beyond the built-in palette, as theme values: settings take them like
 // `Palette.surface` (`Border.borderBrush line`), and each theme gives its own value. The defaults
 // are the dark ones.
 
@@ -37,7 +37,7 @@ let floatShadow =
 let dialogShadow =
     ThemeValue.define "DialogShadow" { Blur = 24.0; OffsetX = 0.0; OffsetY = 8.0; Spread = 0.0; Color = Color.Black.WithAlpha 0.6f }
 
-/// The dark theme: the tokens' defaults.
+/// The dark theme: the theme values' defaults.
 let darkTheme = Theme.dark []
 
 /// The light theme, with the demo's light values.

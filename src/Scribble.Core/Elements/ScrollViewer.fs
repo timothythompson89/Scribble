@@ -26,7 +26,7 @@ type ScrollViewer =
     static member content<'k when 'k :> ScrollViewer>(value: View) : Setting<'k> = Setting.create ScrollViewerProps.content (ValueSome value)
     /// The scrollbar thumb's color.
     static member thumb<'k when 'k :> ScrollViewer>(value: Color) : Setting<'k> = Setting.create ScrollViewerProps.thumb value
-    static member thumb<'k when 'k :> ScrollViewer>(token: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme ScrollViewerProps.thumb token
+    static member thumb<'k when 'k :> ScrollViewer>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme ScrollViewerProps.thumb themeValue
 
 module ScrollViewer =
     /// DIPs scrolled per wheel notch (about three lines of text).

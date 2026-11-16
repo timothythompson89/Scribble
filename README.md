@@ -1,13 +1,16 @@
 # Scribble
 
-A UI framework for F#, written from the GPU up. See the design doc for goals, architecture and roadmap.
+A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.md) has the goals, architecture,
+roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
-**Status: Milestone 4**: apps are F# view functions. `App.run` (desktop) or `App.runInBrowser` starts one; views
-are built from settings lists (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against
-the last one and patches only what changed. Underneath: WPF-style layout (measure/arrange, lengths in px, % and
-star), our own text stack (TrueType parser, rasterizer, HarfBuzz shaping, emoji fallback), and a GPU draw list
-rendered in one draw call per frame, on Windows and in the browser. Scribble draws only when something asks for a
-frame.
+**Status: Milestones 0–7b done** (2026-11-16), next M8 (core controls, virtualization first). Apps are F# view
+functions: `App.run` (desktop) or `App.runInBrowser` starts one; views are built from settings lists
+(`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
+what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
+ScrollViewer, an inspector, styles, light and dark themes, app values, icons (with the Material Symbols package)
+and icon cursors. Underneath: WPF-style layout (measure/arrange, lengths in px, % and star), our own text stack
+(TrueType parser, rasterizer, HarfBuzz shaping, emoji fallback), and a GPU draw list rendered in one draw call per
+frame, on Windows and in the browser. Scribble draws only when something asks for a frame.
 
 ## Your first app
 
@@ -606,7 +609,7 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
 let theme = Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.cornerRadius 8.0 ]   // Theme.dark [] is the default
 App.run [ App.theme theme; ... ]
 Border.create [ Border.theme otherTheme; Border.child (...) ]       // a different theme for what's inside
-Button.style [ Style.cls "primary" ] [ Button.background Palette.accent ]  // a theme value, by token (below)
+Button.style [ Style.cls "primary" ] [ Button.background Palette.accent ]  // a theme value (below)
 ```
 
 - **Precedence:** own value > inline blocks > styles > `App.styles` > the theme > type defaults. Hosts made by hand
@@ -629,18 +632,18 @@ Button.style [ Style.cls "primary" ] [ Button.background Palette.accent ]  // a 
   It keeps its own dark theme whatever the app's is.
 
 **Theme values and light/dark** (M7 step 2b). Colors, shadows, corner radius, font and size can be given by
-**token** instead of by value: the setting then reads the value from the nearest theme, so one view and one style
+**theme value** instead of by value: the setting then reads the value from the nearest theme, so one view and one style
 list serve every theme, and nothing passes the theme around.
 
 ```fsharp
-// The built-in tokens are in Palette; an app declares its own like props:
+// The built-in theme values are in Palette; an app declares its own like props:
 let cardLine = ThemeValue.define "CardLine" (Color.Hex 0x34345A)       // the default (no theme, or not set)
 
 let dark  = Theme.dark  [ Theme.set cardLine (Color.Hex 0x34345A) ]      // make themes once
 let light = Theme.light [ Theme.set cardLine (Color.Hex 0xDCDCE6); Theme.accent (Color.Hex 0x2F5BD3) ]
 
 Border.style [ Style.cls "card" ] [
-    Border.background Palette.surface        // a token, not a color: each theme gives its own
+    Border.background Palette.surface        // a theme value, not a color: each theme gives its own
     Border.borderBrush cardLine
     Style.on States.hover [ Border.borderBrush Palette.accent ]
 ]
@@ -660,13 +663,13 @@ let themeSwitch = Component.define "ThemeSwitch" (fun ctx () ->
   `shadow` (a button at rest; the theme flattens it when pressed or disabled), `cornerRadius`, `font`, `fontSize`.
   Their defaults are the dark theme's values. The built-in looks are written with them, so `Theme.dark` and
   `Theme.light` differ only in values.
-- **Setting values:** `Theme.set token value`, or the shorthands for the built-ins (`Theme.accent c`,
-  `Theme.cornerRadius 8.0`). The nearest theme decides; a token it doesn't set has its default.
+- **Setting values:** `Theme.set themeValue value`, or the shorthands for the built-ins (`Theme.accent c`,
+  `Theme.cornerRadius 8.0`). The nearest theme decides; a theme value it doesn't set has its default.
 - **Reading a value in code:** `theme.Get Palette.accent`; in a custom element's render function,
-  `ctx.Theme Palette.accent`. Element authors give a setting a token overload with `Setting.fromTheme prop token`.
+  `ctx.Theme Palette.accent`. Element authors give a setting a theme value overload with `Setting.fromTheme prop themeValue`.
 - `App.theme` is the starting theme. Outside components, switch with `AppContext.Set(Theme.current, t)` or
   `Cmd.setAppValue Theme.current t`. A `theme` on an element applies only inside it (the root's too). A theme switch
-  doesn't animate (hover and press still fade). The inspector shows the token under the value (`Palette.surface`).
+  doesn't animate (hover and press still fade). The inspector shows the theme value under the value (`Palette.surface`).
 - Not yet: following the OS's light/dark setting (later).
 
 ### Icons

@@ -4,7 +4,7 @@ open System
 open System.Collections.Generic
 open Scribble.Rendering
 
-/// The built-in looks: ordinary styles that read the theme's values by token, so every theme
+/// The built-in looks: ordinary styles that read the theme's values by theme value, so every theme
 /// shares one list (themes differ only in their values).
 module internal ThemeLooks =
     /// How long hover and pressed tints fade.
@@ -35,12 +35,12 @@ module internal ThemeLooks =
           TextBlock.style [ Style.inside Button.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb ] ]
 
-    /// Inherited properties' base values, by token.
-    let private bases: struct (Prop * ThemeToken)[] =
-        [| struct (InheritedProps.foreground :> Prop, Palette.text :> ThemeToken)
-           struct (InheritedProps.font :> Prop, Palette.font :> ThemeToken)
-           struct (InheritedProps.fontSize :> Prop, Palette.fontSize :> ThemeToken)
-           struct (FocusRing.colorProp :> Prop, Palette.focusRing :> ThemeToken) |]
+    /// Inherited properties' base values, by theme value.
+    let private bases: struct (Prop * ThemeKey)[] =
+        [| struct (InheritedProps.foreground :> Prop, Palette.text :> ThemeKey)
+           struct (InheritedProps.font :> Prop, Palette.font :> ThemeKey)
+           struct (InheritedProps.fontSize :> Prop, Palette.fontSize :> ThemeKey)
+           struct (FocusRing.colorProp :> Prop, Palette.focusRing :> ThemeKey) |]
 
     /// Made once, on first use, for every theme.
     let all = lazy (styles, bases)
@@ -57,7 +57,7 @@ module ThemeExtensions =
     type Theme with
         /// The dark theme (the default): `Theme.dark []`, or with changes,
         /// `Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.set cardLine (Color.Hex 0x34345A) ]`.
-        /// Its values are the tokens' defaults.
+        /// Its values are the theme values' defaults.
         static member dark(settings: ThemeSetting list) : Theme = ThemeLooks.make [] settings
 
         /// The light theme: `Theme.light []`, or with changes, `Theme.light [ Theme.accent c ]`.

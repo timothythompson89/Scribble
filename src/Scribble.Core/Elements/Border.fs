@@ -21,27 +21,27 @@ module BorderProps =
 type Border =
     inherit Layoutable
     static member background<'k when 'k :> Border>(value: Color) : Setting<'k> = Setting.create BorderProps.background value
-    static member background<'k when 'k :> Border>(token: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.background token
+    static member background<'k when 'k :> Border>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.background themeValue
     static member borderBrush<'k when 'k :> Border>(value: Color) : Setting<'k> = Setting.create BorderProps.borderBrush value
-    static member borderBrush<'k when 'k :> Border>(token: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.borderBrush token
+    static member borderBrush<'k when 'k :> Border>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.borderBrush themeValue
     static member borderThickness<'k when 'k :> Border>(value: float) : Setting<'k> = Setting.create BorderProps.borderThickness value
     static member cornerRadius<'k when 'k :> Border>(value: CornerRadius) : Setting<'k> = Setting.create BorderProps.cornerRadius value
     static member cornerRadius<'k when 'k :> Border>(uniform: float) : Setting<'k> = Setting.create BorderProps.cornerRadius (CornerRadius.Uniform uniform)
     /// A theme's corner radius (`Palette.cornerRadius`), the same on every corner.
-    static member cornerRadius<'k when 'k :> Border>(token: ThemeValue<float>) : Setting<'k> =
-        Setting.fromThemeWith BorderProps.cornerRadius token ThemeConvert.uniformCorners
+    static member cornerRadius<'k when 'k :> Border>(themeValue: ThemeValue<float>) : Setting<'k> =
+        Setting.fromThemeWith BorderProps.cornerRadius themeValue ThemeConvert.uniformCorners
     static member padding<'k when 'k :> Border>(value: Thickness) : Setting<'k> = Setting.create BorderProps.padding value
     static member padding<'k when 'k :> Border>(uniform: float) : Setting<'k> = Setting.create BorderProps.padding (Thickness.Uniform uniform)
     static member padding<'k when 'k :> Border>(horizontal: float, vertical: float) : Setting<'k> =
         Setting.create BorderProps.padding (Thickness.Symmetric(horizontal, vertical))
     static member shadow<'k when 'k :> Border>(value: BoxShadow) : Setting<'k> = Setting.create BorderProps.shadow (ValueSome value)
-    static member shadow<'k when 'k :> Border>(token: ThemeValue<BoxShadow>) : Setting<'k> = Setting.fromThemeWith BorderProps.shadow token ThemeConvert.someShadow
+    static member shadow<'k when 'k :> Border>(themeValue: ThemeValue<BoxShadow>) : Setting<'k> = Setting.fromThemeWith BorderProps.shadow themeValue ThemeConvert.someShadow
     /// A translucent color laid over the whole box (background and border), used for hover and
     /// press, so it works whatever the background color is. Transparent by default; the theme sets
     /// it per state, and a style can change it:
     /// `Button.style [ States.hover ] [ Button.overlay (Color.White.WithAlpha 0.15f) ]`.
     static member overlay<'k when 'k :> Border>(value: Color) : Setting<'k> = Setting.create BorderProps.overlay value
-    static member overlay<'k when 'k :> Border>(token: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.overlay token
+    static member overlay<'k when 'k :> Border>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.overlay themeValue
     static member child<'k when 'k :> Border>(value: View) : Setting<'k> = Setting.create BorderProps.child (ValueSome value)
 
 module Border =

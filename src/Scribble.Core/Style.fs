@@ -351,19 +351,19 @@ module StyleProps =
 type ThemeSetting internal (apply: Dictionary<int, obj> -> unit) =
     member internal _.Apply(values: Dictionary<int, obj>) = apply values
 
-/// A theme: values for theme tokens (`Palette.surface`, an app's own), the built-in looks as
+/// A theme: values for theme values (`Palette.surface`, an app's own), the built-in looks as
 /// styles below every other style, and base text values. Made with `Theme.dark [ ... ]` or
 /// `Theme.light [ ... ]`; used with `App.theme`, or a `theme` setting on any element (on the app
-/// view's root it applies to the whole window). Settings read its values by token
+/// view's root it applies to the whole window). Settings read its values by theme value
 /// (`Border.background Palette.surface`); code reads one with `theme.Get Palette.surface`. Build a
 /// theme once and keep it.
 [<Sealed>]
-type Theme internal (values: Dictionary<int, obj>, looks: Lazy<Style list * struct (Prop * ThemeToken)[]>) =
-    /// A token's value in this theme (its default when the theme doesn't set it).
-    member _.Get<'T>(token: ThemeValue<'T>) : 'T =
-        match values.TryGetValue token.Id with
+type Theme internal (values: Dictionary<int, obj>, looks: Lazy<Style list * struct (Prop * ThemeKey)[]>) =
+    /// A theme value's value in this theme (its default when the theme doesn't set it).
+    member _.Get<'T>(themeValue: ThemeValue<'T>) : 'T =
+        match values.TryGetValue themeValue.Id with
         | true, v -> unbox<'T> v
-        | _ -> token.Default
+        | _ -> themeValue.Default
 
     /// The built-in looks (matched below every other style).
     member internal _.Styles: Style list = fst looks.Value
@@ -375,18 +375,18 @@ type Theme internal (values: Dictionary<int, obj>, looks: Lazy<Style list * stru
             while i < bases.Length && (let struct (p, _) = bases[i] in p.Id <> prop.Id) do
                 i <- i + 1
             if i < bases.Length then
-                let struct (_, token) = bases[i]
-                match values.TryGetValue token.Id with
+                let struct (_, themeValue) = bases[i]
+                match values.TryGetValue themeValue.Id with
                 | true, v -> ValueSome v
-                | _ -> ValueSome token.DefaultBoxed
+                | _ -> ValueSome themeValue.DefaultBoxed
             else ValueNone
-        member _.Resolve(token: ThemeToken) =
-            match values.TryGetValue token.Id with
+        member _.Resolve(themeValue: ThemeKey) =
+            match values.TryGetValue themeValue.Id with
             | true, v -> v
-            | _ -> token.DefaultBoxed
+            | _ -> themeValue.DefaultBoxed
 
-    /// Sets a token's value: a built-in one (`Theme.set Palette.accent c`) or the app's own.
-    static member set<'T> (token: ThemeValue<'T>) (value: 'T) = ThemeSetting(fun d -> d[token.Id] <- box value)
+    /// Sets a theme value's value: a built-in one (`Theme.set Palette.accent c`) or the app's own.
+    static member set<'T> (themeValue: ThemeValue<'T>) (value: 'T) = ThemeSetting(fun d -> d[themeValue.Id] <- box value)
     static member background(value: Scribble.Rendering.Color) = Theme.set Palette.background value
     static member surface(value: Scribble.Rendering.Color) = Theme.set Palette.surface value
     static member control(value: Scribble.Rendering.Color) = Theme.set Palette.control value

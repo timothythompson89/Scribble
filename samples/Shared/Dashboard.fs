@@ -4,7 +4,7 @@
 ///
 /// Border, StackPanel and TextBlock come from Scribble.Core. CardGrid, Layers, AccentStrip and
 /// ProgressBar are defined here, to show what a custom element takes: some properties, an element
-/// type (a record of measure/arrange/render functions), and a marker type with setting functions.
+/// type (a record of measure/arrange/render functions), and a settings type with setting functions.
 module Scribble.Samples.Dashboard
 
 open System

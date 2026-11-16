@@ -67,15 +67,37 @@ module internal Interpolation =
 /// Id counters as plain static fields: a `static let` takes part in F#'s file initialization, which
 /// failed ("static data accessed recursively") when several threads first used the type at once.
 type internal Ids private () =
-    [<DefaultValue>] static val mutable private token: int
+    [<DefaultValue>] static val mutable private themeKey: int
     [<DefaultValue>] static val mutable private prop: int
-    static member NextToken() = lock typeof<Ids> (fun () -> Ids.token <- Ids.token + 1; Ids.token)
+    static member NextThemeKey() = lock typeof<Ids> (fun () -> Ids.themeKey <- Ids.themeKey + 1; Ids.themeKey)
     static member NextProp() = lock typeof<Ids> (fun () -> Ids.prop <- Ids.prop + 1; Ids.prop)
+
+/// Counts shared by every element tree on every thread (plain static fields, for the same reason as
+/// `Ids`; changed under a lock, read without one: an int read is atomic, and a stale read only costs
+/// a walk or a theme lookup).
+type internal ElementCounts private () =
+    /// Elements anywhere with a forced hover / disabled (`ForceState`): while none do, the walks
+    /// that spread them are skipped.
+    [<DefaultValue>] static val mutable private forcedHovers: int
+    [<DefaultValue>] static val mutable private forcedDisableds: int
+    /// Bumped by whatever can change an element's nearest theme; a theme an element remembered
+    /// from an older epoch is looked up again.
+    [<DefaultValue>] static val mutable private themeEpoch: int
+    static member ForcedHovers = ElementCounts.forcedHovers
+    static member ForcedDisableds = ElementCounts.forcedDisableds
+    static member ThemeEpoch = ElementCounts.themeEpoch
+    static member AddForced(hovers: int, disableds: int) =
+        if hovers <> 0 || disableds <> 0 then
+            lock typeof<ElementCounts> (fun () ->
+                ElementCounts.forcedHovers <- ElementCounts.forcedHovers + hovers
+                ElementCounts.forcedDisableds <- ElementCounts.forcedDisableds + disableds)
+    static member BumpThemeEpoch() =
+        lock typeof<ElementCounts> (fun () -> ElementCounts.themeEpoch <- ElementCounts.themeEpoch + 1)
 
 /// A named value a theme gives (`ThemeValue<'T>`; the built-in ones are in `Palette`).
 [<AbstractClass>]
-type ThemeToken internal (name: string, defaultBoxed: obj) =
-    let id = Ids.NextToken()
+type ThemeKey internal (name: string, defaultBoxed: obj) =
+    let id = Ids.NextThemeKey()
     member _.Name = name
     member internal _.Id = id
     member internal _.DefaultBoxed = defaultBoxed
@@ -84,35 +106,35 @@ type ThemeToken internal (name: string, defaultBoxed: obj) =
 /// A value a theme gives, by name: `Palette.surface`, or an app's own made with
 /// `ThemeValue.define "CardLine" (Color.Hex 0x34345A)`. Settings take one in place of a value
 /// (`Border.background Palette.surface`) and read it from the nearest theme; a theme sets it with
-/// `Theme.set`. Define tokens once, as module-level values.
+/// `Theme.set`. Define theme values once, as module-level values.
 [<Sealed>]
 type ThemeValue<'T> internal (name: string, defaultValue: 'T) =
-    inherit ThemeToken(name, box defaultValue)
+    inherit ThemeKey(name, box defaultValue)
     /// Used when the theme doesn't set it, and when there is no theme.
     member _.Default = defaultValue
 
 module ThemeValue =
-    /// A value themes can set (`Theme.set token v`), with the value used when one doesn't.
+    /// A value themes can set (`Theme.set theme value v`), with the value used when one doesn't.
     let define (name: string) (defaultValue: 'T) = ThemeValue<'T>(name, defaultValue)
 
-/// What a setting stores for a token: the token and, when the property's type differs from the
-/// token's (a shadow stored as `BoxShadow voption`), a fixed conversion. Equal when both are the
-/// same, so a view that sets the same token again changes nothing.
+/// What a setting stores for a theme value: the theme value and, when the property's type differs from the
+/// theme value's (a shadow stored as `BoxShadow voption`), a fixed conversion. Equal when both are the
+/// same, so a view that sets the same theme value again changes nothing.
 [<Sealed; AllowNullLiteral>]
-type internal ThemeRef(token: ThemeToken, convert: (obj -> obj) voption) =
-    member _.Token = token
+type internal ThemeRef(themeValue: ThemeKey, convert: (obj -> obj) voption) =
+    member _.Key = themeValue
     member _.Convert = convert
     member _.Apply(value: obj) = match convert with ValueSome f -> f value | ValueNone -> value
     override _.Equals(other: obj) =
         match other with
         | :? ThemeRef as r ->
-            obj.ReferenceEquals(r.Token, token)
+            obj.ReferenceEquals(r.Key, themeValue)
             && (match r.Convert, convert with
                 | ValueSome a, ValueSome b -> obj.ReferenceEquals(a, b)
                 | ValueNone, ValueNone -> true
                 | _ -> false)
         | _ -> false
-    override _.GetHashCode() = token.Id
+    override _.GetHashCode() = themeValue.Id
 
 /// A property key: a name, a default value and what changing it affects. Elements store values
 /// for the properties set on them; everything else reads as the default.
@@ -151,7 +173,7 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal Inherits = false with get, set
     /// The `theme` setting: changing it re-matches styles and inherited values below.
     member val internal IsTheme = false with get, set
-    /// Equality of two values of this property's type (a token reference equals only itself).
+    /// Equality of two values of this property's type (a theme value reference equals only itself).
     member internal _.Same(a: obj, b: obj) =
         match a, b with
         | (:? ThemeRef as r), _ -> r.Equals b
@@ -200,10 +222,10 @@ and [<Sealed>] Prop<'T> internal (name: string, defaultValue: 'T, affects: Affec
 type IThemeSource =
     /// The base value of an inherited property (text color, font, size), if the theme has one.
     abstract TryBase: prop: Prop -> obj voption
-    /// A token's value in this theme (its default when the theme doesn't set it).
-    abstract Resolve: token: ThemeToken -> obj
+    /// A theme value's value in this theme (its default when the theme doesn't set it).
+    abstract Resolve: themeValue: ThemeKey -> obj
 
-/// A property value for an element of kind 'k ('k is a marker type such as Border, so a Border
+/// A property value for an element of kind 'k ('k is a settings type such as Border, so a Border
 /// setting can't be put on a TextBlock). Made by the setting functions, e.g. `Border.background`.
 [<Struct>]
 type Setting<'k> =
@@ -219,14 +241,14 @@ module Setting =
     /// A setting of `prop` to `value`. Element authors use this to write setting functions.
     let create (prop: Prop<'T>) (value: 'T) : Setting<'k> = { Prop = prop; Value = box value }
 
-    /// A setting of `prop` to a theme's value (`Palette.surface`, or the app's own token), read from
-    /// the nearest theme. Element authors use this for a setting's token overload.
-    let fromTheme (prop: Prop<'T>) (token: ThemeValue<'T>) : Setting<'k> = { Prop = prop; Value = ThemeRef(token, ValueNone) }
+    /// A setting of `prop` to a theme's value (`Palette.surface`, or the app's own theme value), read from
+    /// the nearest theme. Element authors use this for a setting's theme value overload.
+    let fromTheme (prop: Prop<'T>) (themeValue: ThemeValue<'T>) : Setting<'k> = { Prop = prop; Value = ThemeRef(themeValue, ValueNone) }
 
-    /// The same for a property whose type differs from the token's: `convert` (a module-level
-    /// function, so equal settings compare equal) turns the token's value into the property's.
-    let internal fromThemeWith (prop: Prop<'T>) (token: ThemeValue<'U>) (convert: obj -> obj) : Setting<'k> =
-        { Prop = prop; Value = ThemeRef(token, ValueSome convert) }
+    /// The same for a property whose type differs from the theme value's: `convert` (a module-level
+    /// function, so equal settings compare equal) turns the theme value's value into the property's.
+    let internal fromThemeWith (prop: Prop<'T>) (themeValue: ThemeValue<'U>) (convert: obj -> obj) : Setting<'k> =
+        { Prop = prop; Value = ThemeRef(themeValue, ValueSome convert) }
 
 /// Properties every element has.
 module LayoutProps =

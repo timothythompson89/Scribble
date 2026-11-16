@@ -1,6 +1,6 @@
 namespace Scribble.Core
 
-/// Marker type for settings every element has. Element marker types (Border, TextBlock, …)
+/// Settings type for settings every element has. Element settings types (Border, TextBlock, …)
 /// inherit it, so `TextBlock.margin` works and `TextBlock.create [ Border.background … ]` doesn't
 /// compile.
 [<AbstractClass>]
@@ -76,13 +76,13 @@ type Layoutable =
     static member theme<'k when 'k :> Layoutable>(value: Theme) : Setting<'k> = Setting.create LayoutProps.theme (ValueSome(value :> IThemeSource))
     /// Text color for this element and the text inside it (inherited).
     static member foreground<'k when 'k :> Layoutable>(value: Scribble.Rendering.Color) : Setting<'k> = Setting.create InheritedProps.foreground value
-    static member foreground<'k when 'k :> Layoutable>(token: ThemeValue<Scribble.Rendering.Color>) : Setting<'k> = Setting.fromTheme InheritedProps.foreground token
+    static member foreground<'k when 'k :> Layoutable>(themeValue: ThemeValue<Scribble.Rendering.Color>) : Setting<'k> = Setting.fromTheme InheritedProps.foreground themeValue
     /// Font for the text inside this element (inherited).
     static member font<'k when 'k :> Layoutable>(value: Scribble.Text.Font) : Setting<'k> = Setting.create InheritedProps.font value
-    static member font<'k when 'k :> Layoutable>(token: ThemeValue<Scribble.Text.Font>) : Setting<'k> = Setting.fromTheme InheritedProps.font token
+    static member font<'k when 'k :> Layoutable>(themeValue: ThemeValue<Scribble.Text.Font>) : Setting<'k> = Setting.fromTheme InheritedProps.font themeValue
     /// Font size in DIPs for the text inside this element (inherited).
     static member fontSize<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create InheritedProps.fontSize value
-    static member fontSize<'k when 'k :> Layoutable>(token: ThemeValue<float>) : Setting<'k> = Setting.fromTheme InheritedProps.fontSize token
+    static member fontSize<'k when 'k :> Layoutable>(themeValue: ThemeValue<float>) : Setting<'k> = Setting.fromTheme InheritedProps.fontSize themeValue
 
     /// The pointer came over this element (or something inside it). Not routed.
     static member onPointerEnter<'k when 'k :> Layoutable>(handler: PointerEventArgs -> unit) : Setting<'k> =
@@ -134,7 +134,7 @@ type Layoutable =
 module PanelProps =
     let children = Prop.children "Children"
 
-/// Marker type for elements with a list of children.
+/// Settings type for elements with a list of children.
 [<AbstractClass>]
 type Panel =
     inherit Layoutable

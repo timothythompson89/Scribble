@@ -66,8 +66,8 @@ type PropertyValue =
       Source: ValueSource
       /// For values from a style: its selector written out (`Button.primary:hover`); otherwise empty.
       Selector: string
-      /// For a theme's value given by token (`Border.background Palette.surface`): its name; otherwise empty.
-      Token: string }
+      /// Set by a theme value (`Border.background Palette.surface`): its name; otherwise empty.
+      ThemeValue: string }
 
 /// One hook of a component (`Element.Hooks`), in the order the component calls them.
 [<Struct>]
@@ -162,7 +162,7 @@ and [<Struct>] ArrangeContext internal (element: Element) =
 and [<Struct>] RenderContext internal (element: Element) =
     member _.Get<'T>(prop: Prop<'T>) : 'T = element.Get prop
     /// A theme value for drawing (`ctx.Theme Palette.accent`), from the nearest theme.
-    member _.Theme<'T>(token: ThemeValue<'T>) : 'T = unbox<'T> (element.TokenValue token)
+    member _.Theme<'T>(themeValue: ThemeValue<'T>) : 'T = unbox<'T> (element.ThemeValueOf themeValue)
     /// The element's size; draw within (0, 0)–(Width, Height).
     member _.Size: Size =
         let b: Rect = element.Bounds
@@ -256,14 +256,8 @@ and View internal (elementType: ElementType, settings: struct (Prop * obj)[]) =
 and [<Sealed>] Element internal (elementType: ElementType) =
     static let empty: Element[] = [||]
     static let clamp (value: float) (low: float) (high: float) = max low (min value high)
-    // How many elements anywhere have a forced hover or disabled (`ForceState`): while none do, the
-    // walks that spread them (hover up to ancestors, disabled down) are skipped.
-    static let mutable forcedHovers = 0
-    static let mutable forcedDisableds = 0
-    // Bumped by whatever can change an element's nearest theme (a new parent or tree, a `theme`
-    // setting, a tree's theme): a theme an element remembered from an older epoch is looked up again.
-    // One counter for every tree; a bump from another tree only costs a lookup.
-    static let mutable themeEpoch = 0
+    // Counts shared by all trees (forced states, the theme epoch) live in `ElementCounts`: a
+    // `static let mutable` here would be shared across threads (see CLAUDE.md).
     /// A component's input (set by its view) and its rendered content (the view it returned).
     static let componentInput = Prop<obj>("Component", obj (), Affects.Nothing, PropKind.Component)
     static let componentContent = Prop<View voption>("Content", ValueNone, Affects.Measure, PropKind.Child)
@@ -512,8 +506,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                     let v = this.FromAbove p
                     v, (if p.Same(v, p.DefaultBoxed) then ValueSource.Default else ValueSource.Inherited), ""
                 else p.DefaultBoxed, ValueSource.Default, ""
-            let token = match value with :? ThemeRef as r -> r.Token.Name | _ -> ""
-            result.Add { Prop = p; Value = this.Resolve value; Source = source; Selector = selector; Token = token }
+            let themeValue = match value with :? ThemeRef as r -> r.Key.Name | _ -> ""
+            result.Add { Prop = p; Value = this.Resolve value; Source = source; Selector = selector; ThemeValue = themeValue }
         for i in 0 .. count - 1 do
             if shown keys[i] then add keys[i]
         for p in styleKeys do
@@ -604,8 +598,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         let changed flag = (forcedLooks &&& flag) <> (looks &&& flag)
         // Elements are UI-thread-only, so plain counts do (the walks only run while one is forced).
         let delta flag = if not (changed flag) then 0 elif looks &&& flag <> 0 then 1 else -1
-        forcedHovers <- forcedHovers + delta 1
-        forcedDisableds <- forcedDisableds + delta 16
+        ElementCounts.AddForced(delta 1, delta 16)
         let hoverChanged, disabledChanged = changed 1, changed 16
         forced <- states
         forcedLooks <- looks
@@ -625,13 +618,13 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// Looks hovered because of a forced hover on it or something inside it (the pointer over a
     /// child is over its ancestors too).
     member internal this.HasForcedHoverInside =
-        forcedHovers > 0
+        ElementCounts.ForcedHovers > 0
         && (let rec any (e: Element) = e.LooksForced 1 || e.Children |> Seq.exists any
             any this)
 
     /// Looks disabled because of a forced disabled on it or an ancestor (as `isEnabled false`).
     member internal this.HasForcedDisabledAbove =
-        forcedDisableds > 0
+        ElementCounts.ForcedDisableds > 0
         && (let mutable e = ValueSome this
             let mutable found = false
             while not found && e.IsSome do
@@ -734,18 +727,18 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | :? (IThemeSource voption) as t when t.IsSome -> t.Value.TryBase prop
             | _ -> ValueNone
 
-    /// A token's value here: from the nearest theme (this element's or an ancestor's `theme`, else
-    /// the tree's), else the token's default.
-    member internal this.TokenValue(token: ThemeToken) : obj =
+    /// A theme value's value here: from the nearest theme (this element's or an ancestor's `theme`, else
+    /// the tree's), else the theme value's default.
+    member internal this.ThemeValueOf(themeValue: ThemeKey) : obj =
         match this.NearestTheme with
-        | ValueSome t -> t.Resolve token
-        | ValueNone -> token.DefaultBoxed
+        | ValueSome t -> t.Resolve themeValue
+        | ValueNone -> themeValue.DefaultBoxed
 
-    /// The theme that decides its tokens: its own `theme`, else its parent's nearest, else the
+    /// The theme that decides its theme values: its own `theme`, else its parent's nearest, else the
     /// tree's. Remembered until something bumps the theme epoch (then found again, through the
     /// parent's remembered one, so siblings share the work).
     member internal this.NearestTheme: IThemeSource voption =
-        let epoch = Threading.Volatile.Read(&themeEpoch)
+        let epoch = ElementCounts.ThemeEpoch
         if nearestThemeEpoch = epoch then nearestTheme
         else
             let found =
@@ -763,7 +756,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             found
 
     /// Something changed which theme is nearest for some elements: they all look again.
-    static member internal ThemesMoved() = Threading.Interlocked.Increment(&themeEpoch) |> ignore
+    static member internal ThemesMoved() = ElementCounts.BumpThemeEpoch()
 
     /// The tree that new elements are being made for, on this thread: components run the first
     /// time before their element joins the tree, and need it for app values.
@@ -792,10 +785,10 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | :? (IThemeSource voption) as t -> t
             | _ -> ValueNone
 
-    /// A stored value as read: a token reference becomes the nearest theme's value.
+    /// A stored value as read: a theme value reference becomes the nearest theme's value.
     member private this.Resolve(value: obj) : obj =
         match value with
-        | :? ThemeRef as r -> r.Apply(this.TokenValue r.Token)
+        | :? ThemeRef as r -> r.Apply(this.ThemeValueOf r.Key)
         | v -> v
 
     /// An inherited property's value from above: its own theme's base value, else its parent's
@@ -853,7 +846,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         | Affects.Render -> this.InvalidateVisual()
         | _ -> ()
 
-    /// The theme here changed (its own `theme` setting, or the tree's): values given by tokens may
+    /// The theme here changed (its own `theme` setting, or the tree's): values given by theme values may
     /// differ everywhere below, fonts and sizes included. Transitions start over at the new values
     /// (switching themes doesn't fade).
     member internal this.ThemeChanged() =
@@ -924,7 +917,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         if prop.Transition.IsSome then this.Transitioned(prop, value) else value
 
     /// The current value, boxed: the element's own, else a style's, else the default (a theme's
-    /// value for a token).
+    /// value for a theme value).
     member this.GetBoxed(prop: Prop) : obj =
         match find prop.Id with
         | -1 -> this.Resolve(this.BaseOf prop)
@@ -1041,7 +1034,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             let old = this.GetBoxed prop
             if prop.TestedByStyles then this.TestedValueChanged(prop, this.UnstyledValue prop, value)
             store prop value
-            // Compared as read (a token by its value here), so setting the same again is no change.
+            // Compared as read (a theme value by its value here), so setting the same again is no change.
             if not (prop.Same(old, this.Resolve value)) then this.ValueChanged prop
         else
             let old =

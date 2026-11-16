@@ -40,15 +40,15 @@ module Palette =
     /// The text size, in DIPs.
     let fontSize = ThemeValue.define "Palette.fontSize" 14.0
 
-/// Fixed conversions from a token's type to a property's, for token settings (one function each,
-/// so two settings of the same token compare equal).
+/// Fixed conversions from a theme value's type to a property's, for theme value settings (one function each,
+/// so two settings of the same theme value compare equal).
 module internal ThemeConvert =
-    /// A shadow token as a `shadow` property value.
+    /// A shadow theme value as a `shadow` property value.
     let someShadow: obj -> obj = fun v -> box (ValueSome(unbox<BoxShadow> v))
     /// The same shadow, flat (pressed or disabled): tighter and straight below.
     let flatShadow: obj -> obj =
         fun v ->
             let s = unbox<BoxShadow> v
             box (ValueSome { s with Blur = s.Blur * 0.4; OffsetY = 0.0 })
-    /// A number token as a uniform corner radius.
+    /// A number theme value as a uniform corner radius.
     let uniformCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v))

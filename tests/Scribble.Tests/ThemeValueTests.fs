@@ -1,4 +1,4 @@
-/// Theme tokens: settings that read a theme's value by name (`Border.background Palette.surface`).
+/// Theme values: settings that read a theme's value by name (`Border.background Palette.surface`).
 module Scribble.Tests.TokenTests
 
 open System
@@ -11,7 +11,7 @@ let private red = Color.Hex 0xFF0000
 let private green = Color.Hex 0x00FF00
 let private ms (v: float) = TimeSpan.FromMilliseconds v
 
-/// An app's own token.
+/// An app's own theme value.
 let private cardLine = ThemeValue.define "CardLine" (Color.Hex 0x123456)
 
 let private layout (t: ElementTree) = t.UpdateLayout(Size.Create(400.0, 300.0))
@@ -26,7 +26,7 @@ let private show (t: ElementTree) (view: View) =
     t.Root.Value
 
 [<Fact>]
-let ``a token reads the nearest theme, else its default`` () =
+let ``a theme value reads the nearest theme, else its default`` () =
     let light = Theme.light [ Theme.set cardLine green ]
     let dark = Theme.dark [ Theme.set cardLine red ]
     let t = ElementTree(textSystem ())
@@ -40,7 +40,7 @@ let ``a token reads the nearest theme, else its default`` () =
                 ]
             ]
         ]
-    // No theme anywhere: the tokens' defaults.
+    // No theme anywhere: the theme values' defaults.
     let root = show t view
     Assert.Equal(Palette.surface.Default, (find "plain" root).Get BorderProps.background)
     Assert.Equal(Color.Hex 0x123456, (find "plain" root).Get BorderProps.borderBrush)
@@ -52,7 +52,7 @@ let ``a token reads the nearest theme, else its default`` () =
     Assert.Equal(green, (find "inner" root).Get BorderProps.borderBrush)
 
 [<Fact>]
-let ``styles written with tokens follow a theme switch`` () =
+let ``styles written with theme values follow a theme switch`` () =
     let t = ElementTree(textSystem ())
     t.Styles <- [ Border.style [ Style.cls "card" ] [ Border.background Palette.surface ] ]
     let view (theme: Theme) = Border.create [ Border.theme theme; Border.child (Border.create [ Border.name "card"; Border.classes [ "card" ] ]) ]
@@ -63,7 +63,7 @@ let ``styles written with tokens follow a theme switch`` () =
     Assert.Equal(light.Get Palette.surface, (find "card" root).Get BorderProps.background)
 
 [<Fact>]
-let ``inherited text resolves where it's set, and font size tokens re-measure`` () =
+let ``inherited text resolves where it's set, and font size theme values re-measure`` () =
     let big = Theme.dark [ Theme.fontSize 30.0 ]
     let t = ElementTree(textSystem ())
     let view (theme: Theme) =
@@ -81,7 +81,7 @@ let ``inherited text resolves where it's set, and font size tokens re-measure`` 
     Assert.True((find "t" root).Bounds.Height > small * 1.5)
 
 [<Fact>]
-let ``the same token set again is no change, and Values name it`` () =
+let ``the same theme value set again is no change, and Values name it`` () =
     let t = ElementTree(textSystem ())
     let root = show t (Border.create [ Border.background Palette.surface; Border.shadow Palette.shadow ])
     let mutable invalidated = 0
@@ -89,7 +89,7 @@ let ``the same token set again is no change, and Values name it`` () =
     show t (Border.create [ Border.background Palette.surface; Border.shadow Palette.shadow ]) |> ignore
     Assert.Equal(0, invalidated)
     let background = root.Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, BorderProps.background))
-    Assert.Equal("Palette.surface", background.Token)
+    Assert.Equal("Palette.surface", background.ThemeValue)
     Assert.Equal(box Palette.surface.Default, background.Value)
     let shadow = root.Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, BorderProps.shadow))
     Assert.Equal(box (ValueSome Palette.shadow.Default), shadow.Value)
@@ -107,7 +107,7 @@ let ``switching themes doesn't fade, though the property has a transition`` () =
     Assert.Equal(light.Get Palette.surface, (find "b" root).Get BorderProps.background)
 
 [<Fact>]
-let ``theme setting shorthands are tokens`` () =
+let ``theme setting shorthands are theme values`` () =
     let theme = Theme.dark [ Theme.accent red; Theme.cornerRadius 9.0 ]
     Assert.Equal(red, theme.Get Palette.accent)
     Assert.Equal(9.0, theme.Get Palette.cornerRadius)

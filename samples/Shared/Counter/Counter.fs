@@ -2,7 +2,7 @@
 /// line), on five tabs that keep each page's state while another is shown. Each tab has its own
 /// file next to this one (compiled in this order):
 ///
-/// - Common.fs: what the tabs share (the theme tokens and the two themes),
+/// - Common.fs: what the tabs share (the theme values and the two themes),
 /// - ElmishTab.fs: an Elmish counter inside a component, with a command (`useElmishWithCmd`),
 /// - LoadTab.fs: a slow load that restarts when its input changes (`useAsync`),
 /// - ListTab.fs: keyed counters with their own state and an animated bar (`useState`, `useAnimated`),

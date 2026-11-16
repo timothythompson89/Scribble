@@ -15,7 +15,7 @@ let private isSelected (v: bool) : Setting<Border> = Setting.create selected v
 /// A state read from the property: usable like `States.hover`, and listed by the inspector.
 let private selectedState = States.ofProp "selected" selected id
 
-/// The page's styles: classes, a state block, and text inside cards. Colors are theme tokens, so
+/// The page's styles: classes, a state block, and text inside cards. Colors are theme values, so
 /// one list serves both themes.
 let private normalStyles =
     [ Button.style [ Style.cls "primary" ] [ Button.background Palette.accent; Button.borderBrush accentBorder; Button.foreground Palette.onAccent ]
