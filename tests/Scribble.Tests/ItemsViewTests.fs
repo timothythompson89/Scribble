@@ -216,6 +216,53 @@ let ``scrolling a list to an item moves the page around it only as far as needed
     Assert.Equal(14_000.0, list.Offset)
     Assert.Equal(60.0, page.Offset)
 
+/// The Gallery's "Add message": an item added at the end of a list whose bottom is below the page's
+/// viewport, then scrolled to (End). The whole item must show, in the list and on the page.
+[<Theory>]
+[<InlineData(false)>]
+[<InlineData(true)>]
+let ``an item added and scrolled to shows whole, on a page that has to move too`` (animate: bool) =
+    // A 200-high page: a 16 margin and 150 of header, then a 100-high list (its bottom 66 below the page's viewport).
+    let t = ElementTree(textSystem ())
+    let list, page = Scroller(), Scroller()
+    let view (n: int) =
+        ScrollViewer.create [
+            ScrollViewer.scroller page
+            ScrollViewer.content (
+                StackPanel.create [
+                    StackPanel.margin (0.0, 16.0, 0.0, 24.0) // a page's margin: the page must count it (it once stopped 16 short)
+                    StackPanel.children [
+                        Border.create [ Border.height 150.0 ]
+                        ScrollViewer.create [
+                            ScrollViewer.height 100.0
+                            ScrollViewer.content (
+                                ItemsView.create [
+                                    ItemsView.source [| 0 .. n - 1 |]
+                                    ItemsView.view (fun (i: int) -> Border.create [ Border.name (string i); Border.height (if i = n - 1 then 40.0 else 20.0) ])
+                                    ItemsView.scroller list
+                                ])
+                        ]
+                        Border.create [ Border.height 300.0 ]
+                    ]
+                ])
+        ]
+    t.Update(view 30)
+    let settle () =
+        for _ in 1 .. 40 do
+            t.Time <- t.Time + TimeSpan.FromMilliseconds 16.0
+            layoutAt t
+            t.RunAfterFrame()
+    settle ()
+    t.Update(view 31)
+    list.ScrollTo(30, ScrollAlign.End, animate)
+    settle ()
+    let rec find (e: Element) = if e.Name = "30" then Some e else e.Children |> Seq.tryPick find
+    let item = (find t.Root.Value).Value
+    let p = item.PositionInTree
+    // In the window (0..200) and in the list's viewport, all 40 DIPs of it.
+    Assert.True(p.Y >= 0.0 && p.Y + 40.0 <= 200.0, $"the item is at {p.Y}..{p.Y + 40.0} in a 200-high window (page offset {page.Offset}, list offset {list.Offset})")
+    Assert.Equal(40.0, item.VisibleBounds.Height, 3)
+
 [<Fact>]
 let ``a ScrollViewer keeps a gutter for its bar unless it overlays it`` () =
     let widthIn (space: ScrollBarSpace) =

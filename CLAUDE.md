@@ -41,7 +41,7 @@ dotnet run --project tools/Scribble.Serve         # browser samples on the local
 dotnet run -c Release --project tools/Scribble.Bench   # ItemsView costs
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 435 unit tests plus 5
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 440 unit tests plus 5
   timing tests skipped; 61 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and

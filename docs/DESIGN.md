@@ -2201,6 +2201,15 @@ list. Two causes:
 As built: `BringRectIntoView` (Element.fs) and `makeVisible` (ScrollViewer.fs); a test with a list on a
 scrolling page (`ItemsViewTests`), which fails without either fix. 434 unit tests, 62 rendering tests.
 
+**A third cause, found on the Gallery's Scrolling page (Tim, 2026-11-17):** "Add message" showed only the top
+30 of the new 46-DIP message; the page stopped 16 DIPs short. A ScrollViewer turned the rect into content
+coordinates by undoing its content's arranged bounds, which sit inside the content's margin, so the content's top
+margin (the page's 16) was lost. `makeVisible` now adds the margin back (still undoing the rounded bounds the rect
+came through: undoing the exact slot instead put "scroll to the top" 0.43 DIPs off in `ScrollStressTests`). Tests:
+`ItemsViewTests` (an item added and scrolled to, on a page with a margin, jumping and animated) and
+`GalleryPagesTests` (the Gallery's "Add message" at three window heights); all five fail without the fix.
+440 unit tests, 61 rendering tests.
+
 ## M8 step 3b: images, and the Counter becomes the Gallery (planned 2026-11-17)
 
 A grilling in three rounds plus the sample overhaul (Tim: yes to all, Q7 refined). Facts it rests on: the draw list

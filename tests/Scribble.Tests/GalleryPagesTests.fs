@@ -104,3 +104,33 @@ let ``every page opens with its title and a line on what it shows`` () =
             Assert.Equal(title, first)
             Assert.True(line.Length > 20, $"the {title} page's line: \"{line}\"")
         | other -> Assert.Fail($"the {title} page starts with {other.Length} texts")
+
+/// Scrolling page: "Add message" scrolls the list to the new message and the page just enough to show all of it
+/// (the page's bottom is below the window at 720 × 560).
+[<Theory>]
+[<InlineData(560.0)>]
+[<InlineData(500.0)>]
+[<InlineData(420.0)>]
+let ``"Add message" shows the whole new message, moving the page as needed`` (height: float) =
+    let tree = ElementTree(textSystem ())
+    tree.Update(Scribble.Samples.GalleryApp.gallery ())
+    let size = Size.Create(720.0, height)
+    let settle () =
+        for _ in 1 .. 40 do
+            tree.Time <- tree.Time + TimeSpan.FromMilliseconds 16.0
+            tree.UpdateLayout size
+            tree.RunAfterFrame()
+    settle ()
+    click (tabControl tree) "Scrolling"
+    settle ()
+    for n in 1 .. 3 do
+        click (tabControl tree).Parent.Value "Add message"
+        settle ()
+        let row =
+            all tree.Root.Value
+            |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, TextBlock.Type) && (e.Get TextProps.text).StartsWith("#10,00" + string n + " "))
+            |> fun text -> text.Parent.Value
+        let p = row.PositionInTree
+        Assert.True(p.Y >= 0.0 && p.Y + row.Bounds.Height <= height + 0.5,
+                    $"message {n}: at {p.Y}..{p.Y + row.Bounds.Height} in a window {height} high; shows {row.VisibleBounds.Height} of {row.Bounds.Height}")
+        Assert.Equal(row.Bounds.Height, row.VisibleBounds.Height, 1)

@@ -236,10 +236,14 @@ module ScrollViewer =
         let s = stateOf e
         let v, h = e.Get ScrollViewerProps.vertical, e.Get ScrollViewerProps.horizontal
         // Rect in content coordinates: undo the content's position as arranged (what the rect was
-        // offset by on its way here). Not -X, -Y: that was rounded to pixels when arranged, and the
-        // offset may have moved since.
+        // offset by on its way here), then add its margin back, which is part of the extent (without
+        // it a page with a top margin stopped that much short of an item at its end). Not -X, -Y:
+        // the position was rounded to pixels when arranged, and the offset may have moved since.
         let cx, cy =
-            if e.Children.Count > 0 then rect.X - e.Children[0].Bounds.X, rect.Y - e.Children[0].Bounds.Y
+            if e.Children.Count > 0 then
+                let c = e.Children[0]
+                let m = c.Get LayoutProps.margin
+                rect.X - c.Bounds.X + m.Left, rect.Y - c.Bounds.Y + m.Top
             else rect.X + s.X, rect.Y + s.Y
         let x = if h = ScrollBarMode.Disabled then s.X else max 0.0 (alignedOffset (targetX s) s.ViewW cx rect.Width align)
         let y = if v = ScrollBarMode.Disabled then s.Y else max 0.0 (alignedOffset (targetY s) s.ViewH cy rect.Height align)
