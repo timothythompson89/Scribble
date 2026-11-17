@@ -237,8 +237,8 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
   "fix" it by drawing while the pointer moves (rejected). To check on the first Mac build.
   The rendering tests' occasional hangs ("when chained after other dotnet commands") were a driver deadlock, fixed
   2026-11-16 (DESIGN.md, "Rendering test hangs").
-- **Open questions:** license (MIT or Apache 2.0) before the first public push; is "Scribble" free on NuGet;
-  `RenderOffscreen` must become async for browser screenshot tests.
+- **Decided 2026-11-17 (project review, DESIGN.md "Project review 2026-11-17"):** MIT license; packages `Scribble.*`;
+  same pixels on every platform is a rule. **Open:** `RenderOffscreen` must become async for browser screenshot tests.
 
 ## Agent skills
 

@@ -627,8 +627,8 @@ Built 2026-11-16, verified by Tim the same day (with the minimize icon, short hi
 
 Open questions:
 
-- [ ] License (MIT or Apache 2.0) before the first public push.
-- [ ] Is the name Scribble free on NuGet?
+- [x] License: MIT (Tim, 2026-11-17; "Project review 2026-11-17").
+- [x] The name: Scribble, packages `Scribble.*` (the bare `Scribble` id is taken; Tim, 2026-11-17).
 - [x] Exact DSL syntax: FuncUI-style settings lists (2026-11-15).
 - [x] Test framework: xUnit (2026-11-15: the real runner passes every test).
 
@@ -1681,6 +1681,72 @@ Tim: a landing page in the serve tool, as a hub on another device. Agreed (recom
 3. **The hub's address is the best guess**: an up IPv4 adapter with a default gateway that isn't virtual (Hyper-V,
    WSL, VPN, ...); the others are listed under it.
 4. **No link back to the hub inside the samples** (they're drawn on a canvas; serve-only UI would clutter them).
+
+## Project review 2026-11-17
+
+Claude reviewed the whole project at commit `0c4b79b` (findings: `.scratch/project-review/review.md`, 22
+items graded A/B/C), then went through them with Tim as a grilling (`grill-with-docs`). Holding: the rules in
+CLAUDE.md (printf, `fixed`, `static let`, no C#, no public nulls), the power rule, the inspector on Core's public
+API only, and NativeAOT (Counter published and run again 2026-11-17: only FSharp.Core's IL2104/IL3053).
+
+Round 1 (Tim accepted every recommendation):
+
+1. **Errors in handlers, views and render functions go to `App.onError`** when the app sets one, and the app
+   keeps running (Debug builds also write them to the debugger). Without `onError`, the app still crashes loudly
+   as today. Applies to the desktop and the browser alike.
+2. **A clock tests can control:** `ElementHost` takes frame time from a replaceable clock, and the inspector's
+   delayed refresh uses it instead of `Task.Delay`, so `IdleTests` (40 of the unit tests' 40 seconds) and the
+   inspector tests stop waiting on real time and `Thread.Sleep`. Built before step 3b.
+3. **A checking pass before more building:** new work pauses until Tim has gone through CHECKLIST.md (M8 steps
+   2, 1b, 3a, 3a+, 3a++); meanwhile only the review's small fixes (1, 2 and the docs drift).
+4. **Registries belong to the app's host, not the process** (engineering rule 6, for hot reload): whatever an
+   app registers (custom visual states today, anything like them later) is dropped with the app. Decided now,
+   built with M10.
+5. **A `semantics` stage for element types before step 4:** role, name and states (no screen reader yet), filled
+   in for the 3a controls too, so step 4's controls are built with it rather than retrofitted.
+
+Round 2 (Tim accepted these; the reference pictures and the name went to round 3):
+
+6. **One property set twice in one settings list warns in Debug builds** (any element). `Button.text` stays as
+   the shorthand and `Button.content` the general form; the inherited `Button.child` can't be hidden.
+7. **`AppSetting<unit>` stays:** apps made only of components annotate `let app: AppSetting<unit> list`
+   (README explains it). Non-generic app settings would cost `App.onKey`/`App.onFrame` their typed messages.
+   Closes the open item.
+8. **Control naming pattern:** the value setting is named for what it is (`isChecked`, `value`, `selected`), its
+   change event `on<Name>Changed`, and where a drag is involved its end `on<Name>Committed`.
+   `Separator.lineStyle` stays (Separator isn't a Border).
+9. **`Inspector.fs` is split during the pause** into `Format`, `InspectorState`, the highlight, the small
+   elements and the views; its `WrapRow` gives way to Core's `WrapPanel`. No change in behaviour.
+10. **A full glyph atlas:** Debug builds warn when it clears twice in one frame; the multi-page atlas stays for
+    later.
+11. **An element leaving its tree drops its forced states** (so the process-wide counts come back down);
+    `Element.RenderOverflow` becomes internal.
+12. **Wall-clock assertions get a `Timing` trait,** left out of the default run and run in Release before each
+    milestone report; count-based checks stay in the normal run.
+15. **License: MIT.** A LICENSE file is added now; the repository stays private until Tim decides to push.
+
+Round 3 (Tim accepted every recommendation):
+
+13. **Same pixels on every platform is a rule** (Tim: pixel exactness across platforms matters more than
+    anything else in rendering). Measured 2026-11-17 on Tim's NVIDIA GPU: D3D12 and Vulkan gave identical results
+    in all 41 picture comparisons, and 31 of them matched the lavapipe references bit for bit; the other 10 differ
+    (inspector up to 214 per channel, dashboard 69, Layout tab and a phone layout 25), most likely stale
+    references the tolerance hid (0.5% of pixels may differ by any amount). So: look at the 10 and regenerate
+    the stale ones, treating a real GPU difference as a bug; compare exactly (channel difference 0, no share of
+    pixels), with a written per-test exception only where a backend truly can't match; a new test renders the
+    same scenes on D3D12 and Vulkan and requires identical output; the browser (Dawn/Tint) and Metal get the
+    same check once they can produce pictures.
+16. **The name stays Scribble.** The bare NuGet id `Scribble` belongs to someone else (prereleases), and another
+    owner publishes `Scribble.Mail.*`, `Scribble.Identity.*` and so on; `Scribble.Core`, `Scribble.Desktop`,
+    `Scribble.Browser` are free. Packages are `Scribble.*`; README says the bare `Scribble` package isn't ours;
+    apply for the `Scribble.*` prefix reservation (likely refused; not needed). Closes the open question.
+17. **DESIGN.md's opening sections are rewritten** to describe the project as it is (projects, DllImport,
+    finished milestones, MVU, panels), with an index at the top from each milestone to its section; later
+    sections stay as history. During the pause.
+18. **README's "What to check" moves to `docs/what-to-check.md`** (README links to it) at the first public push,
+    not now; this revises Tim's 2026-11-16 note that README keeps them.
+19. **CI waits until just before the public push,** planned together with decision 13's backend checks (unit
+    tests on GitHub's Windows runners; rendering tests on a software GPU, lavapipe or WARP).
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
