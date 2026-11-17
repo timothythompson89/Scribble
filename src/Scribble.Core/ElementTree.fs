@@ -137,29 +137,55 @@ type ElementTree(text: TextSystem) =
         let mutable rounds = 0
         while restyleQueue.Count > 0 && rounds < 10 do
             rounds <- rounds + 1
-            let depth (e: Element) =
-                let mutable d = 0
-                let mutable p = e.Parent
-                while p.IsSome do
-                    d <- d + 1
-                    p <- p.Value.Parent
-                d
-            let batch = restyleQueue.ToArray() |> Array.sortBy depth
+            let batch = restyleQueue.ToArray()
             restyleQueue.Clear()
-            for e in batch do
-                let isOurs =
-                    match e.Root with
-                    | ValueSome r -> obj.ReferenceEquals(r, this)
-                    | ValueNone -> false
-                if isOurs then
-                    let struct (queued, deep) = e.TakeRestyle()
-                    if queued then
-                        if ItemsProfile.On then ItemsProfile.Restyled <- ItemsProfile.Restyled + 1
-                        let scopes = StyleEngine.scopesAbove e
-                        let found =
-                            if deep then StyleEngine.applyDeep theme appStyles scopes e
-                            else StyleEngine.apply theme appStyles scopes e
-                        if found then ancestorStates <- true
+            this.ApplyRestyles batch
+
+    /// Matches styles for `batch` (queued elements), parents before children.
+    member private this.ApplyRestyles(batch: Element[]) =
+        let depth (e: Element) =
+            let mutable d = 0
+            let mutable p = e.Parent
+            while p.IsSome do
+                d <- d + 1
+                p <- p.Value.Parent
+            d
+        for e in Array.sortBy depth batch do
+            let isOurs =
+                match e.Root with
+                | ValueSome r -> obj.ReferenceEquals(r, this)
+                | ValueNone -> false
+            if isOurs then
+                let struct (queued, deep) = e.TakeRestyle()
+                if queued then
+                    if ItemsProfile.On then ItemsProfile.Restyled <- ItemsProfile.Restyled + 1
+                    let scopes = StyleEngine.scopesAbove e
+                    let found =
+                        if deep then StyleEngine.applyDeep theme appStyles scopes e
+                        else StyleEngine.apply theme appStyles scopes e
+                    if found then ancestorStates <- true
+
+    /// Matches the styles queued for `e` and anything inside it now; the rest of the queue waits
+    /// for the next layout. ItemsView realizes items during layout, after this layout's restyle
+    /// pass: it calls this so an item is styled before it's measured (DESIGN.md, "Recycling
+    /// measured; styles on realization; new sources", decision 1).
+    member internal this.RunStylesWithin(e: Element) =
+        let mutable rounds = 0
+        while rounds < 10 && restyleQueue.Exists(fun q -> e.Contains q) do
+            rounds <- rounds + 1
+            let mine = restyleQueue.FindAll(fun q -> e.Contains q).ToArray()
+            restyleQueue.RemoveAll(fun q -> e.Contains q) |> ignore
+            this.ApplyRestyles mine
+
+    /// An element whose styles are still waiting to be matched (none right after a layout, unless
+    /// something asked during the frame: ElementHost warns about those in debug builds).
+    member internal _.FirstQueuedRestyle: Element voption =
+        let mutable found = ValueNone
+        let mutable i = 0
+        while found.IsNone && i < restyleQueue.Count do
+            if restyleQueue[i].IsRestyleQueued then found <- ValueSome restyleQueue[i]
+            i <- i + 1
+        found
 
     /// Runs what asked to run after the frame (effects, animations asking for the next frame).
     /// ElementHost calls it once a frame is drawn.

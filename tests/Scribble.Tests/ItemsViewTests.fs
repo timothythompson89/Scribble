@@ -195,3 +195,61 @@ let ``horizontal scrolling gives the content its own width`` () =
     t.UpdateLayout(Size.Create(300.0, 200.0))
     let content = t.Root.Value.Children[0]
     Assert.Equal(1000.0, content.Bounds.Width)
+
+// --- Styles on realization (DESIGN.md, "Recycling measured; styles on realization; new sources") ---
+
+/// A 300×200 tree: a reference Button (styled the normal way), then a ScrollViewer holding an
+/// ItemsView of `n` rows made by `row`.
+let private styledList (styles: Style list) (theme: Theme voption) (n: int) (row: int -> View) =
+    let t = ElementTree(textSystem ())
+    t.Styles <- styles
+    t.Theme <- theme
+    let scroller = Scroller()
+    t.Update(
+        StackPanel.create [
+            StackPanel.children [
+                Button.create [ Button.name "reference"; Button.text "Reference" ]
+                ScrollViewer.create [
+                    ScrollViewer.height 150.0
+                    ScrollViewer.content (
+                        ItemsView.create [
+                            ItemsView.source [| 0 .. n - 1 |]
+                            ItemsView.view row
+                            ItemsView.scroller scroller
+                        ])
+                ]
+            ]
+        ])
+    layoutAt t
+    let sv = t.Root.Value.Children[1]
+    t, scroller, t.Root.Value.Children[0], sv.Children[0]
+
+[<Fact>]
+let ``rows are styled before they're measured, in the layout that realizes them`` () =
+    // A class style adds 10 of padding all round: every row is 20 + 2 × 10 high.
+    let styles = [ Border.style [ Style.cls "row" ] [ Border.padding 10.0 ] ]
+    let row (i: int) =
+        Border.create [ Border.name (string i); Border.classes [ "row" ]; Border.child (Border.create [ Border.height 20.0 ]) ]
+    let t, scroller, _, iv = styledList styles ValueNone 1_000 row
+    for step in 1 .. 60 do
+        // Steps of 37 (not a multiple of the row height): rows come in recycled and new.
+        scroller.ScrollBy(37.0, false)
+        layoutAt t
+        for c in iv.Children do
+            Assert.True(c.DesiredSize.Height = 40.0, $"step {step}: row {c.Name} measured {c.DesiredSize.Height} high")
+        Assert.True(t.FirstQueuedRestyle.IsNone, $"step {step}: a restyle was left queued")
+
+[<Fact>]
+let ``a themed Button in a row that just scrolled in has its theme look in its first frame`` () =
+    let row (i: int) =
+        Border.create [ Border.name (string i); Border.child (Button.create [ Button.name ("button " + string i); Button.text "Reply" ]) ]
+    let t, scroller, reference, iv = styledList [] (ValueSome(Theme.dark [])) 1_000 row
+    let themed = reference.Get BorderProps.background
+    Assert.NotEqual(BorderProps.background.Default, themed)
+    for step in 1 .. 40 do
+        scroller.ScrollBy(53.0, false)
+        layoutAt t
+        for c in iv.Children do
+            let button = c.Children[0]
+            Assert.True((button.Get BorderProps.background) = themed, $"step {step}: {button.Name} has no theme background")
+        Assert.True(t.FirstQueuedRestyle.IsNone, $"step {step}: a restyle was left queued")

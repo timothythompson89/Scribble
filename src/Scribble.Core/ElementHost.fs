@@ -359,6 +359,18 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             inFrame <- true
             try
                 this.DrawFrame()
+#if DEBUG
+                // What a frame asks for is ignored (it's handled by that frame), so styles queued
+                // during it wait until something else asks for a frame. Nothing should do that
+                // (DESIGN.md, "Recycling measured; ...", decision 8); say who did.
+                for l in layers do
+                    match l.Tree.FirstQueuedRestyle with
+                    | ValueSome e ->
+                        Debug.WriteLine(
+                            "Scribble: " + e.Type.Name + (if e.Name <> "" then " #" + e.Name else "") + " in layer '" + l.Name
+                            + "' still has styles to match after its frame; they apply only when something else asks for a frame.")
+                    | ValueNone -> ()
+#endif
             finally
                 inFrame <- false
             // Effects and "keep animating" requests: outside the frame, so what they change asks

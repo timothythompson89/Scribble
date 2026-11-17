@@ -1327,6 +1327,13 @@ after its frame (see the first decision). Decided:
    more item: at most 64 KB allocated by ItemsView (about 1.4 MB before; the app's array not counted). The
    benchmark's "Add message" reports the time; the goal is under 100 µs on Tim's desktop in Release (516 µs before).
 
+**Decision 1 as built (2026-11-17):** `ItemsView`'s `realize` calls the tree's internal `RunStylesWithin item`
+after attaching and patching: it matches what's queued inside that item now and leaves the rest of the queue for
+the next layout (no public API change). The debug warning is in `ElementHost` (after `DrawFrame`). Benchmark: the
+rows left queued after their frame went from about 1.2 per step to 0 in every scenario; restyling now shows inside
+layout (0.7 µs per step for the Counter's rows, 2.3 µs with a Button in each row); step times unchanged. Two unit
+tests (`ItemsViewTests`); both fail with the call removed.
+
 ## Rendering test hangs (2026-11-16)
 
 Tim asked to look into "partial" rendering test runs (35–38 of 57 reported as "Passed!"). They were hangs:

@@ -1112,6 +1112,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         restyleDeep <- restyleDeep || deep
         not wasQueued
 
+    /// Waiting for its styles to be matched.
+    member internal _.IsRestyleQueued = restyleQueued
+
     /// Takes the queued request: (queued, deep).
     member internal _.TakeRestyle() =
         let r = struct (restyleQueued, restyleDeep)

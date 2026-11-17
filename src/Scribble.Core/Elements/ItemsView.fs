@@ -363,6 +363,16 @@ module ItemsView =
             let t0 = stamp ()
             el.Patch v
             if ItemsProfile.On then ItemsProfile.Patch <- ItemsProfile.Patch + since t0
+        // Items are realized during layout, after this layout's restyle pass: match their styles
+        // now, before they're measured (joining the tree asked for a full restyle; a patch may have
+        // asked for more), so they measure and draw styled in this frame.
+        let styleNow (el: Element) =
+            match e.Root with
+            | ValueSome(:? ElementTree as tree) ->
+                let t0 = stamp ()
+                tree.RunStylesWithin el
+                if ItemsProfile.On then ItemsProfile.Restyle <- ItemsProfile.Restyle + since t0
+            | _ -> ()
         match s.Realized.TryGetValue key with
         | true, item ->
             item.Index <- i
@@ -371,6 +381,7 @@ module ItemsView =
                 | ValueSome v when obj.ReferenceEquals(v.Type, item.Element.Type) ->
                     if ItemsProfile.On then ItemsProfile.Repatched <- ItemsProfile.Repatched + 1
                     patch item.Element v
+                    styleNow item.Element
                 | _ -> ()
                 item.Version <- s.Version
             ValueSome item
@@ -394,6 +405,7 @@ module ItemsView =
                             ItemsProfile.Created <- ItemsProfile.Created + 1
                         attach el
                         el
+                styleNow el
                 let item = RealizedItem(el)
                 item.Index <- i
                 item.Version <- s.Version
