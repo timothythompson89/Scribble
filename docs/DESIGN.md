@@ -1848,6 +1848,13 @@ Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q
   inspector no longer lists the Button's alignment as a type default (`inspector-pick`, below the fold). 4 unit
   tests moved their pointer to the centred button; the defaults test checks Stretch for Button and Left for
   CheckBox.
+- *The inspector split (9; step 4):* `Inspector.fs` (1,896 lines) is now seven files in compile order:
+  `InspectorTypes.fs` (options, panel modes, drags, sizes, rows, names), `Format.fs`, `InspectorState.fs`,
+  `Highlight.fs`, `Elements.fs` (Chevron, Grip), `Views.fs` (props, icons, the views) and `Inspector.fs` (the
+  public `Inspector` type), moved unchanged (a stray doc comment of `Format` went back above it). `WrapRow` is
+  gone: the states line is a `WrapPanel` (spacing and line spacing 4, as before; its children were already
+  centred, so a row's full height changes nothing). Every picture identical, all tests pass unchanged except
+  one that found the row by its type name.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

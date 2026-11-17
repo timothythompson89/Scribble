@@ -4,6 +4,12 @@
     <Description>An inspector for Scribble apps: a panel over the app with every layer's element tree, pick mode, a highlight, the selected element's properties and frame stats. Opt in with Inspector.enable [ ... ] in the app's settings.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="InspectorTypes.fs" />
+    <Compile Include="Format.fs" />
+    <Compile Include="InspectorState.fs" />
+    <Compile Include="Highlight.fs" />
+    <Compile Include="Elements.fs" />
+    <Compile Include="Views.fs" />
     <Compile Include="Inspector.fs" />
     <InternalsVisibleTo Include="Scribble.Tests" />
     <InternalsVisibleTo Include="Scribble.Tests.Rendering" />

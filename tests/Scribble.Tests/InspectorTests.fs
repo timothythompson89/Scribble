@@ -461,7 +461,7 @@ let ``every state is listed, off ones too, and a long states section wraps`` () 
         pickAppButton w
         // The states section: the row of toggles under the STATES heading.
         let rec statesRow (e: Element) =
-            if e.Type.Name = "InspectorWrapRow" then Some e
+            if obj.ReferenceEquals(e.Type, WrapPanel.Type) then Some e
             else e.Children |> Seq.tryPick statesRow
         let row = panel.Tree.Root.Value |> statesRow |> Option.get
         // Off, yet listed (so they can be forced).
