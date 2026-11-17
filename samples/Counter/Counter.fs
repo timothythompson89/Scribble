@@ -74,7 +74,18 @@ let demo =
                     TabControl.onSelectedChanged (fun i -> windowTitle.Set(appTitle + " – " + fst pages[i]))
                     TabControl.tabs [
                         for title, content in pages ->
-                            TabItem.create [ TabItem.header title; TabItem.content (StackPanel.create [ StackPanel.children content ]) ]
+                            TabItem.create [
+                                TabItem.header title
+                                // Each page scrolls as a whole when the window is short (a page inside a
+                                // StackPanel would get unlimited height and never scroll). The bar sits over the
+                                // pages' margin, so a page keeps its width whether or not it scrolls.
+                                TabItem.content (
+                                    ScrollViewer.create [
+                                        ScrollViewer.scrollBarSpace ScrollBarSpace.Overlay
+                                        ScrollViewer.content (StackPanel.create [ StackPanel.children content ])
+                                    ]
+                                )
+                            ]
                     ]
                 ]
             ]

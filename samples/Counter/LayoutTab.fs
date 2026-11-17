@@ -1,6 +1,6 @@
 /// The Layout tab (M8 step 2): a form on a Grid, an app shell on a DockPanel with Separators, boxes
 /// to drag on a Canvas (a click brings one to the front with zIndex; the selected one has a dashed
-/// outline) and chips in a WrapPanel, all in a ScrollViewer that fills the page.
+/// outline) and chips in a WrapPanel, in a page the Counter scrolls.
 module Scribble.Samples.CounterDemo.LayoutTab
 
 open Scribble.Rendering
@@ -213,19 +213,15 @@ let private chips =
         ]
     ]
 
-/// The page: the four parts, scrolling when the window is short.
+/// The page: the four parts (the Counter's tab scrolls it when the window is short).
 let layoutPage =
-    ScrollViewer.create [
-        ScrollViewer.content (
-            StackPanel.create [
-                StackPanel.margin (24.0, 16.0, 24.0, 24.0)
-                StackPanel.spacing 22.0
-                StackPanel.children [
-                    section "Grid" "A form: labels in an Auto column, fields in a star column (at least 120), a span." form
-                    section "DockPanel" "An app shell: toolbar, status bar, sidebar, Separators; the last child fills." shell
-                    section "Canvas" "Drag the boxes; a press brings one to the front (zIndex) and outlines it." (canvasDemo ())
-                    section "WrapPanel" "Chips that wrap; breakAfter after Elm starts a new row." chips
-                ]
-            ]
-        )
+    StackPanel.create [
+        StackPanel.margin (24.0, 16.0, 24.0, 24.0)
+        StackPanel.spacing 22.0
+        StackPanel.children [
+            section "Grid" "A form: labels in an Auto column, fields in a star column (at least 120), a span." form
+            section "DockPanel" "An app shell: toolbar, status bar, sidebar, Separators; the last child fills." shell
+            section "Canvas" "Drag the boxes; a press brings one to the front (zIndex) and outlines it." (canvasDemo ())
+            section "WrapPanel" "Chips that wrap; breakAfter after Elm starts a new row." chips
+        ]
     ]

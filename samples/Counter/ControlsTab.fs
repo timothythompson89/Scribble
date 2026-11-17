@@ -39,67 +39,63 @@ let controlsPage =
         let volume = ctx.useState 40.0
         let committed = ctx.useState 40.0
         let some = picked.Current
-        ScrollViewer.create [
-            ScrollViewer.content (
-                StackPanel.create [
-                    StackPanel.margin (24.0, 16.0, 24.0, 8.0)
-                    StackPanel.children [
-                        section "CheckBox: controlled by the page's state; \"All toppings\" shows a dash while only some are picked" [
-                            CheckBox.create [
-                                CheckBox.text "All toppings"
-                                CheckBox.isChecked (some.Count = toppings.Length)
-                                CheckBox.isIndeterminate (some.Count > 0 && some.Count < toppings.Length)
-                                CheckBox.onCheckedChanged (fun on -> picked.Set(if on then Set.ofList toppings else Set.empty))
-                            ]
-                            for t in toppings do
-                                CheckBox.create [
-                                    CheckBox.margin (26.0, 0.0, 0.0, 0.0)
-                                    CheckBox.text t
-                                    CheckBox.isChecked (some.Contains t)
-                                    CheckBox.onCheckedChanged (fun on -> picked.Set(if on then some.Add t else some.Remove t))
-                                ]
-                            CheckBox.create [ CheckBox.text "No isChecked: it keeps its own value" ]
-                            CheckBox.create [ CheckBox.text "Disabled"; CheckBox.isChecked true; CheckBox.isEnabled false ]
+        StackPanel.create [
+            StackPanel.margin (24.0, 16.0, 24.0, 8.0)
+            StackPanel.children [
+                section "CheckBox: controlled by the page's state; \"All toppings\" shows a dash while only some are picked" [
+                    CheckBox.create [
+                        CheckBox.text "All toppings"
+                        CheckBox.isChecked (some.Count = toppings.Length)
+                        CheckBox.isIndeterminate (some.Count > 0 && some.Count < toppings.Length)
+                        CheckBox.onCheckedChanged (fun on -> picked.Set(if on then Set.ofList toppings else Set.empty))
+                    ]
+                    for t in toppings do
+                        CheckBox.create [
+                            CheckBox.margin (26.0, 0.0, 0.0, 0.0)
+                            CheckBox.text t
+                            CheckBox.isChecked (some.Contains t)
+                            CheckBox.onCheckedChanged (fun on -> picked.Set(if on then some.Add t else some.Remove t))
                         ]
-                        section "Switch and ToggleButton" [
-                            Switch.create [
-                                Switch.text (if wifi.Current then "Wi-Fi is on" else "Wi-Fi is off")
-                                Switch.isChecked wifi.Current
-                                Switch.onCheckedChanged wifi.Set
-                            ]
-                            Switch.create [ Switch.text "No isChecked: it keeps its own value" ]
-                            Switch.create [ Switch.text "Disabled"; Switch.isEnabled false ]
-                            row [
-                                ToggleButton.create [ ToggleButton.text "Bold"; ToggleButton.isChecked bold.Current; ToggleButton.onCheckedChanged bold.Set ]
-                                TextBlock.create [
-                                    TextBlock.text "Some text"
-                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                    TextBlock.font (if bold.Current then Fonts.SemiBold() else Fonts.Regular())
-                                ]
-                            ]
-                        ]
-                        section "Slider: the first is controlled (its value below follows every change; \"let go\" only when you let go)" [
-                            Slider.create [
-                                Semantics.label "Volume"
-                                Slider.value volume.Current
-                                Slider.onValueChanged volume.Set
-                                Slider.onValueCommitted committed.Set
-                            ]
-                            TextBlock.create [ TextBlock.text $"Value {volume.Current:F0}, let go at {committed.Current:F0}" ]
-                            Slider.create [ Slider.step 0.0; Semantics.label "Smooth" ]
-                            Slider.create [ Slider.value 30.0; Slider.isEnabled false; Semantics.label "Disabled" ]
-                            // Vertical, in steps of 10, each keeping its own value (minimum at the bottom).
-                            row [
-                                for i in 1..3 ->
-                                    Slider.create [
-                                        Slider.orientation Orientation.Vertical
-                                        Slider.height 120.0
-                                        Slider.step 10.0
-                                        Semantics.label ("Level " + string i)
-                                    ]
-                            ]
+                    CheckBox.create [ CheckBox.text "No isChecked: it keeps its own value" ]
+                    CheckBox.create [ CheckBox.text "Disabled"; CheckBox.isChecked true; CheckBox.isEnabled false ]
+                ]
+                section "Switch and ToggleButton" [
+                    Switch.create [
+                        Switch.text (if wifi.Current then "Wi-Fi is on" else "Wi-Fi is off")
+                        Switch.isChecked wifi.Current
+                        Switch.onCheckedChanged wifi.Set
+                    ]
+                    Switch.create [ Switch.text "No isChecked: it keeps its own value" ]
+                    Switch.create [ Switch.text "Disabled"; Switch.isEnabled false ]
+                    row [
+                        ToggleButton.create [ ToggleButton.text "Bold"; ToggleButton.isChecked bold.Current; ToggleButton.onCheckedChanged bold.Set ]
+                        TextBlock.create [
+                            TextBlock.text "Some text"
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                            TextBlock.font (if bold.Current then Fonts.SemiBold() else Fonts.Regular())
                         ]
                     ]
                 ]
-            )
+                section "Slider: the first is controlled (its value below follows every change; \"let go\" only when you let go)" [
+                    Slider.create [
+                        Semantics.label "Volume"
+                        Slider.value volume.Current
+                        Slider.onValueChanged volume.Set
+                        Slider.onValueCommitted committed.Set
+                    ]
+                    TextBlock.create [ TextBlock.text $"Value {volume.Current:F0}, let go at {committed.Current:F0}" ]
+                    Slider.create [ Slider.step 0.0; Semantics.label "Smooth" ]
+                    Slider.create [ Slider.value 30.0; Slider.isEnabled false; Semantics.label "Disabled" ]
+                    // Vertical, in steps of 10, each keeping its own value (minimum at the bottom).
+                    row [
+                        for i in 1..3 ->
+                            Slider.create [
+                                Slider.orientation Orientation.Vertical
+                                Slider.height 120.0
+                                Slider.step 10.0
+                                Semantics.label ("Level " + string i)
+                            ]
+                    ]
+                ]
+            ]
         ])
