@@ -1,8 +1,209 @@
 # Scribble — design doc
 
-Nov 14, 2026 · @Tim
+Started 2026-11-14 · Tim. **Part 1** (up to "Part 2") describes Scribble as it is; it was rewritten on
+2026-11-17 (project review, decision 17) and is kept current at the end of each milestone. **Part 2** is the
+history: the first plan, then every decision and milestone in the words of its time (older words are in
+GLOSSARY.md: "token" is now "theme value", "marker type" "settings type"). When the two disagree, Part 1 is right.
 
-## Vision and goals
+## Index
+
+Where each milestone's decisions and results are in Part 2. Most sections are in "Decision log and open
+questions", as paragraphs starting with the name given here.
+
+| Milestone | What | Where |
+| --- | --- | --- |
+| M0 | Win32 window, DPI, WebGPU surface | "Decision log" (the table) |
+| M0.5 | Browser (WebAssembly), drawing on request | "Decisions from M0.5" |
+| M1 | Draw list (SDF shapes, one draw call) | "Decisions from M1" |
+| M2, M2b | Text; emoji and fallback | "Decisions from M2", "Decisions from M2b" |
+| M3, M3b, M3c | Elements and layout; F#-style elements; lengths | "Decisions for M3", "Learned in M3", "Decisions for M3b", "Decisions for M3c" |
+| M4 | Views, the differ, `App.run` | "Decisions for M4" |
+| M5 | Pointer, keyboard and focus, components | "Decisions for M5", "Settings API change", "… M5 step 2", "… M5 step 3", "Click arguments" |
+| M5b | Async in components | "Decisions for M5b", "Tabs in the sample" |
+| M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
+| M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
+| M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content" |
+| Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
+| Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
+
+## What Scribble is
+
+A public, open UI framework for F#, written from the GPU up, with a FuncUI-style DSL. It runs on Windows and in
+the browser (WebAssembly) today; macOS and Linux come next, then phones, TVs and consoles. Windows is the
+development platform.
+
+- **Low level by intent:** windowing, rendering, layout and text are our own code. Borrowed: WebGPU (wgpu-native on
+  the desktop, the browser's own WebGPU) and HarfBuzz (shaping only). OS APIs (windows, cursors, IME,
+  accessibility) are the platform, not borrowing.
+- **One look everywhere**, not native imitation, and **the same pixels on every platform** (decision 13 of the
+  project review): screenshot tests compare exactly, and backends must agree.
+- **F# only** (no C# projects), and every library works under NativeAOT, trimming and WebAssembly AOT.
+- **Frames on request:** nothing draws while nothing changes, and at most one frame per display refresh while
+  something does (the power rule).
+- **Frame work proportional to what's visible**, not to what exists (tested: virtualization, culling).
+- Licence: MIT (`LICENSE`). Packages will be `Scribble.*` (the bare `Scribble` id on NuGet belongs to someone
+  else). The repository is private until Tim decides to publish it.
+
+## Status
+
+Done and verified by Tim on Windows and in the browser: M0 to M7b (window and GPU, browser, draw list, text,
+elements and layout, views and the differ, input, components, async, layers, the inspector, styles, themes, app
+values, icons, the Material package, image cursors) and M8 step 1 (ScrollViewer completed, ItemsView). M7c
+(custom title bars) was skipped.
+
+Built, waiting for Tim's checking pass (`docs/CHECKLIST.md`): M8 steps 1b (the scroll anchor), 2 (Grid,
+DockPanel, Canvas, WrapPanel, Separator, zIndex, dashed borders), 3a (ToggleButton, CheckBox, Switch, Slider,
+TabControl), 3a+ and 3a++ (the inspector tree on ItemsView, sideways scrolling), and the project review's steps
+1–5 (the platform clock, errors to `App.onError`, exact pictures, small Core fixes, the inspector split, these
+docs).
+
+Next: the semantics stage for element types (role, name, states; decision 5), then M8 step 3b (Image, with
+decoding decided in its own round) and step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
+"show this in a layer" element). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
+
+## Projects
+
+| Project | What it is |
+| --- | --- |
+| `Scribble.Platform` | Windows, events, DPI and time as interfaces (`IPlatform`, `IWindow`, `PlatformEvent`); the frame clock and timer queue |
+| `Scribble.Platform.Win32` | Hand-written Win32: per-monitor DPI v2, the draw-on-request loop, live resize, timers |
+| `Scribble.Platform.Browser` | The browser: a full-page canvas, JS interop in pure F# |
+| `Scribble.Rendering` | The draw list, colors, geometry, glyph atlases, `shapes.wgsl` |
+| `Scribble.Rendering.WebGPU` | `webgpu.h` bindings and the renderer over wgpu-native (downloaded on first build) |
+| `Scribble.Rendering.WebGPU.Browser` | The renderer over the browser's `navigator.gpu` |
+| `Scribble.Text` | TrueType parser, rasterizer, text system, line breaking, wrapping and trimming, icon paths; Inter built in |
+| `Scribble.Text.HarfBuzz`, `.Browser` | Shaping: native HarfBuzz, harfbuzzjs in WebAssembly (identical output) |
+| `Scribble.Text.Emoji` | Opt-in Twemoji colour font (CC-BY 4.0 art: apps that use it must credit it) |
+| `Scribble.Core` | Views and the differ, elements, layout, input, styles, themes, components, app values, layers, the element types, `App`; folders in compile order: Foundation, Framework, Elements (Basic, Panels, Scrolling, Controls), Themes, Hosting |
+| `Scribble.Desktop`, `Scribble.Browser` | `App.run` for each: one reference brings platform, GPU and shaping |
+| `Scribble.Inspector` | Opt-in devtools-style inspector; files in compile order: InspectorTypes, Format, InspectorState, Highlight, Elements, Views, Inspector (the public type) |
+| `Scribble.Icons.Material` | Opt-in Material Symbols (© Google, Apache 2.0); `Material.fs` is generated by `tools/GenerateMaterial.fsx` |
+| Samples | Hello (the dashboard), Counter (a tabbed demo of everything), Icons (every Material Symbol); each a library with Desktop and Browser hosts (the same one-line Program.fs; host defaults in `samples/Directory.Build.props`); `Samples.Shared` |
+| Tests | `Scribble.Tests` (unit, on a fake platform), `Scribble.Tests.Rendering` (GPU screenshots) |
+| Tools | `Scribble.Serve` (the browser samples on the local network over HTTPS), `Scribble.Bench` (ItemsView measurements), `GenerateMaterial.fsx` |
+
+Each layer depends only on those below it; only the `Platform.*` and `Rendering.*` backends hold platform code,
+so a new platform means new backends, not changes above them. Native calls use `DllImport` with blittable
+signatures (F# can't use the `LibraryImport` generator); browser interop uses `JSFunctionBinding`.
+
+## Platform
+
+- `IPlatform` creates windows, runs the loop and owns time: `Elapsed` (monotonic) and `After(delay, action)`
+  (a one-shot timer that fires only when asked). Nothing in Core reads a stopwatch; tests use a fake platform whose
+  time moves only when a test says.
+- `IWindow`: size in physical pixels, scale, `RequestFrame()`, `SetCursor`, a native handle for the GPU surface,
+  and one event union (`PlatformEvent`: size, scale, pointer with kind and id, keys, text, focus, close).
+- Windows draw only when asked. On Windows a live resize draws at most once per display refresh; D3D12 presents
+  through a DirectComposition visual (smooth cursor with G-SYNC).
+- Per-monitor DPI v2; layout in DIPs, rendering in physical pixels.
+
+## Rendering
+
+- Everything is **one instanced draw call per frame**: shapes are 96-byte instances (SDF rounded rectangles,
+  borders, dashed and dotted borders, Gaussian shadows, a per-shape pixel clip); glyphs and icons are shape kinds
+  that read a coverage atlas (2048²) or a colour atlas (1024²). Edges snap to physical pixels unless `Precise`.
+- Backends: wgpu-native on the desktop (D3D12 by default on Windows, then Vulkan or Metal; OpenGL only if nothing
+  else gives an adapter), the browser's WebGPU in the browser. Desktop surfaces keep one frame in flight.
+- **Same pixels:** the shader avoids built-ins whose precision WGSL leaves open (`atan2` is a polynomial) and
+  rounds colours to 8 bits itself; D3D12 and Vulkan agree except 2 pixels in one test picture (a written
+  exception).
+- Elements outside the clip (plus 64 DIPs for shadows) aren't drawn; a draw list can roll back what a failed
+  render drew.
+
+## Text
+
+- Own TrueType parser (cmap 4/12, glyf with composites, COLR v0/CPAL), an accumulation rasterizer with 4
+  horizontal subpixel positions and no hinting, glyph caches per size.
+- HarfBuzz shapes (cached per string); fallback per grapheme cluster (Twemoji opt-in); line breaking, wrapping,
+  ellipsis trimming, alignment.
+- Icons are SVG path data drawn through the same rasterizer and atlas, tinted like text.
+- Not yet: bidi and complex scripts, IME, editing (M9).
+
+## Core
+
+- **Views and elements.** `X.create [ settings ]` returns a View: an element type and its settings. The element
+  tree realizes it once and then patches it setting by setting; children match by position or key; an unchanged
+  View is skipped. Properties are typed keys (`Prop<'T>`) that say what they affect (measure, arrange, render);
+  an element type is a list of stage functions and defaults (`Element.define`, `Element.extend`); settings are
+  static members on settings types, so a setting that doesn't belong to an element doesn't compile.
+- **Layout:** WPF-style measure and arrange, rounding to physical pixels, `Length` (auto, px, %, star).
+  Panels: StackPanel, Grid, DockPanel, Canvas, WrapPanel; attached settings (`Grid.row`, `DockPanel.dock`);
+  `zIndex`. Every element stretches unless it says otherwise (CheckBox and Switch align left).
+- **Scrolling:** ScrollViewer (bars, thumb drag, wheel, keys, touch with fling) and ItemsView (virtualized lists
+  and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
+  it).
+- **Elements:** Border, TextBlock, IconView, Separator, FocusRing; Button, ToggleButton, CheckBox, Switch, Slider,
+  TabControl (controls are controlled when the view gives their value, else keep their own).
+- **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
+  cursors (also image cursors); keyboard focus, Tab order, focus-visible.
+- **Styles and themes:** selectors (type, class, name, state, descendant and child), precedence own value over
+  style over theme; transitions; dark and light themes with theme values (`Palette.surface`); app values that any
+  view can read; visual states that apps can define and tools can force.
+- **Layers:** the app's view and more (dialogs, toasts, the inspector) over it, each with its own tree and focus.
+- **Errors:** app code (handlers, views, components, render functions, items) is guarded; with `App.onError` an
+  error is reported and only what failed is left out; without it the app ends.
+
+## Programming model
+
+- **MVU is built in:** `App.program init update view` (Elmish; an equal model doesn't rebuild), with commands
+  (`App.programWithCmd`); or a view of **components** with hooks (`useState`, `useEffect`, `useMemo`,
+  `useElmish`, `useAsync`, `useAnimated`, `useAppValue`, `useScroller`, `useSubscription`), or both.
+- **Settings lists everywhere:** views (`Border.create [ ... ]`), apps (`App.run [ App.title ...; ... ]`), element
+  types, themes, hosts. No computation-expression or modifier-chain syntax. Exceptions are listed in "Settings
+  everywhere" (Part 2).
+- **One UI thread:** a dispatcher brings work back to it; `task` and `async` resume on it.
+- **Naming:** a control's value setting is named for what it is (`isChecked`, `value`, `selected`), its change
+  event `on<Name>Changed`, and the end of a drag `on<Name>Committed` (decision 8). Settings types and their
+  element share a name; `create` and `Type` live in a same-named module.
+
+## Tooling and testing
+
+- **Inspector** (opt-in, F12): the element tree of every layer (virtualized), pick mode, a devtools-style
+  highlight with margins and Grid lines, properties with where each value came from, forcing states, frame stats;
+  docked, floating, collapsed, or popped out into its own window. It refreshes at most about 10 times a second.
+- **Tests:** unit tests on a fake platform with fake time (1–2 s; wall-clock tests skipped unless
+  `SCRIBBLE_TIMING=1`), and GPU screenshot tests compared exactly with references made on Tim's machine, plus a
+  test that renders the same scenes on every backend.
+- **Tools:** `Scribble.Serve` (browser samples on the phone), `Scribble.Bench` (ItemsView costs).
+- Hot reload is M10 (a dev host with a collectible `AssemblyLoadContext`, never in AOT builds).
+
+## Engineering rules
+
+1. NativeAOT and trimming everywhere: no reflection, `Activator`, emitted code or `dynamic` in shipped code; no
+   F# printf family (`printfn`, `sprintf`, `failwithf`, `%A`).
+2. Native calls: `DllImport` with blittable signatures, callbacks through `Marshal.GetFunctionPointerForDelegate<'T>`
+   with the delegate kept alive, struct layouts checked against the C headers; never `fixed` on a string.
+3. Native resources are `IDisposable`; nothing native is freed by a finalizer alone.
+4. Platform code only in `Scribble.Platform.*` and `Scribble.Rendering.*` backends.
+5. Elements are UI-thread only (checked in Debug builds); shared state between threads lives in holder types
+   with plain static fields, never `static let`.
+6. No static state keyed on user types; what an app registers will belong to its host (decision 4, for hot reload).
+7. Time comes from the platform; app code is guarded; never add frames.
+8. Public API gets XML docs; a changelog starts with the first package. No nulls in the public API.
+
+## Deferred work
+
+| Item | When | Room left now |
+| --- | --- | --- |
+| Accessibility | A semantics stage next; screen readers later | Element types will describe role, name and states |
+| Hot reload | M10 | Pure views, keyed state, no static caches keyed on user types |
+| Bidi and complex scripts | Later | Shaping through HarfBuzz; layout works on runs |
+| IME | With TextBox polish | Text input events can carry composition |
+| macOS, Linux, mobile | After M10 | Everything goes through `IPlatform`/`IWindow` |
+| Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
+
+---
+
+# Part 2: history
+
+## The first plan (2026-11-14, kept as written)
+
+The opening sections as first written, before any code. Much has changed since (Part 1 has the current state):
+the projects, LibraryImport (we use DllImport), MVU (built in now), the panels, the milestones.
+
+### Vision and goals
 
 Scribble is a public, open UI framework written in F# from the GPU up, with a declarative DSL in the spirit of Avalonia.FuncUI. It should run anywhere .NET NativeAOT runs: desktops first, then phones, TVs and consoles.
 
@@ -12,7 +213,7 @@ Scribble is a public, open UI framework written in F# from the GPU up, with a de
 - **Low level by intent:** windowing, rendering, layout and text are our own code. We borrow only a GPU abstraction (WebGPU) and a text shaper (HarfBuzz).
 - **Look:** one custom Scribble look on every platform, not native imitation.
 
-## Non-goals and deferred work
+### Non-goals and deferred work
 
 These are deliberately later, but the design must leave room for each so they can be added without a rewrite.
 
@@ -26,7 +227,7 @@ These are deliberately later, but the design must leave room for each so they ca
 | Touch, gamepad and remote input | With mobile, TV and console ports | Routed events and focus support pointer kinds and directional navigation |
 | Native platform features | Not planned for v1 | None |
 
-## Architecture and solution layout
+### Architecture and solution layout
 
 Scribble is a stack of portable layers over three swappable backends; porting to a new platform means writing backends, not touching the layers above.
 
@@ -53,7 +254,7 @@ Scribble/
    └─ Scribble.Tests.Rendering     screenshot tests
 ```
 
-## Platform layer
+### Platform layer
 
 Win32 comes first, hand-written over P/Invoke, behind a small platform interface that later backends (Cocoa, Wayland/X11, Android, iOS, consoles) implement.
 
@@ -64,7 +265,7 @@ Win32 comes first, hand-written over P/Invoke, behind a small platform interface
 - **Focus model:** keyboard Tab order now; directional focus (up, down, left, right) designed in for gamepads and TV remotes.
 - **Frame loop:** the platform drives frames (vsync through the swap chain); a frame clock gives `delta` and `total` time to the core.
 
-## Rendering
+### Rendering
 
 Scribble draws through its own small render interface; the first backend is WebGPU via wgpu-native, and a raw Vulkan backend follows as the low-level path and the route to Switch.
 
@@ -75,7 +276,7 @@ Scribble draws through its own small render interface; the first backend is WebG
 - **Headless mode.** The renderer can target an offscreen texture and read it back, which powers screenshot tests.
 - **Later backends:** Vulkan, then Metal or D3D12 only if WebGPU falls short; console backends only with platform-holder access.
 
-## Text
+### Text
 
 HarfBuzz does shaping only; everything else in the text stack is Scribble's own code behind interfaces.
 
@@ -91,7 +292,7 @@ HarfBuzz does shaping only; everything else in the text stack is Scribble's own 
 
 Emoji and basic Unicode are in scope early. HarfBuzz's experimental GPU rendering library (since 14.0) is worth evaluating later, not depending on now.
 
-## Core: elements, layout, input and styles
+### Core: elements, layout, input and styles
 
 The core is a retained tree of elements that the DSL's virtual tree is patched into; it owns layout, hit testing, routed events, focus and styling.
 
@@ -101,7 +302,7 @@ The core is a retained tree of elements that the DSL's virtual tree is patched i
 - **Focus:** a focus manager handles Tab order now and directional navigation later.
 - **Styles:** selectors and cascading styles, as in Avalonia or CSS: type, class, name and state selectors (`:hover`, `:pressed`, `:focus`, `:disabled`), descendant and child combinators. Precedence: inline attribute over style over theme default. Built in stages: inline and a theme record first, selectors once controls exist.
 
-## Programming model
+### Programming model
 
 Apps are components with local state, written FuncUI-style as settings lists, checked at compile time so each setting belongs to its element (decided 2026-11-15; this replaced the computation-expression DSL first planned here).
 
@@ -127,7 +328,7 @@ let counter = Component.define "Counter" (fun ctx (start: int) ->
 - **Threading:** one UI thread. A dispatcher marshals work from other threads.
 - **MVU:** not built in; a thin Elmish-style layer can live on top of components later.
 
-## Tooling and testing
+### Tooling and testing
 
 An inspector arrives early because layout bugs are hard to see; hot reload comes later; tests cover the logic and the pixels.
 
@@ -137,7 +338,7 @@ An inspector arrives early because layout bugs are hard to see; hot reload comes
 - **Screenshot tests:** render scenes headless through WebGPU, compare to reference PNGs with a small tolerance. When the Vulkan backend exists, both backends render the same scenes.
 - **IDE:** developed in Rider on Windows; nothing should depend on a particular IDE.
 
-## Engineering rules
+### Engineering rules
 
 Every library must work under NativeAOT and trimming, because iOS and consoles allow no JIT.
 
@@ -156,7 +357,7 @@ Learned from the first NativeAOT build (2026-11-14):
 - **Callbacks use `Marshal.GetFunctionPointerForDelegate<'T>`** (the generic overload), so AOT can generate the marshalling stub for that exact delegate type.
 - FSharp.Core itself reports trim/AOT warnings; they are harmless as long as we avoid the features above. The Linux AOT build of the WebGPU backend renders pixel-identically to the JIT build, in a 3.6 MB executable.
 
-## Milestones
+### Milestones
 
 Each milestone ends in something runnable on Windows; the counter app working (M4) is the point where Scribble starts to feel like a framework.
 
@@ -634,7 +835,7 @@ Open questions:
 
 Idea for M5 (agreed 2026-11-15, see the M5 decisions): a tactile pressed look for the default Button. It sinks (scales to about 97% around its center), its shadow flattens and it darkens slightly, then springs back over 100–150 ms. Needs the pressed state and a visual-only render transform (M5), and a small "animate this value" helper for the spring-back; the depth and timing become style settings in M7.
 
-- [ ] Apps made only of components have no messages, so `App.view (root ())` needs `AppSetting<unit> list`. Perhaps `App.run` overloads or non-generic view-only settings.
+- [x] Apps made only of components have no messages, so `App.view (root ())` needs `AppSetting<unit> list`. Perhaps `App.run` overloads or non-generic view-only settings. **Closed** (project review 2026-11-17, decision 7): it stays, and README explains it (needed only for a settings list kept in a value).
 - [ ] `RenderOffscreen` must become async for the browser (readback uses `mapAsync`). Decide before screenshot tests run in the browser.
 - [x] Browser key codes: `e.key` mapped to the portable `Key` (M5 step 2, 2026-11-15).
 

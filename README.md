@@ -3,19 +3,19 @@
 A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.md) has the goals, architecture,
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
-**Status: Milestones 0–7b done** (2026-11-16), next M8 (core controls, virtualization first). Apps are F# view
+**Status** (2026-11-17): milestones 0–7b done; M8 (core controls) under way: scrolling and virtualized lists, Grid,
+DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl. Apps are F# view
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
-ScrollViewer, an inspector, styles, light and dark themes, app values, icons (with the Material Symbols package)
-and icon cursors. Underneath: WPF-style layout (measure/arrange, lengths in px, % and star), our own text stack
+ScrollViewer and virtualized ItemsView, an inspector, styles, light and dark themes, app values, icons (with the
+Material Symbols package) and icon cursors. Underneath: WPF-style layout (measure/arrange, lengths in px, % and star), our own text stack
 (TrueType parser, rasterizer, HarfBuzz shaping, emoji fallback), and a GPU draw list rendered in one draw call per
 frame, on Windows and in the browser. Scribble draws only when something asks for a frame.
 
 ## Your first app
 
 ```fsharp
-open Scribble.Rendering
 open Scribble.Core
 
 type Msg = Increment | Decrement
@@ -30,7 +30,7 @@ let view count dispatch =
         StackPanel.margin 24.0
         StackPanel.spacing 16.0
         StackPanel.children [
-            TextBlock.create [ TextBlock.text $"Count: {count}"; TextBlock.fontSize 28.0; TextBlock.foreground Color.White ]
+            TextBlock.create [ TextBlock.text $"Count: {count}"; TextBlock.fontSize 28.0 ]
             Button.create [ Button.text "+"; Button.onClick (fun _ -> dispatch Increment) ]
         ]
     ]
@@ -39,8 +39,13 @@ let view count dispatch =
 let main _ = App.run [ App.title "Counter"; App.program 0 update view ]
 ```
 
+Text and controls take their colours from the theme (dark by default; `App.theme (Theme.light [])` for light), so
+the app sets none.
+
 The same code runs on the desktop and in the browser: only the project file differs, in its SDK and the one
-Scribble package it references (which brings the platform, the GPU renderer and text shaping along).
+Scribble package it references (which brings the platform, the GPU renderer and text shaping along). The
+packages aren't published yet: until they are, reference the projects instead
+(`<ProjectReference Include="path/to/Scribble/src/Scribble.Desktop/Scribble.Desktop.fsproj" />`), as the samples do.
 
 ```xml
 <!-- Desktop -->
@@ -462,7 +467,12 @@ StackPanel.items names id counter                                // keyed: state
   without re-running any view, and `Element.transform (fun ctx -> Transform.ScaleAround(...))` changes how an
   element and its children are drawn without touching layout or input. Button uses both to sink while pressed.
   Easings: `Easing.linear`, `easeIn`, `easeOut` (the default), `easeInOut`, or any `float -> float`.
-- An app made only of components has no messages: annotate its settings (`let app: AppSetting<unit> list = ...`).
+- **An app made only of components** has no messages. App settings carry the app's message type (`AppSetting<'Msg>`,
+  so `App.onKey` and `App.onFrame` can return messages), and with none F# can't tell what it is. Written inline,
+  `App.run [ App.title "Notes"; App.view (root ()) ]` compiles as it is; a list kept in a value, as the samples do
+  to share it between their desktop and browser hosts, needs its type once:
+  `let app: AppSetting<unit> list = [ App.title "Notes"; App.view (root ()) ]` (without it, F# reports a "value
+  restriction", FS0030).
 
 **App values:** state declared once and shared by any component, without passing it down:
 
@@ -1029,3 +1039,10 @@ F# can't use the `LibraryImport` source generator (it's C#-only), so native call
 **blittable signatures only**: pointers instead of `ref`/`out`/`string`, structs made of primitive fields,
 callbacks via `Marshal.GetFunctionPointerForDelegate` with the delegate kept alive. Calls like that need
 no runtime marshalling, so they work under NativeAOT.
+
+## License
+
+Scribble is under the MIT License (`LICENSE`). What it bundles keeps its own license: Inter (SIL Open Font
+License 1.1), HarfBuzz and harfbuzzjs (MIT-style), Twemoji in `Scribble.Text.Emoji` (CC-BY 4.0: apps that use it
+must credit it) and Material Symbols in `Scribble.Icons.Material` (Apache License 2.0); see "Text" and "Icons"
+above.
