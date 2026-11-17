@@ -365,7 +365,7 @@ The app holds the model (`App.program init update view`, the Elmish pattern). Me
 the view is rebuilt on the next frame, once, however many messages arrived, and not at all if the model didn't
 change. Other app settings: `App.title`, `App.size`, `App.background`, `App.fonts` (fallbacks such as Twemoji),
 `App.showStats`, `App.closeOnEscape`, `App.onKey` and `App.onFrame` (animation: frames continue only while the
-model keeps changing; the first frame's `Delta` is zero, and a second frame follows it). `Button` is a Border with a default look that lightens under the pointer, darkens while
+model keeps changing; the first frame's `Delta` is zero, and a second frame follows it). `Button` is a Border with a default look (it stretches to fill its space like other elements; CheckBox and Switch keep to the left) that lightens under the pointer, darkens while
 pressed and fades when disabled; it takes keyboard focus, and Enter or Space clicks it.
 
 ### Pointer input

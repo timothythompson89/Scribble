@@ -115,7 +115,6 @@ module Button =
                 Border.cornerRadius 6.0
                 Border.padding (14.0, 7.0)
                 Border.shadow { Blur = 3.0; OffsetX = 0.0; OffsetY = 1.0; Spread = 0.0; Color = Color.Rgba(0.0f, 0.0f, 0.0f, 0.35f) }
-                Layoutable.horizontalAlignment HorizontalAlignment.Left
                 Layoutable.cursor Cursor.Hand
                 Layoutable.focusable true
             ]

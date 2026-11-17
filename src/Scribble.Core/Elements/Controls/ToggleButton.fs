@@ -82,7 +82,9 @@ module ToggleButton =
           Border.borderThickness 1.0
           Border.padding Thickness.Zero
           Setting.create BorderProps.shadow ValueNone
-          ToggleButton.markColor Color.White ]
+          ToggleButton.markColor Color.White
+          // The box and its label only, so the click area doesn't span a row (Buttons stretch; 2026-11-17).
+          Layoutable.horizontalAlignment HorizontalAlignment.Left ]
 
     let Type = Element.extend Button.Type "ToggleButton" [ Element.click toggle ]
 

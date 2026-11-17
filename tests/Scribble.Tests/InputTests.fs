@@ -168,9 +168,9 @@ let ``clicking inside a child clicks the parent`` () =
     let view =
         Button.create [ Button.width 100.0; Button.height 40.0; Button.text "Go"; Button.onClick (fun _ -> clicks <- clicks + 1) ]
     let w, _, _ = show view
-    // Buttons sit on the left (x 0–100) and are centered vertically (y 130–170); the label is in the middle.
-    press w 50 150
-    release w 50 150
+    // A sized Button is centered (x 150–250, y 130–170); the label is in the middle.
+    press w 200 150
+    release w 200 150
     Assert.Equal(1, clicks)
 
 [<Fact>]
@@ -220,7 +220,7 @@ let ``buttons show a hand, and the cursor goes back when the pointer leaves`` ()
             ]
         ]
     let w, _, _ = show view
-    move w 50 20
+    move w 200 20 // the Button is centered (x 150–250)
     Assert.Equal(Cursor.Hand, w.Cursor)
     // Inside a child that doesn't set one: the ancestor's cursor applies.
     move w 200 60

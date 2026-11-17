@@ -132,7 +132,7 @@ dotnet run --project tools/Scribble.Serve      # the browser samples to the loca
 - **Apps (M4):** `App.program init update view` (Elmish; an equal model causes no rebuild), `App.onKey`,
   `App.onFrame` (animation continues only while the model keeps changing), `App.fonts`, `App.showStats`,
   `App.closeOnEscape`. `App.start` runs on any `IPlatform` (tests use a fake). Pointer and keyboard input (M5): see README
-  "Pointer input" and "Keyboard and focus"; `Button` is a Border with a default look that reacts to hover/pressed/disabled.
+  "Pointer input" and "Keyboard and focus"; `Button` is a Border with a default look that reacts to hover/pressed/disabled; it stretches like other elements (CheckBox and Switch align left; 2026-11-17).
   `onClick` takes `ClickEventArgs` (`Modifiers`, `Source`); write `fun _ -> ...` when unused (no unit overload: F# can't resolve `fun _ ->` between them).
 - **Syntax: FuncUI-style settings lists only** (decided 2026-11-15; the M4 builder trial was removed). Don't
   reintroduce computation-expression or modifier-chain syntax.

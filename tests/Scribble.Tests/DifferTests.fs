@@ -35,11 +35,17 @@ let ``an element type's defaults apply until a view sets its own, and come back 
     t.Update(Button.create [ Button.text "Go" ])
     let b = t.Root.Value
     Assert.Equal(buttonBackground, b.Get BorderProps.background)
-    // Layout defaults too: Button aligns left (the engine keeps a typed copy of layout values).
-    Assert.Equal(HorizontalAlignment.Left, b.Get LayoutProps.horizontalAlignment)
+    // Layout defaults too (the engine keeps a typed copy of layout values): a CheckBox, built on Button,
+    // aligns left, while a Button stretches like other elements (2026-11-17).
+    Assert.Equal(HorizontalAlignment.Stretch, b.Get LayoutProps.horizontalAlignment)
     t.UpdateLayout(Size.Create(400.0, 100.0))
-    Assert.Equal(0.0, b.Bounds.X)
-    Assert.True(b.Bounds.Width < 400.0)
+    Assert.Equal(400.0, b.Bounds.Width)
+    let c = tree ()
+    c.Update(CheckBox.create [ CheckBox.text "Go" ])
+    c.UpdateLayout(Size.Create(400.0, 100.0))
+    Assert.Equal(HorizontalAlignment.Left, c.Root.Value.Get LayoutProps.horizontalAlignment)
+    Assert.Equal(0.0, c.Root.Value.Bounds.X)
+    Assert.True(c.Root.Value.Bounds.Width < 400.0)
     t.Update(Button.create [ Button.text "Go"; Button.background Color.White ])
     Assert.Equal(Color.White, b.Get BorderProps.background)
     // Left out again: back to Button's default, not the property's (transparent).

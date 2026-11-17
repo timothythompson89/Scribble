@@ -155,9 +155,9 @@ let ``a click dispatches, rebuilds once and then goes idle`` () =
         let host = (app :?> ElementHost)
         (host.Tree.Root.Value.Children[0]).Get TextProps.text
     Assert.Equal("Count: 0", label ())
-    // The button sits below the label; press and release inside it.
-    press w 20 30
-    release w 20 30
+    // The button sits below the label, centred (100 wide in 400); press and release inside it.
+    press w 200 30
+    release w 200 30
     Assert.True(w.DeliverFrame())
     Assert.Equal("Count: 1", label ())
     // The theme's hover tint fades in (100 ms) under the pointer; after that, nothing changes:

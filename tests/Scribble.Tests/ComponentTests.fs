@@ -243,7 +243,7 @@ let ``in an app, a pressed button animates for a moment and then frames stop`` (
     let w, _, _ = Scribble.Tests.AppTests.start [ App.view (Button.create [ Button.width 100.0; Button.height 30.0 ]) ]
     w.DeliverFrame() |> ignore
     Assert.False(w.DeliverFrame()) // idle
-    w.Send(Scribble.Platform.PointerPressed(Scribble.Platform.Mouse, 0, { X = 50.0; Y = 150.0 }, MouseButton.Left, Modifiers.None))
+    w.Send(Scribble.Platform.PointerPressed(Scribble.Platform.Mouse, 0, { X = 200.0; Y = 150.0 }, MouseButton.Left, Modifiers.None)) // the button is centred
     let started = w.Time.Now
     let mutable frames = 0
     while frames < 200 && w.DeliverFrame() do

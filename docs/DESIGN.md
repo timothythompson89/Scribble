@@ -1840,6 +1840,14 @@ Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q
   split so their counts (realized, measured) stay in the normal run. In Release all 5 pass. Tests: 3 new
   (property set twice, atlas overflow, forced states on leaving), the forced-states one checked to fail without
   its fix; 409 run, 5 skipped.
+- *Button alignment (Tim, 2026-11-17, after noticing Grid buttons didn't fill their cells):* Button's
+  `horizontalAlignment Left` default had come with the first Button (M4) without a recorded reason. Buttons now
+  stretch like every other element (a sized one is centred in its space); CheckBox and Switch keep `Left`
+  (`ToggleButton.labeledDefaults`) so their click area stays the box and its label. ToggleButton and the tab
+  headers follow Button. Changed: the Layout tab's Grid buttons fill their column (3 pictures), and the
+  inspector no longer lists the Button's alignment as a type default (`inspector-pick`, below the fold). 4 unit
+  tests moved their pointer to the centred button; the defaults test checks Stretch for Button and Left for
+  CheckBox.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
