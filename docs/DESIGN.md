@@ -1253,6 +1253,24 @@ Decisions (Tim):
    0.02–0.05 ms on an RTX 4070 Ti, a few tenths of a millisecond on a weak integrated GPU, and a GPU-side fence
    between the APIs), but it's days of native interop outside wgpu: left until Vulkan on Windows matters to users.
 
+**How Avalonia does it** (checked in Avalonia.Win32 12.1.6's XML docs, 2026-11-17): the same way. Its default
+rendering is ANGLE (OpenGL ES over Direct3D 11), then software; its default presentation (`CompositionMode`) is
+WinUI Composition (Windows 10 1803+, "recommended ... allows window acrylic effects and high refresh rate
+rendering"), then DirectComposition, then a redirection surface (compatibility only). A plain DXGI swap chain on
+the window (`LowLatencyDxgiSwapChain`, what we had before) is opt-in, recommended only for low input latency.
+Its `Vulkan` and `Wgl` rendering modes are opt-in and can't use the composition modes ("can only be applied with
+AngleEgl"), so like our Vulkan path they present without the compositor.
+
+| | Avalonia (default) | Scribble |
+| --- | --- | --- |
+| Draws with | Direct3D 11 (ANGLE) | Direct3D 12 (wgpu) |
+| Presents through | WinUI Composition, else DirectComposition | DirectComposition |
+| Vulkan on Windows | Opt-in, without the compositor | Opt-in, without the compositor |
+
+The difference: Avalonia prefers WinUI Composition for acrylic and blurred window backgrounds. If we want those
+later, we'd build our own composition tree and give wgpu our visual (wgpu.h says that's supported); wgpu-native
+itself offers only DirectComposition (one visual over the window) and the WinUI `SwapChainPanel`.
+
 ## Rendering test hangs (2026-11-16)
 
 Tim asked to look into "partial" rendering test runs (35–38 of 57 reported as "Passed!"). They were hangs:
