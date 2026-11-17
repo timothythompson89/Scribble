@@ -1,5 +1,5 @@
 /// The counter sample, a components demo (desktop and browser; Program.fs in each host is one
-/// line), on five tabs that keep each page's state while another is shown. Each tab has its own
+/// line), on six tabs that keep each page's state while another is shown. Each tab has its own
 /// file next to this one (compiled in this order):
 ///
 /// - Common.fs: what the tabs share (the theme values and the two themes),
@@ -8,6 +8,7 @@
 /// - ListTab.fs: keyed counters with their own state and an animated bar (`useState`, `useAnimated`),
 /// - LayersTab.fs: toasts, a modal dialog and a ScrollViewer (layers, M6),
 /// - StylesTab.fs: classes, state blocks and scoped styles (M7),
+/// - LayoutTab.fs: Grid, DockPanel, Canvas (drag, zIndex), WrapPanel and Separators (M8),
 /// - Counter.fs (this file): the tabs and the app's settings.
 module Scribble.Samples.Counter
 
@@ -32,7 +33,8 @@ let private pages =
       "Load", [ heading "useAsync: a one-second load, cancelled when the number changes"; LoadTab.slowLoad () ]
       "List", [ heading "useState and useAnimated, keyed by name"; ListTab.counters () ]
       "Layers", [ LayersTab.layersPage ]
-      "Styles", [ StylesTab.stylesPage () ] ]
+      "Styles", [ StylesTab.stylesPage () ]
+      "Layout", [ LayoutTab.layoutPage ] ]
 
 /// The window title's start; the selected tab's name follows it.
 let private appTitle = "Counter"

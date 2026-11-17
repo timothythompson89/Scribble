@@ -28,6 +28,11 @@
     <Compile Include="Elements/Button.fs" />
     <Compile Include="Elements/ScrollViewer.fs" />
     <Compile Include="Elements/ItemsView.fs" />
+    <Compile Include="Elements/Grid.fs" />
+    <Compile Include="Elements/DockPanel.fs" />
+    <Compile Include="Elements/Canvas.fs" />
+    <Compile Include="Elements/WrapPanel.fs" />
+    <Compile Include="Elements/Separator.fs" />
     <Compile Include="Theme.fs" />
     <Compile Include="Component.fs" />
     <Compile Include="Layer.fs" />

@@ -1019,6 +1019,270 @@ notch jumps 48 DIPs; touch drags without a fling; no keyboard or horizontal scro
 - **Not built:** keyboard paging that repeats while the track is held; bounce at the ends; keys reaching a
   ScrollViewer when nothing has focus.
 
+**Round 3 (2026-11-16): step 2, layout panels and dashed borders** (a grilling: questions with recommendations;
+open ones are marked).
+13. **Attached settings:** what a child tells its parent (`Grid.row`, `DockPanel.dock`, `Canvas.left`) are static
+    members of the parent's settings type that any element accepts (`'k :> Layoutable`), ignored under any other
+    parent. New glossary term "attached setting". Rejected: wrapping each child (`Grid.cell (1, 2) view`: an extra
+    element per child, in the way of keys and recycling).
+14. **Grid rows and columns:** `Grid.columns "auto, *, 200"` (the `Length` strings, comma-separated) for simple
+    grids; when a column needs more, a settings list per column: `Grid.columns [ GridColumn.create [ GridColumn.width
+    "*"; GridColumn.minWidth 120.0; GridColumn.maxWidth 480.0 ] ]` (rows: `GridRow.height/minHeight/maxHeight`); both
+    make the same definitions. No `[ Auto; Star 1.0 ]` overload, no CSS `minmax()` in the strings. Children:
+    `Grid.row`, `column`, `rowSpan`, `columnSpan`, `Grid.cell (row, column)`. No definitions = one cell (children
+    overlap). Min/max with stars follow WPF: a star column held at its min or max, the other stars share the rest;
+    space left when every column is held stays empty; min/max apply to Auto and fixed columns too (Tim asked about
+    min/max, 2026-11-16).
+15. **Gaps:** `Grid.rowSpacing`/`columnSpacing`, `DockPanel.spacing`.
+16. **Grid sizing:** fixed and Auto rows first, stars share the rest by weight; stars act as Auto in unlimited
+    space; a child spanning Auto and star rows sizes only the Auto ones; `Percent` is a share of the Grid's size;
+    rounding leftovers handed out so cells tile with no gaps; no auto-placement (unplaced children go in (0, 0)).
+17. **DockPanel:** WPF semantics (`dock` per child in order, `lastChildFill` default true).
+18. **Canvas:** `left/top/right/bottom` per child at its natural size; the Canvas's size is its children's extent
+    (not 0 as in WPF), so it scrolls inside a ScrollViewer.
+19. **`Layoutable.zIndex`** (default 0) on every panel, for drawing and hit testing; ties keep view order.
+20. **WrapPanel into Core**, moved as it is (`spacing`, `lineSpacing`, rows as tall as their tallest child), plus
+    the attached setting `WrapPanel.breakAfter true` (the next child starts a new row: WinForms' flow break). Same
+    idea as WinForms' FlowLayoutPanel (Tim asked); no orientation or flow direction (right-to-left comes with bidi,
+    for the whole tree; vertical wrapping is rare, ItemsView's `wrap` covers big grids). SplitRow and CardGrid stay
+    in the samples.
+21. **Dashed and dotted borders:** `Border.borderStyle Solid | Dashed | Dotted`, `Border.borderDash (dash, gap)`;
+    defaults 3× and 2× the thickness, dots spaced by the thickness; dashes follow rounded corners and are evened out
+    so the pattern closes; same shader and draw call, instance stays 96 bytes; `DrawList.StrokeRect ?dash`.
+
+**Round 4 (2026-11-16): step 2, the rest** (Tim: yes to all).
+22. **Inspector:** a selected (or picked-over) Grid shows its row and column lines dashed and its gaps shaded in the
+    highlight layer; attached settings appear in a child's properties, and one its parent doesn't read shows
+    "ignored: parent isn't a Grid".
+23. **`Separator`** now: a horizontal or vertical 1-DIP line, solid by default, `Separator.style Dashed`, color
+    `Palette.border`; drawn as a thin rectangle. A general line primitive and shapes wait for a later shapes step.
+24. **Samples:** a Layout tab in the Counter demo: a Grid form (Auto label column, star field column with a
+    `minWidth`, a button column, a span), a DockPanel app shell with Separators, a Canvas with draggable boxes
+    (pointer capture; a click brings one to the front with `zIndex`; the selected one gets a dashed outline), and
+    WrapPanel chips with a `breakAfter`. Hello and Icons only switch to Core's WrapPanel.
+25. **Tests:** unit tests for Grid (stars, min/max with stars, spans, unlimited space, `Percent`, exact tiling at
+    1.25× and 1.5×), DockPanel (order, `lastChildFill`), Canvas (extent, right/bottom), zIndex (draw and hit-test
+    order), WrapPanel `breakAfter`, ignored attached settings; screenshots of dashed and dotted borders at 1× and 2×
+    (square and rounded, thin and thick), the Layout tab on desktop and phone, the inspector's Grid overlay.
+26. **Existing code** (the inspector panel, the Counter tab page) moves to the new panels only where it gets clearly
+    simpler and every existing screenshot stays identical; otherwise it stays, and the report says where.
+
+**Step 2 as built (2026-11-16; not yet checked by Tim).** What decisions 13–26 became, and choices made while building:
+
+- **Elements:** `Elements/Grid.fs`, `DockPanel.fs`, `Canvas.fs`, `WrapPanel.fs` (moved from `Samples.Shared/Adaptive.fs`,
+  which keeps only `SplitRow`) and `Separator.fs` in Core. Attached settings are `Prop.attached owner name default
+  affects` (sets `Prop.AttachedTo`; the name reads "Grid.Row"); the settings live on the panel's settings type but
+  accept any `Layoutable` (`Grid.row<'k when 'k :> Layoutable>`), so `Button.create [ Grid.row 1 ]` compiles.
+- **Grid:** `Grid.columns "auto, *, 200"` (bad parts throw with the part and the accepted forms) or
+  `Grid.columns [ GridColumn.create [ GridColumn.width "*"; GridColumn.minWidth 120.0 ] ]`; same for rows. Tracks
+  are `GridTrack { Size; Min; Max }`. `Grid.cell (r, c)` wins over `row`/`column`; places outside the grid are
+  clamped into it. Column and row lines are snapped to physical pixels by cumulative position, so cells tile
+  exactly at 1.25×, 1.5× and 1.75× (tested). `Grid.edges element` (public, for tools) gives the laid-out lines.
+- **Change to decision 16 (agreed by Tim, 2026-11-16):** "a child spanning Auto and star rows sizes only the Auto ones" made
+  the Layout tab's notes field (spanning the star field column and the Auto button column) push the Auto column to
+  the text's full width, and the Grid past the phone's edge. Now, as in CSS Grid, **a child that spans a star track
+  doesn't size Auto tracks**: the stars take what it needs (it counts toward the Grid's natural size through the
+  stars). A child spanning only Auto and fixed tracks still grows the Auto ones. Test: "a child spanning a star
+  column doesn't widen an auto column it also spans".
+- **DockPanel:** `DockPanel.dock Dock.Top` (an enum: Left, Top, Right, Bottom; default Left), `lastChildFill`
+  (default true), `spacing` between strips. Hidden children take no strip.
+- **Canvas:** `Canvas.left/top/right/bottom` (`left` wins over `right`, `top` over `bottom`); unplaced children at
+  (0, 0); its size is the children's extent.
+- **zIndex:** `Layoutable.zIndex` on every element; `Element.DrawOrder` (stable sort, cached and checked against the
+  children and their values) is used for drawing and hit testing; focus order and `Children` keep view order.
+- **Separator:** `orientation`, `thickness` (1), `lineStyle` (not `style`: `Separator.style` is the module's style
+  function, as on every element), `color` (themed: `Palette.border` in the base styles).
+- **Dashes:** `StrokeStyle` (Solid | Dashed (dash, gap) | Dotted) on `DrawList.DrawBox`/`StrokeRect`; `Border.borderStyle`
+  (`BorderStyle.Solid | Dashed | Dotted`) and `Border.borderDash (dash, gap)` (default 3× and 2× the thickness).
+  The pattern rides in the shape instance's last word (dash and gap in 1/16 px; 0 = solid), so it's still one draw
+  call. Dashes are evened out to meet around the shape; a box no thicker than its line is drawn as an open line
+  with a dash or dot at both ends.
+- **Inspector:** a Grid's lines (dashed, violet) and its gaps (shaded) over the highlighted Grid; attached settings
+  listed as written (`Grid.row`), with "ignored: parent isn't a Grid" under one whose parent isn't that panel.
+  The rendering tests now see the inspector's internals (to draw the highlight over the Layout tab's form).
+- **Counter demo:** a sixth tab, Layout (`samples/Counter/LayoutTab.fs`). With six tabs the Light/Dark switch no
+  longer fits beside them at 520 DIPs and moves to its own row (SplitRow, as on a phone). Existing code: nothing
+  else moved (decision 26); the tab row stays a WrapPanel in a SplitRow.
+- **Tests:** 321 unit tests (26 new in `PanelTests.fs`), 56 rendering tests (`dashes@1x/2x`, `layout-tab@1x`,
+  `layout-grid-overlay@1x`, `counter-phone-layout@3x`); `counter-demo`, `counter-demo-light`, the five other
+  `counter-phone-*` and both inspector pictures regenerated for the sixth tab (looked at; the inspector still picks
+  "+"). Note: `SCRIBBLE_UPDATE_SNAPSHOTS=1` rewrites pictures that differ within tolerance too (it rewrote both
+  dashboard pictures, which were restored: Hello looks the same with Core's WrapPanel).
+
+## M8 step 1b: non-uniform virtualization (2026-11-16)
+
+Tim (2026-11-16): "we need to add a series of tests for non-uniform virtualization". Decisions (agreed the same day,
+"yes to all"):
+
+1. **Where:** `tests/Scribble.Tests/VirtualizationTests.fs` (bare element tree, seeded generators, no new library;
+   a failure names its seed and step) plus a GPU stress variant in `ScrollStressTests.fs`.
+2. **Invariants after every step:** realized items consecutive and back to back; the viewport covered; every
+   realized item near the viewport and the count bounded by it, not by the item count; the reported first visible
+   item at the top with the right offset; the offset inside the content; once everything was measured, the content
+   exactly the rows' sum. Positions compared with the (fractional) offset may differ by half a pixel, since rows are
+   drawn on whole pixels.
+3. **Scenarios:** mixed heights 20–400 with 3,000 outliers down and back; small-then-large (a wrong first estimate);
+   a deep jump then all the way up; a row taller than the viewport; rows resized; rows inserted or removed above,
+   inside and below; width changes that re-wrap; zero-height and hidden rows; seeded random sequences of all of
+   these; the cost rule (100 vs 10,000 rows within 1.5× per scroll step, same realized count).
+4. **Scroll anchor:** the first visible item, **by key**, keeps its place on screen whenever anything above it
+   changes size or is inserted or removed; after a width change it stays at the top (the same fraction of it
+   scrolled past). (Before: by index, so inserts above jumped by what was inserted.)
+5. **Zero-height runs:** write the test; if it realizes everything, bring options (below).
+6. **Bugs found:** fixed in the step and reported; behaviour questions go to Tim.
+7. "M8 step 1b"; GLOSSARY gets **scroll anchor**.
+
+**As built (not yet checked by Tim).** 20 tests (one a theory of 3 seeds) and one GPU stress test. Run against the old
+code, 14 failed; after the fixes all pass. Fixes:
+
+- **Anchor by key** (ItemsView measure): taken before the source or width change (the key, how far into it the
+  viewport's top is, its height, and the next 16 keys in case it's removed); after a scroll request, taken again
+  where the view now is. Placement: the anchor is realized and measured first (after a width change every height
+  is new, and one measured row moves the average), the view moved to it as estimated, the rows around it realized,
+  then moved again to it as measured; never above 0.
+- **ItemsView's viewport from the live offset**: it was computed from the content's last arranged position, so a
+  second measure in the same pass, or one after a non-animated scroll request, used a stale viewport (the anchor
+  was corrected twice; a jump realized around the old place).
+- **ScrollViewer `makeVisible`** converts back to content coordinates with the content's arranged position (what
+  `BringRectIntoView` added), not with -offset: the arranged position is rounded to pixels, and `ScrollToTop`
+  after a fractional offset (160428.43) left 0.43.
+- **Estimates on whole physical pixels** (the average rounded with the element's scale), so estimated positions and
+  corrections don't move what shows by fractions (it caused 1-pixel jumps when an estimate changed).
+- One older test ("the first visible item stays put while estimated sizes above it get measured") scrolled its
+  item 300 DIPs down, to the very edge of the realized range: it passed only because the viewport was read a step
+  late. It now takes 6 steps instead of 10.
+- "A row below the first visible grows" moves the *offset* (rows above were only estimated and the average
+  changed) but nothing on screen: the test checks the screen.
+
+Screenshots unchanged (57 rendering tests pass with the same references).
+
+**Zero-height runs: option A (Tim, 2026-11-16).** 10,000 consecutive zero-height rows are all realized in one measure: each
+starts above the viewport's bottom, so the realize loop never stops. Options:
+
+- A. **Document it** (recommended): hidden items belong out of the source (filter the list); `isVisible false` on
+  many items is the app's choice. Add a debug-build warning when one measure realizes over 1,000 items.
+- B. **Stop after a number of zero-height items** (say 200) in one pass and estimate the rest at 0; scrolling further
+  realizes the next part. Keeps the cost bounded, at the price of positions below the run being estimates until then.
+- C. **A cap on items realized per measure** with the rest next frame: extra frames, against the power rule. Not
+  recommended.
+
+Built: realizing over 1,000 items in one range (inside a ScrollViewer) writes a `Debug.WriteLine` warning naming
+the rows and saying to filter hidden items out of the source. The test ("a long run of zero-height rows is
+realized at once, with a warning in debug builds") documents the behaviour: 3,000 zero-height rows realized, the
+other invariants hold, the warning written (debug builds).
+
+## Live resize lag (2026-11-17)
+
+Tim: with a game on the left monitor and an app on the right, the app "lags like crazy" when a resize starts or
+changes direction, and the game's monitor flickers; both backends. A trace (temporary, `SCRIBBLE_TRACE_SURFACE=1`
+in `WebGpuSurface.fs`: frames, swap chain rebuilds and waits per second) of a real drag on Tim's machine showed the
+cause in our code: Windows sends a `WM_SIZE` for every mouse movement, and each one rebuilt the swap chain at once
+(`ElementHost` → `surface.Resize` → `wgpuSurfaceConfigure`) and drew a frame. 85–127 rebuilds a second at about
+5.6 ms each on Vulkan: up to 72% of every second, more than a 144 Hz frame's 6.9 ms with the drawing, so Windows'
+size-move loop couldn't follow the mouse. (Scripted resizes in 16 ms steps hadn't shown it.) So many rebuilds are
+also the likely cause of the other monitor's flicker (the driver re-deciding how windows reach the screen); to be
+confirmed by Tim with the game running.
+
+Decisions (Tim, "yes to all"):
+
+1. **Rebuild only when a frame begins:** `IRenderSurface.Resize` records the size; `TryBeginFrame` rebuilds when
+   it differs from the configured one. `Size` reports the recorded size (what layout uses). Like the browser
+   surface already did.
+2. **During a live resize, at most one frame per display refresh:** between `WM_ENTERSIZEMOVE` and
+   `WM_EXITSIZEMOVE`, `WM_SIZE` draws now only when a refresh period (read from the window's monitor when the
+   resize starts; 90% of it, so frames don't alternate between refreshes) has passed since the last frame, else it
+   requests one and the size-move timer draws it (Windows timers tick every 15.6 ms by default, so the timer alone
+   would have meant about 64 frames a second). Other size changes (maximize, snap, DPI) still draw at once.
+   Trade-off: the content can trail the window edge by up to one refresh while dragging.
+3. **D3D12 by default on Windows** (then Vulkan/Metal/D3D12, then all backends): it presents through DXGI's flip
+   model and rebuilt its swap chain in 1.7–2.5 ms against 4.5–7.6 ms on Vulkan (RTX 4070 Ti). All 57 rendering
+   tests pass on it (6 rebuild + test cycles, none aborted). This replaces "wgpu's default backend stays" (M0); the
+   black flash when shrinking was a Vulkan observation, to be rechecked on D3D12.
+4. **Two frames in flight:** tried, rejected: a scripted drag went from 4.8 to 3.7 s (ideal 0.8 s) for a frame more
+   of input lag. One stays.
+5. **Render thread:** not needed for this bug; an open item for heavy apps (the window's thread still waits for the
+   screen image in `TryBeginFrame`; with the GPU shared with a game that wait grows, and input waits with it).
+6. **The trace** stays until Tim has checked the fix with the game running, then goes (frame timings in the stats
+   overlay are a separate, later item). Removed 2026-11-17 (Tim), after it found the G-SYNC cause below; the
+   live resize with the game running is still to be rechecked (CHECKLIST.md).
+
+Not verified here: a real mouse drag (scripts can't run Windows' size-move loop without moving Tim's cursor; in a
+script every size change still gets a frame, through the main loop), and anything with the game running.
+
+## Cursor stutter with G-SYNC: D3D12 presents through DirectComposition (2026-11-17)
+
+Tim: with a game on the left monitor, the mouse cursor stuttered over a Scribble window on the right monitor
+(Counter's Layout tab), only over our window, only while nothing animated: a hover fade, a box drag, or a longer
+`tintTime` made it smooth for as long as they lasted. Same on Vulkan and D3D12.
+
+**Cause:** NVIDIA's G-SYNC (variable refresh rate) applied to our window. With VRR the monitor refreshes when the
+app presents, and the cursor only moves on screen at a refresh; we draw on request, so over still content the
+monitor fell to its minimum rate and the cursor stepped. Games present constantly and never show it. Found by
+elimination: the trace showed our frames were cheap (layout under 1 ms) and the frames came from hover fades (a
+temporary test counting what invalidates); turning G-SYNC off ended it; "G-SYNC for full screen mode only" did
+not (the driver or Windows still applied VRR to the window). The 11-15 build (`ad9f9bb`, run from a worktree)
+stutters too: nothing we changed caused it; most likely the driver Tim installed that day made it show. Pointer
+moves have never requested frames, and the Win32 loop has always drawn on request.
+
+Decisions (Tim):
+
+1. **No settings for users to change** (Tim: "I should not have to update computer settings for a UI library").
+2. **Not "draw while the pointer moves"** (frames every refresh while the mouse moves over the window, stopping
+   ~150 ms after): rejected by Tim; it would bend the power rule. It stays the fallback only for a platform where
+   nothing else works.
+3. **D3D12 presents through a DirectComposition visual** (`WGPUInstanceExtras.dx12PresentationSystem =
+   DxgiFromVisual`, offset 68, checked against wgpu.h v29.0.1.1), as browsers do: the image goes through Windows'
+   compositor, which the driver doesn't treat as a game, so the monitor keeps its refresh rate. Verified by Tim
+   with G-SYNC on (windowed and full screen): smooth. Always on; no setting (none needed so far).
+4. **D3D12 stays the default on Windows.** Tim asked for Vulkan back as the default; not done, because the fix
+   is D3D12-only and Vulkan stutters with G-SYNC (and rebuilt swap chains 2–3× slower). Vulkan on Windows stays
+   available (`SCRIBBLE_GPU_BACKEND=vulkan`) with this known issue.
+5. **WebGPU stays** (Tim asked about binding Vulkan directly, and about OpenGL): no API runs everywhere (browser:
+   WebGPU/WebGL; Apple: Metal, OpenGL deprecated; Xbox: D3D12; PlayStation: its own), and neither WebGPU, DXGI
+   nor Vulkan has a "not a game" or "no VRR" flag (checked in wgpu.h/webgpu.h: present modes, alpha modes, frame
+   latency and instance flags don't touch it). A direct backend stays possible later if wgpu blocks us somewhere.
+6. **Open items:** Vulkan on Windows with G-SYNC (would need Vulkan to render into an image shared with a DXGI
+   composition swap chain, outside wgpu; or `VK_EXT_full_screen_exclusive` "disallowed", effect unknown, not
+   exposed by wgpu). macOS: expected fine (Core Animation composes every window; ProMotion raises the refresh on
+   input), to check on the first Mac build: hover over still content on a ProMotion screen and on an
+   Adaptive-Sync monitor; if it stutters, try `CAMetalLayer`/`CADisplayLink` preferred frame rates first.
+7. **Who can still hit it on Windows:** every GPU that supports G-SYNC has D3D12 drivers (G-SYNC: Kepler, GTX 650
+   Ti Boost and newer; G-SYNC Compatible: Pascal, GTX 10 and newer), so the Vulkan stutter only affects someone
+   who chooses Vulkan or whose D3D12 fails (e.g. a broken driver install). Rendering in Vulkan into an image
+   shared with a composition swap chain would fix that too, at little frame cost (one window-sized copy, about
+   0.02–0.05 ms on an RTX 4070 Ti, a few tenths of a millisecond on a weak integrated GPU, and a GPU-side fence
+   between the APIs), but it's days of native interop outside wgpu: left until Vulkan on Windows matters to users.
+
+## Rendering test hangs (2026-11-16)
+
+Tim asked to look into "partial" rendering test runs (35–38 of 57 reported as "Passed!"). They were hangs:
+`--blame-hang-timeout` killed the test host, saved a dump and aborted the run, while the minimal summary line
+still said "Passed!" for the tests that had finished. Reproduced in 2 of 4 runs right after a rebuild (0 of 14
+without one); it's also the old "hangs when chained after other dotnet commands" known issue.
+
+**Cause (from the hang dump):** a deadlock between the Windows loader lock and the Vulkan loader's lock. One of
+wgpu's "WGL Instance Thread"s was inside NVIDIA's `nvoglv64.dll` `DllMain` (holding the loader lock), waiting for a
+thread to exit; exiting threads need the loader lock; another thread held the Vulkan loader's lock while waiting to
+load that DLL; 9 more threads waited on the Vulkan lock (rendering, `DeviceRelease`, `InstanceRelease`), one on the
+loader lock while unloading a D3D12 driver during adapter enumeration. What set it off on our side: every test class
+had its own fixture and GPU device (15, created and destroyed on parallel threads; the fixture's comment wrongly said
+"one for the whole run"), and every instance enabled every backend, OpenGL included (a WGL thread and the OpenGL
+driver for nothing).
+
+Decisions (Tim, "yes to all"):
+
+1. **Tests:** creating and disposing GPU devices is serialized (`GpuLifetime.Lock`); drawing stays parallel. (One
+   shared device would share one glyph atlas across threads, not safe today; no parallelism would be slower.)
+2. **Instances:** `WGPUInstanceExtras` chained to the instance descriptor (struct checked against wgpu.h v29.0.1.1:
+   112 bytes; only chain, `backends` and `flags` set, flags `Default | WithEnv` as before). Backends: the forced
+   one (`SCRIBBLE_GPU_BACKEND` / `WebGpuDevice.backend`), else primary (Vulkan, Metal, D3D12, browser); with no
+   adapter there, once more with all (OpenGL). Measured on Tim's machine (fresh processes, instance + adapter, 3 runs
+   each): all backends 147–154 ms + adapter 294–389 ms, 7 more threads; primary 98–100 ms + adapter 254–264 ms,
+   2 more threads. (`opengl32.dll` still loads: NVIDIA's Vulkan driver imports it.)
+3. **Proof:** 20 cycles of rebuild + rendering tests: 20 of 20 ran all 57, none aborted. CLAUDE.md now says how to
+   read a test run (look for "Test Run Aborted" and the total).
+4. **Dumps:** the 6 hang dumps (13 GB) deleted; `TestResults/` git-ignored.
+
 ## One entry point and the sample layout (2026-11-16, before M8 step 1)
 
 Tim: "I only want the user to have to worry about swapping out the dependencies of Scribble.Desktop and
@@ -1200,7 +1464,8 @@ Two steps, each tried by Tim before the next:
   `Scribble.Icons.Material` package. Open: names/casing, pluggable sets, .svg import. Also custom cursors: a
   `Cursor.Image` (bitmap + hotspot, e.g. from an icon) shown by the OS as a hardware cursor, never drawn in-frame.
 - Known issues: shrinking a window briefly flashes black at the edge with Vulkan on NVIDIA (D3D12 only slightly
-  better; left as is).
+  better; left as is). With G-SYNC, the cursor stutters over a Scribble window on Vulkan (not on D3D12, which
+  presents through DirectComposition; "Cursor stutter with G-SYNC", 2026-11-17).
 - Phones (2026-11-16): the samples fit 390-DIP-wide screens (`PhoneTests.fs` renders them at 390 × 844, 3×);
   touch drags scroll a ScrollViewer (`Element.pan`); WebGPU compatibility mode is requested when full WebGPU
   isn't offered (OpenGL ES phones), which is why `shapes.wgsl` uses `@interpolate(flat, either)`.

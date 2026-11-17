@@ -52,6 +52,7 @@ type PhoneTests(fixture: TextFixture) =
     [<InlineData("List")>]
     [<InlineData("Layers")>]
     [<InlineData("Styles")>]
+    [<InlineData("Layout")>]
     member this.``Counter on a phone``(tab: string) =
         let tree = ElementTree(fixture.Text, Scale = scale)
         tree.Theme <- ValueSome Common.darkTheme

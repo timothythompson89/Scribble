@@ -6,6 +6,7 @@
   <ItemGroup>
     <Compile Include="Inspector.fs" />
     <InternalsVisibleTo Include="Scribble.Tests" />
+    <InternalsVisibleTo Include="Scribble.Tests.Rendering" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />

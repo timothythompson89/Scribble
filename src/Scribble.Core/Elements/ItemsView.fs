@@ -104,6 +104,12 @@ type internal ItemsState() =
     member val Width = 0.0 with get, set
     member val Own = Scroller() with get
     member val Bound: Scroller voption = ValueNone with get, set
+    /// The element's scale (estimates are kept on whole physical pixels).
+    member val Scale = 1.0 with get, set
+
+/// The scroll anchor: the first visible item (by key), how far the viewport's top is into it, its
+/// height then, and the keys after it.
+type internal Anchor = { Key: obj; Into: float; Height: float; Next: obj[] }
 
 module ItemsViewProps =
     let internal source = Prop.define "Source" ItemsSource.Empty Affects.Measure
@@ -172,10 +178,18 @@ module ItemsView =
         let mutable ox, oy = 0.0, 0.0
         let mutable cur = e
         while cur.Parent.IsSome do
-            let b = cur.Bounds
-            ox <- ox + b.X
-            oy <- oy + b.Y
             let a = cur.Parent.Value
+            let b = cur.Bounds
+            if isScrollViewer a then
+                // A ScrollViewer's content sits at minus its offset: read the offset as it is now,
+                // not where the content was last arranged (a scroll or an anchor correction may
+                // have moved it since, within this layout pass).
+                let struct (x, y, _, _) = ScrollViewer.viewportOf a
+                ox <- ox - x
+                oy <- oy - y
+            else
+                ox <- ox + b.X
+                oy <- oy + b.Y
             if isScrollViewer a then
                 let struct (_, _, vw, vh) = ScrollViewer.viewportOf a
                 let visible = Rect.Create(-ox, -oy, vw, vh)
@@ -200,7 +214,13 @@ module ItemsView =
 
     // --- Positions ---------------------------------------------------------------------------
 
-    let private average (s: ItemsState) = if s.CountMeasured > 0 then s.SumMeasured / float s.CountMeasured else s.Fallback
+    /// The estimate for unmeasured items: the measured ones' average, on whole physical pixels (so
+    /// estimated positions are too, and corrections never move what shows by a fraction).
+    let private average (s: ItemsState) =
+        if s.CountMeasured > 0 then
+            let scale = if s.Scale > 0.0 then s.Scale else 1.0
+            Math.Round(s.SumMeasured / float s.CountMeasured * scale, MidpointRounding.AwayFromZero) / scale
+        else s.Fallback
 
     /// The top of item `i` in a variable stack (measured heights exactly, others by the average).
     let private stackTop (s: ItemsState) (i: int) =
@@ -406,6 +426,10 @@ module ItemsView =
                 | ValueNone -> ()
                 i <- i + 1
             last <- i - 1
+            // Many items in one range means many of them are (nearly) zero high: hidden items belong out
+            // of the source (decided in M8 step 1b). Debug builds only.
+            if last - first + 1 > 1000 && not (Double.IsNegativeInfinity top) then
+                Debug.WriteLine("ItemsView: " + string (last - first + 1) + " items realized at once (rows " + string first + " to " + string last + "). Items with isVisible false or no height are still realized; filter hidden items out of the source instead.")
         // Let go of what's out of range, but never of the item holding focus.
         let gone = List<obj>()
         for KeyValue(key, item) in s.Realized do
@@ -442,9 +466,36 @@ module ItemsView =
         e.BringRectIntoView(rect, align, animate)
         struct (i, slot)
 
-    let private applyRequests (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) : struct (int * Rect) voption =
+    /// The scroll anchor at viewport `v`: the item at its top, how far into it the top is, its
+    /// height, and the keys after it (one of them takes over if the item is removed).
+    let private anchorAt (s: ItemsState) (v: Rect) =
+        let n = s.Keys.Length
+        if n = 0 || s.Last < s.First then ValueNone
+        else
+            let i = Math.Clamp(stackIndexAt s n v.Y, 0, n - 1)
+            ValueSome
+                { Key = s.Keys[i]
+                  Into = v.Y - stackTop s i
+                  Height = heightOf s i
+                  Next = s.Keys[i + 1 .. min (n - 1) (i + 16)] }
+
+    /// The anchor's index now (by key), or the first of the keys after it that's still there.
+    let private findAnchor (s: ItemsState) (a: Anchor) =
+        match indexOfKey s a.Key with
+        | ValueSome i -> ValueSome(struct (i, a))
+        | ValueNone ->
+            a.Next
+            |> Array.tryPick (fun k -> match indexOfKey s k with ValueSome i -> Some i | ValueNone -> None)
+            |> function
+                | Some i -> ValueSome(struct (i, { a with Height = 0.0 }))
+                | None -> ValueNone
+
+    /// Applies the scroller's requests: the item jumped to and its slot (to-key, to-index), and
+    /// whether any request scrolled.
+    let private applyRequests (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) : struct (struct (int * Rect) voption * bool) =
         let scroller = scrollerOf e s
         let mutable jumped = ValueNone
+        let scrolled = scroller.HasRequests
         if scroller.HasRequests then
             let n = s.Keys.Length
             for r in scroller.Take() do
@@ -467,46 +518,51 @@ module ItemsView =
                     match s.Viewport with
                     | ValueSome v -> e.BringRectIntoView(Rect.Create(0.0, max 0.0 (v.Y + dy), 1.0, v.Height), ScrollAlign.Start, animate)
                     | ValueNone -> ()
-        jumped
+        struct (jumped, scrolled)
 
     let private measure (ctx: MeasureContext) (available: Size) =
         let e = ctx.Element
         let s = stateOf e
         let layout = ctx.Get ItemsViewProps.layout
         let source = ctx.Get ItemsViewProps.source
-        if not (source.Equals s.Source) then sourceChanged e s source
         let view = box (ctx.Get ItemsViewProps.view)
         if not (obj.ReferenceEquals(view, s.LastView)) then
             s.LastView <- view
             s.Version <- s.Version + 1
         let width = available.Width
-        if width <> s.MeasuredWidth then widthChanged s width
-        s.Width <- width
-        let n = s.Keys.Length
+        s.Scale <- e.Scale
         // What shows now; before the first arrange, the top of the nearest ScrollViewer's viewport.
         let viewport = viewportOf e
+        // The scroll anchor, taken before the items or the width change: the first visible item
+        // keeps its place on screen while sizes or items above it change.
+        let before = match viewport with ValueSome v when layout = ItemsLayout.Stack -> anchorAt s v | _ -> ValueNone
+        if not (source.Equals s.Source) then sourceChanged e s source
+        let rewrapped = width <> s.MeasuredWidth
+        if rewrapped then widthChanged s width
+        s.Width <- width
+        let n = s.Keys.Length
         s.Viewport <- viewport
-        // Keep the first visible item where it is on screen while sizes above it get corrected.
-        let anchor =
-            match viewport, layout with
-            | ValueSome v, ItemsLayout.Stack when s.Last >= s.First && n > 0 ->
-                let i = Math.Clamp(stackIndexAt s n v.Y, 0, n - 1)
-                ValueSome(struct (i, stackTop s i))
-            | _ -> ValueNone
-        let jumped = applyRequests e s layout width
-        /// Item `i` moved from `before` (sizes above it were corrected): move the scroller with it,
-        /// so it stays where it is on screen.
-        let keep (v: Rect) (i: int) (before: float) =
-            match layout with
-            | ItemsLayout.Stack when i < n ->
-                let delta = stackTop s i - before
-                if abs delta > 0.01 then
-                    match nearestScrollViewer e with
-                    | ValueSome sv ->
-                        ScrollViewer.shift sv delta
-                        s.Viewport <- ValueSome(v.Offset(0.0, delta))
-                    | ValueNone -> ()
-            | _ -> ()
+        let struct (jumped, scrolled) = applyRequests e s layout width
+        // A scroll request moved the view: the viewport is where it is now, and the anchor is what
+        // shows there.
+        let viewport, anchor =
+            if scrolled then
+                let v = viewportOf e
+                v, (match v with ValueSome v when layout = ItemsLayout.Stack && jumped.IsNone -> anchorAt s v | _ -> ValueNone)
+            else viewport, before
+        s.Viewport <- viewport
+        /// Moves the ScrollViewer so the viewport's top is at `y` (never above the content).
+        let moveTo (v: Rect) (y: float) =
+            let delta = max 0.0 y - v.Y
+            if abs delta > 1e-9 then
+                match nearestScrollViewer e with
+                | ValueSome sv ->
+                    ScrollViewer.shift sv delta
+                    let moved = v.Offset(0.0, delta)
+                    s.Viewport <- ValueSome moved
+                    moved
+                | ValueNone -> v
+            else v
         match viewport with
         | ValueNone -> realizeRange e s layout width Double.NegativeInfinity Double.PositiveInfinity
         | ValueSome v ->
@@ -515,12 +571,26 @@ module ItemsView =
             | ValueSome(struct (i, slot)) ->
                 // Around the item scrolled to (never what's between), then it's the anchor.
                 realizeRange e s layout width (slot.Y - v.Height - extra) (slot.Bottom + v.Height + extra)
-                keep v i slot.Y
+                if layout = ItemsLayout.Stack && i < n then moveTo v (v.Y + stackTop s i - slot.Y) |> ignore
             | ValueNone ->
-                realizeRange e s layout width (v.Y - extra) (v.Bottom + extra)
-                match anchor with
-                | ValueSome(struct (i, before)) -> keep v i before
-                | ValueNone -> ()
+                match anchor |> ValueOption.bind (fun a -> findAnchor s a) with
+                | ValueSome(struct (i, a)) ->
+                    // Measure the anchor first: its real height decides where the view goes (after a
+                    // width change every height is new, and one measured row can move the average).
+                    (match realize e s (e.Get ItemsViewProps.view) i with
+                     | ValueSome item -> measureItem layout s width item |> ignore
+                     | ValueNone -> ())
+                    // Where the anchor should be: the same distance into it (after a width change,
+                    // the same fraction of it), from its top as now estimated, then as measured.
+                    let target () =
+                        let into =
+                            if rewrapped && a.Height > 0.0 then a.Into / a.Height * heightOf s i
+                            else a.Into
+                        stackTop s i + into
+                    let v = moveTo v (target ())
+                    realizeRange e s layout width (v.Y - extra) (v.Bottom + extra)
+                    moveTo v (target ()) |> ignore
+                | ValueNone -> realizeRange e s layout width (v.Y - extra) (v.Bottom + extra)
         let w =
             if Double.IsInfinity width then
                 let mutable m = 0.0

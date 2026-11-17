@@ -107,8 +107,9 @@ let ``the first visible item stays put while estimated sizes above it get measur
     layoutAt t
     let topOf (name: string) = (iv.Children |> Seq.find (fun c -> c.Name = name)).PositionInTree.Y
     let mutable previous = topOf "5000"
-    // Scroll up in steps into items that were only estimated: 5,000 moves down exactly by each step.
-    for _ in 1..10 do
+    // Scroll up in steps into items that were only estimated: 5,000 moves down exactly by each step
+    // (6 steps: it stays inside the 100 DIPs of overscan below the viewport).
+    for _ in 1..6 do
         scroller.ScrollBy(-30.0, false)
         layoutAt t
         let now = topOf "5000"

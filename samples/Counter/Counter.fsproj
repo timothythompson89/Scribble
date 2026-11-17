@@ -6,6 +6,7 @@
     <Compile Include="ListTab.fs" />
     <Compile Include="LayersTab.fs" />
     <Compile Include="StylesTab.fs" />
+    <Compile Include="LayoutTab.fs" />
     <Compile Include="Counter.fs" />
   </ItemGroup>
   <ItemGroup>

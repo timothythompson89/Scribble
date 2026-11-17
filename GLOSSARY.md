@@ -40,6 +40,10 @@ _Avoid_: prop (alone), attribute, field
 A property paired with a value in a view's list (`Border.background c`); also any item of a settings list that configures something (`App.title`).
 _Avoid_: attribute, modifier, option
 
+**Attached setting**:
+A setting on a child that only its parent reads (`Grid.row 1`, `DockPanel.dock Dock.Top`, `Canvas.left 20.0`): a static member of the parent's settings type that any element accepts, ignored under any other parent.
+_Avoid_: attached property (the setting is what's attached, not the property)
+
 **Value**:
 What an element currently has for a property, together with where it came from (own, inline, style, theme, inherited, default).
 _Avoid_: property (for the value), effective value
@@ -85,6 +89,10 @@ _Avoid_: visible area, clip rect (for the viewport)
 **Realized item**:
 An item of an items view that currently has an element; items outside the viewport have none and keep no state.
 _Avoid_: rendered item, materialized item
+
+**Scroll anchor**:
+The item of an items view that keeps its place on screen while sizes or items above it change: the first visible item, found by key (the next one if it's removed).
+_Avoid_: pinned item, sticky item
 
 **Scroller**:
 The controller an app uses to scroll a scroll viewer or items view as an action (`ctx.useScroller ()`).

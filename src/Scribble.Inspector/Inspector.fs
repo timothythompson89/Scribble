@@ -736,6 +736,26 @@ type internal Highlight =
 module internal Highlight =
     let private boxColor = Color.Hex 0x6FA8DC
     let private marginColor = (Color.Hex 0xF6B26B).WithAlpha 0.35f
+    let private gridColor = Color.Hex 0xC792EA
+
+    /// A Grid's column and row lines (dashed) and its gaps (shaded), like a browser's grid overlay.
+    let private gridLines (list: DrawList) (t: Element) (r: Rect) =
+        match Grid.edges t with
+        | ValueSome(struct (colStarts, colEnds, rowStarts, rowEnds)) ->
+            let dash = StrokeStyle.Dashed(4.0, 3.0)
+            let vertical (x: float) = list.StrokeRect(Rect.Create(r.X + x, r.Y, 1.0, r.Height), CornerRadius.Zero, 1.0, gridColor, style = dash)
+            let horizontal (y: float) = list.StrokeRect(Rect.Create(r.X, r.Y + y, r.Width, 1.0), CornerRadius.Zero, 1.0, gridColor, style = dash)
+            for k in 0 .. colStarts.Length - 1 do
+                if k > 0 && colStarts[k] > colEnds[k - 1] then
+                    list.FillRect(Rect.Create(r.X + colEnds[k - 1], r.Y, colStarts[k] - colEnds[k - 1], r.Height), gridColor.WithAlpha 0.18f)
+                if colStarts[k] > 0.0 then vertical colStarts[k]
+                if colEnds[k] < r.Width && (k = colStarts.Length - 1 || colStarts[k + 1] > colEnds[k]) then vertical (colEnds[k] - 1.0)
+            for k in 0 .. rowStarts.Length - 1 do
+                if k > 0 && rowStarts[k] > rowEnds[k - 1] then
+                    list.FillRect(Rect.Create(r.X, r.Y + rowEnds[k - 1], r.Width, rowStarts[k] - rowEnds[k - 1]), gridColor.WithAlpha 0.18f)
+                if rowStarts[k] > 0.0 then horizontal rowStarts[k]
+                if rowEnds[k] < r.Height && (k = rowStarts.Length - 1 || rowStarts[k + 1] > rowEnds[k]) then horizontal (rowEnds[k] - 1.0)
+        | ValueNone -> ()
 
     let private render (ctx: RenderContext) (list: DrawList) =
         match ctx.Get HighlightProps.target with
@@ -743,6 +763,7 @@ module internal Highlight =
             let p = t.PositionInTree
             let b = t.Bounds
             let r = Rect.Create(p.X, p.Y, b.Width, b.Height)
+            gridLines list t r
             if ctx.Get HighlightProps.outlineOnly then
                 // Corner marks 3 DIPs outside the element, like a viewfinder: the sides stay clear, so
                 // its edges, border and shadow show, and the corners still show its exact extent.
@@ -1284,8 +1305,11 @@ module internal Views =
 
     /// Settings are written in lower camel case (`horizontalAlignment`); properties are named in Pascal case.
     let private settingName (p: Prop) =
-        let n = p.Name
-        if n.Length = 0 then n else Char.ToLowerInvariant(n[0]).ToString() + n.Substring 1
+        let camel (n: string) = if n.Length = 0 then n else Char.ToLowerInvariant(n[0]).ToString() + n.Substring 1
+        // Attached settings keep their panel's name: "Grid.Row" shows as Grid.row, as written.
+        if p.AttachedTo <> "" && p.Name.StartsWith(p.AttachedTo + ".") then
+            p.AttachedTo + "." + camel (p.Name.Substring(p.AttachedTo.Length + 1))
+        else camel p.Name
 
     let private sourceText (s: ValueSource) =
         match s with
@@ -1446,7 +1470,12 @@ module internal Views =
                   // Under the value: the theme value it reads (`Palette.surface`), then which style set
                   // it (`from Button:hover`; the source says style or theme).
                   let unders =
-                      [ if v.ThemeValue.Length > 0 then v.ThemeValue
+                      [ // An attached setting only its parent reads: say so when the parent isn't that panel.
+                        if v.Prop.AttachedTo <> "" then
+                            match e.Parent with
+                            | ValueSome p when p.Type.Name = v.Prop.AttachedTo -> ()
+                            | _ -> "ignored: parent isn't a " + v.Prop.AttachedTo
+                        if v.ThemeValue.Length > 0 then v.ThemeValue
                         if v.Source = ValueSource.Style || v.Source = ValueSource.Theme then "from " + v.Selector ]
                   for under in unders do
                       yield

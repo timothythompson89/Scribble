@@ -8,14 +8,20 @@ open Scribble.Platform
 open Scribble.Rendering
 open Scribble.Rendering.WebGPU
 
-/// One device for the whole test run; creating devices is slow.
+/// Serializes creating and disposing GPU devices: test classes run in parallel, and creating
+/// and destroying devices on several threads at once deadlocked inside the drivers (NVIDIA's
+/// driver DLL waiting for a thread under the Windows loader lock; 2026-11-16).
+type internal GpuLifetime =
+    static member val Lock = obj ()
+
+/// One device per test class (each class's fixture); created and disposed one at a time.
 type GpuFixture() =
     let errors = Collections.Concurrent.ConcurrentQueue<GpuError>()
-    let device = WebGpuDevice.Create [ WebGpuDevice.onError errors.Enqueue ]
+    let device = lock GpuLifetime.Lock (fun () -> WebGpuDevice.Create [ WebGpuDevice.onError errors.Enqueue ])
     member _.Device = device :> IRenderDevice
     member _.Errors = errors
     interface IDisposable with
-        member _.Dispose() = (device :> IDisposable).Dispose()
+        member _.Dispose() = lock GpuLifetime.Lock (fun () -> (device :> IDisposable).Dispose())
 
 let expectPixel (bitmap: Bitmap) x y (r: byte, g: byte, b: byte, a: byte) =
     let (pr, pg, pb, pa) = bitmap.GetPixel(x, y)

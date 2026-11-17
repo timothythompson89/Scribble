@@ -33,7 +33,8 @@ module internal ThemeLooks =
           TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
           // A disabled Button fades as a whole: its text doesn't fade twice.
           TextBlock.style [ Style.inside Button.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
-          ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb; ScrollViewer.track Palette.scrollTrack ] ]
+          ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb; ScrollViewer.track Palette.scrollTrack ]
+          Separator.style [] [ Separator.color Palette.border ] ]
 
     /// Inherited properties' base values, by theme value.
     let private bases: struct (Prop * ThemeKey)[] =

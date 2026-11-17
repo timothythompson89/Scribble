@@ -63,3 +63,64 @@ type ScrollStressTests(fixture: TextFixture) =
             layout ()
             if i % 3 = 0 then frame ()
         Assert.True(list.Children.Count < 200)
+
+    /// M8 step 1b: rows of very different heights (one line to forty sentences of wrapping text),
+    /// scrolled hard with thumb drags, wheel steps and jumps while rows are inserted, drawn on the
+    /// GPU as it goes; at the end, the top is exactly row 0.
+    [<Fact>]
+    member _.``scrolling 5,000 rows of very different heights hard while drawing``() =
+        let width, height = 600.0, 500.0
+        let random = Random 5
+        let sentence = "Rows of very different heights, scrolled hard. "
+        let mutable rows = Array.init 5000 (fun i -> struct (i, String.replicate (if random.Next 50 = 0 then 40 else random.Next(1, 8)) sentence))
+        let scroller = Scroller()
+        let viewOf (rows: struct (int * string)[]) =
+            ScrollViewer.create [
+                ScrollViewer.content (
+                    ItemsView.create [
+                        ItemsView.source rows
+                        ItemsView.key (fun (struct (id, _): struct (int * string)) -> id)
+                        ItemsView.view (fun (struct (id, text): struct (int * string)) ->
+                            Border.create [
+                                Border.name (string id)
+                                Border.padding 8.0
+                                Border.borderThickness 1.0
+                                Border.borderBrush (Color.Hex 0x34345A)
+                                Border.child (TextBlock.create [ TextBlock.text (string id + ". " + text); TextBlock.textWrapping Scribble.Text.Wrap ])
+                            ])
+                        ItemsView.scroller scroller
+                    ])
+            ]
+        let tree = ElementTree(fixture.Text)
+        tree.Update(viewOf rows)
+        let size = Size.Create(width, height)
+        let layout () = tree.UpdateLayout size
+        layout ()
+        let viewer = tree.Root.Value
+        let list = viewer.Children[0]
+        let pixels: PixelSize = { Width = int width; Height = int height }
+        let frame () =
+            fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
+                f.Clear(Color.Hex 0x181825)
+                tree.Render f.DrawList)
+            |> ignore
+        let mutable nextId = 100_000
+        for i in 1..1200 do
+            match random.Next 10 with
+            | 0 | 1 | 2 -> ScrollViewer.jumpTo viewer (random.NextDouble() * list.Bounds.Height)
+            | 3 -> scroller.ScrollToIndex(random.Next rows.Length, ScrollAlign.Start, false)
+            | 4 ->
+                let at = random.Next rows.Length
+                rows <- Array.concat [ rows[.. at - 1]; [| struct (nextId, sentence) |]; rows[at ..] ]
+                nextId <- nextId + 1
+                tree.Update(viewOf rows)
+            | _ -> scroller.ScrollBy(float (random.Next(-300, 301)), false)
+            layout ()
+            if i % 3 = 0 then frame ()
+            Assert.True(list.Children.Count < 120, $"step {i}: {list.Children.Count} rows realized")
+        scroller.ScrollToTop false
+        layout ()
+        frame ()
+        let struct (_, y, _, _) = ScrollViewer.viewportOf viewer
+        Assert.Equal(0.0, y)
+        Assert.Equal(0.0, (list.Children |> Seq.find (fun c -> c.Name = "0")).PositionInTree.Y)

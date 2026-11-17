@@ -50,6 +50,9 @@ type Layoutable =
     static member verticalAlignment<'k when 'k :> Layoutable>(value: VerticalAlignment) : Setting<'k> =
         Setting.create LayoutProps.verticalAlignment value
     static member isVisible<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.isVisible value
+    /// Drawing and hit-testing order among siblings, in any panel: higher on top (default 0); equal
+    /// values keep the view's order. Focus (Tab) still follows the view's order.
+    static member zIndex<'k when 'k :> Layoutable>(value: int) : Setting<'k> = Setting.create LayoutProps.zIndex value
     static member clipToBounds<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.clipToBounds value
     /// False: the pointer goes through this element and everything inside it (a highlight drawn
     /// over other content). Default: true.

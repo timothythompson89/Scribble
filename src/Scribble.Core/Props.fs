@@ -173,6 +173,9 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal Inherits = false with get, set
     /// The `theme` setting: changing it re-matches styles and inherited values below.
     member val internal IsTheme = false with get, set
+    /// For an attached property (`Prop.attached`): the name of the element type whose elements read it
+    /// from their children ("Grid"); empty otherwise.
+    member val AttachedTo = "" with get, set
     /// Equality of two values of this property's type (a theme value reference equals only itself).
     member internal _.Same(a: obj, b: obj) =
         match a, b with
@@ -202,6 +205,14 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     /// A property: name, default value, and what changing it affects.
     static member define (name: string) (defaultValue: 'T) (affects: Affects) : Prop<'T> =
         Prop<'T>(name, defaultValue, affects, PropKind.Value)
+
+    /// An attached property: one a parent of type `owner` reads from its children (`Grid.row`).
+    /// Any element accepts it; under another parent it does nothing (the inspector says so). Its
+    /// name shows as "owner.name". A change re-measures the child and so its parent (Affects.Measure).
+    static member attached (owner: string) (name: string) (defaultValue: 'T) (affects: Affects) : Prop<'T> =
+        let p = Prop<'T>(owner + "." + name, defaultValue, affects, PropKind.Value)
+        p.AttachedTo <- owner
+        p
 
     /// Private per-element data (a cache, a counter): written with SetLocal, never invalidates.
     static member local (name: string) (defaultValue: 'T) : Prop<'T> =
@@ -254,6 +265,8 @@ module Setting =
 module LayoutProps =
     let name = Prop<string>("Name", "", Affects.Nothing, PropKind.Value)
     let margin = Prop<Thickness>("Margin", Thickness.Zero, Affects.Measure, PropKind.Value)
+    /// Drawing and hit-testing order among siblings: higher on top; equal values keep view order.
+    let zIndex = Prop<int>("ZIndex", 0, Affects.Render, PropKind.Value)
     /// Auto (the default) means "size to content / stretch, per alignment".
     let width = Prop<Length>("Width", Auto, Affects.Measure, PropKind.Value)
     let height = Prop<Length>("Height", Auto, Affects.Measure, PropKind.Value)
@@ -313,7 +326,7 @@ module LayoutProps =
     let onPreviewKeyUp = keyHandler "OnPreviewKeyUp"
 
     do
-        for p in [ margin :> Prop; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment; verticalAlignment; isVisible; clipToBounds ] do
+        for p in [ margin :> Prop; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment; verticalAlignment; isVisible; clipToBounds; zIndex ] do
             p.IsLayout <- true
         for p in [ name :> Prop; classes; isEnabled ] do
             p.Restyles <- true
@@ -350,7 +363,8 @@ type internal LayoutValues =
       HorizontalAlignment: HorizontalAlignment
       VerticalAlignment: VerticalAlignment
       IsVisible: bool
-      ClipToBounds: bool }
+      ClipToBounds: bool
+      ZIndex: int }
 
 /// An element's sizes in DIPs, resolved during measure (NaN = automatic).
 [<Struct>]

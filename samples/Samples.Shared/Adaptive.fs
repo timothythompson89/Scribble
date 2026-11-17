@@ -1,7 +1,6 @@
-/// Two small layout elements the samples use to fit narrow windows and phones, written the way
-/// any app can write its own (Grid and DockPanel come with M8):
+/// A small layout element the samples use to fit narrow windows and phones, written the way any
+/// app can write its own (Grid, DockPanel and WrapPanel are in Scribble.Core):
 ///
-/// - `WrapPanel`: children in a row that wraps onto more rows when the width runs out;
 /// - `SplitRow`: a start part and an end part on one row (the end part at the far end), or, when
 ///   the two don't fit side by side, the end part on its own row below.
 namespace Scribble.Samples
@@ -9,60 +8,6 @@ namespace Scribble.Samples
 open System
 open Scribble.Rendering
 open Scribble.Core
-
-module WrapPanelProps =
-    let spacing = Prop.define "Spacing" 0.0 Affects.Measure
-    let lineSpacing = Prop.define "LineSpacing" 0.0 Affects.Measure
-
-/// Children left to right at their own sizes; one that doesn't fit what's left of a row starts the
-/// next. Each row is as tall as its tallest child (the last row: the rest of the panel's height,
-/// if it's given more), and every child on it gets that height.
-[<AbstractClass>]
-type WrapPanel =
-    inherit Panel
-    /// The gap between children on a row.
-    static member spacing<'k when 'k :> WrapPanel>(value: float) : Setting<'k> = Setting.create WrapPanelProps.spacing value
-    /// The gap between rows.
-    static member lineSpacing<'k when 'k :> WrapPanel>(value: float) : Setting<'k> = Setting.create WrapPanelProps.lineSpacing value
-
-module WrapPanel =
-    /// Each child's slot for a given width and height; the panel's size comes out too.
-    let private place (spacing: float) (lineSpacing: float) (width: float) (height: float) (sizes: Size list) =
-        let slots = ResizeArray<Rect>()
-        let mutable x, y, lineHeight, widest, lineStart = 0.0, 0.0, 0.0, 0.0, 0
-        // Gives the finished row's children the row's height.
-        let finishLine () =
-            for i in lineStart .. slots.Count - 1 do
-                slots[i] <- Rect.Create(slots[i].X, slots[i].Y, slots[i].Width, lineHeight)
-            lineStart <- slots.Count
-        for s in sizes do
-            if x > 0.0 && x + s.Width > width then
-                finishLine ()
-                y <- y + lineHeight + lineSpacing
-                x <- 0.0
-                lineHeight <- 0.0
-            slots.Add(Rect.Create(x, y, s.Width, s.Height))
-            widest <- max widest (x + s.Width)
-            x <- x + s.Width + spacing
-            lineHeight <- max lineHeight s.Height
-        let natural = Size.Create(widest, y + lineHeight)
-        if not (Double.IsInfinity height) then lineHeight <- max lineHeight (height - y)
-        finishLine ()
-        slots, natural
-
-    let Type =
-        Element.define "WrapPanel" [
-            Element.measure (fun ctx available ->
-                let sizes = [ for c in ctx.Children -> ctx.Measure(c, Size.Create(available.Width, Double.PositiveInfinity)) ]
-                snd (place (ctx.Get WrapPanelProps.spacing) (ctx.Get WrapPanelProps.lineSpacing) available.Width Double.PositiveInfinity sizes))
-            Element.arrange (fun ctx size ->
-                let sizes = [ for c in ctx.Children -> ctx.DesiredSize c ]
-                let slots, _ = place (ctx.Get WrapPanelProps.spacing) (ctx.Get WrapPanelProps.lineSpacing) size.Width size.Height sizes
-                for i in 0 .. ctx.Children.Count - 1 do
-                    ctx.Arrange(ctx.Children[i], slots[i]))
-        ]
-
-    let create (settings: Setting<WrapPanel> list) = View.Create(Type, settings)
 
 module SplitRowProps =
     let gap = Prop.define "Gap" 16.0 Affects.Measure

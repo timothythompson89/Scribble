@@ -77,37 +77,80 @@ type WebGpuDevice private (ctx: GpuContext, description: string, surfaceLatency:
     static member Create(settings: WebGpuSetting list) : WebGpuDevice =
         let options = settings |> List.fold (fun o (WebGpuSetting apply) -> apply o) WebGpuOptions.Default
 
-        let instance = wgpuCreateInstance NativePtr.nullPtr
-        if instance = 0n then
-            raise (InvalidOperationException "WebGPU: could not create an instance. Is wgpu_native next to the app?")
+        // --- Instance and adapter ------------------------------------------------------------
+        // An instance with only the backends that can be used. Without this wgpu enables every
+        // backend, OpenGL included: a "WGL Instance Thread" and the OpenGL driver loaded for nothing,
+        // and loading NVIDIA's driver while other threads create or destroy instances deadlocked on
+        // the Windows loader lock (2026-11-16, the rendering tests' hangs).
+        let createInstance (backends: uint64) =
+            let mutable extras = InstanceExtras()
+            extras.SType <- SType.InstanceExtras
+            extras.Backends <- backends
+            extras.Flags <- InstanceFlag.defaults ||| InstanceFlag.withEnv
+            // D3D12 presents through a DirectComposition visual, as browsers do (2026-11-17). With a
+            // swap chain on the window's HWND, NVIDIA's driver applied G-SYNC (windowed VRR) to our
+            // window: the monitor refreshed only when we presented, and since we draw on request,
+            // the cursor stuttered over the window whenever nothing animated. Composition swap chains
+            // go through Windows' compositor, so the monitor keeps its own refresh rate.
+            extras.Dx12PresentationSystem <- Dx12SwapchainKind.DxgiFromVisual
+            let mutable descriptor =
+                { NextInChain = NativePtr.toNativeInt &&extras
+                  RequiredFeatureCount = 0un
+                  RequiredFeatures = 0n
+                  RequiredLimits = 0n }
+            let instance = wgpuCreateInstance &&descriptor
+            if instance = 0n then
+                raise (InvalidOperationException "WebGPU: could not create an instance. Is wgpu_native next to the app?")
+            instance
 
-        // --- Adapter -----------------------------------------------------------------------
-        let adapterResult = ref 0n
-        let adapterDone = ref false
-        let adapterMessage = ref ""
+        let requestAdapter (instance: nativeint) =
+            let adapterResult = ref 0n
+            let adapterDone = ref false
+            let adapterMessage = ref ""
+            let onAdapter =
+                RequestAdapterCallback(fun status handle message _ _ ->
+                    if status = RequestAdapterStatus.Success then adapterResult.Value <- handle
+                    else adapterMessage.Value <- $"{status}: {message}"
+                    adapterDone.Value <- true)
+            let mutable adapterOptions =
+                { NextInChain = 0n
+                  FeatureLevel = FeatureLevel.Core
+                  PowerPreference = options.PowerPreference
+                  ForceFallbackAdapter = 0u
+                  BackendType = options.Backend
+                  CompatibleSurface = 0n }
+            wgpuInstanceRequestAdapter(instance, &&adapterOptions, Gpu.callbackInfo onAdapter) |> ignore
+            Gpu.waitUntil instance 0n "an adapter" (fun () -> adapterDone.Value)
+            GC.KeepAlive onAdapter
+            struct (adapterResult.Value, adapterMessage.Value)
 
-        let onAdapter =
-            RequestAdapterCallback(fun status handle message _ _ ->
-                if status = RequestAdapterStatus.Success then adapterResult.Value <- handle
-                else adapterMessage.Value <- $"{status}: {message}"
-                adapterDone.Value <- true)
-
-        let mutable adapterOptions =
-            { NextInChain = 0n
-              FeatureLevel = FeatureLevel.Core
-              PowerPreference = options.PowerPreference
-              ForceFallbackAdapter = 0u
-              BackendType = options.Backend
-              CompatibleSurface = 0n }
-
-        wgpuInstanceRequestAdapter(instance, &&adapterOptions, Gpu.callbackInfo onAdapter) |> ignore
-        Gpu.waitUntil instance 0n "an adapter" (fun () -> adapterDone.Value)
-        GC.KeepAlive onAdapter
-        let adapter = adapterResult.Value
+        // The backends to try, in order. Forced: only that one. Otherwise on Windows D3D12 first:
+        // it presents through DXGI's flip model, the path Windows is built around, and rebuilds
+        // its swap chain in about 2 ms where Vulkan on NVIDIA took 5-6 ms, which made live
+        // resizes lag (2026-11-17). Then Vulkan/Metal/D3D12, then everything (OpenGL).
+        let attempts =
+            match options.Backend with
+            | BackendType.D3D12 -> [ InstanceBackend.dx12 ]
+            | BackendType.Vulkan -> [ InstanceBackend.vulkan ]
+            | BackendType.Metal -> [ InstanceBackend.metal ]
+            | BackendType.OpenGL | BackendType.OpenGLES -> [ InstanceBackend.gl ]
+            | _ when OperatingSystem.IsWindows() -> [ InstanceBackend.dx12; InstanceBackend.primary; InstanceBackend.all ]
+            | _ -> [ InstanceBackend.primary; InstanceBackend.all ]
+        let rec tryAttempts attempts =
+            match attempts with
+            | [] -> struct (0n, 0n, "no backends to try")
+            | backends :: rest ->
+                let instance = createInstance backends
+                match requestAdapter instance with
+                | struct (0n, _) when not rest.IsEmpty ->
+                    wgpuInstanceRelease instance
+                    tryAttempts rest
+                | struct (adapter, message) -> struct (instance, adapter, message)
+        let struct (instance, adapter, adapterMessage) = tryAttempts attempts
 
         if adapter = 0n then
-            wgpuInstanceRelease instance
-            raise (InvalidOperationException $"WebGPU: no suitable GPU adapter ({adapterMessage.Value}).")
+            if instance <> 0n then wgpuInstanceRelease instance
+            raise (InvalidOperationException $"WebGPU: no suitable GPU adapter ({adapterMessage}).")
 
         let description =
             let mutable info = Unchecked.defaultof<AdapterInfo>

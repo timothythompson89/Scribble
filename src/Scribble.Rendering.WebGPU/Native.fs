@@ -22,8 +22,17 @@ type SType =
     | SurfaceSourceWindowsHWND = 0x00000005u
     | SurfaceSourceXlibWindow = 0x00000006u
     | SurfaceSourceWaylandSurface = 0x00000007u
-    /// wgpu-native extension (wgpu.h).
+    /// wgpu-native extensions (wgpu.h).
+    | InstanceExtras = 0x00030004u
     | SurfaceConfigurationExtras = 0x00030008u
+
+/// WGPUDx12SwapchainKind (wgpu.h): how D3D12 presents to a window.
+type Dx12SwapchainKind =
+    | Undefined = 0u
+    /// A DXGI swap chain made from the window's HWND (wgpu's default).
+    | DxgiFromHwnd = 1u
+    /// A DXGI swap chain on a DirectComposition visual covering the window.
+    | DxgiFromVisual = 2u
 
 type CallbackMode =
     | WaitAnyOnly = 1u
@@ -223,6 +232,38 @@ type InstanceDescriptor =
       RequiredFeatureCount: unativeint
       RequiredFeatures: nativeint
       RequiredLimits: nativeint }
+
+/// wgpu-native's WGPUInstanceBackend flags (wgpu.h): which backends an instance enables.
+module InstanceBackend =
+    /// Zero: every backend, OpenGL included.
+    let all = 0UL
+    let vulkan = 1UL <<< 0
+    let gl = 1UL <<< 1
+    let metal = 1UL <<< 2
+    let dx12 = 1UL <<< 3
+    /// Vulkan, Metal, DX12 and the browser's WebGPU: everything but OpenGL.
+    let primary = vulkan ||| metal ||| dx12 ||| (1UL <<< 5)
+
+/// wgpu-native's WGPUInstanceFlag values we use (wgpu.h).
+module InstanceFlag =
+    /// The build configuration's default flags (what an instance created without extras gets).
+    let defaults = 1UL <<< 24
+    /// Apply WGPU_DEBUG, WGPU_VALIDATION, ... from the environment on top.
+    let withEnv = 1UL <<< 27
+
+/// WGPUInstanceExtras (wgpu.h, v29.0.1.1), chained to InstanceDescriptor: 112 bytes on 64-bit. Only
+/// the chain, `backends`, `flags` and `dx12PresentationSystem` are set; zero is every other field's
+/// default (Undefined DX12 compiler, automatic GLES version, normal GL fences, no DXC path, no
+/// budgets, no display handle). Offsets: dx12ShaderCompiler 32, gles3MinorVersion 36,
+/// glFenceBehaviour 40, dxcPath 48 (16 bytes), dxcMaxShaderModel 64, dx12PresentationSystem 68,
+/// the two budgets 72 and 80, displayHandle 88.
+[<Struct; StructLayout(LayoutKind.Explicit, Size = 112)>]
+type InstanceExtras =
+    [<FieldOffset(0)>] val mutable Next: nativeint
+    [<FieldOffset(8)>] val mutable SType: SType
+    [<FieldOffset(16)>] val mutable Backends: uint64
+    [<FieldOffset(24)>] val mutable Flags: uint64
+    [<FieldOffset(68)>] val mutable Dx12PresentationSystem: Dx12SwapchainKind
 
 [<Struct; StructLayout(LayoutKind.Sequential)>]
 type SurfaceSourceWindowsHWND =

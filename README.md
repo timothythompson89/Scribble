@@ -83,7 +83,11 @@ The first build downloads wgpu-native (pinned to `v29.0.1.1`) into `native/` (gi
 [wgpu-native v29.0.1.1 release](https://github.com/gfx-rs/wgpu-native/releases/tag/v29.0.1.1)
 and extract it to `native/wgpu-native-v29.0.1.1/win-x64/`, so that `lib/wgpu_native.dll` sits inside it.
 
-Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: wgpu chooses).
+Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default on Windows: Direct3D 12, then
+Vulkan; elsewhere Vulkan or Metal; OpenGL only when nothing else gives an adapter). On Windows, Direct3D 12
+presents through Windows' compositor (DirectComposition), as browsers do: with an ordinary window swap chain,
+G-SYNC monitors made the cursor stutter over Scribble windows, because the monitor then refreshed only when the
+app drew. Vulkan on Windows still has that problem with G-SYNC.
 
 ### What to check
 
@@ -134,8 +138,8 @@ Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default: w
     - The footer shows the last frame's layout/render times, shapes and the app's frames per second; when the
       app stops changing it shows "app idle" about a second later, and nothing redraws after that.
 
-The counter (`dotnet run --project samples/Counter.Desktop`) is the components demo, on five tabs
-(Elmish, Load, List, Layers, Styles). The tabs are made from what's already there: every page stays in the tree and only the
+The counter (`dotnet run --project samples/Counter.Desktop`) is the components demo, on six tabs
+(Elmish, Load, List, Layers, Styles, Layout). The tabs are made from what's already there: every page stays in the tree and only the
 selected one has `isVisible true`, so each page keeps its state while hidden.
 
 1. Change something on each tab (a count, the number on Load, the list), switch away and back: it's all still
@@ -221,6 +225,11 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    button's text color: light grey in dark, dark in light; it fades with the button when hovered or pressed like the
    text. Inspector: pick the switch; its `icon` property shows `light_mode` or `dark_mode`. (Hello's toolbar buttons
    have Material icons too.)
+14. Layout (M8 step 2, not yet checked): the Layout tab shows a form on a Grid (the fields' column keeps at least
+   120 DIPs; the notes span two columns), an app shell on a DockPanel with Separators (one dashed), boxes to drag
+   on a Canvas (a press brings one to the front and gives it a dashed outline) and chips in a WrapPanel (a new row
+   after Elm; dotted and dashed chips). Inspector: select the form's Grid to see its lines (dashed) and gaps
+   (shaded); pick a field: `Grid.row`/`Grid.column` are listed as written.
 The browser version is `samples/Counter.Browser` (port 5281).
 
 The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,
@@ -564,8 +573,13 @@ let messages =
 ```
 
 - **Layouts:** `ItemsLayout.stack` (default: each item as tall as it wants; measured as realized, others estimated
-  from the average, the first visible item kept in place as estimates are corrected, so the bar may adjust a
-  little), `fixedStack height`, `wrap width height` and `grid columns` (exact, by arithmetic).
+  from the average, so the bar may adjust a little), `fixedStack height`, `wrap width height` and `grid columns`
+  (exact, by arithmetic).
+- **Scroll anchor** (`stack`): the first visible item, by key, keeps its place on screen while anything above it
+  changes: estimates corrected, items inserted, removed or resized, the width changed (then the same fraction of
+  it stays scrolled past). If it's removed, the next item takes its place. Filter hidden items out of the source
+  rather than giving them `isVisible false`: a long run of zero-height items is realized all at once (debug builds
+  write a warning when one pass realizes over 1,000 items).
 - **Anywhere inside a ScrollViewer:** headers above it scroll with it; several on a page each virtualize. Outside
   any ScrollViewer it realizes everything.
 - **Recycling:** items scrolled out give their elements to items scrolling in (patched by the differ). A component
@@ -841,6 +855,32 @@ StackPanel.create [
 ]
 ```
 
+Panels: `StackPanel` (a row or column), `WrapPanel` (left to right, wrapping; `WrapPanel.breakAfter true` on a
+child starts a new row), `DockPanel` (strips along the sides, the last child fills), `Canvas` (positions) and
+`Grid` (rows and columns). A child says where it goes with **attached settings**, which only its parent reads:
+
+```fsharp
+Grid.create [
+    Grid.columns "auto, *, auto"                     // or [ GridColumn.create [ GridColumn.width "*"; GridColumn.minWidth 120.0 ] ]
+    Grid.rows "auto, auto"
+    Grid.columnSpacing 12.0
+    Grid.rowSpacing 8.0
+    Grid.children [
+        TextBlock.create [ TextBlock.text "Name" ]   // (0, 0) when not placed
+        nameField [ Grid.column 1 ]
+        Button.create [ Button.text "Check"; Grid.cell (0, 2) ]
+        notes [ Grid.row 1; Grid.column 1; Grid.columnSpan 2 ]
+    ]
+]
+```
+
+Fixed and Auto columns come first; stars share what's left by weight (within their min/max); in unlimited space
+(a ScrollViewer's direction) stars act as Auto; a child that spans a star column doesn't widen the Auto columns it
+also spans. Lines land on whole physical pixels, so cells tile with no gaps. `DockPanel.dock Dock.Top`,
+`Canvas.left 40.0`, `Layoutable.zIndex 1` (drawn and hit above its siblings; Tab order stays the view's) and
+`Separator.create [ Separator.orientation Vertical; Separator.lineStyle BorderStyle.Dashed ]` work the same way.
+Borders can be dashed or dotted: `Border.borderStyle BorderStyle.Dashed`, `Border.borderDash (6.0, 3.0)`.
+
 Settings are checked at compile time: `TextBlock.margin` works because every element has a margin, while
 `TextBlock.create [ Border.background … ]` is a type error. Every element has margin, width/height, min/max sizes,
 alignment, visibility and clipping. Layout is measure-and-arrange, rounded to whole physical pixels, and changing a
@@ -909,10 +949,10 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 | `src/Scribble.Platform.Browser` | Browser backend: canvas, DOM events, `requestAnimationFrame` |
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
 | `samples/Hello` | The Hello sample (library): `HelloApp.fs` (model, update, app settings) and `Dashboard.fs` (the dashboard as a view function, also used by the rendering tests) |
-| `samples/Counter` | The Counter demo (library): one file per tab (`ElmishTab.fs`, `LoadTab.fs`, `ListTab.fs`, `LayersTab.fs`, `StylesTab.fs`), `Common.fs`, and `Counter.fs` (the tabs and the app) |
+| `samples/Counter` | The Counter demo (library): one file per tab (`ElmishTab.fs`, `LoadTab.fs`, `ListTab.fs`, `LayersTab.fs`, `StylesTab.fs`, `LayoutTab.fs`), `Common.fs`, and `Counter.fs` (the tabs and the app) |
 | `samples/Icons` | The Material Symbols gallery (library) |
 | `samples/X.Desktop`, `samples/X.Browser` | Each sample's hosts: the same one-line Program.fs, a different SDK and Scribble package |
-| `samples/Samples.Shared` | `Adaptive.fs`: the samples' own `WrapPanel` and `SplitRow` |
+| `samples/Samples.Shared` | `Adaptive.fs`: the samples' own `SplitRow` |
 | `samples/Directory.Build.props` | The hosts' defaults (NativeAOT for desktop, `-p:BrowserAot=true` for the browser) |
 | `tests/*` | Unit and rendering tests |
 

@@ -59,7 +59,10 @@ type internal WebGpuSurface(ctx: GpuContext, shapes: ShapeRenderer, window: Nati
 
         format, alpha
 
+    /// The size the swap chain was last configured for.
     let mutable size = PixelSize.Zero
+    /// The size the window last reported; the swap chain follows it at the next frame.
+    let mutable wanted = initialSize
     let mutable configured = false
     let mutable disposed = false
 
@@ -96,12 +99,16 @@ type internal WebGpuSurface(ctx: GpuContext, shapes: ShapeRenderer, window: Nati
     member _.Format = format
 
     interface IRenderSurface with
-        member _.Size = size
+        member _.Size = wanted
 
-        member _.Resize newSize =
-            if newSize <> size then configure newSize
+        // Only records the size: the swap chain is rebuilt when the next frame begins. During a
+        // live resize Windows reports a new size for every mouse movement (100+ a second), and
+        // rebuilding for each one (about 5 ms on Vulkan, 2 ms on D3D12) kept the window's thread
+        // too busy to follow the mouse (2026-11-17).
+        member _.Resize newSize = wanted <- newSize
 
         member _.TryBeginFrame(scale) =
+            if not disposed && wanted <> size then configure wanted
             if disposed || not configured then
                 None
             else

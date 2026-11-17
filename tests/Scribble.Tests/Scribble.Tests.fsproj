@@ -29,7 +29,10 @@
     <Compile Include="AppValueTests.fs" />
     <Compile Include="LayerTests.fs" />
     <Compile Include="ItemsViewTests.fs" />
+    <Compile Include="PanelTests.fs" />
+    <Compile Include="VirtualizationTests.fs" />
     <Compile Include="InspectorTests.fs" />
+    <Compile Include="IdleTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />

@@ -235,8 +235,12 @@ module ScrollViewer =
     let private makeVisible (e: Element) (rect: Rect) (align: ScrollAlign) (animate: bool) : Point =
         let s = stateOf e
         let v, h = e.Get ScrollViewerProps.vertical, e.Get ScrollViewerProps.horizontal
-        // Rect in content coordinates (the content is drawn at -X, -Y).
-        let cx, cy = rect.X + s.X, rect.Y + s.Y
+        // Rect in content coordinates: undo the content's position as arranged (what the rect was
+        // offset by on its way here). Not -X, -Y: that was rounded to pixels when arranged, and the
+        // offset may have moved since.
+        let cx, cy =
+            if e.Children.Count > 0 then rect.X - e.Children[0].Bounds.X, rect.Y - e.Children[0].Bounds.Y
+            else rect.X + s.X, rect.Y + s.Y
         let x = if h = ScrollBarMode.Disabled then s.X else max 0.0 (alignedOffset (targetX s) s.ViewW cx rect.Width align)
         let y = if v = ScrollBarMode.Disabled then s.Y else max 0.0 (alignedOffset (targetY s) s.ViewH cy rect.Height align)
         if x <> targetX s || y <> targetY s then

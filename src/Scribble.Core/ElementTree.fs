@@ -202,7 +202,7 @@ type ElementTree(text: TextSystem) =
                 let left, top = ox + b.X, oy + b.Y
                 if x >= left && x < left + b.Width && y >= top && y < top + b.Height then
                     // Later children are drawn on top, so test them first.
-                    let children = e.Children
+                    let children = e.DrawOrder
                     let mutable found = ValueNone
                     let mutable i = children.Count - 1
                     while found.IsNone && i >= 0 do

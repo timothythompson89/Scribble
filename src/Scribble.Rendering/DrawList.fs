@@ -12,6 +12,16 @@ type EdgeMode =
     /// shapes that move smoothly (animations), where snapping would make them jitter.
     | Precise
 
+/// How a border is drawn along its length.
+[<RequireQualifiedAccess; Struct>]
+type StrokeStyle =
+    | Solid
+    /// Dashes `dash` long with `gap` between them (DIPs). Around a closed shape both are adjusted a
+    /// little so the pattern meets itself evenly; dashes follow rounded corners.
+    | Dashed of dash: float * gap: float
+    /// Round dots as wide as the line, one line width apart (adjusted to meet evenly).
+    | Dotted
+
 /// A list of shapes to draw in one frame. Controls draw into this; a backend turns it into GPU
 /// work (one instanced draw call for all shapes).
 ///
@@ -20,7 +30,9 @@ type EdgeMode =
 ///
 /// Every shape becomes one "instance" of 24 floats, laid out exactly as `Shape` in shapes.wgsl:
 ///   rect (x, y, w, h) · radii (tl, tr, br, bl) · fill rgba · border rgba ·
-///   params (border width, shadow sigma, kind, 0) · clip (x0, y0, x1, y1)   — all in physical pixels.
+///   params (border width, shadow sigma, kind) · pattern · clip (x0, y0, x1, y1)   — all in physical pixels.
+/// The pattern is a u32 stored in the float's bits: 0 solid; else dash (high 16 bits) and gap (low 16
+/// bits) in 1/16 px; a dash of 0xFFFF means dotted.
 /// Kind 0 is a shape; kind 1 is a glyph (coverage atlas), kind 2 a color glyph (color atlas);
 /// for both, radii.xy hold the glyph's top-left texel in its atlas.
 [<Sealed>]
@@ -50,7 +62,7 @@ type DrawList(scale: float) =
 
     let snapWidth (w: float) = if w <= 0.0 then 0.0 else max 1.0 (Math.Round w)
 
-    let pushKind (kind: float) (rect: Rect) (radii: CornerRadius) (fill: Color) (border: Color) (borderWidth: float) (sigma: float) =
+    let pushPattern (kind: float) (rect: Rect) (radii: CornerRadius) (fill: Color) (border: Color) (borderWidth: float) (sigma: float) (pattern: int) =
         // Skip shapes that are fully clipped away or invisible.
         let reach = 1.0 + 3.0 * sigma
         let fill = if opacity < 1.0f then fill.WithAlpha(fill.A * opacity) else fill
@@ -78,14 +90,27 @@ type DrawList(scale: float) =
             set 16 borderWidth
             set 17 sigma
             set 18 kind
-            set 19 0.0
+            data[i + 19] <- BitConverter.Int32BitsToSingle pattern
             set 20 clip.Left
             set 21 clip.Top
             set 22 clip.Right
             set 23 clip.Bottom
             count <- count + 1
 
+    let pushKind kind rect radii fill border borderWidth sigma = pushPattern kind rect radii fill border borderWidth sigma 0
+
     let push = pushKind 0.0
+
+    /// A stroke style as the shader's pattern word, from DIPs (lengths in 1/16 physical pixel; kept
+    /// below 2,000 px so the word's float reading is never NaN or denormal-sensitive on the CPU side).
+    let patternOf (style: StrokeStyle) (scale: float) =
+        match style with
+        | StrokeStyle.Solid -> 0
+        | StrokeStyle.Dotted -> 0xFFFF <<< 16
+        | StrokeStyle.Dashed(dash, gap) ->
+            let q (v: float) = int (Math.Round(Math.Clamp(v * scale, 0.0, 2000.0) * 16.0))
+            let d, g = max 1 (q dash), q gap
+            if g = 0 then 0 else (d <<< 16) ||| g
 
     let toPixels (mode: EdgeMode) (rect: Rect) =
         let r = transform.Apply rect
@@ -186,15 +211,17 @@ type DrawList(scale: float) =
 
     /// A filled box with a border drawn inside its edge. Either part may be transparent.
     /// `borderThickness` is in DIPs; when snapped it's rounded to whole pixels (at least 1).
-    member _.DrawBox(rect: Rect, radius: CornerRadius, fill: Color, borderThickness: float, borderColor: Color, ?mode: EdgeMode) =
+    /// `style` makes the border dashed or dotted (solid by default); the fill stays whole.
+    member _.DrawBox(rect: Rect, radius: CornerRadius, fill: Color, borderThickness: float, borderColor: Color, ?mode: EdgeMode, ?style: StrokeStyle) =
         let mode = defaultArg mode Snapped
         let width = borderThickness * abs transform.ScaleX
         let width = if mode = Snapped then snapWidth width else width
-        push (toPixels mode rect) (radiiToPixels radius) fill borderColor width 0.0
+        let pattern = match style with Some s -> patternOf s (abs transform.ScaleX) | None -> 0
+        pushPattern 0.0 (toPixels mode rect) (radiiToPixels radius) fill borderColor width 0.0 pattern
 
-    /// A border only, drawn inside the rect's edge.
-    member this.StrokeRect(rect: Rect, radius: CornerRadius, thickness: float, color: Color, ?mode: EdgeMode) =
-        this.DrawBox(rect, radius, Color.Transparent, thickness, color, defaultArg mode Snapped)
+    /// A border only, drawn inside the rect's edge; `style` makes it dashed or dotted.
+    member this.StrokeRect(rect: Rect, radius: CornerRadius, thickness: float, color: Color, ?mode: EdgeMode, ?style: StrokeStyle) =
+        this.DrawBox(rect, radius, Color.Transparent, thickness, color, defaultArg mode Snapped, defaultArg style StrokeStyle.Solid)
 
     /// A soft shadow behind a (rounded) box, like CSS box-shadow:
     /// `blur` is the blur radius in DIPs (≈ 2 standard deviations), `spread` grows the shape,

@@ -279,6 +279,21 @@ extern nativeint SetCursor(nativeint hCursor)
 [<DllImport("user32.dll", ExactSpelling = true)>]
 extern uint32 GetDpiForWindow(nativeint hwnd)
 
+let MONITOR_DEFAULTTONEAREST = 2u
+
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern nativeint MonitorFromWindow(nativeint hwnd, uint32 flags)
+
+/// `info` is a MONITORINFOEXW: 104 bytes, cbSize first, szDevice (32 WCHARs) at offset 40.
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern int GetMonitorInfoW(nativeint monitor, byte* info)
+
+let ENUM_CURRENT_SETTINGS = -1
+
+/// `devMode` is a DEVMODEW: 220 bytes, dmSize (WORD) at offset 68, dmDisplayFrequency (DWORD) at 184.
+[<DllImport("user32.dll", ExactSpelling = true)>]
+extern int EnumDisplaySettingsW(nativeint deviceName, int modeNum, byte* devMode)
+
 [<DllImport("user32.dll", ExactSpelling = true)>]
 extern uint32 GetDpiForSystem()
 

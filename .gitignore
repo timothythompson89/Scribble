@@ -10,3 +10,6 @@ docs/CHECKLIST.md
 
 # Published samples and certificates made by tools/Scribble.Serve
 artifacts/
+
+# Test run output (hang dumps can be gigabytes)
+TestResults/

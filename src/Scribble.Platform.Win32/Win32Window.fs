@@ -23,6 +23,13 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
     let mutable closed = false
     let mutable pressedButtons = 0
     let mutable frameRequested = false
+    /// Between WM_ENTERSIZEMOVE and WM_EXITSIZEMOVE: Windows runs its own loop while the user
+    /// drags or resizes the window.
+    let mutable inSizeMove = false
+    /// When the last frame was delivered (Stopwatch timestamp), and the display's refresh period
+    /// (in Stopwatch ticks), read when a live resize starts: WM_SIZE draws at most once per refresh.
+    let mutable lastFrame = 0L
+    let mutable refreshTicks = Diagnostics.Stopwatch.Frequency / 60L
     /// WM_CHAR delivers UTF-16 code units; a character outside the BMP arrives as two messages.
     let mutable pendingHighSurrogate = None
     /// True while Windows is watching for the mouse to leave (TrackMouseEvent), i.e. it's inside.
@@ -183,6 +190,24 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
             if GetCapture() = hwnd then ReleaseCapture() |> ignore
             onEvent (PointerCanceled(Mouse, 0))
 
+    /// The refresh period of the monitor the window is on (60 Hz when it can't be read).
+    let readRefreshTicks () =
+        let monitorInfo = Array.zeroCreate<byte> 104
+        let devMode = Array.zeroCreate<byte> 220
+        BitConverter.TryWriteBytes(Span<byte>(monitorInfo, 0, 4), 104) |> ignore
+        BitConverter.TryWriteBytes(Span<byte>(devMode, 68, 2), 220us) |> ignore
+        let hz =
+            use pInfo = fixed monitorInfo
+            use pMode = fixed devMode
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+            if monitor <> 0n && GetMonitorInfoW(monitor, pInfo) <> 0
+               && EnumDisplaySettingsW(NativePtr.toNativeInt pInfo + 40n, ENUM_CURRENT_SETTINGS, pMode) <> 0 then
+                BitConverter.ToInt32(devMode, 184)
+            else 0
+        // 0 and 1 mean "the hardware's default"; anything that low or absurdly high falls back to 60.
+        let hz = if hz >= 24 && hz <= 1000 then hz else 60
+        Diagnostics.Stopwatch.Frequency / int64 hz
+
     member internal _.Attach(handle: nativeint) =
         hwnd <- handle
         dpi <- GetDpiForWindow handle
@@ -195,6 +220,7 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
 
     member internal _.DeliverFrame() =
         frameRequested <- false
+        lastFrame <- Diagnostics.Stopwatch.GetTimestamp()
         if not closed && not clientSize.IsEmpty then onEvent Frame
 
     /// Handles a message for this window. Returns Some result when handled, None to fall through
@@ -206,9 +232,16 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
             if size <> clientSize then
                 clientSize <- size
                 onEvent (Resized size)
-                // Draw now rather than at the next loop iteration: during a live resize Windows runs
-                // its own modal loop, and drawing here keeps content in step with the window edge.
-                this.DeliverFrame()
+                // During a live resize Windows sends a WM_SIZE for every mouse movement (100+ a
+                // second): drawing (and rebuilding the swap chain) for each one kept the thread too
+                // busy to follow the mouse (2026-11-17), so it draws at most once per display refresh.
+                // Other size changes (maximize, snap, DPI) draw now.
+                // (A frame is drawn now when a refresh period has passed since the last one, with
+                // a little slack so frames don't alternate between refreshes; else the timer draws it.)
+                if inSizeMove && Diagnostics.Stopwatch.GetTimestamp() - lastFrame < refreshTicks * 9L / 10L then
+                    frameRequested <- true
+                else
+                    this.DeliverFrame()
             ValueSome 0n
 
         | WM_PAINT ->
@@ -225,12 +258,16 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
             ValueSome 0n
 
         | WM_ENTERSIZEMOVE ->
+            inSizeMove <- true
+            refreshTicks <- readRefreshTicks ()
             SetTimer(hwnd, SizeMoveTimerId, 10u, 0n) |> ignore
             onEvent (LiveResize true)
             ValueSome 0n
 
         | WM_EXITSIZEMOVE ->
+            inSizeMove <- false
             KillTimer(hwnd, SizeMoveTimerId) |> ignore
+            // Whatever the last tick didn't draw is drawn by the main loop now.
             onEvent (LiveResize false)
             ValueSome 0n
 

@@ -322,12 +322,17 @@ and [<Sealed>] Element internal (elementType: ElementType) =
           MinWidth = LayoutProps.minWidth.Default; MinHeight = LayoutProps.minHeight.Default
           MaxWidth = LayoutProps.maxWidth.Default; MaxHeight = LayoutProps.maxHeight.Default
           HorizontalAlignment = LayoutProps.horizontalAlignment.Default; VerticalAlignment = LayoutProps.verticalAlignment.Default
-          IsVisible = LayoutProps.isVisible.Default; ClipToBounds = LayoutProps.clipToBounds.Default }
+          IsVisible = LayoutProps.isVisible.Default; ClipToBounds = LayoutProps.clipToBounds.Default; ZIndex = 0 }
     /// Sizes from the last measure, in DIPs (NaN = automatic).
     let mutable resolved: ResolvedSizes =
         { Width = Double.NaN; Height = Double.NaN; MinWidth = 0.0; MinHeight = 0.0
           MaxWidth = Double.PositiveInfinity; MaxHeight = Double.PositiveInfinity }
     let mutable children: Element[] = empty
+    /// Children sorted by zIndex (stable), kept while some child has one; checked against the
+    /// children and their zIndex values on use, so nothing has to invalidate it.
+    let mutable ordered: Element[] = empty
+    let mutable orderedFrom: Element[] = empty
+    let mutable orderedKeys: int[] = [||]
     /// The realized children of each child property, in the order the properties were set.
     let mutable childSlots: struct (Prop * Element[])[] = [||]
     /// The view this element was last built or patched from.
@@ -467,8 +472,29 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     member _.Type = elementType
     member this.Name = this.Get LayoutProps.name
     member _.Parent = parent
-    /// Child elements in drawing order, whichever properties they came from.
+    /// Child elements in view order, whichever properties they came from.
     member _.Children: IReadOnlyList<Element> = children
+    /// Its `zIndex`: drawn and hit above siblings with lower values.
+    member _.ZIndex = lv.ZIndex
+
+    /// Children in drawing order: by zIndex, view order among equals (the same array as
+    /// `Children` while no child sets one). Hit testing goes through it backwards.
+    member _.DrawOrder: IReadOnlyList<Element> =
+        let mutable any = false
+        for c in children do
+            if c.ZIndex <> 0 then any <- true
+        if not any then children
+        else
+            let mutable valid = obj.ReferenceEquals(orderedFrom, children) && orderedKeys.Length = children.Length
+            if valid then
+                for i in 0 .. children.Length - 1 do
+                    if orderedKeys[i] <> children[i].ZIndex then valid <- false
+            if not valid then
+                orderedFrom <- children
+                orderedKeys <- children |> Array.map (fun c -> c.ZIndex)
+                // Ties broken by position keep view order among equal values.
+                ordered <- Array.init children.Length id |> Array.sortWith (fun a b -> match compare orderedKeys[a] orderedKeys[b] with 0 -> compare a b | c -> c) |> Array.map (fun i -> children[i])
+            ordered
     /// Size wanted after the last measure, margin included.
     member _.DesiredSize: Size = desiredSize
     /// Position and size after the last arrange, relative to the parent (margin excluded).
@@ -1169,7 +1195,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
               MinWidth = this.Get LayoutProps.minWidth; MinHeight = this.Get LayoutProps.minHeight
               MaxWidth = this.Get LayoutProps.maxWidth; MaxHeight = this.Get LayoutProps.maxHeight
               HorizontalAlignment = this.Get LayoutProps.horizontalAlignment; VerticalAlignment = this.Get LayoutProps.verticalAlignment
-              IsVisible = this.Get LayoutProps.isVisible; ClipToBounds = this.Get LayoutProps.clipToBounds }
+              IsVisible = this.Get LayoutProps.isVisible; ClipToBounds = this.Get LayoutProps.clipToBounds
+              ZIndex = this.Get LayoutProps.zIndex }
 
     member private _.RebuildChildren() =
         children <- childSlots |> Array.collect (fun struct (_, es) -> es)
@@ -1350,7 +1377,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                     match elementType.ClipChildren with
                     | ValueSome f -> list.PushClip(f (RenderContext this))
                     | ValueNone -> list.PushClip(Rect.Create(0.0, 0.0, bounds.Width, bounds.Height))
-                for child in children do
+                for child in this.DrawOrder do
                     child.Render list
                 if clip then list.PopClip()
             match elementType.RenderAfter with
