@@ -148,6 +148,12 @@ dotnet run --project tools/Scribble.Serve      # the browser samples to the loca
 
 ## Rules and gotchas
 
+- **Time comes from the platform** (`IPlatform.Elapsed`, `IPlatform.After`, `Dispatcher.PostAfter`,
+  `ElementHost.Elapsed`), never a `Stopwatch` or `Task.Delay` for anything that waits or animates: the tests'
+  `FakeTime` moves only per delivered frame (16 ms) or by `AdvanceMs`, so no unit test sleeps (2026-11-17).
+- **App code is guarded** (decision 22): a new place that runs app or element-author code (a handler, a stage, a
+  view function) catches and calls `ReportError` (element or `IElementRoot`), leaving out only what failed.
+  Without `App.onError` the dispatcher rethrows, which ends the app.
 - `TreatWarningsAsErrors`; `WarningsNotAsErrors` IL2104;IL3053 (FSharp.Core's own trim warnings). Libraries set
   `IsScribbleLibrary=true` → `IsAotCompatible`/`IsTrimmable`.
 - **No F# printf family** in shipped code (`printfn`, `sprintf`, `failwithf`, `%A`, `$"..."` with `%d`-style
@@ -227,7 +233,7 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
   Separator, zIndex, attached settings, dashed/dotted borders, the inspector's Grid overlay, the Counter's Layout
   tab) is built, not yet checked by Tim; it changed decision 16 (Tim agreed) (a child spanning a star track doesn't size Auto
   tracks; see DESIGN.md "Step 2 as built"). M8 step 1b (non-uniform virtualization tests; the scroll anchor by key) is built, not yet checked by Tim (zero-height
-  runs: documented, debug warning; option A). M8 step 3a (ToggleButton, CheckBox, Switch, Slider, TabControl; the Counter on a TabControl with a Controls tab) is built, not yet checked by Tim (DESIGN.md "Step 3a as built"). M8 step 3a+ (the inspector tree on ItemsView) is built, not yet checked by Tim (DESIGN.md "M8 step 3a+"); so is 3a++ (stacked ItemsViews scroll sideways; the inspector tree too). Counts: 396 unit tests, 61 rendering tests. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
+  runs: documented, debug warning; option A). M8 step 3a (ToggleButton, CheckBox, Switch, Slider, TabControl; the Counter on a TabControl with a Controls tab) is built, not yet checked by Tim (DESIGN.md "Step 3a as built"). M8 step 3a+ (the inspector tree on ItemsView) is built, not yet checked by Tim (DESIGN.md "M8 step 3a+"); so is 3a++ (stacked ItemsViews scroll sideways; the inspector tree too). Project review 2026-11-17 step 1 (the platform clock and timers; errors to `App.onError`, the app keeps running) and the Core folders are built, not yet checked by Tim (DESIGN.md "Project review 2026-11-17"). Counts: 408 unit tests (1–2 s), 61 rendering tests. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
 - **Next: M8 core controls**: steps 1 (ScrollViewer completed, ItemsView, scrollers) and 2 (panels, dashed
   lines) are done, 3a (toggles, Slider, TabControl) is built; then 3b Image (decoding gets its own round), then step 4: RadioButton, ListBox,
   ComboBox, Dialog, Toast, tooltips, the "show this in a layer" element. Then M9 TextBox, M10 hot reload; later:

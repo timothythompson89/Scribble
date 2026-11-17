@@ -340,7 +340,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             l.Input.Refresh()
         updateKeyboardOwner ()
         let laidOut = Stopwatch.GetTimestamp()
-        match surface.TryBeginFrame scale with
+        // A layout that threw (reported already) left the tree half laid out: drop this frame, keep
+        // the last one on screen.
+        let layoutFailed = layers |> Seq.exists (fun l -> l.Tree.LayoutFailed)
+        match (if layoutFailed then None else surface.TryBeginFrame scale) with
         | Some frame ->
             use frame = frame
             frame.Clear this.ClearColor
@@ -402,6 +405,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             // for the next one.
             for l in layers.ToArray() do
                 l.Tree.RunAfterFrame()
+            options.Dispatcher |> ValueOption.iter (fun d -> d.FrameEnded())
             frameDrawn.Trigger stats
             false
         | Resized size -> surface.Resize size; false

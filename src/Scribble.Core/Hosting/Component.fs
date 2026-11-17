@@ -26,6 +26,8 @@ type internal ComponentInstance(element: Element, name: string) =
     let mutable dirty = false
     let mutable removed = false
     let mutable flushScheduled = false
+    /// What the last successful run returned, shown again when a run fails.
+    let mutable lastView: View voption = ValueNone
 
     let depth () =
         let mutable d = 0
@@ -122,7 +124,12 @@ type internal ComponentInstance(element: Element, name: string) =
             let actions = pending.ToArray()
             pending.Clear()
             for action in actions do
-                action ()
+                try
+                    action ()
+                with e ->
+                    match element.Root with
+                    | ValueSome r -> r.ReportError e
+                    | ValueNone -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw e
 
     member this.ScheduleFlush() =
         if pending.Count > 0 && not flushScheduled then
@@ -132,20 +139,48 @@ type internal ComponentInstance(element: Element, name: string) =
                 r.AfterFrame this.Flush
             | ValueNone -> ()
 
+    /// Runs the component function. If it throws (or breaks the hook rules), the error goes to
+    /// App.onError, what the run added (hooks on a first run, effects) is taken back, and the
+    /// component keeps showing its last output (nothing, on a first run).
     member this.Run(render: unit -> View) : View =
         running <- true
         index <- 0
         dirty <- false
-        let view =
+        let slotsBefore = slots.Count
+        let pendingBefore = pending.Count
+        let result =
             try
-                render ()
+                try
+                    let view = render ()
+                    if not firstRun && index < slots.Count then
+                        invalidOp $"Component '{name}' called fewer hooks than last time ({index} instead of {slots.Count}). Call hooks unconditionally, in the same order every time."
+                    ValueSome view
+                with e ->
+                    for i in slots.Count - 1 .. -1 .. slotsBefore do
+                        match box slots[i] with
+                        | :? IDisposable as d -> d.Dispose()
+                        | _ -> ()
+                        slots.RemoveAt i
+                    pending.RemoveRange(pendingBefore, pending.Count - pendingBefore)
+                    match element.Root with
+                    | ValueSome r -> r.ReportError e
+                    | ValueNone ->
+                        match Element.Realizing with
+                        | ValueSome r -> r.ReportError e
+                        | ValueNone -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw e
+                    ValueNone
             finally
                 running <- false
-        if not firstRun && index < slots.Count then
-            invalidOp $"Component '{name}' called fewer hooks than last time ({index} instead of {slots.Count}). Call hooks unconditionally, in the same order every time."
-        firstRun <- false
-        this.ScheduleFlush()
-        view
+        match result with
+        | ValueSome view ->
+            firstRun <- false
+            lastView <- ValueSome view
+            this.ScheduleFlush()
+            view
+        | ValueNone ->
+            match lastView with
+            | ValueSome view -> view
+            | ValueNone -> Border.create []
 
     override this.Attached(r: IElementRoot) =
         if dirty then this.Schedule r

@@ -507,10 +507,17 @@ match square with
 - **From other threads:** `State.Set`/`Update` and Elmish `dispatch` may be called from any thread; they're queued
   to the UI thread. Elements themselves are UI-thread only. `await` inside `task { }` started on the UI thread
   resumes there (Scribble installs a `SynchronizationContext`).
-- **Errors:** exceptions from commands, queued work and tasks nobody awaited go to `App.onError (fun e -> ...)`
-  (default: written to the console; the app keeps running). `useAsync` failures become `Failed e` instead.
-- **The dispatcher** (`Scribble.Core.Dispatcher`: `Post`, `InvokeAsync`, `CheckAccess`, `RunPending`) is what all
-  of this uses; apps rarely need it. A host that owns its loop (a game engine) calls `RunPending()` each tick.
+- **Errors:** an exception from app code goes to `App.onError (fun e -> ...)`, and the app keeps running, losing
+  only what failed: an event handler (a failed `update` leaves the model as it was), the view (the last one stays
+  on screen until the model changes again), a component (it keeps its last output), an element's render (it's
+  left out of that frame), an ItemsView item's `view` (that item is left out), an effect, a command, queued work,
+  a task nobody awaited. A custom element's measure or arrange that throws drops the frame. An error that repeats
+  every frame (a render during an animation) is reported once until a frame goes through without it. **Without
+  `App.onError` the error is rethrown and the app ends** (the debugger stops there). `useAsync` failures become
+  `Failed e` instead.
+- **The dispatcher** (`Scribble.Core.Dispatcher`: `Post`, `PostAfter`, `InvokeAsync`, `CheckAccess`,
+  `RunPending`) is what all of this uses; apps rarely need it. Time comes from the platform (`IPlatform.Elapsed`,
+  `IPlatform.After`), so tests can control it. A host that owns its loop (a game engine) calls `RunPending()` each tick.
 
 ### Layers
 

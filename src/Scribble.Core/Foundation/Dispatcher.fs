@@ -2,6 +2,8 @@ namespace Scribble.Core
 
 open System
 open System.Collections.Concurrent
+open System.Diagnostics
+open System.Runtime.ExceptionServices
 open System.Threading
 open System.Threading.Tasks
 
@@ -15,8 +17,17 @@ type Dispatcher private (wake: unit -> unit, after: (TimeSpan -> (unit -> unit) 
     let threadId = Environment.CurrentManagedThreadId
     /// 1 while a wake is on its way (so a burst of posts wakes the platform once).
     let mutable wakePending = 0
-    let mutable onError: exn -> unit =
-        fun e -> Console.Error.WriteLine("Scribble: unhandled error in work posted to the UI thread: " + string e)
+    /// Without App.onError, an error ends the app: rethrown here, on the UI thread.
+    let mutable onError: exn -> unit = fun e -> ExceptionDispatchInfo.Throw e
+    /// For UI errors (ReportUiError): the last one reported, and whether a frame has failed since
+    /// the last frame ended.
+    let mutable lastUiError = ""
+    let mutable uiErrorSinceFrame = false
+    let report (e: exn) =
+#if DEBUG
+        Debug.WriteLine("Scribble: unhandled error: " + string e)
+#endif
+        onError e
 
     /// A dispatcher whose delayed work (`PostAfter`) waits on the platform's timer: `after delay
     /// action` runs `action` on the UI thread once, `delay` from now (`IPlatform.After`).
@@ -41,7 +52,7 @@ type Dispatcher private (wake: unit -> unit, after: (TimeSpan -> (unit -> unit) 
             try
                 action ()
             with e ->
-                onError e
+                report e
         match after with
         | ValueSome after when this.CheckAccess() -> after delay guarded
         | ValueSome after -> this.Post(fun () -> after delay guarded)
@@ -58,8 +69,9 @@ type Dispatcher private (wake: unit -> unit, after: (TimeSpan -> (unit -> unit) 
                 result.SetException e)
         result.Task
 
-    /// Where exceptions from posted work go (App.onError sets it). By default they're written to
-    /// the console and the app keeps running.
+    /// Where errors from app code go (App.onError sets it): posted work, async work, event
+    /// handlers, views, components, render functions. By default they're rethrown on the UI thread,
+    /// which ends the app.
     member _.OnError
         with get () = onError
         and set v = onError <- v
@@ -73,11 +85,29 @@ type Dispatcher private (wake: unit -> unit, after: (TimeSpan -> (unit -> unit) 
             try
                 action ()
             with e ->
-                onError e
+                report e
 
     /// Routes an exception to OnError from any thread.
     member this.ReportError(e: exn) =
-        if this.CheckAccess() then onError e else this.Post(fun () -> onError e)
+        if this.CheckAccess() then report e else this.Post(fun () -> report e)
+
+    /// An error from app code during input or a frame (a handler, a view, a component, a render
+    /// function): reported like any other, except that one identical to the last (type, message,
+    /// place) is not reported again until a frame ends without errors, so a render that fails every
+    /// frame of an animation is reported once.
+    member internal _.ReportUiError(e: exn) =
+        uiErrorSinceFrame <- true
+        let trace = match e.StackTrace with null -> "" | s -> s
+        let place = match trace.IndexOf '\n' with -1 -> trace | i -> trace.Substring(0, i)
+        let key = e.GetType().FullName + "|" + e.Message + "|" + place
+        if key <> lastUiError then
+            lastUiError <- key
+            report e
+
+    /// A frame has ended: if it had no errors, the next UI error is reported even if it repeats.
+    member internal _.FrameEnded() =
+        if not uiErrorSinceFrame then lastUiError <- ""
+        uiErrorSinceFrame <- false
 
 /// Makes `await` (in `task { }`, and `async` started on the UI thread) come back to the UI thread.
 /// `App.run` installs it with `Dispatcher.Install`.

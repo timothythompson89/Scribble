@@ -17,6 +17,7 @@
     <Compile Include="LengthTests.fs" />
     <Compile Include="DifferTests.fs" />
     <Compile Include="AppTests.fs" />
+    <Compile Include="ErrorTests.fs" />
     <Compile Include="InputTests.fs" />
     <Compile Include="KeyboardTests.fs" />
     <Compile Include="ComponentTests.fs" />

@@ -15,6 +15,7 @@ type ElementTree(text: TextSystem) =
     let mutable onInvalidated: unit -> unit = ignore
     let mutable time = TimeSpan.Zero
     let mutable dispatcher: Dispatcher voption = ValueNone
+    let mutable layoutFailed = false
     let mutable appValues = AppValues()
     /// Components whose state changed, with their depth: run at the start of the next layout.
     let scheduled = Collections.Generic.List<struct (int * (unit -> unit))>()
@@ -192,15 +193,21 @@ type ElementTree(text: TextSystem) =
 
     /// Runs what asked to run after the frame (effects, animations asking for the next frame).
     /// ElementHost calls it once a frame is drawn.
-    member _.RunAfterFrame() =
+    member this.RunAfterFrame() =
         if afterFrame.Count > 0 then
             let actions = afterFrame.ToArray()
             afterFrame.Clear()
             for action in actions do
-                action ()
+                try
+                    action ()
+                with e ->
+                    (this :> IElementRoot).ReportError e
 
     /// Lays the tree out in `size` DIPs (after re-running components whose state changed). Only
     /// invalid parts do any work.
+    /// True when the last layout threw (the host doesn't draw that frame).
+    member internal _.LayoutFailed = layoutFailed
+
     member this.UpdateLayout(size: Size) =
         this.RunScheduledComponents()
         this.RunScheduledStyles()
@@ -209,11 +216,19 @@ type ElementTree(text: TextSystem) =
             // Arranging can ask for another pass: a scroller that moved shows other items, which an
             // ItemsView realizes and measures. A few passes settle it (bounded, in case something
             // keeps asking).
-            let mutable passes = 0
-            while passes = 0 || (passes < 6 && not (r.IsMeasureValid && r.IsArrangeValid)) do
-                passes <- passes + 1
-                r.Measure size
-                r.Arrange(Rect.Create(0.0, 0.0, size.Width, size.Height))
+            // A custom element's measure or arrange that throws leaves layout half done: the error is
+            // reported and the host drops the frame (`LayoutFailed`); what failed stays invalid, so
+            // the next frame tries again.
+            layoutFailed <- false
+            try
+                let mutable passes = 0
+                while passes = 0 || (passes < 6 && not (r.IsMeasureValid && r.IsArrangeValid)) do
+                    passes <- passes + 1
+                    r.Measure size
+                    r.Arrange(Rect.Create(0.0, 0.0, size.Width, size.Height))
+            with e ->
+                layoutFailed <- true
+                (this :> IElementRoot).ReportError e
         | ValueNone -> ()
 
     member _.Render(list: DrawList) = root |> ValueOption.iter (fun r -> r.Render list)
@@ -261,6 +276,10 @@ type ElementTree(text: TextSystem) =
             onInvalidated ()
         member _.AfterFrame action = afterFrame.Add action
         member _.Dispatcher = dispatcher
+        member _.ReportError(error) =
+            match dispatcher with
+            | ValueSome d -> d.ReportUiError error
+            | ValueNone -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw error
         member _.AppValues = appValues
         member this.Focus(element) = this.FocusHandler(element :?> Element)
         member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)

@@ -269,9 +269,16 @@ module ItemsView =
             el.SetRoot e.Root
             el.InvalidateAll()
             if ItemsProfile.On then ItemsProfile.Attach <- ItemsProfile.Attach + since t0
+        // The app's `view` throwing is reported (App.onError) and gives no view: a new item is left
+        // out, a realized one keeps its element. Layout goes on for the rest.
         let viewOf (item: obj) =
             let t0 = stamp ()
-            let v = viewFn.Invoke item
+            let v =
+                try
+                    viewFn.Invoke item
+                with ex ->
+                    e.ReportError ex
+                    ValueNone
             if ItemsProfile.On then ItemsProfile.View <- ItemsProfile.View + since t0
             v
         let patch (el: Element) (v: View) =

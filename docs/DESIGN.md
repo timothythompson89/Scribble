@@ -1780,6 +1780,34 @@ Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q
     so it stays at the end of `Element.fs`, with the rest of it (one recursive type group).
 25. **The reorganisation is its own commit,** with nothing else in it; step 1 lands in the new layout.
 
+**As built (2026-11-17, not yet checked by Tim).**
+
+- *Reorganisation (23–25):* commit `6eaae0d`; files moved unchanged (git sees renames).
+- *The clock (21):* `IPlatform.Elapsed` and `IPlatform.After(delay, action)`; `TimerQueue` (Scribble.Platform)
+  keeps the delayed work and the platform one OS timer for the earliest (Win32: `SetTimer` on the wake window,
+  created on first use; browser: one `setTimeout` through a new `setTimer` JS function and an `onTimer`
+  callback). `Dispatcher(wake, after)` and `PostAfter`; `Dispatcher(wake)` alone waits on `Task.Delay` (hosts
+  without a platform). `FrameClock(now)`; `ElementHost.clock`, `ElementHost.Elapsed`; the inspector reads
+  `host.Elapsed` and waits with `PostAfter`. The tests' fake platforms share a `FakeTime`: a delivered frame
+  moves it 16 ms (a 60 Hz display), `AdvanceMs` moves it further. No unit test sleeps any more except
+  `AsyncTests`' real threads; the unit tests take 1–2 s instead of 40 s. Left on real time: ScrollViewer's
+  fling speed (it measures the finger, it doesn't wait; no test covers it), frame statistics.
+- *Errors (22):* `IElementRoot.ReportError` → `Dispatcher.ReportUiError` (counts a repeat: same type, message
+  and first stack line, until `FrameEnded` sees a frame without errors). Guards: Input's `invoke` (every routed
+  handler, enter and leave), element-type input hooks (pointer, key, wheel, pan: a failed pan takes nothing),
+  `click`; App's `onKey`, `onFrame` and the Elmish view (a throwing view keeps the last elements);
+  `ComponentInstance.Run` (rolls back hook slots added and effects queued by the failed run, returns the last
+  output or an empty Border; hook-rule breaks are reported the same way); each component effect and each
+  after-frame action; `Element.Render` (new `DrawList.Mark`/`RollBack` take back what the element drew; the
+  drawing moved to `RenderShown`); ItemsView's per-item `view` (no view: a new item is left out, a realized one
+  keeps its element, which also keeps layout from failing every frame); `ElementTree.UpdateLayout` (sets
+  `LayoutFailed`; ElementHost then doesn't begin a frame). The dispatcher's default is now `ExceptionDispatchInfo.Throw`
+  (posted work, `PostAfter`, `ReportError`, and with `Dispatcher.Install` unobserved task exceptions too, which
+  arrive when the GC finalizes the task, so possibly long after). Cost: `Scribble.Bench`'s draw-list times with and
+  without the render guard are the same within noise (72–98 µs a step either way). Tests: `ErrorTests.fs`
+  (8: handler and update, no onError, view, render repeating, measure, component and hook rules, effects,
+  ItemsView items); the render and component tests were checked to fail with their fix taken out.
+
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
 The working summaries kept in CLAUDE.md while each milestone was built, moved here unchanged when CLAUDE.md

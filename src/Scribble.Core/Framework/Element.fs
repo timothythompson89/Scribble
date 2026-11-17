@@ -36,6 +36,10 @@ type IElementRoot =
     /// Moves keyboard focus to an element (an `Element`) if it can take it; the ring shows as it
     /// did (it stays on while the keyboard is in use). Does nothing in a tree without input.
     abstract Focus: element: obj -> unit
+    /// An error from app code during input or a frame (a handler, a component, a render function):
+    /// to App.onError through the dispatcher (repeats counted, not reported again), or rethrown
+    /// when there's no dispatcher or no onError.
+    abstract ReportError: error: exn -> unit
 
 [<AutoOpen>]
 module internal StyleMarks =
@@ -620,6 +624,13 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         | ValueNone -> []
 
     /// Runs the hosted component and patches what it returned in as this element's child.
+    /// An error from app code run for this element: to App.onError through its tree (rethrown
+    /// when it's in none).
+    member internal _.ReportError(e: exn) =
+        match root with
+        | ValueSome r -> r.ReportError e
+        | ValueNone -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw e
+
     member internal this.RunComponent() =
         match find componentInput.Id with
         | -1 -> ()
@@ -1429,6 +1440,17 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                 | ValueSome d when d.ContainsKey LayoutProps.scale.Id -> this.Get LayoutProps.scale > 1.0
                 | _ -> false)
         if not bounds.IsEmpty && lv.IsVisible && canShow () then
+            // An error in its drawing (or its children's, past theirs) goes to App.onError, and
+            // what it drew is taken back: it and its children are left out of this frame.
+            let mark = list.Mark
+            try
+                this.RenderShown list
+            with e ->
+                list.RollBack mark
+                this.ReportError e
+
+    /// Draws the element and its children (Render has checked it can show).
+    member private this.RenderShown(list: DrawList) =
             let scale = this.Get LayoutProps.scale
             list.PushTranslate(bounds.X, bounds.Y)
             let opacity = this.Get LayoutProps.opacity

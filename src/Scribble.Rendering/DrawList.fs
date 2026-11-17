@@ -22,6 +22,10 @@ type StrokeStyle =
     /// Round dots as wide as the line, one line width apart (adjusted to meet evenly).
     | Dotted
 
+/// A point in a draw list to go back to (`DrawList.Mark`, `DrawList.RollBack`).
+[<Struct>]
+type DrawListMark = internal { Shapes: int; Transforms: int; Clips: int; Opacities: int }
+
 /// A list of shapes to draw in one frame. Controls draw into this; a backend turns it into GPU
 /// work (one instanced draw call for all shapes).
 ///
@@ -144,6 +148,20 @@ type DrawList(scale: float) =
         transform <- rootTransform
         clip <- noClip
         opacity <- 1.0f
+
+    /// Where the list is now: the shapes recorded and how deep the transform, clip and opacity
+    /// stacks are. `RollBack` returns to it (an element whose drawing failed takes back what it drew).
+    member _.Mark: DrawListMark = { Shapes = count; Transforms = transforms.Count; Clips = clips.Count; Opacities = opacities.Count }
+
+    /// Removes the shapes recorded since `mark` and pops what was pushed since then.
+    member _.RollBack(mark: DrawListMark) =
+        count <- min count mark.Shapes
+        while transforms.Count > mark.Transforms do
+            transform <- transforms.Pop()
+        while clips.Count > mark.Clips do
+            clip <- clips.Pop()
+        while opacities.Count > mark.Opacities do
+            opacity <- opacities.Pop()
 
     // --- Transforms and clips ----------------------------------------------------------------
 

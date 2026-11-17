@@ -124,8 +124,9 @@ type App =
     static member view<'Msg>(value: View) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Program <- ValueSome(fun _ -> { View = (fun () -> value); Dispatch = ignore; Start = ignore }))
 
-    /// Where errors from async work go: commands, work queued to the UI thread, tasks nobody
-    /// awaited. By default they're written to the console and the app keeps running.
+    /// Where errors from app code go, so the app keeps running: event handlers, the view,
+    /// components, render functions, effects, commands, work queued to the UI thread, tasks nobody
+    /// awaited. What failed is left out (README, "Errors"). Without it, an error ends the app.
     static member onError<'Msg>(handler: exn -> unit) : AppSetting<'Msg> = AppSetting(fun c -> c.OnError <- ValueSome handler)
 
     /// Styles for the whole app (every layer but those with `Layer.appStyles false`); later ones win
@@ -195,11 +196,19 @@ type App =
             match config.Program with
             | ValueSome make -> make { Changed = requestRebuild; Dispatcher = dispatcher; AppValues = values }
             | ValueNone -> { View = (fun () -> Border.create []); Dispatch = ignore; Start = ignore }
+        // App code that throws here (a handler, `update` inside dispatch, the view) goes to App.onError
+        // (repeats counted), or ends the app without one.
+        let guarded (action: unit -> unit) =
+            try
+                action ()
+            with e ->
+                dispatcher.ReportUiError e
         let send (handlers: ('a -> 'Msg option) list) (value: 'a) =
             for handler in handlers do
-                match handler value with
-                | Some msg -> runner.Dispatch msg
-                | None -> ()
+                guarded (fun () ->
+                    match handler value with
+                    | Some msg -> runner.Dispatch msg
+                    | None -> ())
         // The window's title: `WindowTitle.current`, plus the stats when shown (refreshed once a second).
         let stats = ref ""
         let applyTitle (window: IWindow) =
@@ -220,9 +229,10 @@ type App =
                 | KeyDown(Key.Escape, _, false) when config.CloseOnEscape -> h.Close()
                 | KeyDown(key, mods, false) ->
                     for handler in config.OnKey do
-                        match handler key mods with
-                        | Some msg -> runner.Dispatch msg
-                        | None -> ()
+                        guarded (fun () ->
+                            match handler key mods with
+                            | Some msg -> runner.Dispatch msg
+                            | None -> ())
                 | _ -> ()
             | ValueNone -> ()
 
@@ -240,7 +250,14 @@ type App =
                 if time.Number = 0L && not config.OnFrame.IsEmpty then h.Window.RequestFrame()
                 if dirty.Value then
                     dirty.Value <- false
-                    h.Update(runner.View())
+                    // A view that throws keeps the elements of the last one (the next model change tries again).
+                    let view =
+                        try
+                            ValueSome(runner.View())
+                        with e ->
+                            dispatcher.ReportUiError e
+                            ValueNone
+                    view |> ValueOption.iter h.Update
                 if frameRate.Add time then updateStats h
             | ValueNone -> ()
         let h =

@@ -83,7 +83,10 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         match e.Get prop with
         | ValueSome handler ->
             origin.Origin <- e.PositionInTree
-            handler args
+            try
+                handler args
+            with ex ->
+                e.ReportError ex
         | ValueNone -> ()
 
     let pointerArgs (s: PointerState) (button: MouseButton voption) =
@@ -116,7 +119,10 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
                 match typeHook e.Type with
                 | ValueSome f ->
                     origin.Origin <- e.PositionInTree
-                    f (InputContext e) args
+                    try
+                        f (InputContext e) args
+                    with ex ->
+                        e.ReportError ex
                     if origin.IsHandled then typeHandler <- ValueSome e
                 | ValueNone -> ()
         struct (previewHandler, typeHandler)
@@ -164,7 +170,11 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         match s.Panning with
         | ValueSome e when isAttached e ->
             match e.Type.PanEnded with
-            | ValueSome f -> f (InputContext e) canceled
+            | ValueSome f ->
+                try
+                    f (InputContext e) canceled
+                with ex ->
+                    e.ReportError ex
             | ValueNone -> ()
         | _ -> ()
 
@@ -182,7 +192,12 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
 
     let pan (e: Element) (dx: float) (dy: float) =
         match e.Type.Pan with
-        | ValueSome f when isAttached e && e.IsEnabled -> f (InputContext e) dx dy
+        | ValueSome f when isAttached e && e.IsEnabled ->
+            try
+                f (InputContext e) dx dy
+            with ex ->
+                e.ReportError ex
+                false
         | _ -> false
 
     /// A touch drag: the panning element follows the finger; before that, once the finger is far
@@ -270,10 +285,18 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
     let click (e: Element) (source: ClickSource) (modifiers: Modifiers) =
         let args = ClickEventArgs(source, modifiers)
         match e.Get LayoutProps.onClick with
-        | ValueSome handler -> handler args
+        | ValueSome handler ->
+            try
+                handler args
+            with ex ->
+                e.ReportError ex
         | ValueNone -> ()
         match e.Type.Click with
-        | ValueSome f when isAttached e && e.IsEnabled -> f (InputContext e) args
+        | ValueSome f when isAttached e && e.IsEnabled ->
+            try
+                f (InputContext e) args
+            with ex ->
+                e.ReportError ex
         | _ -> ()
 
     let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome || e.Type.Click.IsSome
@@ -396,7 +419,10 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
                 match e.Type.Wheel with
                 | ValueSome f ->
                     args.Origin <- e.PositionInTree
-                    f (InputContext e) args
+                    try
+                        f (InputContext e) args
+                    with ex ->
+                        e.ReportError ex
                 | ValueNone -> ()
 
     /// After layout: things may have moved, appeared or gone under a pointer that stood still.
