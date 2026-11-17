@@ -117,6 +117,24 @@ let ``a full atlas starts over instead of failing`` () =
     Assert.True(atlas.Generation > 0)
 
 [<Fact>]
+let ``an atlas filled twice in one frame is counted, once per upload`` () =
+    let atlas = GlyphAtlas(64)
+    let text = TextSystem(atlas, new FixedShaper())
+    let list = DrawList(1.0)
+    // One "frame" (no upload in between) needs far more than 64² holds: it clears more than once.
+    for size in 10..60 do
+        list.DrawText(text, "a", Fonts.Regular(), float size, 0.0, 0.0, Color.White)
+    Assert.True(atlas.Generation > 1)
+    Assert.Equal(atlas.Generation - 1, atlas.Overflows)
+    // The same glyphs over several frames, each uploaded: each frame clears at most once.
+    atlas.TakeDirtyRegion() |> ignore
+    let before = atlas.Overflows
+    for size in 10..60 do
+        list.DrawText(text, "a", Fonts.Regular(), float size, 0.0, 0.0, Color.White)
+        atlas.TakeDirtyRegion() |> ignore
+    Assert.Equal(before, atlas.Overflows)
+
+[<Fact>]
 let ``a glyph bigger than the whole atlas is skipped, not retried forever`` () =
     let atlas = GlyphAtlas(64)
     let text = TextSystem(atlas, new FixedShaper())

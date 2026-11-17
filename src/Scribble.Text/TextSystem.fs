@@ -157,8 +157,9 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
                     glyphs[key] <- entry
                     entry
                 | ValueNone when not afterClear ->
-                    // Atlas full: start over. Glyphs already drawn this frame may show the wrong
-                    // pixels for one frame; a multi-page atlas will remove that limitation.
+                    // Atlas full: start over. Glyphs already drawn this frame show the wrong pixels
+                    // until they're drawn again; if one frame fills it twice, they stay wrong while that
+                    // frame repeats (counted in GlyphAtlas.Overflows; a multi-page atlas is for later).
                     target.Clear()
                     glyph font glyphId sizePx step true
                 | ValueNone ->

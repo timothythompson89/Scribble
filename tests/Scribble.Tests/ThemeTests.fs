@@ -295,6 +295,26 @@ let ``a forced hover reaches the ancestors, as the pointer over a child does`` (
     Assert.NotEqual(green, panel.Get BorderProps.background)
 
 [<Fact>]
+let ``an element leaving its tree drops its forced states`` () =
+    let t = themed dark []
+    let view withButton =
+        StackPanel.create [
+            StackPanel.children [
+                if withButton then Button.create [ Button.name "forced"; Button.text "x" ]
+                TextBlock.create [ TextBlock.text "stays" ]
+            ]
+        ]
+    let button = find "forced" (show t (view true))
+    button.ForceState(States.hover, true)
+    button.ForceState(States.disabled, false)
+    button.ForceState(States.pressed, true)
+    show t (view false) |> ignore
+    // The counts that gate the forced-state walks are process-wide (other tests may change them
+    // meanwhile), so check what the element holds: nothing forced, nothing counted.
+    Assert.Empty(button.ForcedStates)
+    Assert.False(button.LooksForced 1 || button.LooksForcedOff 16 || button.LooksForced 2)
+
+[<Fact>]
 let ``the light theme gives dark text, light controls and dark tints`` () =
     let light = Theme.light []
     let t = themed light []

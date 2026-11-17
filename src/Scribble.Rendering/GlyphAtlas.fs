@@ -18,6 +18,9 @@ type GlyphAtlas(size: int, bytesPerPixel: int) =
     let mutable cursorX = 0
     let mutable dirty = Rect.Create(0.0, 0.0, 0.0, 0.0)
     let mutable generation = 0
+    /// Cleared since the last upload (TakeDirtyRegion, once per frame), and how often that happened twice.
+    let mutable clearedSinceUpload = false
+    let mutable overflows = 0
 
     let markDirty (x: int) (y: int) (w: int) (h: int) =
         let r = Rect.Create(float x, float y, float w, float h)
@@ -37,6 +40,11 @@ type GlyphAtlas(size: int, bytesPerPixel: int) =
     /// Increases every time the atlas is cleared; cached glyph positions from an older
     /// generation are invalid.
     member _.Generation = generation
+
+    /// How many times the atlas was cleared twice before one upload: one frame needed more glyphs than
+    /// fit, so some of them show wrong pixels until fewer are drawn (project review 2026-11-17,
+    /// decision 10; a multi-page atlas is for later). Debug builds also write a warning.
+    member _.Overflows = overflows
 
     /// Reserves a `width × height` region. Returns its top-left corner, or None when the atlas is full.
     member _.TryAllocate(width: int, height: int) : struct (int * int) voption =
@@ -69,12 +77,21 @@ type GlyphAtlas(size: int, bytesPerPixel: int) =
         shelfY <- 0
         shelfHeight <- 0
         cursorX <- 0
+        if clearedSinceUpload then
+            overflows <- overflows + 1
+#if DEBUG
+            if overflows = 1 then // once per atlas: it may happen every frame
+              System.Diagnostics.Debug.WriteLine(
+                  "Scribble: the glyph atlas (" + string size + "²) filled twice in one frame: it can't hold every glyph this frame draws, so some show wrong pixels. Fewer sizes of text or icons at once would fit.")
+#endif
+        clearedSinceUpload <- true
         generation <- generation + 1
         markDirty 0 0 size size
 
     /// For backends: the region changed since the last call (empty when nothing changed).
     /// Calling this marks everything as uploaded.
     member _.TakeDirtyRegion() : Rect =
+        clearedSinceUpload <- false
         let r = dirty
         dirty <- Rect.Create(0.0, 0.0, 0.0, 0.0)
         r

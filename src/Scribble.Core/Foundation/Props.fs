@@ -141,6 +141,25 @@ type internal ElementCounts private () =
     static member BumpThemeEpoch() =
         lock typeof<ElementCounts> (fun () -> ElementCounts.themeEpoch <- ElementCounts.themeEpoch + 1)
 
+/// Warnings for app authors in Debug builds (written to the debugger), each said once per process:
+/// a mistake that repeats every update would otherwise flood the output. Fields as in `Ids`.
+type internal DebugWarnings private () =
+    [<DefaultValue>] static val mutable private said: System.Collections.Generic.HashSet<string>
+    /// Tests listen here (warnings are said once per process, so a test uses its own keys).
+    [<DefaultValue>] static val mutable private listener: Action<string>
+    static member Listener
+        with get () = DebugWarnings.listener
+        and set (v: Action<string>) = lock typeof<DebugWarnings> (fun () -> DebugWarnings.listener <- v)
+    /// Writes `message` once for `key` (callers check `#if DEBUG`).
+    static member Once(key: string, message: string) =
+        lock typeof<DebugWarnings> (fun () ->
+            if isNull DebugWarnings.said then DebugWarnings.said <- System.Collections.Generic.HashSet()
+            if DebugWarnings.said.Add key then
+                Diagnostics.Debug.WriteLine("Scribble: " + message)
+                match DebugWarnings.listener with
+                | null -> ()
+                | l -> l.Invoke message)
+
 /// A named value a theme gives (`ThemeValue<'T>`; the built-in ones are in `Palette`).
 [<AbstractClass>]
 type ThemeKey internal (name: string, defaultBoxed: obj) =

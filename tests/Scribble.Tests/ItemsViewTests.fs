@@ -64,7 +64,7 @@ let ``the same elements are realized for 100 and 10,000 items`` () =
                   realized iv ]
         Assert.Equal(counts[0], counts[1])
 
-[<Fact>]
+[<Timing.TimingFact; Trait("Category", "Timing")>]
 let ``a scroll step costs about the same for 100 and 10,000 items`` () =
     let measure (n: int) =
         let t, sv, _ = build (items n variable) ItemsLayout.stack (Scroller()) (ref 0)
@@ -411,21 +411,28 @@ let ``wrap and grid layouts keep flowing to the viewport's width when the Scroll
     let columns = int (Math.Floor(vw / 100.0))
     Assert.Equal(float ((100 + columns - 1) / columns) * 40.0, iv.DesiredSize.Height)
 
+/// Scroll steps through a sideways scrolled stack of `n` items: the best step time and what's realized.
+let private sidewaysSteps (n: int) =
+    let t, sv, iv, _ = buildSideways [| 0 .. n - 1 |] (fun i -> 100.0 + float (i % 13) * 37.0) ItemsLayout.stack (Scroller())
+    let mutable offset = 0.0
+    let step () =
+        offset <- (if offset >= 1500.0 then 500.0 else offset + 37.0)
+        ScrollViewer.jumpTo sv offset
+        layoutAt t
+    for _ in 1..50 do step ()
+    let best (f: unit -> unit) = [ for _ in 1..60 -> (let sw = Stopwatch.StartNew() in f (); sw.Elapsed.TotalMilliseconds) ] |> List.min
+    best step, realized iv
+
 [<Fact>]
-let ``scrolling sideways keeps a scroll step's cost the same for 100 and 10,000 items`` () =
-    let measure (n: int) =
-        let t, sv, iv, _ = buildSideways [| 0 .. n - 1 |] (fun i -> 100.0 + float (i % 13) * 37.0) ItemsLayout.stack (Scroller())
-        let mutable offset = 0.0
-        let step () =
-            offset <- (if offset >= 1500.0 then 500.0 else offset + 37.0)
-            ScrollViewer.jumpTo sv offset
-            layoutAt t
-        for _ in 1..50 do step ()
-        let best (f: unit -> unit) = [ for _ in 1..60 -> (let sw = Stopwatch.StartNew() in f (); sw.Elapsed.TotalMilliseconds) ] |> List.min
-        best step, realized iv
-    let smallLayout, smallRealized = measure 100
-    let bigLayout, bigRealized = measure 10_000
+let ``scrolling sideways realizes the same for 100 and 10,000 items`` () =
+    let _, smallRealized = sidewaysSteps 100
+    let _, bigRealized = sidewaysSteps 10_000
     Assert.Equal(smallRealized, bigRealized)
+
+[<Timing.TimingFact; Trait("Category", "Timing")>]
+let ``scrolling sideways keeps a scroll step's cost the same for 100 and 10,000 items`` () =
+    let smallLayout, _ = sidewaysSteps 100
+    let bigLayout, _ = sidewaysSteps 10_000
     Assert.True(bigLayout <= 1.5 * smallLayout + 0.02, $"layout: 10,000 items {bigLayout:F4} ms, 100 items {smallLayout:F4} ms")
 
 [<Fact>]

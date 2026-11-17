@@ -167,8 +167,9 @@ let ``rendering translates children and draws only visible elements`` () =
     t.Render list
     Assert.Equal(2, list.Count)
 
-[<Fact>]
-let ``10,000 elements lay out quickly, and a single change is cheap`` () =
+/// 10,000 cells laid out in full and changed one at a time, 15 times each: the best times, and
+/// how often cells 0 and 5000 were measured before and after.
+let private tenThousand () =
     let view =
         StackPanel.create [
             StackPanel.children [
@@ -197,12 +198,21 @@ let ``10,000 elements lay out quickly, and a single change is cheap`` () =
     let full = best (fun () -> rows.InvalidateAll(); t.UpdateLayout size)
     let mutable w = 9.0
     let single = best (fun () -> w <- w + 1.0; (cell 5000).Set(Box.width w); t.UpdateLayout size)
-    // Generous bounds (debug builds, slow CI machines); the README reports typical numbers.
+    full, single, before, measures (cell 0), measures (cell 5000)
+
+[<Fact>]
+let ``of 10,000 elements, a single change measures only the changed one`` () =
+    let _, _, before, cell0, cell5000 = tenThousand ()
+    // Each full pass measures every cell once; the single changes measured only the changed cell.
+    Assert.Equal(before + 15, cell0)
+    Assert.Equal(before + 30, cell5000)
+
+[<Timing.TimingFact; Trait("Category", "Timing")>]
+let ``10,000 elements lay out quickly, and a single change is cheap`` () =
+    let full, single, _, _, _ = tenThousand ()
+    // Generous bounds (debug builds, slow machines); the README reports typical numbers.
     Assert.True(full < 25.0, $"full layout took {full:F2} ms")
     Assert.True(single < 1.0, $"incremental layout took {single:F3} ms")
-    // Each full pass measures every cell once; the single changes measured only the changed cell.
-    Assert.Equal(before + 15, measures (cell 0))
-    Assert.Equal(before + 30, measures (cell 5000))
     Console.WriteLine($"10k elements: full {full:F2} ms, one change {single:F3} ms")
 
 /// Counts its arrange and render stages.

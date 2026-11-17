@@ -306,7 +306,20 @@ and View internal (elementType: ElementType, settings: struct (Prop * obj)[]) =
 
     /// A view of an element type with settings. Element authors call this from their `create`.
     static member Create<'k>(elementType: ElementType, settings: Setting<'k> list) : View =
-        View(elementType, [| for s in settings -> struct (s.Prop, s.Value) |])
+        let array = [| for s in settings -> struct (s.Prop, s.Value) |]
+#if DEBUG
+        // One property set twice in one list: the last one wins, which is rarely meant (e.g.
+        // `Button.text` and `Button.content`). Project review 2026-11-17, decision 6.
+        for i in 1 .. array.Length - 1 do
+            let struct (p, _) = array[i]
+            for j in 0 .. i - 1 do
+                let struct (q, _) = array[j]
+                if obj.ReferenceEquals(p, q) then
+                    DebugWarnings.Once(
+                        elementType.Name + "|" + p.Name,
+                        elementType.Name + ": its settings set " + p.Name + " more than once; the last one wins.")
+#endif
+        View(elementType, array)
 
     override _.ToString() = elementType.Name
 
@@ -533,6 +546,16 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     member private this.SetRootInSubtree(r: IElementRoot voption) =
         let before = root
         root <- r
+        // Leaving its tree, an element drops the states a tool forced on it, so the process-wide
+        // counts that gate the forced-state walks come back down (project review, decision 11).
+        if before.IsSome && r.IsNone && (not forced.IsEmpty || forcedLooks ||| forcedOffLooks <> 0) then
+            ElementCounts.AddForced(
+                (if forcedLooks &&& 1 <> 0 then -1 else 0),
+                (if (forcedLooks ||| forcedOffLooks) &&& 16 <> 0 then -1 else 0))
+            forced <- []
+            forcedLooks <- 0
+            forcedOffLooks <- 0
+            forcedValues <- []
         restyleQueued <- false
         restyleDeep <- false
         match r with
@@ -1482,7 +1505,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     /// How far outside its bounds an element may draw (DIPs): shadows and focus rings. One whose
     /// bounds, grown by this, lie outside the clip isn't drawn.
-    static member val RenderOverflow = 64.0 with get, set
+    static member internal RenderOverflow = 64.0
 
     override _.ToString() = elementType.Name
 

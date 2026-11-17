@@ -163,7 +163,7 @@ let ``the same view in two places becomes two elements`` () =
     t.Update(StackPanel.create [ StackPanel.children [ shared; shared ] ])
     different (child t.Root.Value [ 0 ]) (child t.Root.Value [ 1 ])
 
-[<Fact>]
+[<Timing.TimingFact; Trait("Category", "Timing")>]
 let ``rebuilding and diffing a 1,000-element view with one change is fast`` () =
     let view changed =
         StackPanel.create [
@@ -200,3 +200,26 @@ let ``rebuilding and diffing a 1,000-element view with one change is fast`` () =
     Assert.True(best < 10.0, $"view + diff + layout took {best:F2} ms")
     Assert.Equal(1041, (let rec count (e: Element) = 1 + Seq.sumBy count e.Children in count t.Root.Value))
     Console.WriteLine($"1k-element view: build + diff + layout with one change {best:F3} ms")
+
+/// A type and property used only by the next test: warnings are said once per process.
+module private Twice =
+    let width = Prop.define "TwiceWidth" 0.0 Affects.Measure
+    let Type = Element.define "Twice" []
+
+[<Fact>]
+let ``a settings list that sets a property twice warns once in Debug builds`` () =
+    let heard = Collections.Concurrent.ConcurrentQueue<string>()
+    let listener = Action<string>(heard.Enqueue)
+    DebugWarnings.Listener <- listener
+    try
+        for _ in 1..3 do
+            View.Create(Twice.Type, [ Setting.create Twice.width 1.0; Setting.create Twice.width 2.0 ]) |> ignore
+        View.Create(Twice.Type, [ Setting.create Twice.width 1.0 ]) |> ignore
+    finally
+        DebugWarnings.Listener <- null
+    let mine = heard |> Seq.filter (fun m -> m.Contains "TwiceWidth") |> List.ofSeq
+#if DEBUG
+    Assert.Equal<string list>([ "Twice: its settings set TwiceWidth more than once; the last one wins." ], mine)
+#else
+    Assert.Empty mine
+#endif

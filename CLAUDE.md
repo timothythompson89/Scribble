@@ -36,6 +36,7 @@ was kept on claude.ai until 2026-11-15); this file is the working summary.
 ```powershell
 dotnet build Scribble.slnx
 dotnet test tests/Scribble.Tests                  # unit tests (layout, differ, text, App runtime on a fake platform)
+$env:SCRIBBLE_TIMING = "1"; dotnet test tests/Scribble.Tests -c Release --filter Category=Timing   # wall-clock tests, before each milestone report
 dotnet test tests/Scribble.Tests.Rendering        # GPU screenshot tests (needs a GPU)
 dotnet run --project samples/Hello.Desktop
 dotnet run --project samples/Counter.Desktop
@@ -154,6 +155,10 @@ dotnet run --project tools/Scribble.Serve      # the browser samples to the loca
 - **Time comes from the platform** (`IPlatform.Elapsed`, `IPlatform.After`, `Dispatcher.PostAfter`,
   `ElementHost.Elapsed`), never a `Stopwatch` or `Task.Delay` for anything that waits or animates: the tests'
   `FakeTime` moves only per delivered frame (16 ms) or by `AdvanceMs`, so no unit test sleeps (2026-11-17).
+- **Wall-clock assertions** go in tests marked `[<Timing.TimingFact; Trait("Category", "Timing")>]` (skipped unless
+  `SCRIBBLE_TIMING=1`); split a test so its count-based checks stay in the normal run (decision 12).
+- **Debug-only warnings for app authors** go through `DebugWarnings.Once(key, message)` (once per process; tests
+  listen with `DebugWarnings.Listener`).
 - **App code is guarded** (decision 22): a new place that runs app or element-author code (a handler, a stage, a
   view function) catches and calls `ReportError` (element or `IElementRoot`), leaving out only what failed.
   Without `App.onError` the dispatcher rethrows, which ends the app.
@@ -236,7 +241,7 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
   Separator, zIndex, attached settings, dashed/dotted borders, the inspector's Grid overlay, the Counter's Layout
   tab) is built, not yet checked by Tim; it changed decision 16 (Tim agreed) (a child spanning a star track doesn't size Auto
   tracks; see DESIGN.md "Step 2 as built"). M8 step 1b (non-uniform virtualization tests; the scroll anchor by key) is built, not yet checked by Tim (zero-height
-  runs: documented, debug warning; option A). M8 step 3a (ToggleButton, CheckBox, Switch, Slider, TabControl; the Counter on a TabControl with a Controls tab) is built, not yet checked by Tim (DESIGN.md "Step 3a as built"). M8 step 3a+ (the inspector tree on ItemsView) is built, not yet checked by Tim (DESIGN.md "M8 step 3a+"); so is 3a++ (stacked ItemsViews scroll sideways; the inspector tree too). Project review 2026-11-17 step 1 (the platform clock and timers; errors to `App.onError`, the app keeps running) and the Core folders are built, not yet checked by Tim (DESIGN.md "Project review 2026-11-17"). Counts: 408 unit tests (1–2 s), 62 rendering tests. Project review step 2 (exact pictures, the backend test) is built, not yet checked by Tim. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
+  runs: documented, debug warning; option A). M8 step 3a (ToggleButton, CheckBox, Switch, Slider, TabControl; the Counter on a TabControl with a Controls tab) is built, not yet checked by Tim (DESIGN.md "Step 3a as built"). M8 step 3a+ (the inspector tree on ItemsView) is built, not yet checked by Tim (DESIGN.md "M8 step 3a+"); so is 3a++ (stacked ItemsViews scroll sideways; the inspector tree too). Project review 2026-11-17 step 1 (the platform clock and timers; errors to `App.onError`, the app keeps running) and the Core folders are built, not yet checked by Tim (DESIGN.md "Project review 2026-11-17"). Counts: 409 unit tests (1–2 s; 5 timing tests skipped unless `SCRIBBLE_TIMING=1`), 62 rendering tests. Project review steps 2 (exact pictures, the backend test) and 3 (Core fixes: warnings for a property set twice and for an overfull glyph atlas, forced states dropped on leaving the tree, `Timing` tests) are built, not yet checked by Tim. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
 - **Next: M8 core controls**: steps 1 (ScrollViewer completed, ItemsView, scrollers) and 2 (panels, dashed
   lines) are done, 3a (toggles, Slider, TabControl) is built; then 3b Image (decoding gets its own round), then step 4: RadioButton, ListBox,
   ComboBox, Dialog, Toast, tooltips, the "show this in a layer" element. Then M9 TextBox, M10 hot reload; later:

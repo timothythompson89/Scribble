@@ -182,15 +182,18 @@ let private canvasDemo =
             Border.child (Canvas.create [ Canvas.name "canvas"; Canvas.children [ for b in boxes.Current -> view b ] ])
         ])
 
-let private chip (text: string) (settings: Setting<Border> list) =
+/// A chip; `settings` add to these (setting one of them again would warn in Debug builds).
+let private chipWith (thickness: float) (text: string) (settings: Setting<Border> list) =
     Border.create [
         yield Border.padding (10.0, 4.0)
         yield Border.cornerRadius 12.0
-        yield Border.borderThickness 1.0
+        yield Border.borderThickness thickness
         yield Border.borderBrush line
         yield Border.child (TextBlock.create [ TextBlock.text text; TextBlock.fontSize 12.0 ])
         yield! settings
     ]
+
+let private chip = chipWith 1.0
 
 let private chips =
     WrapPanel.create [
@@ -205,7 +208,7 @@ let private chips =
             chip "wgpu-native" []
             chip "NativeAOT" []
             chip "WebAssembly" []
-            chip "dotted" [ Border.borderStyle BorderStyle.Dotted; Border.borderThickness 2.0 ]
+            chipWith 2.0 "dotted" [ Border.borderStyle BorderStyle.Dotted ]
             chip "dashed" [ Border.borderStyle BorderStyle.Dashed ]
         ]
     ]

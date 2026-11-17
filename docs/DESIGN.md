@@ -1824,8 +1824,22 @@ Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q
   at 1× and 2× on every backend the machine offers (Windows: D3D12 and Vulkan; a Mac: Metal and Vulkan) and
   compares them; with one backend it says so and passes. The test fixture now honours `SCRIBBLE_GPU_BACKEND`, so
   the whole suite can run on Vulkan (it passes except that same `dashes@2x` exception, against D3D12's
-  references). *Open:* should the inspector tree's sideways bar overlay the rows (`ScrollBarSpace.Overlay`)
-  instead of taking a gutter even when nothing is wide? Not changed without Tim.
+  references). The inspector tree's gutter: Tim chose to overlay the bars (`ScrollBarSpace.Overlay`, which covers
+  both bars: the vertical one now sits over the rows' right edge too); the tree shows full rows again.
+- *Core fixes (6, 10, 11, 12; step 3):* (6) `View.Create` checks, in Debug builds, for a property set twice in one
+  list and writes "Border: its settings set BorderThickness more than once; the last one wins." once per type and
+  property, through a new internal `DebugWarnings` (once per process; tests listen with `DebugWarnings.Listener`).
+  The whole test suite and every sample view built by the rendering tests set off one: the Layout tab's `chip`
+  helper set its border thickness and let callers set it again (`yield! settings`); it now takes the thickness as
+  a parameter. That helper idiom (defaults, then the caller's settings) is the one the warning catches in app code
+  too; README says to take what callers may change as parameters. (10) `GlyphAtlas.Overflows` counts clears that
+  come twice before one upload (`TakeDirtyRegion`, once per frame on both backends); Debug builds warn on the
+  first. (11) An element leaving its tree (`SetRootInSubtree` to none) drops its forced states and takes them
+  out of `ElementCounts`; `Element.RenderOverflow` is an internal constant. (12) `Timing.TimingFact` (skipped
+  unless `SCRIBBLE_TIMING=1`) with `Trait("Category", "Timing")` on the 5 wall-clock tests; three of them were
+  split so their counts (realized, measured) stay in the normal run. In Release all 5 pass. Tests: 3 new
+  (property set twice, atlas overflow, forced states on leaving), the forced-states one checked to fail without
+  its fix; 409 run, 5 skipped.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

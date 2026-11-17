@@ -434,22 +434,29 @@ let ``random scrolling, jumps, inserts, removals, resizes and width changes`` (s
 
 // --- j. Work proportional to what's visible --------------------------------------------------------
 
+/// Scroll steps through `n` rows of mixed heights: the best step and draw times, and what's realized.
+let private mixedSteps (n: int) =
+    let h = Harness(mixed 9 n)
+    let mutable offset = 0.0
+    let step () =
+        // Down and back in the first part, which both lists have (100 rows are about 21,000 high).
+        offset <- (if offset >= 9000.0 then 1000.0 else offset + 137.0)
+        ScrollViewer.jumpTo h.Viewer offset
+        h.Layout()
+    for _ in 1..120 do step ()
+    let best (f: unit -> unit) = [ for _ in 1..60 -> (let sw = Stopwatch.StartNew() in f (); sw.Elapsed.TotalMilliseconds) ] |> List.min
+    let layout = best step
+    layout, best (fun () -> h.Tree.Render(DrawList 1.0)), (match ItemsView.realizedCount h.Items with ValueSome(struct (c, _)) -> c | _ -> 0)
+
 [<Fact>]
+let ``mixed heights: scrolling realizes the same for 100 and 10,000 items`` () =
+    let _, _, smallRealized = mixedSteps 100
+    let _, _, bigRealized = mixedSteps 10_000
+    Assert.Equal(smallRealized, bigRealized)
+
+[<Timing.TimingFact; Trait("Category", "Timing")>]
 let ``mixed heights: a scroll step costs about the same for 100 and 10,000 items`` () =
-    let measure (n: int) =
-        let h = Harness(mixed 9 n)
-        let mutable offset = 0.0
-        let step () =
-            // Down and back in the first part, which both lists have (100 rows are about 21,000 high).
-            offset <- (if offset >= 9000.0 then 1000.0 else offset + 137.0)
-            ScrollViewer.jumpTo h.Viewer offset
-            h.Layout()
-        for _ in 1..120 do step ()
-        let best (f: unit -> unit) = [ for _ in 1..60 -> (let sw = Stopwatch.StartNew() in f (); sw.Elapsed.TotalMilliseconds) ] |> List.min
-        let layout = best step
-        layout, best (fun () -> h.Tree.Render(DrawList 1.0)), (match ItemsView.realizedCount h.Items with ValueSome(struct (c, _)) -> c | _ -> 0)
-    let smallLayout, smallDraw, smallRealized = measure 100
-    let bigLayout, bigDraw, bigRealized = measure 10_000
+    let smallLayout, smallDraw, _ = mixedSteps 100
+    let bigLayout, bigDraw, _ = mixedSteps 10_000
     Assert.True(bigLayout <= 1.5 * smallLayout + 0.02, $"layout: 10,000 rows {bigLayout:F4} ms, 100 rows {smallLayout:F4} ms")
     Assert.True(bigDraw <= 1.5 * smallDraw + 0.02, $"draw list: 10,000 rows {bigDraw:F4} ms, 100 rows {smallDraw:F4} ms")
-    Assert.Equal(smallRealized, bigRealized)

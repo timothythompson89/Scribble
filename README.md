@@ -311,7 +311,8 @@ Each library's JavaScript is embedded in its DLL and loaded as a `data:` URL, so
 dotnet test
 ```
 
-- `Scribble.Tests`: unit tests (no GPU).
+- `Scribble.Tests`: unit tests (no GPU). Tests that assert wall-clock time are skipped unless `SCRIBBLE_TIMING=1`;
+  run them in Release: `$env:SCRIBBLE_TIMING = "1"; dotnet test tests/Scribble.Tests -c Release --filter Category=Timing`.
 - `Scribble.Tests.Rendering`: renders offscreen through WebGPU and checks the pixels. Needs a GPU.
   Screenshot tests compare with PNGs in `tests/Scribble.Tests.Rendering/References` exactly, pixel for pixel (and
   D3D12 with Vulkan, which must agree too). On a mismatch the actual image is written to `tests/Scribble.Tests.Rendering/bin/snapshots`.
@@ -355,6 +356,10 @@ element: `TextBlock.key todo.Id`, or let the panel take keys from the collection
 ```fsharp
 StackPanel.create [ StackPanel.items todos _.Id (fun todo -> TextBlock.create [ TextBlock.text todo.Title ]) ]
 ```
+
+In one settings list each property is set once: when two settings set the same property the last one wins, and
+Debug builds say so in the debugger's output (once per element type and property). A helper that takes extra
+settings should take what it lets callers change as parameters rather than let them be set again.
 
 The app holds the model (`App.program init update view`, the Elmish pattern). Messages update it straight away;
 the view is rebuilt on the next frame, once, however many messages arrived, and not at all if the model didn't

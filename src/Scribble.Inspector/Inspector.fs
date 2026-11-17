@@ -1678,6 +1678,7 @@ module internal Views =
                         ScrollViewer.create [
                             ScrollViewer.height "1*"
                             ScrollViewer.horizontal ScrollBarMode.Auto // deep rows scroll sideways (M8 step 3a++)
+                            ScrollViewer.scrollBarSpace ScrollBarSpace.Overlay // no gutter: the bar sits over the rows (2026-11-17)
                             ScrollViewer.content (treeSection section)
                         ]
                     yield divider state
