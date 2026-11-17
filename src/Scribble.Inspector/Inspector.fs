@@ -106,13 +106,16 @@ module internal Format =
         | ValueSome n -> n
         | ValueNone -> e.Type.Name
 
-    /// A hint after the name: a TextBlock's text, or the text of a TextBlock directly inside.
-    let hint (e: Element) =
-        let textOf (t: Element) = "\"" + clip 28 (t.Get TextProps.text) + "\""
+    /// "realized 23 of 10,000" for an ItemsView, else "".
+    let realized (e: Element) =
         let count (n: int) = n.ToString("N0", Globalization.CultureInfo.InvariantCulture)
         match ItemsView.realizedCount e with
         | ValueSome(struct (realized, total)) -> "realized " + count realized + " of " + count total
-        | ValueNone ->
+        | ValueNone -> ""
+
+    /// A hint after a collapsed row's name: a TextBlock's text, or the text of a TextBlock directly inside.
+    let hint (e: Element) =
+        let textOf (t: Element) = "\"" + clip 28 (t.Get TextProps.text) + "\""
         if e.Type.Name = "TextBlock" then textOf e
         else
             match e.Children |> Seq.tryFind (fun c -> c.Type.Name = "TextBlock") with
@@ -757,17 +760,58 @@ module internal Highlight =
                 if rowEnds[k] < r.Height && (k = rowStarts.Length - 1 || rowStarts[k + 1] > rowEnds[k]) then horizontal (rowEnds[k] - 1.0)
         | ValueNone -> ()
 
+    /// Which of an element's edges a clip (a ScrollViewer's viewport) cuts off, given its full rect
+    /// and its visible part.
+    [<Struct>]
+    type internal Cuts =
+        { Left: bool; Top: bool; Right: bool; Bottom: bool }
+        static member Of(full: Rect, visible: Rect) =
+            { Left = visible.X > full.X + 0.5; Top = visible.Y > full.Y + 0.5
+              Right = visible.Right < full.Right - 0.5; Bottom = visible.Bottom < full.Bottom - 0.5 }
+
+    /// A dashed line along a cut edge of `v`, meaning "the element goes on past here": blue dashes
+    /// on a dark edge, like the corner marks, so it stands out on light, dark and blue alike.
+    let private cutEdges (list: DrawList) (window: Size) (v: Rect) (cuts: Cuts) =
+        let t, dash, gap = 2.0, 8.0, 5.0
+        let dark = Color.Hex 0x11111B
+        let dashes (horizontal: bool) (x: float) (y: float) (length: float) =
+            let mutable at = 0.0
+            while at < length do
+                let n = min dash (length - at)
+                let r = if horizontal then Rect.Create(x + at, y, n, t) else Rect.Create(x, y + at, t, n)
+                list.FillRect(Rect.Create(r.X - 1.0, r.Y - 1.0, r.Width + 2.0, r.Height + 2.0), dark)
+                list.FillRect(r, boxColor)
+                at <- at + dash + gap
+        // Just outside the cut, as far out as the corner marks (3 DIPs), so they line up with them
+        // and don't sit on the element's own content (text in a list). Just inside when outside
+        // would be off the window (a list at the window's edge).
+        let out = 3.0
+        let before (edge: float) = if edge - out - t - 1.0 >= 0.0 then edge - out - t else edge + 1.0
+        let after (edge: float) (limit: float) = if edge + out + t + 1.0 <= limit then edge + out else edge - t - 1.0
+        if cuts.Top then dashes true v.X (before v.Y) v.Width
+        if cuts.Bottom then dashes true v.X (after v.Bottom window.Height) v.Width
+        if cuts.Left then dashes false (before v.X) v.Y v.Height
+        if cuts.Right then dashes false (after v.Right window.Width) v.Y v.Height
+
     let private render (ctx: RenderContext) (list: DrawList) =
         match ctx.Get HighlightProps.target with
         | ValueSome t when t.Root.IsSome && t.Bounds.Width >= 0.0 && t.Bounds.Height >= 0.0 ->
             let p = t.PositionInTree
             let b = t.Bounds
             let r = Rect.Create(p.X, p.Y, b.Width, b.Height)
+            // Only the part the ancestors' clips let show (a ScrollViewer's viewport); nothing when
+            // it's scrolled out entirely.
+            let v = t.VisibleBounds
+            if v.IsEmpty then () else
+            let cuts = Cuts.Of(r, v)
+            list.PushClip v
             gridLines list t r
+            list.PopClip()
             if ctx.Get HighlightProps.outlineOnly then
                 // Corner marks 3 DIPs outside the element, like a viewfinder: the sides stay clear, so
                 // its edges, border and shadow show, and the corners still show its exact extent.
-                // Blue on a dark edge, so they stand out on light, dark and blue alike.
+                // Blue on a dark edge, so they stand out on light, dark and blue alike. Only at
+                // corners that show; a cut edge gets a dashed line instead.
                 let t, gap = 2.0, 3.0
                 let o = Rect.Create(r.X - gap - t, r.Y - gap - t, r.Width + 2.0 * (gap + t), r.Height + 2.0 * (gap + t))
                 // Arms up to 8 long, shorter on small elements so the marks never meet.
@@ -776,28 +820,41 @@ module internal Highlight =
                     let bar (x: float) (y: float) (w: float) (h: float) =
                         list.FillRect(Rect.Create(x - grow, y - grow, w + 2.0 * grow, h + 2.0 * grow), color)
                     let right, bottom = o.X + o.Width, o.Y + o.Height
-                    bar o.X o.Y armX t; bar o.X o.Y t armY                                   // top left
-                    bar (right - armX) o.Y armX t; bar (right - t) o.Y t armY                // top right
-                    bar o.X (bottom - t) armX t; bar o.X (bottom - armY) t armY              // bottom left
-                    bar (right - armX) (bottom - t) armX t; bar (right - t) (bottom - armY) t armY // bottom right
+                    if not (cuts.Top || cuts.Left) then (bar o.X o.Y armX t; bar o.X o.Y t armY)
+                    if not (cuts.Top || cuts.Right) then (bar (right - armX) o.Y armX t; bar (right - t) o.Y t armY)
+                    if not (cuts.Bottom || cuts.Left) then (bar o.X (bottom - t) armX t; bar o.X (bottom - armY) t armY)
+                    if not (cuts.Bottom || cuts.Right) then (bar (right - armX) (bottom - t) armX t; bar (right - t) (bottom - armY) t armY)
                 marks 1.0 (Color.Hex 0x11111B)
                 marks 0.0 boxColor
+                cutEdges list ctx.Size v cuts
             else
             let m = t.Get LayoutProps.margin
+            // The margin bands, cut by the same clips (they're outside the element, but inside its parent).
+            list.PushClip(t.VisiblePart(Rect.Create(-m.Left, -m.Top, b.Width + m.Left + m.Right, b.Height + m.Top + m.Bottom)))
             let outerWidth = r.Width + m.Left + m.Right
             if m.Top > 0.0 then list.FillRect(Rect.Create(r.X - m.Left, r.Y - m.Top, outerWidth, m.Top), marginColor)
             if m.Bottom > 0.0 then list.FillRect(Rect.Create(r.X - m.Left, r.Y + r.Height, outerWidth, m.Bottom), marginColor)
             if m.Left > 0.0 then list.FillRect(Rect.Create(r.X - m.Left, r.Y, m.Left, r.Height), marginColor)
             if m.Right > 0.0 then list.FillRect(Rect.Create(r.X + r.Width, r.Y, m.Right, r.Height), marginColor)
+            list.PopClip()
+            list.PushClip v
             list.FillRect(r, boxColor.WithAlpha 0.3f)
             list.StrokeRect(r, CornerRadius.Zero, 1.0, boxColor)
-            // The label: above the element (and its margin), or below when there's no room.
+            list.PopClip()
+            cutEdges list ctx.Size v cuts
+            // The label (the full size): above the element and its margin, else below, else just
+            // inside the top of what shows (a cut top edge, or no room either way).
             let text = Format.label t + "  " + Format.size b.Width b.Height
             let layout = ctx.Text.Layout(text, ctx.Get TextProps.font, 12.0, Double.PositiveInfinity, NoWrap, NoTrimming, 0)
             let w, h = layout.Width + 12.0, layout.Height + 6.0
             let above = r.Y - m.Top - h - 4.0
-            let y = if above >= 0.0 then above else min (r.Y + r.Height + m.Bottom + 4.0) (ctx.Size.Height - h)
-            let x = max 0.0 (min (r.X - m.Left) (ctx.Size.Width - w))
+            let below = r.Y + r.Height + m.Bottom + 4.0
+            let y =
+                if not cuts.Top && above >= 0.0 then above
+                elif not cuts.Bottom && below + h <= ctx.Size.Height then below
+                else min (v.Y + 4.0) (ctx.Size.Height - h)
+            let left = if cuts.Left then v.X else r.X - m.Left
+            let x = max 0.0 (min left (ctx.Size.Width - w))
             list.FillRoundedRect(Rect.Create(x, y, w, h), CornerRadius.Uniform 4.0, Color.Hex 0x11111B)
             ctx.Text.DrawLayout(list, layout, x + 6.0, y + 3.0, layout.Width, TextAlignment.Start, Color.Hex 0xE6E6F0)
         | _ -> ()
@@ -1067,7 +1124,10 @@ module internal Views =
                             text (Format.label e) (fade (if e.ComponentName.IsSome then componentColor else typeColor))
                             if e.Name.Length > 0 then text ("#" + e.Name) (fade nameColor)
                             if not e.ForcedStates.IsEmpty then text "• forced" forcedTextColor
-                            if not isOpen then
+                            // An ItemsView's count shows open or not; text hints only on collapsed rows.
+                            let realized = Format.realized e
+                            if realized.Length > 0 then text realized (fade hintColor)
+                            elif not isOpen then
                                 let hint = Format.hint e
                                 if hint.Length > 0 then text hint (fade hintColor)
                         ]
@@ -1457,6 +1517,8 @@ module internal Views =
               yield line "desired" (Format.sizeOf e.DesiredSize) hintColor ""
               yield line "bounds" (Format.number b.X + ", " + Format.number b.Y + "  " + Format.size b.Width b.Height) hintColor "parent"
               yield line "position" (Format.number p.X + ", " + Format.number p.Y) hintColor "window"
+              let realized = Format.realized e
+              if realized.Length > 0 then yield line "items" realized hintColor ""
               yield heading "PROPERTIES"
               yield checkBox "Show defaults" state.ShowDefaults state.ToggleShowDefaults
               for v in values do

@@ -1271,6 +1271,26 @@ The difference: Avalonia prefers WinUI Composition for acrylic and blurred windo
 later, we'd build our own composition tree and give wgpu our visual (wgpu.h says that's supported); wgpu-native
 itself offers only DirectComposition (one visual over the window) and the WinUI `SwapChainPanel`.
 
+## The inspector inside scrolled content: `VisibleBounds` (Tim, 2026-11-17)
+
+The highlight drew an element's whole rectangle, so an element inside a ScrollViewer (an ItemsView is as tall as
+the whole list) went past the viewport, over the header, and off the window as it scrolled. Agreed:
+
+- **`Element.VisibleBounds` in Core** (public): the element's rect in tree coordinates, cut by the clip of every
+  ancestor that clips its children (a ScrollViewer's viewport, `clipToBounds`, an element type's
+  `Element.clipChildren`); empty when it's clipped out or it or an ancestor isn't visible. `VisiblePart rect`
+  does the same for any rect in the element's own coordinates (the inspector uses it for the margin bands).
+  Transforms aren't applied, as in `PositionInTree`. In Core rather than the inspector because only Core knows
+  each type's clip; later users: scroll into view, tooltips, accessibility.
+- **The highlight draws only the visible part.** A cut edge gets a dashed line ("it goes on past here"):
+  blue dashes on a dark edge like the corner marks, 3 DIPs outside the viewport's edge, in line with the marks
+  (inside, it blended with the list's text; Tim), or just inside when outside would be off the window. The
+  selection's corner marks show only at real corners. The label keeps the element's full
+  size, placed above, else below, else just inside the top of what shows. Scrolled out entirely: nothing is
+  drawn (no off-screen pointer, for now).
+- The tree shows an ItemsView's "realized N of M" whether its row is open or not (it used to vanish on open
+  rows), and the details panel has an "items" line with it.
+
 ## Rendering test hangs (2026-11-16)
 
 Tim asked to look into "partial" rendering test runs (35–38 of 57 reported as "Passed!"). They were hangs:

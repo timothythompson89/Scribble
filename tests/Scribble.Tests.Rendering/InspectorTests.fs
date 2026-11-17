@@ -108,3 +108,67 @@ type InspectorTests(fixture: TextFixture) =
         match Snapshot.check "inspector-floating@1x" image with
         | Some error -> Assert.Fail error
         | None -> ()
+
+    /// The highlight on an element partly scrolled out of a ScrollViewer: only the part that shows
+    /// (its margin above the viewport isn't drawn over the header), a dashed line on the cut edge,
+    /// the label inside; then the same element selected (corner marks only at the corners that show).
+    [<Fact>]
+    member _.``the highlight on an element partly scrolled out``() =
+        let pixels: PixelSize = { Width = 900; Height = 520 }
+        let size = Size.Create(900.0, 520.0)
+        let host = ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text []
+        let scroller = Scroller()
+        let rowColors = [| 0x3B4261; 0x2F3549; 0x3B4261; 0x2F3549; 0x3B4261; 0x2F3549 |]
+        host.Update(
+            StackPanel.create [
+                StackPanel.children [
+                    Border.create [ Border.height 60.0; Border.background (Color.Hex 0x7AA2F7) ]
+                    ScrollViewer.create [
+                        ScrollViewer.height 240.0
+                        ScrollViewer.scroller scroller
+                        ScrollViewer.content (
+                            StackPanel.create [
+                                StackPanel.children [
+                                    for c in rowColors ->
+                                        Border.create [ Border.height 80.0; Border.margin 8.0; Border.background (Color.Hex c) ]
+                                ]
+                            ]
+                        )
+                    ]
+                    Border.create [ Border.height 60.0; Border.background (Color.Hex 0x9ECE6A) ]
+                ]
+            ])
+        Inspector.attach (host, []) |> ignore
+        let layout () =
+            for _ in 1..3 do
+                for l in host.Layers do
+                    l.Tree.UpdateLayout size
+                    l.Tree.RunAfterFrame()
+        let send e = host.HandleEvent e |> ignore
+        // The app and the highlight only: the panel lists custom states, which other tests in the
+        // run register (process-wide), so it would depend on test order.
+        let render () =
+            fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
+                f.Clear(Color.Hex 0x181825)
+                for l in host.Layers do
+                    if l.Name <> "Inspector" then l.Tree.Render f.DrawList)
+        layout ()
+        // Row 0 (8..88 in the content) scrolled up 50: 18..98 in the window, under the header to 60.
+        scroller.ScrollToOffset(50.0, false)
+        layout ()
+        Assert.True(host.HandleEvent(KeyDown(Key.Char 'c', Modifiers.Control ||| Modifiers.Shift, false)), "key")
+        layout ()
+        let at: PixelPoint = { X = 200.0; Y = 80.0 }
+        send (PointerMoved(Mouse, 0, at, Modifiers.None))
+        layout ()
+        match Snapshot.check "inspector-scrolled-hover@1x" (render ()) with
+        | Some error -> Assert.Fail error
+        | None -> ()
+        send (PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+        send (PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+        // Out over the panel, so nothing in the app is pointed at: the selection's outline shows.
+        send (PointerMoved(Mouse, 0, { X = 880.0; Y = 500.0 }, Modifiers.None))
+        layout ()
+        match Snapshot.check "inspector-scrolled-selected@1x" (render ()) with
+        | Some error -> Assert.Fail error
+        | None -> ()

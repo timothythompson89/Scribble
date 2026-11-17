@@ -779,6 +779,34 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             p <- p.Value.Parent
         Point(x, y)
 
+    /// The part of the element that can show, in tree coordinates (DIPs), after the last arrange
+    /// (what the inspector's highlight draws):
+    /// its bounds cut by the clip of every ancestor that clips its children (a ScrollViewer's
+    /// viewport, `clipToBounds`). Empty (zero size) when it's clipped out entirely or it or an
+    /// ancestor isn't visible. Transforms (`scale`, `Element.transform`) aren't applied, as in
+    /// `PositionInTree`.
+    member this.VisibleBounds: Rect = this.VisiblePart(Rect.Create(0.0, 0.0, bounds.Width, bounds.Height))
+
+    /// Like `VisibleBounds`, for any rect in the element's own coordinates (its margin area, a
+    /// part of it): the rect in tree coordinates, cut by the ancestors' clips.
+    member this.VisiblePart(rect: Rect) : Rect =
+        let pos = this.PositionInTree
+        let mutable r = rect.Offset(pos.X, pos.Y)
+        let mutable visible = this.Get LayoutProps.isVisible
+        let mutable p = parent
+        while visible && p.IsSome do
+            let a = p.Value
+            if not (a.Get LayoutProps.isVisible) then visible <- false
+            elif a.Get LayoutProps.clipToBounds then
+                let at = a.PositionInTree
+                let clip =
+                    match a.Type.ClipChildren with
+                    | ValueSome f -> f (RenderContext a)
+                    | ValueNone -> Rect.Create(0.0, 0.0, a.Bounds.Width, a.Bounds.Height)
+                r <- r.Intersect(clip.Offset(at.X, at.Y))
+            p <- a.Parent
+        if visible && not r.IsEmpty then r else Rect.Create(r.X, r.Y, 0.0, 0.0)
+
     /// True when `other` is this element or inside it.
     member this.Contains(other: Element) =
         let mutable e = ValueSome other

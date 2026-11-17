@@ -261,3 +261,112 @@ let ``an element off screen is skipped unless it's scaled up past its bounds`` (
         rendered <- 0
         tree.Render(DrawList 1.0)
         Assert.Equal(drawn, rendered)
+
+// --- VisibleBounds: the part of an element its ancestors' clips let show ---------------------------
+
+/// A ScrollViewer `height` tall over rows of 80 (named "0", "1", ...), scrolled to `offset`.
+let private scrolledRows (height: float) (rows: int) (offset: float) (above: View list) =
+    let scroller = Scroller()
+    let view =
+        StackPanel.create [
+            StackPanel.children [
+                yield! above
+                ScrollViewer.create [
+                    ScrollViewer.height height
+                    ScrollViewer.scroller scroller
+                    ScrollViewer.content (
+                        StackPanel.create [
+                            StackPanel.children [ for i in 0 .. rows - 1 -> Border.create [ Border.name (string i); Border.height 80.0 ] ]
+                        ]
+                    )
+                ]
+            ]
+        ]
+    let tree, root = run view 200.0 400.0
+    scroller.ScrollToOffset(offset, false)
+    tree.UpdateLayout(Size.Create(200.0, 400.0))
+    tree, root
+
+let rec private find (name: string) (e: Element) : Element voption =
+    if e.Name = name then ValueSome e
+    else e.Children |> Seq.tryPick (fun c -> match find name c with ValueSome f -> Some f | ValueNone -> None) |> Option.toValueOption
+
+[<Fact>]
+let ``VisibleBounds is the whole element when nothing clips it`` () =
+    let _, b = run (box 10.0 10.0 [ Box.margin 5.0 ]) 100.0 50.0
+    Assert.Equal(rect (5.0, 5.0, 90.0, 40.0), b.VisibleBounds)
+
+[<Fact>]
+let ``VisibleBounds cuts an element partly scrolled out and is empty for one scrolled out entirely`` () =
+    let _, root = scrolledRows 100.0 5 50.0 []
+    let row n = (find (string n) root).Value
+    // Row 0 is at -50..30: only its bottom 30 shows.
+    let v0 = row 0
+    Assert.Equal(-50.0, v0.PositionInTree.Y)
+    Assert.Equal(0.0, v0.VisibleBounds.Y)
+    Assert.Equal(30.0, v0.VisibleBounds.Height)
+    // Row 1 at 30..110: cut at the viewport's bottom (100).
+    Assert.Equal(30.0, (row 1).VisibleBounds.Y)
+    Assert.Equal(70.0, (row 1).VisibleBounds.Height)
+    // Row 2 at 110..190: below the viewport.
+    Assert.True((row 2).VisibleBounds.IsEmpty)
+    Assert.True((row 2).VisibleBounds.Width = 0.0 && (row 2).VisibleBounds.Height = 0.0)
+
+[<Fact>]
+let ``VisibleBounds applies every clipping ancestor (nested ScrollViewers)`` () =
+    // An outer ScrollViewer 100 tall holds a 40-tall header, then an inner one 100 tall (40..140):
+    // the outer viewport cuts the inner one's bottom at 100.
+    let inner = Scroller()
+    let view =
+        ScrollViewer.create [
+            ScrollViewer.height 100.0
+            ScrollViewer.verticalAlignment VerticalAlignment.Top   // else it's centred in the 400-tall window
+            ScrollViewer.content (
+                StackPanel.create [
+                    StackPanel.children [
+                        Border.create [ Border.height 40.0 ]
+                        ScrollViewer.create [
+                            ScrollViewer.height 100.0
+                            ScrollViewer.scroller inner
+                            ScrollViewer.content (
+                                StackPanel.create [
+                                    StackPanel.children [ for i in 0 .. 3 -> Border.create [ Border.name (string i); Border.height 80.0 ] ]
+                                ]
+                            )
+                        ]
+                    ]
+                ]
+            )
+        ]
+    let _, root = run view 200.0 400.0
+    let row0 = (find "0" root).Value
+    // Row 0 at 40..120: the outer viewport ends at 100.
+    Assert.Equal(40.0, row0.VisibleBounds.Y)
+    Assert.Equal(60.0, row0.VisibleBounds.Height)
+    // Row 1 at 120..200: inside the inner viewport (to 140) but below the outer one.
+    Assert.True((find "1" root).Value.VisibleBounds.IsEmpty)
+
+[<Fact>]
+let ``VisibleBounds is empty under a hidden ancestor`` () =
+    let view =
+        StackPanel.create [
+            StackPanel.children [
+                Border.create [ Border.isVisible false; Border.child (Border.create [ Border.name "inside"; Border.height 20.0 ]) ]
+            ]
+        ]
+    let _, root = run view 200.0 100.0
+    Assert.True((find "inside" root).Value.VisibleBounds.IsEmpty)
+
+[<Fact>]
+let ``VisiblePart cuts any rect in an element's own coordinates`` () =
+    let _, root = scrolledRows 100.0 5 50.0 [ Border.create [ Border.height 20.0 ] ]
+    // The viewport is 20..120; row 1 is at 50..130 (80 down, scrolled up 50, under the 20-tall header).
+    let row1 = (find "1" root).Value
+    Assert.Equal(50.0, row1.PositionInTree.Y)
+    // A band 10 above it (its margin, say) shows whole; one past its bottom is cut at 120.
+    let above = row1.VisiblePart(Rect.Create(0.0, -10.0, 50.0, 10.0))
+    Assert.Equal(40.0, above.Y)
+    Assert.Equal(10.0, above.Height)
+    let below = row1.VisiblePart(Rect.Create(0.0, 60.0, 50.0, 30.0))
+    Assert.Equal(110.0, below.Y)
+    Assert.Equal(10.0, below.Height)
