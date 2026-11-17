@@ -176,7 +176,10 @@ and ScrollHooks =
       /// What a scroller above shows of it changed (scrolled, resized), or it was arranged.
       ViewportChanged: Element -> unit
       /// Scrolls to its item or element with `key`; false if it has none.
-      ScrollToKey: Element -> obj -> ScrollAlign -> bool -> bool }
+      ScrollToKey: Element -> obj -> ScrollAlign -> bool -> bool
+      /// It shows part of its content in a viewport (a ScrollViewer; an ItemsView leaves that to the
+      /// ScrollViewer around it).
+      HasViewport: bool }
 
 /// What a Measure function can do: read properties, measure children, use text.
 and [<Struct>] MeasureContext internal (element: Element) =
@@ -803,10 +806,12 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// realized items), already attached; nothing is realized or patched here.
     member internal _.SetManagedChildren(next: Element[]) = children <- next
 
-    /// Scrolls every scroller around this element so that `rect` (its own coordinates) shows,
-    /// the innermost first.
+    /// Scrolls every scroll viewer around the element so `rect` (its own coordinates) shows, the
+    /// innermost first: the nearest one as `align` says, the ones around that only as far as needed
+    /// (Nearest), so showing an item in a list doesn't also move the page the list is on.
     member internal this.BringRectIntoView(rect: Rect, align: ScrollAlign, animate: bool) =
         let mutable r = rect
+        let mutable align = align
         let mutable e = this
         let mutable p = parent
         while p.IsSome do
@@ -817,6 +822,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | ValueSome s ->
                 let moved = s.MakeVisible a r align animate
                 r <- r.Offset(-moved.X, -moved.Y)
+                if s.HasViewport then align <- ScrollAlign.Nearest
             | ValueNone -> ()
             e <- a
             p <- a.Parent

@@ -23,7 +23,7 @@ questions", as paragraphs starting with the name given here.
 | M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
-| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content" |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed" |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
@@ -2181,6 +2181,24 @@ Build order: the model and settings; the built-in types; actions; the inspector 
 - **Tests:** 23 in `SemanticsTests` (every type's node, name from content, what's left out, states and actions,
   tabs, lists and scrolling, layers, reasons, the samples' check) and one inspector test: 433 unit tests (5
   timing tests skipped), 62 rendering tests. NativeAOT publish of the Counter: no new warnings.
+
+## Scrolling to an item moves the scroll viewers around it only as needed (Tim, 2026-11-17)
+
+Found once the Counter's pages scrolled: on the Layers tab, "#5,000" scrolled the page as well as the message
+list. Two causes:
+
+1. **Every scroll viewer got the requested alignment.** `ScrollTo(key, Start)` put the item at the top of the
+   list *and* of the page around it, as the browser's `scrollIntoView()` does by default. **Decided** (Tim
+   agreed): only the nearest scroll viewer (one with a viewport; an ItemsView leaves that to its ScrollViewer,
+   `ScrollHooks.HasViewport`) uses the alignment; those around it use Nearest: no move when the item already
+   shows, else just enough (as WPF's `BringIntoView` and the browser's `block: "nearest"`). `BringIntoView` and
+   focus already used Nearest everywhere, so only scroller requests change.
+2. **A bug:** a ScrollViewer told those around it how far it moved after a jump had already changed its offset,
+   so a far jump (no animation) reported no move, and the page thought the item was still thousands of DIPs
+   down: it scrolled to its end. The move is now measured before moving.
+
+As built: `BringRectIntoView` (Element.fs) and `makeVisible` (ScrollViewer.fs); a test with a list on a
+scrolling page (`ItemsViewTests`), which fails without either fix. 434 unit tests, 62 rendering tests.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

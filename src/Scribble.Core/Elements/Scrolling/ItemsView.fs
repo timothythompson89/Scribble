@@ -648,7 +648,8 @@ module ItemsView =
             Element.scrolling
                 { MakeVisible = fun _ _ _ _ -> Point.Zero
                   ViewportChanged = viewportChanged
-                  ScrollToKey = scrollToKey }
+                  ScrollToKey = scrollToKey
+                  HasViewport = false }
         ]
 
     let create (settings: Setting<ItemsView> list) = View.Create(Type, settings)

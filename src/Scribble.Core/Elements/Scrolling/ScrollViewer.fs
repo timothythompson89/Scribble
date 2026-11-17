@@ -243,11 +243,14 @@ module ScrollViewer =
             else rect.X + s.X, rect.Y + s.Y
         let x = if h = ScrollBarMode.Disabled then s.X else max 0.0 (alignedOffset (targetX s) s.ViewW cx rect.Width align)
         let y = if v = ScrollBarMode.Disabled then s.Y else max 0.0 (alignedOffset (targetY s) s.ViewH cy rect.Height align)
+        // How far the content moves (now, or by the animation's end): taken before moving, since a
+        // jump changes the offset at once.
+        let moved = Point(x - s.X, y - s.Y)
         if x <> targetX s || y <> targetY s then
             // Far away: jump (animating past thousands of items would realize them all).
             let far = abs (y - s.Y) > 3.0 * s.ViewH || abs (x - s.X) > 3.0 * s.ViewW
             moveTo e s x y (if animate && not far then ValueSome scrollTime else ValueNone)
-        Point(x - s.X, y - s.Y)
+        moved
 
     /// Applies what its scroller was asked (offsets here; keys through what's inside).
     let private applyRequests (e: Element) (s: ScrollState) =
@@ -505,7 +508,8 @@ module ScrollViewer =
             Element.scrolling
                 { MakeVisible = makeVisible
                   ViewportChanged = ignore
-                  ScrollToKey = fun _ _ _ _ -> false }
+                  ScrollToKey = fun _ _ _ _ -> false
+                  HasViewport = true }
             // A press inside focuses it (for the keys), but Tab doesn't stop on it.
             Element.defaults [ Layoutable.clipToBounds true; Layoutable.focusable true; Layoutable.isTabStop false ]
         ]

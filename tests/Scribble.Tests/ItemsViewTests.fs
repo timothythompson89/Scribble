@@ -174,6 +174,49 @@ let ``ScrollTo with Nearest doesn't move what already shows`` () =
     Assert.Equal(2000.0 + 10.0 - 100.0, scroller.Offset)
 
 [<Fact>]
+let ``scrolling a list to an item moves the page around it only as far as needed`` () =
+    // A 200-high page that scrolls: 60 of header, a 100-high list of 20-high rows, 300 below.
+    let t = ElementTree(textSystem ())
+    let list, page = Scroller(), Scroller()
+    t.Update(
+        ScrollViewer.create [
+            ScrollViewer.scroller page
+            ScrollViewer.content (
+                StackPanel.create [
+                    StackPanel.children [
+                        Border.create [ Border.height 60.0 ]
+                        ScrollViewer.create [
+                            ScrollViewer.height 100.0
+                            ScrollViewer.content (
+                                ItemsView.create [
+                                    ItemsView.source [| 0 .. 999 |]
+                                    ItemsView.view (fun (i: int) -> Border.create [ Border.name (string i); Border.height 20.0 ])
+                                    ItemsView.scroller list
+                                ])
+                        ]
+                        Border.create [ Border.height 300.0 ]
+                    ]
+                ])
+        ])
+    let settle () =
+        for _ in 1 .. 3 do
+            layoutAt t
+    settle ()
+    // The list shows whole on the page: only the list moves, though the item goes to its top.
+    list.ScrollTo(500, ScrollAlign.Start, false)
+    settle ()
+    Assert.Equal(10_000.0, list.Offset)
+    Assert.Equal(0.0, page.Offset)
+    // The page scrolled the list's top out of view: the page moves just enough to show the item
+    // (at the list's top, 60 down the page), not to put it at the page's top.
+    page.ScrollToOffset(150.0, false)
+    settle ()
+    list.ScrollTo(700, ScrollAlign.Start, false)
+    settle ()
+    Assert.Equal(14_000.0, list.Offset)
+    Assert.Equal(60.0, page.Offset)
+
+[<Fact>]
 let ``a ScrollViewer keeps a gutter for its bar unless it overlays it`` () =
     let widthIn (space: ScrollBarSpace) =
         let t = ElementTree(textSystem ())
