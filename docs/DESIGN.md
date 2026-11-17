@@ -23,7 +23,7 @@ questions", as paragraphs starting with the name given here.
 | M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
-| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed" |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery" |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
@@ -60,8 +60,8 @@ TabControl), 3a+ and 3a++ (the inspector tree on ItemsView, sideways scrolling),
 docs), and the semantics stage (roles, names, states and actions for every element type; the inspector's
 SEMANTICS section).
 
-Next: M8 step 3b (Image, with
-decoding decided in its own round) and step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
+Next: M8 step 3b, planned (section "M8 step 3b: images, and the Counter becomes the Gallery"): first the Counter
+sample becomes the Gallery, then Image (our own PNG decoder, RGBA atlas pages, `ImageView`). Then step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
 "show this in a layer" element). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
@@ -199,6 +199,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 | Bidi and complex scripts | Later | Shaping through HarfBuzz; layout works on runs |
 | IME | With TextBox polish | Text input events can carry composition |
 | macOS, Linux, mobile | After M10 | Everything goes through `IPlatform`/`IWindow` |
+| Responsive layout | A round of its own (the Gallery wants a sidebar on wide windows, tabs on narrow ones) | The TabControl's header row scrolls sideways; views can't read the window size yet |
 | Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
 
 ---
@@ -2199,6 +2200,87 @@ list. Two causes:
 
 As built: `BringRectIntoView` (Element.fs) and `makeVisible` (ScrollViewer.fs); a test with a list on a
 scrolling page (`ItemsViewTests`), which fails without either fix. 434 unit tests, 62 rendering tests.
+
+## M8 step 3b: images, and the Counter becomes the Gallery (planned 2026-11-17)
+
+A grilling in three rounds plus the sample overhaul (Tim: yes to all, Q7 refined). Facts it rests on: the draw list
+had no images (one instanced draw call over a 2048² one-channel glyph atlas and a 1024² colour one); glyphs are read
+texel for texel, never filtered; `Bitmap` is taken (`RenderOffscreen`'s pixels); `Icon`/`IconView` set the
+value-plus-element pattern; image cursors' platform contract already takes pixels; views can't read the window size.
+
+**Decoding and the GPU**
+1. **Our own decoders** (the BCL's `ZLibStream` for PNG's compression: the BCL is the platform, like OS APIs). OS
+   decoders (WIC, `createImageBitmap`) were turned down: their pixels differ (JPEG rounding, browser colour
+   management), the browser path is async through a canvas, Linux has none.
+2. **PNG in this step**; JPEG the next; GIF, WebP, animation and SVG files later.
+3. **Every static PNG**: all colour types and bit depths, `tRNS`, Adam7; 16-bit rounded to 8; an APNG shows its
+   first frame.
+4. **sRGB assumed**, embedded colour profiles and gamma (iCCP, gAMA) ignored; alpha premultiplied on decode.
+5. **RGBA atlas pages**, drawn as a new instance kind in the same shader (one draw call per page); an image bigger
+   than a page gets a page to itself. A per-image texture and draw call was turned down: it breaks the batch.
+6. **Filtering in our shader**: bilinear from `textureLoad` with fixed weights and `exact8`, so backends agree (the
+   GPU sampler's maths isn't pinned down); mip levels built on the CPU for shrinking past 2×.
+7. **Too big for the GPU** (over 8192 on a side, WebGPU's default limit): reduced at decode to the largest mip level
+   that fits, same size in DIPs, a debug warning.
+8. **`Scribble.Imaging`**, a new project: bytes in, premultiplied RGBA out, no GPU, no elements; Core references it.
+   The `Image` value, its cache and `ImageView` are in Core; atlas pages and the instance kind in Rendering.
+9. **Shared:** decoded pixels process-wide (a thread-safe holder, like the font caches); atlas pages per GPU device.
+
+**The value and the element** (words in GLOSSARY.md: image, ImageView, density)
+10. **`Image`** (an immutable value, keyed: decoded once however many places show it) and **`ImageView`** (the
+    element), after `Icon`/`IconView`.
+11. **Sources:** `Image.fromResource (assembly, name)`, `fromBytes (key, bytes)`, `fromPixels (key, width, height,
+    rgba)`, `fromFile path` (desktop; an error in the browser), `fromUrl url` (`fetch`; `HttpClient` on the
+    desktop), each with an optional settings list (`Image.density 2.0`).
+12. **Density:** one image pixel per DIP unless `Image.density` says otherwise; resolution sets (1×/2×/3× picked by
+    the window's scale) later.
+13. **Sizing:** the element stretches like any other (its slot is its hit area and its border's box); the image is
+    drawn in it with `ImageView.stretch` (`None`, `Fill`, **`Uniform`** (default), `UniformToFill`), centred by the
+    usual alignment settings, and never enlarged unless `ImageView.stretchDirection` (**`DownOnly`** (default),
+    `UpOnly`, `Both`) says so: CSS's `object-fit: scale-down`. Desired size is the image's own, so Auto rows and
+    content-sized panels get it right. (Tim's refinement: stretch and centre by default rather than take the image's
+    size; not enlarging keeps a small logo in a StackPanel from blowing up to the panel's width.)
+14. **`ImageView.scaling`**: `ImageScaling.Smooth` (default) or `Pixelated` (nearest; CSS `image-rendering`).
+15. **`DrawList.DrawImage(rect, image, ?radius, ?scaling, ?source)`**, the image instance using the shape shader's
+    rounded-rect edge, and **`ImageView.cornerRadius`**: avatars without general rounded clipping.
+16. **Size known at once** for images in memory (resource, bytes, pixels: the PNG header), so the first layout is
+    right; files and URLs are 0 × 0 until loaded (unless sized), then lay out again. Decoding is off the UI thread
+    on the desktop, on it in the browser for now (a web worker later).
+17. **While loading** an `ImageView` draws nothing but its background; a **failure** (missing resource, 404, corrupt
+    file) goes through `ReportError` to `App.onError` and draws nothing. Placeholders and `onLoaded` when an app
+    needs them.
+18. **Lifetime:** kept (pixels and atlas space) while any `ImageView` shows it, then in a ~32 MB recently-used pool
+    (oldest out first) so switching tabs back doesn't decode again; an emptied atlas page is given back.
+19. **Only visible images decode:** decoding starts on realization, not when the value is made. Tests: an
+    ItemsView of 10,000 rows with an image each decodes only the realized rows' (also after scrolling to 9,000), and
+    a timing test for decoding a 1024² PNG in Release.
+20. **Semantics** as `IconView`: role Image, named by `Semantics.label`, decorative (left out) without one.
+21. **`Cursor.fromImage image [ Cursor.hotspot ... ]`** in this step (held back "until Image").
+22. **The inspector** shows an ImageView's image: source, pixel size and density, loading/ready/failed (with the
+    error), reduced to fit, in the atlas.
+23. **Tests:** PngSuite (Willem van Schaik's conformance set, ~175 small files, free to use) in `tests/`, checked
+    against raw RGBA decoded once with WIC on Tim's machine (test-only); its corrupt files must fail cleanly.
+    Screenshot tests for the stretch modes, smooth and pixelated up and down, alpha and mip levels, with
+    `BackendTests` agreeing.
+
+**The Counter becomes the Gallery** (Tim: "it's no longer just a counter")
+24. **`Gallery`** (`Gallery`, `Gallery.Desktop`, `Gallery.Browser`; tests, pictures, Scribble.Serve, Scribble.Bench
+    and `.run/` renamed), and a new one-file **`Counter`** (the Elmish counter, the README's first example: what the
+    name promised in M4).
+25. **Pages**, each opening with its title and a line on what it shows: **Components** (Elmish, useState and
+    useAnimated, useAsync as three demos), **Layout**, **Controls**, **Scrolling** (the 10,000 messages, out of
+    Layers), **Layers** (toast, modal), **Styles**, **Images**. "Show the code" waits for selectable text.
+26. **Navigation stays a TabControl** for now. A sidebar on wide windows and tabs on narrow ones needs views to
+    choose by available width: deferred to a responsive-layout round. A drawer at every size was turned down (worse
+    on the desktop).
+27. **720 × 560** window; pages scroll when they don't fit.
+28. **Images page:** the stretch modes side by side, smooth against pixelated, a rounded avatar, a 2× image, a URL
+    load, a broken image reporting its error, image cursors. Pictures are procedural (made by a small PNG writer in
+    the tests and tools): no licence questions.
+
+**Order:** (a) the Gallery overhaul, its own commit, checked by Tim before any image code; then (b) the decoder,
+(c) the GPU and atlas, (d) `ImageView`, (e) sources and loading, (f) cursors and the inspector, with the Images page
+growing alongside.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

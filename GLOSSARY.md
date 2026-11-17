@@ -130,6 +130,20 @@ _Avoid_: popup, portal, overlay
 What runs a window's layers: input, frames and the window's theme (`ElementHost`).
 _Avoid_: window (for the host), root
 
+## Images
+
+**Image**:
+An immutable value naming a picture to show and how to read it (its source, its pixels per DIP); the same image is decoded once however many places show it.
+_Avoid_: bitmap, image source (for the value)
+
+**ImageView**:
+The element that draws an image in its box.
+_Avoid_: image control, picture box
+
+**Density**:
+How many of an image's pixels make one DIP: 1 by default, 2 for an image made for a 2× screen.
+_Avoid_: DPI, scale (for an image's own density)
+
 ## Accessibility
 
 **Semantics**:
