@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open Scribble.Rendering
 
 /// A Button that stays on or off: a click flips it. `CheckBox` and `Switch` are ToggleButtons.
@@ -86,7 +87,11 @@ module ToggleButton =
           // The box and its label only, so the click area doesn't span a row (Buttons stretch; 2026-11-17).
           Layoutable.horizontalAlignment HorizontalAlignment.Left ]
 
-    let Type = Element.extend Button.Type "ToggleButton" [ Element.click toggle ]
+    let Type =
+        Element.extend Button.Type "ToggleButton" [
+            Element.click toggle
+            Element.defaults [ Semantics.checkedFrom (ToggleButtonProps.isChecked, ToggleButtonProps.isIndeterminate) ]
+        ]
 
     let create (settings: Setting<ToggleButton> list) : View = View.Create(Type, settings)
     /// A style for ToggleButtons (this type exactly): `ToggleButton.style [ States.isChecked ] [ ... ]`.

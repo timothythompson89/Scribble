@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open Scribble.Rendering
 open Scribble.Text
 
@@ -36,6 +37,7 @@ module TextBlock =
 
     let Type =
         Element.define "TextBlock" [
+            Element.defaults [ Semantics.role Role.Text; Semantics.labelFrom TextProps.text ]
             Element.measure (fun ctx available ->
                 let layout =
                     ctx.Text.Layout(

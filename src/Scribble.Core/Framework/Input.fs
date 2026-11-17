@@ -36,6 +36,28 @@ type FocusDirection =
     | Next
     | Previous
 
+/// Clicks, shared by the input router and semantic actions.
+module internal Clicks =
+    /// The element's own `onClick`, then its type's click behavior (a ToggleButton toggling).
+    let click (e: Element) (source: ClickSource) (modifiers: Modifiers) =
+        let args = ClickEventArgs(source, modifiers)
+        match e.Get LayoutProps.onClick with
+        | ValueSome handler ->
+            try
+                handler args
+            with ex ->
+                e.ReportError ex
+        | ValueNone -> ()
+        match e.Type.Click with
+        | ValueSome f when e.Root.IsSome && e.IsEnabled ->
+            try
+                f (InputContext e) args
+            with ex ->
+                e.ReportError ex
+        | _ -> ()
+
+    let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome || e.Type.Click.IsSome
+
 /// Turns platform input (in DIPs) into element events: enter and leave on the chain of elements
 /// under the pointer, routed pointer, wheel and key events (Preview from the root down, then
 /// normal from the target up), pointer capture from press to release, clicks, keyboard focus,
@@ -281,25 +303,8 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             ValueNone
         | ValueNone -> ValueNone
 
-    /// The element's own `onClick`, then its type's click behavior (a ToggleButton toggling).
-    let click (e: Element) (source: ClickSource) (modifiers: Modifiers) =
-        let args = ClickEventArgs(source, modifiers)
-        match e.Get LayoutProps.onClick with
-        | ValueSome handler ->
-            try
-                handler args
-            with ex ->
-                e.ReportError ex
-        | ValueNone -> ()
-        match e.Type.Click with
-        | ValueSome f when isAttached e && e.IsEnabled ->
-            try
-                f (InputContext e) args
-            with ex ->
-                e.ReportError ex
-        | _ -> ()
-
-    let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome || e.Type.Click.IsSome
+    let click = Clicks.click
+    let hasClick = Clicks.hasClick
 
     // `element.Focus()` from code (a TabControl's arrow keys) comes here.
     do

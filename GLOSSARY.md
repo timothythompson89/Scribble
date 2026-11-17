@@ -129,3 +129,25 @@ _Avoid_: popup, portal, overlay
 **Host**:
 What runs a window's layers: input, frames and the window's theme (`ElementHost`).
 _Avoid_: window (for the host), root
+
+## Accessibility
+
+**Semantics**:
+What an element is to assistive technology: its role, name, value, states and actions, given as settings (`Semantics.role`, `Semantics.label`) by its element type's defaults or by a view.
+_Avoid_: accessibility info, automation properties (for ours)
+
+**Role**:
+The kind of thing an element is to assistive technology (button, checkbox, slider, list item), from a fixed set based on ARIA's roles.
+_Avoid_: control type, semantic type
+
+**Semantic node**:
+One element as assistive technology sees it; elements with nothing to say (layout panels, hidden or decorative ones) have none, and the text inside a button becomes its name rather than a node.
+_Avoid_: accessibility node, automation peer
+
+**Semantic tree**:
+The semantic nodes of a window's layers, built from the element trees when asked for (never per frame).
+_Avoid_: accessibility tree (for ours; that's the platform's)
+
+**Semantic action**:
+Something assistive technology can ask a semantic node to do (click, increment, decrement, focus, scroll into view); it takes the same path as the matching input.
+_Avoid_: automation pattern, command

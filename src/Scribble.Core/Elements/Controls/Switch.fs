@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open System
 open Scribble.Rendering
 
@@ -38,7 +39,11 @@ module Switch =
             Element.measure (ToggleButton.measureLabeled trackWidth trackHeight)
             Element.arrange (ToggleButton.arrangeLabeled trackWidth)
             Element.render render
-            Element.defaults (ToggleButton.labeledDefaults @ [ ToggleButton.markColor (Color.Hex 0x9A9AB0) ])
+            Element.defaults (
+                ToggleButton.labeledDefaults
+                @ [ ToggleButton.markColor (Color.Hex 0x9A9AB0)
+                    Semantics.role Role.Switch
+                    Semantics.checkedFrom ToggleButtonProps.isChecked ])
         ]
 
     let create (settings: Setting<Switch> list) : View = View.Create(Type, settings)

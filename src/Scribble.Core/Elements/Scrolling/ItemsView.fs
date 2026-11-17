@@ -626,8 +626,21 @@ module ItemsView =
             true
         | ValueNone -> false
 
+    /// Where a realized item's element is among all the items (semantics: "3 of 10,000").
+    let private itemPosition (e: Element) (child: Element) =
+        let s = stateOf e
+        let mutable found = ValueNone
+        for item in s.Realized.Values do
+            if obj.ReferenceEquals(item.Element, child) then
+                found <- ValueSome({ Index = item.Index + 1; Count = s.Source.Count }: Scribble.Accessibility.SemanticPosition)
+        found
+
     let Type =
         Element.define "ItemsView" [
+            Element.defaults [
+                Scribble.Accessibility.Semantics.role Scribble.Accessibility.Role.List
+                Scribble.Accessibility.Semantics.itemPosition itemPosition
+            ]
             Element.measure measure
             Element.arrange (fun ctx size ->
                 arrange ctx size

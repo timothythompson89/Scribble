@@ -121,6 +121,29 @@ let ``pick mode selects what's clicked, and the click doesn't reach the app`` ()
     ignore host
 
 [<Fact>]
+let ``SEMANTICS shows the selection's node, or why it has none`` () =
+    let log = List<string>()
+    let w, _, panel = start log
+    let pick x y =
+        keyWith w (Key.Char 'c') ctrlShift
+        settle w
+        move w x y
+        settle w
+        click w x y
+        settle w
+        texts panel
+    let shown = pick 50.0 20.0
+    let at = shown |> List.findIndex ((=) "SEMANTICS")
+    // The button has no text: a node without a name (what the samples' check catches).
+    Assert.Equal<string list>([ "role"; "Button"; "name"; "none" ], shown |> List.skip (at + 1) |> List.take 4)
+    Assert.Contains("Click, Focus, ScrollIntoView", shown)
+    Assert.Contains("Semantics.role", shown)
+    Assert.DoesNotContain("semantics.role", shown) // not under PROPERTIES
+    let shown = pick 300.0 300.0
+    let at = shown |> List.findIndex ((=) "SEMANTICS")
+    Assert.Equal<string list>([ "not exposed"; "no role (what's inside it takes its place)" ], shown |> List.skip (at + 1) |> List.take 2)
+
+[<Fact>]
 let ``Escape leaves pick mode without selecting`` () =
     let log = List<string>()
     let w, _, panel = start log

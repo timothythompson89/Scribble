@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open System
 open Scribble.Rendering
 
@@ -108,6 +109,7 @@ module Button =
             Element.render render
             // The dark base look (also without a theme); the theme adds the state looks.
             Element.defaults [
+                Semantics.role Role.Button
                 Layoutable.foreground (Color.Hex 0xE6E6F0)
                 Border.background (Color.Hex 0x3A3A55)
                 Border.borderBrush (Color.Hex 0x4A4A68)

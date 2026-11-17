@@ -5,6 +5,7 @@ module Scribble.Samples.CounterDemo.ControlsTab
 
 open Scribble.Text
 open Scribble.Core
+open Scribble.Accessibility
 
 /// A titled group of controls.
 let private section (title: string) (content: View list) =
@@ -79,17 +80,23 @@ let controlsPage =
                         ]
                         section "Slider: the first is controlled (its value below follows every change; \"let go\" only when you let go)" [
                             Slider.create [
+                                Semantics.label "Volume"
                                 Slider.value volume.Current
                                 Slider.onValueChanged volume.Set
                                 Slider.onValueCommitted committed.Set
                             ]
                             TextBlock.create [ TextBlock.text $"Value {volume.Current:F0}, let go at {committed.Current:F0}" ]
-                            Slider.create [ Slider.step 0.0 ]
-                            Slider.create [ Slider.value 30.0; Slider.isEnabled false ]
+                            Slider.create [ Slider.step 0.0; Semantics.label "Smooth" ]
+                            Slider.create [ Slider.value 30.0; Slider.isEnabled false; Semantics.label "Disabled" ]
                             // Vertical, in steps of 10, each keeping its own value (minimum at the bottom).
                             row [
-                                for _ in 1..3 ->
-                                    Slider.create [ Slider.orientation Orientation.Vertical; Slider.height 120.0; Slider.step 10.0 ]
+                                for i in 1..3 ->
+                                    Slider.create [
+                                        Slider.orientation Orientation.Vertical
+                                        Slider.height 120.0
+                                        Slider.step 10.0
+                                        Semantics.label ("Level " + string i)
+                                    ]
                             ]
                         ]
                     ]

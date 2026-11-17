@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open System
 open Scribble.Rendering
 
@@ -153,13 +154,36 @@ module Slider =
             commit e
             ctx.InvalidateVisual()
 
+    /// The small step (an arrow key, increment and decrement) and the large one (PageUp/PageDown).
+    let private steps (e: Element) =
+        let range = max 0.0 (e.Get SliderProps.maximum - e.Get SliderProps.minimum)
+        let step = e.Get SliderProps.step
+        let small = if step > 0.0 then step else range / 100.0
+        struct (small, max small (range / 10.0))
+
+    /// Moves to `target` (snapped) as a key does: reported and committed at once.
+    let private keyMove (e: Element) (target: float) =
+        e.SetLocal(SliderProps.reported, Double.NaN)
+        report e (snap e target)
+        commit e
+
+    /// Increment and decrement, from assistive technology: the arrow keys' path.
+    let private semanticAction (ctx: InputContext) (action: SemanticAction) =
+        let e = ctx.Element
+        let struct (small, _) = steps e
+        match action with
+        | SemanticAction.Increment ->
+            keyMove e (e.Get SliderProps.value + small)
+            true
+        | SemanticAction.Decrement ->
+            keyMove e (e.Get SliderProps.value - small)
+            true
+        | _ -> false
+
     let private keyDown (ctx: InputContext) (args: KeyEventArgs) =
         let e = ctx.Element
         let low, high = e.Get SliderProps.minimum, e.Get SliderProps.maximum
-        let range = max 0.0 (high - low)
-        let step = e.Get SliderProps.step
-        let small = if step > 0.0 then step else range / 100.0
-        let large = max small (range / 10.0)
+        let struct (small, large) = steps e
         let current = e.Get SliderProps.value
         let target =
             match args.Key with
@@ -173,9 +197,7 @@ module Slider =
         match target with
         | ValueSome t when args.Modifiers &&& (Modifiers.Control ||| Modifiers.Alt ||| Modifiers.Meta) = Modifiers.None ->
             args.Handle()
-            e.SetLocal(SliderProps.reported, Double.NaN)
-            report e (snap e t)
-            commit e
+            keyMove e t
         | _ -> ()
 
     let private render (ctx: RenderContext) (list: DrawList) =
@@ -219,7 +241,15 @@ module Slider =
             Element.pointerMove pointerMove
             Element.pointerUp pointerUp
             Element.keyDown keyDown
-            Element.defaults [ Layoutable.focusable true; Layoutable.cursor Cursor.Hand ]
+            Element.defaults [
+                Layoutable.focusable true
+                Layoutable.cursor Cursor.Hand
+                Semantics.role Role.Slider
+                Semantics.rangeFrom (SliderProps.value, SliderProps.minimum, SliderProps.maximum, SliderProps.step)
+                Semantics.orientationFrom SliderProps.orientation
+                Semantics.actions [ SemanticAction.Increment; SemanticAction.Decrement ]
+                Semantics.onAction semanticAction
+            ]
         ]
 
     let create (settings: Setting<Slider> list) : View = View.Create(Type, settings)

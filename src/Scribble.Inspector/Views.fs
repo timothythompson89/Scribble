@@ -8,6 +8,7 @@ open Scribble.Platform
 open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
+open Scribble.Accessibility
 
 /// The panel component's props: the shared state, and whether it fills the pop-out window.
 type internal PanelProps = { State: InspectorState; IsPoppedOut: bool }
@@ -530,6 +531,56 @@ module internal Views =
             ]
         ]
 
+    let private isSemantics (p: Prop) = p.Name.StartsWith("Semantics.", StringComparison.Ordinal)
+
+    /// SEMANTICS: what the element is to assistive technology (its semantic node), or why it has
+    /// none; then the semantics settings it has and where they came from.
+    let private semanticsLines (state: InspectorState) (e: Element) (values: PropertyValue list) =
+        let n = Format.number
+        [ yield heading "SEMANTICS"
+          match e.SemanticNode() with
+          | Error why -> yield line "not exposed" why hintColor ""
+          | Ok node ->
+              yield line "role" (string node.Role) Color.White ""
+              let source =
+                  match node.NameSource with
+                  | NameSource.Label -> "label"
+                  | NameSource.Content -> "content"
+                  | NameSource.None -> ""
+              yield line "name" (if node.Name = "" then "none" else node.Name) (if node.Name = "" then dim else Color.White) source
+              match node.IsChecked with
+              | ValueSome c -> yield line "checked" (string c) Color.White ""
+              | ValueNone -> ()
+              match node.IsSelected with
+              | ValueSome s -> yield line "selected" (if s then "yes" else "no") Color.White ""
+              | ValueNone -> ()
+              match node.IsExpanded with
+              | ValueSome x -> yield line "expanded" (if x then "yes" else "no") Color.White ""
+              | ValueNone -> ()
+              match node.Range with
+              | ValueSome r -> yield line "range" (SemanticText.range r) Color.White ""
+              | ValueNone -> ()
+              match node.Orientation with
+              | ValueSome o -> yield line "orientation" (SemanticText.orientation o) Color.White ""
+              | ValueNone -> ()
+              match node.Position with
+              | ValueSome p -> yield line "position" (string p.Index + " of " + string p.Count) Color.White ""
+              | ValueNone -> ()
+              match node.Scroll with
+              | ValueSome s ->
+                  yield line "scroll" (n s.OffsetX + ", " + n s.OffsetY + " in " + Format.size s.ExtentWidth s.ExtentHeight) Color.White ""
+              | ValueNone -> ()
+              let states =
+                  [ if node.IsDisabled then "disabled"
+                    if node.IsFocusable then "focusable"
+                    if node.IsFocused then "focused" ]
+              if not states.IsEmpty then yield line "states" (String.Join(", ", states)) Color.White ""
+              yield line "actions" (String.Join(", ", node.Actions |> List.map string)) hintColor ""
+              yield line "children" (string node.Children.Count) hintColor ""
+          for v in values do
+              if isSemantics v.Prop && v.Source <> ValueSource.Default then
+                  yield line v.Prop.Name (SemanticText.value v.Value) Color.White (sourceText v.Source) ]
+
     let private properties (state: InspectorState) =
         match state.Selected with
         | ValueNone ->
@@ -555,6 +606,7 @@ module internal Views =
                           { Prop = t.Prop; Value = e.GetBoxed t.Prop; Source = ValueSource.Default; Selector = ""; ThemeValue = "" } ]
             let values =
                 all @ missing
+                |> List.filter (fun v -> not (isSemantics v.Prop))
                 |> List.filter (fun v -> state.ShowDefaults || v.Source <> ValueSource.Default || (themedRules v.Prop).IsSome)
                 |> List.sortBy (fun v ->
                     if v.Source <> ValueSource.Default then 0
@@ -598,6 +650,7 @@ module internal Views =
                               TextBlock.foreground dim
                               TextBlock.textWrapping Wrap
                           ]
+              yield! semanticsLines state e all
               if not hooks.IsEmpty then
                   yield heading "HOOKS"
                   for h in hooks do
@@ -693,10 +746,11 @@ module internal Views =
             let state = props.State
             follow ctx state
             if props.IsPoppedOut then
-                Border.create [ Border.background panelBackground; Border.child (content state true false) ]
+                Border.create [ Semantics.hidden true; Border.background panelBackground; Border.child (content state true false) ]
             else
                 let looks =
-                    [ Border.isVisible (state.IsOpen && state.Mode <> PanelMode.PoppedOut)
+                    [ Semantics.hidden true
+                      Border.isVisible (state.IsOpen && state.Mode <> PanelMode.PoppedOut)
                       Border.cornerRadius 8.0
                       Border.background panelBackground
                       Border.borderThickness 1.0
@@ -739,6 +793,7 @@ module internal Views =
             follow ctx state
             let target = state.Target
             Border.create [
+                Semantics.hidden true
                 Border.isVisible (state.IsPicking || target.IsSome)
                 Border.isHitTestVisible state.IsPicking
                 Border.cursor Cursor.Crosshair

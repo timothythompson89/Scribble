@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open Scribble.Rendering
 
 /// A box that is ticked or not, with an optional label after it; a click anywhere on either
@@ -44,7 +45,7 @@ module CheckBox =
             Element.measure (ToggleButton.measureLabeled boxSize boxSize)
             Element.arrange (ToggleButton.arrangeLabeled boxSize)
             Element.render render
-            Element.defaults (ToggleButton.labeledDefaults @ [ Border.cornerRadius 3.0 ])
+            Element.defaults (ToggleButton.labeledDefaults @ [ Border.cornerRadius 3.0; Semantics.role Role.CheckBox ])
         ]
 
     let create (settings: Setting<CheckBox> list) : View = View.Create(Type, settings)

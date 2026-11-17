@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open Scribble.Rendering
 
 module SeparatorProps =
@@ -27,6 +28,7 @@ type Separator =
 module Separator =
     let Type =
         Element.define "Separator" [
+            Element.defaults [ Semantics.role Role.Separator ]
             Element.measure (fun ctx _ ->
                 let t = ctx.Get SeparatorProps.thickness
                 match ctx.Get SeparatorProps.orientation with

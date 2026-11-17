@@ -271,6 +271,7 @@ module ScrollViewer =
 
     let Type =
         Element.define "ScrollViewer" [
+            Element.defaults [ Scribble.Accessibility.Semantics.role Scribble.Accessibility.Role.ScrollArea ]
             Element.measure (fun ctx available ->
                 let v, h = ctx.Get ScrollViewerProps.vertical, ctx.Get ScrollViewerProps.horizontal
                 let struct (gutterV, gutterH) = gutterOf v h (ctx.Get ScrollViewerProps.scrollBarSpace) (ctx.Get ScrollViewerProps.barSize)
@@ -535,3 +536,26 @@ module ScrollViewer =
     let internal jumpTo (e: Element) (y: float) =
         let s = stateOf e
         moveTo e s s.X y ValueNone
+
+    /// What it shows of what it scrolls over, when it can scroll (semantics); ValueNone when its
+    /// content fits.
+    let internal scrollInfo (e: Element) : Scribble.Accessibility.SemanticScroll voption =
+        let s = stateOf e
+        let canV = e.Get ScrollViewerProps.vertical <> ScrollBarMode.Disabled && s.MaxY > 0.5
+        let canH = e.Get ScrollViewerProps.horizontal <> ScrollBarMode.Disabled && s.MaxX > 0.5
+        if canV || canH then
+            ValueSome
+                { OffsetX = s.X; OffsetY = s.Y
+                  ExtentWidth = s.ExtentW; ExtentHeight = s.ExtentH
+                  ViewportWidth = s.ViewW; ViewportHeight = s.ViewH }
+        else ValueNone
+
+    /// Scrolls a page on (vertically when it can, else sideways), as PageDown does; false at the end.
+    let internal page (e: Element) (forward: bool) =
+        let s = stateOf e
+        let sign = if forward then 1.0 else -1.0
+        if e.Get ScrollViewerProps.vertical <> ScrollBarMode.Disabled && s.MaxY > 0.5 then
+            scrollBy e s 0.0 (sign * max step (s.ViewH - step)) (ValueSome wheelTime)
+        elif e.Get ScrollViewerProps.horizontal <> ScrollBarMode.Disabled && s.MaxX > 0.5 then
+            scrollBy e s (sign * max step (s.ViewW - step)) 0.0 (ValueSome wheelTime)
+        else false

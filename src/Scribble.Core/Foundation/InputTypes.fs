@@ -66,6 +66,8 @@ type ClickSource =
     | Pointer of kind: PointerKind
     /// Enter, or Space released, on the focused element.
     | Keyboard
+    /// Asked for by assistive technology (a screen reader's click: `SemanticAction.Click`).
+    | Assistive
 
 /// A click: `Button.onClick (fun e -> if e.Modifiers.HasFlag Modifiers.Shift then ... else ...)`.
 /// Clicks aren't routed: they go to the nearest element with onClick.

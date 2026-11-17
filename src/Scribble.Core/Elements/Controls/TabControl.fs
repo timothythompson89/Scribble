@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open System
 open Scribble.Rendering
 
@@ -34,7 +35,8 @@ type TabItem =
 
 module TabItem =
     /// The page element: its content fills it; it draws nothing.
-    let Type = Element.define "TabItem" []
+    let Type =
+        Element.define "TabItem" [ Element.defaults [ Semantics.role Role.TabPanel; Semantics.labelFrom TabItemProps.header ] ]
     let create (settings: Setting<TabItem> list) : View = View.Create(Type, settings)
     let style (parts: SelectorPart list) (settings: Setting<TabItem> list) : Style = Style.forType Type parts settings
 
@@ -64,6 +66,8 @@ module TabHeader =
                 Border.cornerRadius { TopLeft = 6.0; TopRight = 6.0; BottomRight = 0.0; BottomLeft = 0.0 }
                 Border.padding (14.0, 9.0)
                 Layoutable.foreground (Color.Hex 0x9A9AB0)
+                Semantics.role Role.Tab
+                Semantics.selectedFrom TabHeaderProps.isSelected
             ]
         ]
 
@@ -195,6 +199,7 @@ module TabControl =
             TabHeader.isEnabled (settingOf tab LayoutProps.isEnabled |> ValueOption.defaultValue true)
             TabHeader.onClick (fun _ -> select e i)
             TabHeader.onKeyDown (headerKey e i)
+            Semantics.position (i + 1, (e.Get TabControlProps.tabs).Length)
         ]
 
     /// Attaches an element this TabControl realized and matches its styles now (this runs during
@@ -223,6 +228,7 @@ module TabControl =
             s.BuiltSelected <- selected
             let row =
                 ScrollViewer.create [
+                    Semantics.role Role.TabList
                     ScrollViewer.horizontal ScrollBarMode.Hidden
                     ScrollViewer.vertical ScrollBarMode.Disabled
                     ScrollViewer.content (

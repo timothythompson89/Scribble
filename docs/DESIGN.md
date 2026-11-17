@@ -24,6 +24,7 @@ questions", as paragraphs starting with the name given here.
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
 | M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content" |
+| Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
@@ -56,9 +57,10 @@ Built, waiting for Tim's checking pass (`docs/CHECKLIST.md`): M8 steps 1b (the s
 DockPanel, Canvas, WrapPanel, Separator, zIndex, dashed borders), 3a (ToggleButton, CheckBox, Switch, Slider,
 TabControl), 3a+ and 3a++ (the inspector tree on ItemsView, sideways scrolling), and the project review's steps
 1–5 (the platform clock, errors to `App.onError`, exact pictures, small Core fixes, the inspector split, these
-docs).
+docs), and the semantics stage (roles, names, states and actions for every element type; the inspector's
+SEMANTICS section).
 
-Next: the semantics stage for element types (role, name, states; decision 5), then M8 step 3b (Image, with
+Next: M8 step 3b (Image, with
 decoding decided in its own round) and step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
 "show this in a layer" element). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
@@ -144,6 +146,11 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Layers:** the app's view and more (dialogs, toasts, the inspector) over it, each with its own tree and focus.
 - **Errors:** app code (handlers, views, components, render functions, items) is guarded; with `App.onError` an
   error is reported and only what failed is left out; without it the app ends.
+- **Semantics** (namespace `Scribble.Accessibility`, seen only after `open`): what each element is to assistive
+  technology: a role from ARIA's set, a name (a label, or the text inside a control), a value (a range), states
+  and actions, given as settings (`Semantics.label "Close"`) by element types' defaults or by views. The
+  semantic tree is built only when asked for (`host.SemanticTree()`); `node.Perform` takes the same paths as
+  input. No screen-reader bridge yet. Section "The semantics stage".
 
 ## Programming model
 
@@ -187,7 +194,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 
 | Item | When | Room left now |
 | --- | --- | --- |
-| Accessibility | A semantics stage next; screen readers later | Element types will describe role, name and states |
+| Screen readers | The bridges (UI Automation, macOS, browser ARIA) as opt-in projects | The semantic tree and its actions; change notifications come with the first bridge |
 | Hot reload | M10 | Pure views, keyed state, no static caches keyed on user types |
 | Bidi and complex scripts | Later | Shaping through HarfBuzz; layout works on runs |
 | IME | With TextBox polish | Text input events can carry composition |
@@ -2056,6 +2063,124 @@ Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q
   gone: the states line is a `WrapPanel` (spacing and line spacing 4, as before; its children were already
   centred, so a row's full height changes nothing). Every picture identical, all tests pass unchanged except
   one that found the row by its type name.
+
+## The semantics stage (planned and built 2026-11-17)
+
+Decision 5 of the project review, planned as a grilling. What every element is to assistive technology (role,
+name, value, states, actions), filled in for the existing element types before M8 step 4, so new controls are
+built with it. Words: "Accessibility" in GLOSSARY.md.
+
+Round 1 (Tim accepted every recommendation; Q4 and Q5 changed in the discussion, see below):
+
+1. **Scope:** the data model, every built-in element type filled in (Border, TextBlock, IconView, Separator,
+   FocusRing, Button, ToggleButton, CheckBox, Switch, Slider, TabControl, ScrollViewer, ItemsView), settings for
+   apps, the semantic tree on request, working actions, an inspector section, tests. Not now: a screen-reader
+   bridge (UI Automation, macOS, browser ARIA), keyboard changes, announcements.
+2. **Roles are ARIA's** (what browsers map onto every platform; Chromium, Flutter and AccessKit model theirs on
+   it): a closed F# union of the roles we use, growing with the controls, no custom role (readers only know theirs).
+3. **A semantic node holds** a role, a name, a value (none, text, or a range: current, minimum, maximum, step),
+   states (checked on/off/mixed, selected, expanded, disabled, focusable, focused), the actions it supports
+   (click, increment, decrement, focus, scroll into view), its bounds in window coordinates, and for list items
+   their position and set size ("3 of 10,000" with only some realized). Descriptions, live regions and heading
+   levels wait for a need.
+4. **Semantics are settings** (changed from a stage function, Tim: "why is semantics a function instead of just
+   accepting a list of Semantics settings?"): an element type gives them in `Element.defaults` like any other
+   value (`Semantics.role Role.CheckBox`); what varies per element points at the property to read when the tree
+   is asked for (`Semantics.checkedFrom ToggleProps.isChecked ToggleProps.isIndeterminate`, `rangeFrom`,
+   `selectedFrom`), with `Semantics.computed (fun ctx -> [ ... ])` as the escape hatch. So `Element.extend`
+   inherits them, a view overrides them as it overrides a background, the inspector shows where each came from,
+   and nothing is allocated when asked except the escape hatch. They affect nothing (no layout or drawing).
+   Disabled, focusable, focused and bounds come from the element itself; name from content is one shared rule.
+5. **Out of sight unless wanted** (Tim: "can we put this in its own package/project/namespace so that authors
+   who don't care about this stuff don't have to see it in autocomplete?"): the types and settings live in
+   **namespace `Scribble.Accessibility` inside Core**, used like attached settings:
+   `Button.create [ Button.icon Material.close; Semantics.label "Close" ]` after `open Scribble.Accessibility`;
+   nothing is added to `Button.` or `Element.`, and `tree.Semantics()` / `host.SemanticTree()` are extensions in
+   that namespace. Not a separate project: Core's own controls declare their semantics, and a table kept outside
+   Core would be static state keyed on element types (rule 6) and split each control in two. The screen-reader
+   bridges, later, are separate opt-in projects. App settings: `Semantics.label`, `Semantics.hidden`,
+   `Semantics.role`, and plain-value forms (`Semantics.checked model.IsOn`) for an app's own composites.
+6. **Name from content** (ARIA's rule): a button, checkbox, switch, tab or list item is named by the text inside
+   it, joined with spaces, and that text is not a node of its own; a TextBlock's name is its text.
+7. **The tree** comes from the element trees, leaving out elements with nothing to say (layout panels, plain
+   Borders without a role), hidden ones (`isVisible false`), `Semantics.hidden` subtrees, decorative IconViews
+   (no label), FocusRing. Layers are its top-level children in order; a modal layer hides those below. Virtualized
+   lists hold their realized items, with positions.
+8. **On demand only:** a fresh snapshot each time it's asked for; nothing changes in a frame. Change
+   notifications come with the first bridge.
+9. **Labels by text only** (`Semantics.label`); "labelled by another element" waits for forms and TextBox (M9).
+10. **Actions work now** and take the input paths: click runs the type's click and `onClick` (guarded),
+    increment and decrement step a Slider as its arrow keys do, focus focuses, scroll into view uses
+    `BringIntoView`. A CheckBox toggles by click (no separate toggle action).
+11. **Real states only:** states forced from the inspector don't change semantics.
+12. **Inspector:** a SEMANTICS section for the selection (role, name and where it came from, value, states,
+    actions; "not exposed" with the reason). A semantic tree view later.
+13. **Tests:** each element type's node; and a check over every Counter tab, Hello and the Icons gallery that
+    whatever can be focused or clicked has a role and a non-empty name (the samples are fixed until it passes).
+
+Round 2 (Tim accepted every recommendation):
+
+14. **One checked state** (on, off, mixed from `isIndeterminate`), the role deciding how it's spoken: ToggleButton
+    is `Role.Button` with it ("pressed"), CheckBox `Role.CheckBox`, Switch `Role.Switch` (on or off only).
+15. **Tabs:** the TabControl has no node; its header row is a `TabList`; each header a `Tab` (selected, "2 of 4",
+    click selects); the page shown a `TabPanel` named after its header; kept hidden pages left out. The link from
+    tab to page waits with "labelled by".
+16. **Slider:** `Role.Slider`, a range from `value`, `minimum`, `maximum`, `step`; increment and decrement; the
+    node gains an **orientation**. Value text ("50 percent") waits for a need.
+17. **Scrolling** (adds to 3): a ScrollViewer that can scroll is a `Role.ScrollArea` node with its offset, extent
+    and viewport, and two more actions, **scroll forward** and **scroll backward** (a page, through its
+    scroller), so a reader can make a virtualized list realize more. One that fits has no node. The role is one
+    step past ARIA, as Chromium and AccessKit take it.
+18. **ItemsView:** one node, `Role.List` with the scroll information; each realized item's root a `ListItem` with
+    its position and set size (from the source's count); a root with its own role keeps it and the position. The
+    grid layouts are lists too (ARIA's `grid` is a 2D interactive table).
+19. **The rest:** Button `Button` (click, name from content); TextBlock `Text`; IconView `Image` only with a
+    label; Separator `Separator`; Border and panels none unless given a role; FocusRing never. Disabled is the
+    element's real enabled state (a disabled parent included); focusable means it can take focus now.
+20. **The first roles:** Button, CheckBox, Switch, Slider, Tab, TabList, TabPanel, List, ListItem, ScrollArea,
+    Text, Image, Separator, Group (an app's container with a name). Heading waits for levels; Dialog, RadioButton,
+    ComboBox come with step 4.
+21. **The inspector layer is left out** (`Semantics.hidden` on its root).
+22. **Bounds:** layout bounds in DIPs, window coordinates, visual transforms ignored (as hit testing does); a row
+    half scrolled out reports its full bounds.
+23. **Reading it:** `host.SemanticTree()` returns an immutable `SemanticNode` snapshot; each node keeps an internal
+    handle to its element, and `node.Perform action` returns false when the element has left its tree or doesn't
+    support the action. UI thread only; the tests drive controls through it as a bridge would.
+
+Build order: the model and settings; the built-in types; actions; the inspector section; the sample check.
+
+**As built (2026-11-17).** As agreed, with these details and departures:
+
+- **Files:** `Framework/Semantics.fs` (the types, `SemanticText`, the `Semantics` settings type; after
+  Layoutable, so element types can use them) and `Hosting/SemanticTree.fs` (`SemanticNode`, `SemanticTree`,
+  the builder, actions, and the extensions `host.SemanticTree()`, `tree.Semantics()`, `element.SemanticNode()`).
+  `Role`, `CheckState` and `SemanticAction` are `RequireQualifiedAccess` (`Role.List` beside `List.map`) and write
+  out their `ToString`: a union's generated one uses `%A`, which NativeAOT can't run; `SemanticText.value` formats
+  the settings' values for the same reason.
+- **Settings** follow decision 8: `Semantics.role`, `label`, `hidden`, `isChecked` (bool or `CheckState`),
+  `isSelected`, `isExpanded`, `range`, `orientation`, `position (index, count)`, and for element types
+  `labelFrom`, `checkedFrom`, `selectedFrom`, `rangeFrom`, `orientationFrom` (each names the properties it
+  reads), `actions` with `onAction` (Slider's increment and decrement), and `computed (fun element -> [ ... ])`.
+  Click, focus, scroll into view and a scroll area's scrolling come by themselves, so `actions` lists only the
+  rest. A text value (Q3) isn't built: nothing has one before TextBox.
+- **Q18 changed in the building:** an ItemsView doesn't scroll itself; the ScrollViewer around it does. So the
+  ScrollViewer is the `ScrollArea` (with the scroll actions) and the ItemsView the `List` inside it. An item whose
+  root is only content (a TextBlock) becomes a `ListItem` named by its text.
+- **Modal layers** hide those below only while they show something, as input does (the Counter keeps an empty
+  modal "Dialog" layer, which first hid the whole app).
+- **`ClickSource.Assistive`**: a click asked for by assistive technology reaches `onClick` with it. The click
+  path moved into `Clicks` (Input.fs), shared by input and actions.
+- **A debug warning** for `Semantics.label` without a role (the element isn't in the tree).
+- **The samples' check** found the Counter's five Sliders without a name (Controls tab): they now have labels.
+  Hello and the Icons gallery had none to fix. Containers (scroll areas, lists, tab lists, tab panels, groups)
+  may go without a name.
+- **Inspector:** SEMANTICS sits after PROPERTIES (above it, it pushed "Show defaults" out of view in the tests'
+  small window); the element's own `Semantics.*` values are listed there with their sources, not under
+  PROPERTIES. The inspector's layers set `Semantics.hidden`. One reference picture changed: `inspector-pick`,
+  whose properties thumb is shorter (more lines).
+- **Tests:** 23 in `SemanticsTests` (every type's node, name from content, what's left out, states and actions,
+  tabs, lists and scrolling, layers, reasons, the samples' check) and one inspector test: 433 unit tests (5
+  timing tests skipped), 62 rendering tests. NativeAOT publish of the Counter: no new warnings.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

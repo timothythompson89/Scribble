@@ -8,7 +8,8 @@ DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl. App
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
-ScrollViewer and virtualized ItemsView, an inspector, styles, light and dark themes, app values, icons (with the
+ScrollViewer and virtualized ItemsView, an inspector, styles, light and dark themes, app values, semantics for
+assistive technology, icons (with the
 Material Symbols package) and icon cursors. Underneath: WPF-style layout (measure/arrange, lengths in px, % and star), our own text stack
 (TrueType parser, rasterizer, HarfBuzz shaping, emoji fallback), and a GPU draw list rendered in one draw call per
 frame, on Windows and in the browser. Scribble draws only when something asks for a frame.
@@ -1005,6 +1006,37 @@ Switch.create [ Switch.text "Notifications"; Switch.onCheckedChanged (fun on -> 
 
 Own values belong to the element: in an ItemsView, whose rows are recycled, give the value (controlled), or a row
 scrolled in may show the own value of the item it was made for before.
+
+### Semantics (for assistive technology)
+
+Every element can say what it is to a screen reader: a **role** (button, checkbox, slider, tab, list item, ...),
+a **name**, a value, states (checked, selected, disabled, focused) and the actions it supports. The built-in
+elements fill this in themselves; a Button or CheckBox is named by the text inside it. No screen reader is
+connected yet (that comes later); for now the semantic tree is something to check and test. It lives in its
+own namespace, so it stays out of autocomplete until you open it:
+
+```fsharp
+open Scribble.Accessibility
+
+Button.create [ Button.icon Material.close; Semantics.label "Close" ]   // an icon-only button needs a name
+Slider.create [ Slider.value model.Volume; Semantics.label "Volume" ]   // a slider has no text of its own
+IconView.create [ IconView.icon logo ]                                  // no label: decorative, left out
+Border.create [ Semantics.hidden true; ... ]                            // leave this and its contents out
+Border.create [ Semantics.role Role.Group; Semantics.label "Shipping address"; ... ]
+Border.create [ Semantics.role Role.Switch; Semantics.label "Wi-Fi"; Semantics.isChecked model.WiFi
+                Border.onClick (fun _ -> dispatch ToggleWiFi); Border.focusable true ]   // an app's own switch
+```
+
+- `host.SemanticTree()` builds the window's tree when asked (never per frame). Its `ToString()` prints one node per
+  line (`CheckBox "Remember me" checked`), and `node.Perform SemanticAction.Click` (or `Increment`, `Focus`,
+  `ScrollForward`, ...) acts the way the matching input would. Tests can drive an app this way.
+- Layout panels and plain Borders aren't in the tree; what's inside them takes their place. A ScrollViewer is in
+  it only when it can scroll, an ItemsView's realized items know their place among all of them ("3 of 10,000"),
+  and a modal layer hides the layers below it.
+- The inspector's SEMANTICS section shows the selected element's node, or why it has none ("decorative (no
+  name)", "part of its control's name").
+- Element types give theirs in `Element.defaults`: `Semantics.role Role.CheckBox`, and for what changes, the
+  property to read (`Semantics.checkedFrom (ToggleButtonProps.isChecked, ToggleButtonProps.isIndeterminate)`).
 
 ## Project layout
 

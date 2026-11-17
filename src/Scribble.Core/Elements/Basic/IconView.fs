@@ -1,5 +1,6 @@
 namespace Scribble.Core
 
+open Scribble.Accessibility
 open Scribble.Rendering
 
 module IconViewProps =
@@ -26,6 +27,7 @@ module IconView =
 
     let Type =
         Element.define "IconView" [
+            Element.defaults [ Semantics.role Role.Image ]
             Element.measure (fun ctx _ ->
                 let s = ctx.Get IconViewProps.size
                 Size.Create(s, s))
