@@ -12,7 +12,11 @@ _Avoid_: virtual node, template, widget
 
 **Element**:
 The live object a view is realized into, with its own values, layout and input state, living in an element tree.
-_Avoid_: control, node, widget
+_Avoid_: node, widget; "control" only for the kind below
+
+**Control**:
+An element the user interacts with to change a value or trigger an action (a Button, CheckBox, Slider, TabControl); every control is an element, not every element is a control.
+_Avoid_: widget, input (for the element)
 
 **Element type**:
 The behaviour shared by every element of a kind (its measure, arrange, render and other stages, and per-type defaults), compared by identity.
@@ -47,6 +51,14 @@ _Avoid_: attached property (the setting is what's attached, not the property)
 **Value**:
 What an element currently has for a property, together with where it came from (own, inline, style, theme, inherited, default).
 _Avoid_: property (for the value), effective value
+
+**Controlled**:
+Said of a control whose value the view gives (`CheckBox.isChecked model.Done`): it shows exactly that and only reports changes, which take effect when the view gives the new value.
+_Avoid_: bound, two-way
+
+**Own value**:
+The value a control keeps for itself when the view doesn't give one; it survives the view being rebuilt.
+_Avoid_: uncontrolled, internal state (state is a component's)
 
 ## Looks
 

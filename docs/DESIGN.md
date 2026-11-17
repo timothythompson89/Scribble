@@ -1109,6 +1109,72 @@ open ones are marked).
   "+"). Note: `SCRIBBLE_UPDATE_SNAPSHOTS=1` rewrites pictures that differ within tolerance too (it rewrote both
   dashboard pictures, which were restored: Hello looks the same with Core's WrapPanel).
 
+**Round 5 (2026-11-17): step 3, simple controls** (a grilling; Tim: yes to all ten). Facts it rests on: none of
+these exist yet, but `States.ofProp`, `Style.prop` and the inspector's own drawn checkbox were made for them; the
+draw list has no images (one instanced draw call over two glyph atlases); `dispatch` runs `update` at once on the
+UI thread and the view is rebuilt before the next layout, so a model-owned value shows a click in the next frame;
+the differ resets a setting a new view leaves out.
+1. **Step 3 splits:** **3a** ToggleButton, CheckBox, Switch, Slider, TabControl; **3b** Image (decoding and how
+   images reach the GPU get their own round). Tim tries each before the next.
+2. **Who owns a value** (CheckBox, Slider, TabControl now; ListBox, ComboBox later): when the view gives the value
+   setting, the control shows exactly that, and a click raises the change event and changes nothing until the view
+   says so; when it doesn't, the control keeps its own value in a local (so a rebuild doesn't reset it) and still
+   raises the event.
+3. **Names:** the value is named for what it is, the event is `on<Value>Changed` with the new value:
+   `CheckBox.isChecked` / `onCheckedChanged (fun (v: bool) -> ...)`, `Slider.value` / `onValueChanged`,
+   `TabControl.selected` / `onSelectedChanged` (not FuncUI's `onChecked`/`onUnchecked` pair).
+4. **Toggles in 3a:** `ToggleButton` (public base: a Button with `isChecked` and a `checked` visual state),
+   `CheckBox` and `Switch` on it (the Counter's hand-made Light/Dark switch moves onto Switch). RadioButton waits
+   for step 4, with ListBox's selection.
+5. **`CheckBox.isIndeterminate`**: a dash, display only ("select all" with some selected); a click reports `true`;
+   no three-state cycling.
+6. **Slider reports** `onValueChanged` on every change (each drag move, each key step) and `onValueCommitted` when
+   a drag ends or a key step lands.
+7. **Tab pages are realized on first visit, then kept** (hidden, state intact); `TabItem.keepAlive false` lets a
+   page go when left.
+8. **TabControl in a view:** settings, `TabControl.create [ TabControl.selected 0; TabControl.tabs [ TabItem.create
+   [ TabItem.header "Elmish"; TabItem.content (...) ] ] ]`; `TabItem.header` takes a string or a View. A
+   data-driven form (dynamic tabs) can come later.
+9. **The selected tab is an index** in 3a (keys can come with dynamic tabs).
+10. **Arrow keys select** (WAI-ARIA's automatic activation): ←/→ move the selection, Home/End the ends; Tab moves
+    into the page.
+
+**Round 6 (2026-11-17): step 3a details** (Tim: yes to all seven).
+11. **"Control" is a word we use**, for an element the user interacts with to change a value or trigger an action
+    (glossary); "element" stays the general word.
+12. **Glossary terms "Controlled" and "Own value"** for decision 2's two ways (not React's "uncontrolled", and not
+    "internal state", which would clash with a component's state).
+13. **Slider:** `minimum` 0, `maximum` 100, `step` 1 (`step 0.0` continuous; values snap to the step); ←/↓ →/↑ one
+    step (1% when continuous), PageDown/PageUp 10%, Home/End the ends; a click on the track jumps there and starts
+    a drag (a slider's track is its scale, unlike a scrollbar's, which pages).
+14. **`Slider.orientation Vertical`** in 3a (minimum at the bottom).
+15. **CheckBox and Switch take Button's `text` and `child`** as their label: the box (or track and knob) first, then
+    the label; a click anywhere on either toggles; the focus ring goes round both.
+16. **Tabs that don't fit scroll sideways** in one row (a horizontal ScrollViewer with hidden bars; arrow keys and
+    selection bring the selected tab into view); no wrapped tab rows, no squeezing.
+17. **Samples and inspector:** the Counter's tabs move onto TabControl and its Light/Dark switch onto Switch; a new
+    Controls tab shows CheckBox (with the indeterminate "select all"), Switch and Slider (both orientations,
+    controlled and own-value side by side); the inspector's "Show defaults" box becomes a CheckBox.
+
+**Round 7 (2026-11-17): step 3a looks and tests** (Tim: yes to all three).
+18. **Looks from existing theme values only** (`accent`, `onAccent`, `control`, `border`, `text`, `textDim`,
+    `shadow`, `focusRing`), reacting to hover, pressed and disabled as Button does. CheckBox: an 18-DIP box,
+    corners half of `cornerRadius`; off `control` with a `border` edge, on `accent` with an `onAccent` tick,
+    indeterminate an `onAccent` dash (tick and dash are path icons inside Core, not the Material package).
+    Switch: a 36 × 20 track and a 14-DIP knob; off `control` and `textDim`, on `accent` and `onAccent`. Slider: a
+    4-DIP `control` track filled with `accent` up to the value, an 18-DIP `onAccent` thumb with `shadow` and a thin
+    `border` edge. Tabs: text headers, unselected `textDim`, selected `text` with a 2-DIP `accent` underline, a faint
+    `border` line under the row.
+19. **Motion:** the Switch knob slides (120 ms) and the tab underline slides to the new tab (150 ms); nothing else
+    animates (the tick appears at once; the slider thumb follows the value exactly, easing would lag a drag).
+20. **Tests:** unit tests for controlled and own values (a rebuild doesn't reset an own value), events with the new
+    value, Slider snapping, clamping, keys and `onValueCommitted` (once per drag, once per key step), TabControl's
+    realize-on-first-visit, keep and `keepAlive false`, arrow/Home/End, the selected tab scrolled into view, and
+    disabled controls ignoring input; screenshot tests for each control's states (off, on, indeterminate, hover,
+    focused, disabled) in dark and light, the Controls tab, and the phone layout with scrolling tabs; and the
+    visible-work rule: unvisited pages cost nothing (measure and draw-list counts the same with 2 or 20 unvisited
+    tabs).
+
 ## M8 step 1b: non-uniform virtualization (2026-11-16)
 
 Tim (2026-11-16): "we need to add a series of tests for non-uniform virtualization". Decisions (agreed the same day,
