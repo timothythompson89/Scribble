@@ -54,3 +54,5 @@ module internal ThemeConvert =
             box (ValueSome { s with Blur = s.Blur * 0.4; OffsetY = 0.0 })
     /// A number theme value as a uniform corner radius.
     let uniformCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v))
+    /// Half of a number theme value as a uniform corner radius (a CheckBox's box).
+    let halfCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v / 2.0))

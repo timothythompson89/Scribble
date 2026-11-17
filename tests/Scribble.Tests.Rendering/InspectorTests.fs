@@ -63,7 +63,7 @@ type InspectorTests(fixture: TextFixture) =
         layout ()
         Assert.True(host.Layers[2].Tree.HasVisibleContent, "panel")
         Assert.True(host.Layers[1].Tree.HasVisibleContent, "highlight")
-        let at: PixelPoint = { X = 92.0; Y = 172.0 }
+        let at: PixelPoint = { X = 87.0; Y = 191.0 }
         send (PointerMoved(Mouse, 0, at, Modifiers.None))
         send (PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
         send (PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None))

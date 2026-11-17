@@ -26,8 +26,14 @@
     <Compile Include="Elements/TextBlock.fs" />
     <Compile Include="Elements/IconView.fs" />
     <Compile Include="Elements/Button.fs" />
+    <Compile Include="Elements/Control.fs" />
+    <Compile Include="Elements/ToggleButton.fs" />
+    <Compile Include="Elements/CheckBox.fs" />
+    <Compile Include="Elements/Switch.fs" />
+    <Compile Include="Elements/Slider.fs" />
     <Compile Include="Elements/ScrollViewer.fs" />
     <Compile Include="Elements/ItemsView.fs" />
+    <Compile Include="Elements/TabControl.fs" />
     <Compile Include="Elements/Grid.fs" />
     <Compile Include="Elements/DockPanel.fs" />
     <Compile Include="Elements/Canvas.fs" />

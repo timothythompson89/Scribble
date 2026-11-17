@@ -114,7 +114,8 @@ app drew. Vulkan on Windows still has that problem with G-SYNC.
      the app: a blue box, any margin in orange, and a label with the type and size. The selected element gets only
      blue corner marks a little outside it (no fill, no label, sides clear), so its own looks and edges stay visible.
    - Ctrl+Shift+C (or the arrow button) starts pick mode: a crosshair, the element under the pointer is highlighted, and a
-     click selects it (the tree opens down to it) without reaching the app. Escape cancels.
+     click selects it (the tree opens down to it and scrolls to its row) without reaching the app. The wheel still
+     scrolls the app while picking. Escape cancels.
    - The toolbar's buttons are icons; hovering one shows what it does in place of the title. The dock buttons
      move the panel; × or F12 hides it. The app keeps working everywhere the panel
      isn't; with the app animating, the tree keeps up (about 10 updates a second).
@@ -230,6 +231,10 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    on a Canvas (a press brings one to the front and gives it a dashed outline) and chips in a WrapPanel (a new row
    after Elm; dotted and dashed chips). Inspector: select the form's Grid to see its lines (dashed) and gaps
    (shaded); pick a field: `Grid.row`/`Grid.column` are listed as written.
+15. Controls (M8 step 3a, not yet checked): the tabs are a TabControl (an underline slides to the selected tab;
+   ←/→ on a focused tab switch; on a phone the tab row scrolls sideways) and Light/Dark is a Switch. The Controls
+   tab has CheckBoxes ("All toppings" shows a dash while some are picked), Switches, a ToggleButton and Sliders
+   (controlled and own-value side by side, a continuous one, three vertical ones).
 The browser version is `samples/Counter.Browser` (port 5281).
 
 The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,
@@ -525,6 +530,8 @@ App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (
 - **Keyboard:** each layer has its own focus and Tab order. Keys go to the layer last clicked, unless a modal layer
   is above it; the other layers' focus rings hide until they get the keyboard back.
 - **Order:** the app is 0, `Layer.order` defaults to 100; equal orders stack in the order added.
+- **Wheel:** `Layer.letWheelThrough true` sends the wheel on to the layers below even where this one has an
+  element: an overlay that takes clicks but shouldn't stop scrolling (the inspector's pick mode uses it).
 - **At run time:** `host.AddLayer [ ... ]` returns the `Layer` (`Update view`, `Focused`, `MoveFocus`), and
   `host.RemoveLayer layer` takes it away (its components stop). For now a layer's view is fixed; an element that
   shows view content in a layer from wherever it's declared (and Dialog, Toast) come with M8.
@@ -928,6 +935,39 @@ least; 2 or more lets the CPU and GPU overlap for heavy frames. It doesn't chang
 (`BrowserGpuDevice.CreateAsync [ BrowserGpuDevice.powerPreference ... ]` in the browser, where the browser decides
 when frames reach the screen.) Typical numbers (Release, after warm-up): 10,000 elements lay out in about 1 ms, and changing one of them takes a
 few microseconds; building, diffing and laying out a 1,000-element view with one change takes about 0.5 ms.
+
+### Controls
+
+`CheckBox`, `Switch` and `ToggleButton` are on or off; `Slider` picks a number; `TabControl` shows one page of
+several. Each one either shows what the view gives it (it's **controlled**) or keeps its **own value**:
+
+```fsharp
+// Controlled: shows exactly model.Remember; a click only reports the new value.
+CheckBox.create [ CheckBox.text "Remember me"; CheckBox.isChecked model.Remember
+                  CheckBox.onCheckedChanged (fun on -> dispatch (SetRemember on)) ]
+// Own value: no isChecked, so it keeps its own (rebuilding the view doesn't reset it); it still reports changes.
+Switch.create [ Switch.text "Notifications"; Switch.onCheckedChanged (fun on -> dispatch (Notify on)) ]
+```
+
+- **CheckBox**: `isIndeterminate true` shows a dash ("some selected"; display only, a click reports `true`).
+  CheckBox and Switch take `text` or `child` as their label; a click anywhere on either flips them. Space and
+  Enter work when focused.
+- **Slider**: `minimum` 0, `maximum` 100, `step` 1 (`0.0` for continuous); `onValueChanged` on every change,
+  `onValueCommitted` when the user lets go (a drag ends, a key step lands). ←/↓ and →/↑ step (1% when
+  continuous), PageDown/PageUp 10%, Home/End the ends; a press on the track jumps there and drags on.
+  `orientation Vertical` has its minimum at the bottom.
+- **TabControl**: `TabControl.tabs [ TabItem.create [ TabItem.header "General"; TabItem.content page ] ]`,
+  `selected` (an index; leave it out to let the TabControl keep it), `onSelectedChanged`. A page is built the
+  first time its tab is shown and then kept, hidden, with its state (`TabItem.keepAlive false` lets it go), so tabs
+  never visited cost nothing. ←/→ on a focused header select (Home/End the ends); Tab moves into the page. Headers
+  that don't fit scroll sideways, and the selected one is brought into view.
+- Styles select on their values with states: `CheckBox.style [ States.isChecked ] [ ... ]`, `States.isIndeterminate`,
+  `TabHeader.style [ States.isSelected ] [ ... ]` (F# reserves the word `checked`). The themes color them from the
+  palette; nothing new to set in a theme.
+- An element can be given keyboard focus from code: `element.Focus()`.
+
+Own values belong to the element: in an ItemsView, whose rows are recycled, give the value (controlled), or a row
+scrolled in may show the own value of the item it was made for before.
 
 ## Project layout
 

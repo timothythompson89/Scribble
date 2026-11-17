@@ -1,4 +1,5 @@
-/// The Counter sample's tabs: switching shows one page and every page keeps its state.
+/// The Counter sample's tabs (a TabControl since M8 step 3a): a page is built on its first visit,
+/// switching shows one page, and every visited page keeps its state.
 module Scribble.Tests.TabsTests
 
 open System
@@ -27,50 +28,58 @@ let private click (scope: Element) (label: string) =
         all scope |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && firstText e = label)
     (target.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
 
-/// The demo's StackPanel (inside the Demo component): the tab row, then the pages.
-let private parts (t: ElementTree) =
-    let panel = t.Root.Value.Children[0] // Demo, then its StackPanel
-    panel.Children[0], [ for i in 1..4 -> panel.Children[i] ]
+let private tabControl (t: ElementTree) = all t.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, TabControl.Type))
+
+/// The realized pages (TabItem elements), in tab order.
+let private pages (t: ElementTree) =
+    [ for c in (tabControl t).Children do if obj.ReferenceEquals(c.Type, TabItem.Type) then c ]
 
 let private texts (e: Element) =
     [ for x in all e do if obj.ReferenceEquals(x.Type, TextBlock.Type) then x.Get TextProps.text ]
 
 [<Fact>]
-let ``only the selected page shows, and switching tabs keeps every page's state`` () =
+let ``only the selected page shows, and switching tabs keeps every visited page's state`` () =
     let tree = ElementTree(textSystem ())
     tree.Update(Scribble.Samples.Counter.demo ())
     frame tree
-    let tabs, pages = parts tree
-    Assert.Equal<bool list>([ true; false; false; false ], [ for p in pages -> p.IsVisible ])
+    // Only the first page exists yet.
+    let elmish = (pages tree)[0]
+    Assert.Equal(1, (pages tree).Length)
 
     // Change the Elmish page, then switch to the List page and change it too.
-    click pages[0] "+"
-    click pages[0] "+"
+    click elmish "+"
+    click elmish "+"
     frame tree
-    click tabs "List"
+    click (tabControl tree) "List"
     frame tree
-    Assert.Equal<bool list>([ false; false; true; false ], [ for p in pages -> p.IsVisible ])
-    click pages[2] "Add"
+    let list = (pages tree)[1]
+    Assert.Equal<bool list>([ false; true ], [ for p in pages tree -> p.IsVisible ])
+    click list "Add"
     frame tree
-    Assert.Contains("Cherries", texts pages[2]) |> ignore
+    Assert.Contains("Cherries", texts list) |> ignore
 
     // Back to Elmish: the count survived, and the pages are the same elements (patched, not rebuilt).
-    click tabs "Elmish"
+    click (tabControl tree) "Elmish"
     frame tree
-    let tabs2, pages2 = parts tree
-    Assert.Equal<bool list>([ true; false; false; false ], [ for p in pages2 -> p.IsVisible ])
-    Assert.True(List.forall2 (fun (a: Element) b -> obj.ReferenceEquals(a, b)) pages pages2)
-    Assert.Contains("Count: 2", texts pages2[0])
-    click tabs2 "List"
+    Assert.Equal<bool list>([ true; false ], [ for p in pages tree -> p.IsVisible ])
+    Assert.Same(elmish, (pages tree)[0])
+    Assert.Same(list, (pages tree)[1])
+    Assert.Contains("Count: 2", texts elmish)
+    click (tabControl tree) "List"
     frame tree
-    Assert.Contains("Cherries", texts pages2[2])
+    Assert.Contains("Cherries", texts list)
 
 [<Fact>]
-let ``hidden pages aren't laid out, so they take no room`` () =
+let ``pages not visited aren't built, and hidden ones aren't laid out`` () =
     let tree = ElementTree(textSystem ())
     tree.Update(Scribble.Samples.Counter.demo ())
     frame tree
-    let _, pages = parts tree
-    Assert.True(pages[0].Bounds.Height > 0.0)
-    Assert.Equal(0.0, pages[1].Bounds.Height)
-    Assert.Equal(0.0, pages[2].Bounds.Height)
+    let headers = all (tabControl tree) |> Seq.filter (fun e -> obj.ReferenceEquals(e.Type, TabHeader.Type)) |> Seq.length
+    Assert.Equal(7, headers)
+    Assert.Equal(1, (pages tree).Length)
+    let first = (pages tree)[0]
+    Assert.True(first.Bounds.Height > 0.0)
+    click (tabControl tree) "Layout"
+    frame tree
+    Assert.False first.IsVisible
+    Assert.Equal(2, (pages tree).Length)

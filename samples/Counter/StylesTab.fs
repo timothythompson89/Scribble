@@ -8,12 +8,12 @@ open Scribble.Core
 open Scribble.Samples
 open Scribble.Samples.CounterDemo.Common
 
-/// A property of our own for the chips below (M8's toggle controls will have one built in). Styles
+/// A property of our own for the chips below (ToggleButton has one built in, `isChecked`). Styles
 /// select on its value with `Style.prop`, or through a state made from it.
 let private selected = Prop.define "Selected" false Affects.Render
 let private isSelected (v: bool) : Setting<Border> = Setting.create selected v
 /// A state read from the property: usable like `States.hover`, and listed by the inspector.
-let private selectedState = States.ofProp "selected" selected id
+let private selectedState = States.ofProp "chosen" selected id
 
 /// The page's styles: classes, a state block, and text inside cards. Colors are theme values, so
 /// one list serves both themes.

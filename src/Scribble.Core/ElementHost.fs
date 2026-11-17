@@ -127,6 +127,16 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             i <- i - 1
         found |> ValueOption.defaultValue app
 
+    /// The layer that gets the wheel at `p`: as `layerAt`, passing over layers that let it through.
+    let wheelLayerAt (p: Point) =
+        let mutable i = layers.Count - 1
+        let mutable found = ValueNone
+        while found.IsNone && i >= 0 do
+            let l = layers[i]
+            if isBlocking l || (not l.LetsWheelThrough && l.Tree.HitTest(p.X, p.Y).IsSome) then found <- ValueSome l
+            i <- i - 1
+        found |> ValueOption.defaultValue app
+
     let addLayer (layer: Layer) =
         // A layer holding a press sees nothing under it where another layer has the pointer.
         layer.Input.IsCovered <- fun p -> not (same (layerAt p) layer)
@@ -438,7 +448,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             false
         | PointerWheel(p, dx, dy, mods) ->
             let p = dips p
-            (layerAt p).Input.Wheel(p, dx, dy, mods)
+            (wheelLayerAt p).Input.Wheel(p, dx, dy, mods)
             false
         | KeyDown(key, mods, isRepeat) ->
             let mutable taken = false

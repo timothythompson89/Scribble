@@ -221,17 +221,38 @@ export function createCanvas(id) {
   }
   watchScale();
 
-  canvas.addEventListener("pointermove", (e) => push(Kind.PointerMoved, ...pointerArgs(e), 0, modifiers(e)));
+  // Every press ends with a release or a cancel. The browser can lose a pointerup (input that
+  // arrives while the page is paused, as under a debugger, is dropped; capture can be taken away),
+  // so the pointers seen pressed are tracked here, and one whose release went missing is canceled:
+  // no click, since where the button came up isn't known.
+  const down = new Set();
+  const cancel = (e) => {
+    if (down.delete(e.pointerId)) push(Kind.PointerCanceled, pointerKind(e), e.pointerId);
+  };
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.buttons === 0) cancel(e);
+    push(Kind.PointerMoved, ...pointerArgs(e), 0, modifiers(e));
+  });
   canvas.addEventListener("pointerdown", (e) => {
+    cancel(e); // already pressed: its release was lost
+    down.add(e.pointerId);
     // Capture: moves and the release keep arriving while the pointer is outside the canvas.
     canvas.setPointerCapture(e.pointerId);
     canvas.focus();
     push(Kind.PointerPressed, ...pointerArgs(e), e.button, modifiers(e));
   });
-  canvas.addEventListener("pointerup", (e) => push(Kind.PointerReleased, ...pointerArgs(e), e.button, modifiers(e)));
+  canvas.addEventListener("pointerup", (e) => {
+    if (!down.delete(e.pointerId)) return; // its press was canceled already
+    push(Kind.PointerReleased, ...pointerArgs(e), e.button, modifiers(e));
+  });
+  // Normally after the pointerup (nothing left to do then); without one, the press is canceled.
+  canvas.addEventListener("lostpointercapture", cancel);
   // Fires after the release when a captured drag ended outside, and after every touch.
   canvas.addEventListener("pointerleave", (e) => push(Kind.PointerExited, pointerKind(e), e.pointerId));
-  canvas.addEventListener("pointercancel", (e) => push(Kind.PointerCanceled, pointerKind(e), e.pointerId));
+  canvas.addEventListener("pointercancel", (e) => {
+    down.delete(e.pointerId);
+    push(Kind.PointerCanceled, pointerKind(e), e.pointerId);
+  });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();

@@ -23,13 +23,17 @@ module FocusRing =
     /// The gap between the element's edge and the ring.
     let offset = 2.0
 
-    /// Draws the ring around the element, following its corner radius (call it from a render
-    /// function when `ctx.IsFocusVisible`).
-    let draw (ctx: RenderContext) (list: DrawList) (radius: CornerRadius) =
+    /// Draws the ring around part of an element (a Slider's thumb), in `color`.
+    let drawAround (list: DrawList) (rect: Rect) (radius: CornerRadius) (color: Color) =
         let grow = offset + thickness
-        let size = ctx.Size
         let outer (r: float) = if r > 0.0 then r + grow else 0.0
         let radius =
             { TopLeft = outer radius.TopLeft; TopRight = outer radius.TopRight
               BottomRight = outer radius.BottomRight; BottomLeft = outer radius.BottomLeft }
-        list.StrokeRect(Rect.Create(-grow, -grow, size.Width + 2.0 * grow, size.Height + 2.0 * grow), radius, thickness, ctx.Get colorProp)
+        list.StrokeRect(Rect.Create(rect.X - grow, rect.Y - grow, rect.Width + 2.0 * grow, rect.Height + 2.0 * grow), radius, thickness, color)
+
+    /// Draws the ring around the element, following its corner radius (call it from a render
+    /// function when `ctx.IsFocusVisible`).
+    let draw (ctx: RenderContext) (list: DrawList) (radius: CornerRadius) =
+        let size = ctx.Size
+        drawAround list (Rect.Create(0.0, 0.0, size.Width, size.Height)) radius (ctx.Get colorProp)

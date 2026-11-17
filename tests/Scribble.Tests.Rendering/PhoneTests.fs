@@ -53,6 +53,7 @@ type PhoneTests(fixture: TextFixture) =
     [<InlineData("Layers")>]
     [<InlineData("Styles")>]
     [<InlineData("Layout")>]
+    [<InlineData("Controls")>]
     member this.``Counter on a phone``(tab: string) =
         let tree = ElementTree(fixture.Text, Scale = scale)
         tree.Theme <- ValueSome Common.darkTheme
@@ -65,11 +66,21 @@ type PhoneTests(fixture: TextFixture) =
         tree.UpdateLayout size
         tree.RunAfterFrame()
         tree.UpdateLayout size
-        // Nothing sticks out past the right edge (the window has no horizontal scrolling).
+        // The selected header scrolls into view (animated, about 200 ms): past it.
+        for ms in [ 100.0; 1000.0 ] do
+            tree.Time <- System.TimeSpan.FromMilliseconds ms
+            tree.UpdateLayout size
+            tree.RunAfterFrame()
+        // Nothing sticks out past the right edge (the window has no horizontal scrolling); what a
+        // scroller holds is clipped to it (the tab headers scroll sideways).
         let rec widest (e: Element) (x: float) : float =
             if not e.IsVisible then 0.0
             else
                 let right = x + e.Bounds.X + e.Bounds.Width
-                e.Children |> Seq.fold (fun m c -> max m (widest c (x + e.Bounds.X))) right
+                if obj.ReferenceEquals(e.Type, ScrollViewer.Type) then right
+                else e.Children |> Seq.fold (fun m c -> max m (widest c (x + e.Bounds.X))) right
         Assert.True(widest tree.Root.Value 0.0 <= width + 0.5, $"something reaches x = {widest tree.Root.Value 0.0}")
         this.Shoot(tree, Color.Hex 0x181825, "counter-phone-" + tab.ToLowerInvariant() + "@3x")
+        // The selected tab's header was scrolled into view (the headers don't all fit).
+        let header = all tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, TabHeader.Type) && firstText e = tab)
+        Assert.True(abs (header.VisibleBounds.Width - header.Bounds.Width) < 0.5, $"the {tab} header shows {header.VisibleBounds.Width} of {header.Bounds.Width}")

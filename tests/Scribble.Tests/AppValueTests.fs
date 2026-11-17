@@ -162,14 +162,19 @@ let ``the Counter demo's switch sets Theme.current, and the window and its layer
     w.DeliverFrame() |> ignore
     Assert.Same(dark, host.WindowTheme)
     let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }
-    let switch () =
-        all host.Tree.Root.Value
-        |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && (texts e = [ "Light" ] || texts e = [ "Dark" ]))
-    (switch().Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
+    let switch () = all host.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, Switch.Type))
+    Assert.False(switch().Get ToggleButtonProps.isChecked)
+    // Click it in the middle.
+    let s = switch ()
+    let p = s.PositionInTree
+    let at: Scribble.Platform.PixelPoint = { X = p.X + s.Bounds.Width / 2.0; Y = p.Y + s.Bounds.Height / 2.0 }
+    w.Send(Scribble.Platform.PointerPressed(Scribble.Platform.Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    w.Send(Scribble.Platform.PointerReleased(Scribble.Platform.Mouse, 0, at, MouseButton.Left, Modifiers.None))
     w.DeliverFrame() |> ignore
     Assert.Same(light, host.WindowTheme)
     Assert.Equal(light.Get Palette.background, device.LastClear)
-    Assert.Equal<string list>([ "Dark" ], texts (switch ()))
+    // Controlled by the app value: on now.
+    Assert.True(switch().Get ToggleButtonProps.isChecked)
     for l in host.Layers do
         Assert.Same(light, l.Tree.Theme.Value)
 

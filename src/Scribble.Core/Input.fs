@@ -266,12 +266,25 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             ValueNone
         | ValueNone -> ValueNone
 
+    /// The element's own `onClick`, then its type's click behavior (a ToggleButton toggling).
     let click (e: Element) (source: ClickSource) (modifiers: Modifiers) =
+        let args = ClickEventArgs(source, modifiers)
         match e.Get LayoutProps.onClick with
-        | ValueSome handler -> handler (ClickEventArgs(source, modifiers))
+        | ValueSome handler -> handler args
         | ValueNone -> ()
+        match e.Type.Click with
+        | ValueSome f when isAttached e && e.IsEnabled -> f (InputContext e) args
+        | _ -> ()
 
-    let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome
+    let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome || e.Type.Click.IsSome
+
+    // `element.Focus()` from code (a TabControl's arrow keys) comes here.
+    do
+        tree.FocusHandler <-
+            fun e ->
+                if canFocus e then
+                    setFocus (ValueSome e)
+                    e.BringIntoView()
 
     /// True where another layer has the pointer (set by the host when the tree is a layer).
     member _.IsCovered
@@ -316,7 +329,11 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         s.Buttons <- s.Buttons + 1
         if button = MouseButton.Left && previewHandler.IsNone && typeHandler.IsNone then
             s.PressRoute <- route
-            s.Clickable <- route |> List.tryFind (fun e -> (e.Get LayoutProps.onClick).IsSome) |> Option.toValueOption
+            s.Clickable <- route |> List.tryFind hasClick |> Option.toValueOption
+        elif button = MouseButton.Left && previewHandler.IsNone then
+            // A type took the press (a Slider's thumb, a scrollbar): it alone looks pressed while
+            // the pointer is over it; nothing clicks.
+            s.PressRoute <- typeHandler |> ValueOption.toList
         refresh s
 
     member _.PointerReleased(kind: PointerKind, id: int, position: Point, button: MouseButton, modifiers: Modifiers) =

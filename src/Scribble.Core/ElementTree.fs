@@ -81,6 +81,9 @@ type ElementTree(text: TextSystem) =
         with get () = dispatcher
         and set (v: Dispatcher voption) = dispatcher <- v
 
+    /// What `element.Focus()` does: the input router that serves this tree sets it.
+    member val internal FocusHandler: Element -> unit = ignore with get, set
+
     /// Re-runs components whose state changed, parents before children (a parent that re-runs a
     /// child with new props takes care of it). Part of UpdateLayout.
     member _.RunScheduledComponents() =
@@ -259,6 +262,7 @@ type ElementTree(text: TextSystem) =
         member _.AfterFrame action = afterFrame.Add action
         member _.Dispatcher = dispatcher
         member _.AppValues = appValues
+        member this.Focus(element) = this.FocusHandler(element :?> Element)
         member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)
         member this.RequestRestyle(element, deep, stateChange) =
             if stylesInUse then

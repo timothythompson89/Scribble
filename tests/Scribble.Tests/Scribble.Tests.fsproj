@@ -33,6 +33,7 @@
     <Compile Include="VirtualizationTests.fs" />
     <Compile Include="InspectorTests.fs" />
     <Compile Include="IdleTests.fs" />
+    <Compile Include="ControlsTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />

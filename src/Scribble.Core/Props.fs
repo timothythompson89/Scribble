@@ -397,6 +397,23 @@ module InheritedProps =
         for p in [ font :> Prop; fontSize; foreground ] do
             p.Inherits <- true
 
+/// ToggleButton's value (CheckBox and Switch are ToggleButtons). Declared here, before the
+/// styles, so `States.isChecked` can read it.
+module ToggleButtonProps =
+    /// On or off. Given by the view: controlled; otherwise the control's own value, kept across
+    /// rebuilds (a click sets it, and the view never had it, so a patch leaves it).
+    let isChecked = Prop<bool>("IsChecked", false, Affects.Render, PropKind.Value)
+    /// A CheckBox's "partly checked" dash (display only).
+    let isIndeterminate = Prop<bool>("IsIndeterminate", false, Affects.Render, PropKind.Value)
+    /// Called with the new value when the user changes it.
+    let onCheckedChanged = Prop<(bool -> unit) voption>("OnCheckedChanged", ValueNone, Affects.Nothing, PropKind.Value)
+    /// A CheckBox's tick and dash, a Switch's knob.
+    let markColor = Prop<Scribble.Rendering.Color>("MarkColor", Scribble.Rendering.Color.White, Affects.Render, PropKind.Value)
+
+/// A TabControl's header: whether it's the selected tab. Declared here so `States.isSelected` can read it.
+module TabHeaderProps =
+    let isSelected = Prop<bool>("IsSelected", false, Affects.Render, PropKind.Value)
+
 /// The engine's typed copy of an element's layout properties (read on every measure and arrange).
 [<Struct>]
 type internal LayoutValues =

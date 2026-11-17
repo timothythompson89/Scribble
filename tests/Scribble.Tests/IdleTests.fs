@@ -36,7 +36,7 @@ let private stillDrawingAfter (w: FakeWindow) (ms: float) =
         System.Threading.Thread.Sleep 4
     drawing && w.DeliverFrame()
 
-let private tabs = [ "Elmish"; "Load"; "List"; "Layers"; "Styles"; "Layout" ]
+let private tabs = [ "Elmish"; "Load"; "List"; "Layers"; "Styles"; "Layout"; "Controls" ]
 
 [<Fact>]
 let ``the Counter demo goes idle wherever the pointer stops, on every tab`` () =
@@ -52,7 +52,8 @@ let ``the Counter demo goes idle wherever the pointer stops, on every tab`` () =
             all host.Tree.Root.Value
             |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && firstText e = tab)
         (button.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
-        Assert.True(settle w 50 < 50, $"the {tab} tab keeps drawing with no pointer")
+        // A page is built on its first visit: the Load page starts its one-second load then.
+        Assert.False(settle w 50 >= 50 && stillDrawingAfter w 2500.0, $"the {tab} tab keeps drawing with no pointer")
         let mutable y = 2.0
         while y < float size.Height do
             let mutable x = 2.0

@@ -561,3 +561,246 @@ let ``the selection is only outlined, so its own looks stay visible; something p
     click w 50.0 20.0
     settle w
     Assert.True((highlight ()).Get HighlightProps.outlineOnly)
+
+[<Fact>]
+let ``picking follows the app when it moves under a pointer that stands still`` () =
+    let log = List<string>()
+    let w, host, _ = start log
+    let target () =
+        let layer = host.Layers |> Seq.find (fun l -> l.Name = "Inspector highlight")
+        let rec find (e: Element) =
+            if obj.ReferenceEquals(e.Type, Highlight.Type) then Some e else e.Children |> Seq.tryPick find
+        let h = layer.Tree.Root.Value |> find |> Option.get
+        h.Get HighlightProps.target |> ValueOption.map _.Name
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    move w 50.0 20.0
+    settle w
+    Assert.Equal(ValueSome "appButton", target ())
+    // The button moves away (as a scrolled or recycled row does); the pointer doesn't.
+    let button = host.App.Tree.Root.Value |> find "appButton" |> Option.get
+    button.Set(LayoutProps.margin, Thickness.Create(0.0, 200.0, 0.0, 0.0))
+    settle w
+    Assert.Equal(ValueSome "background", target ())
+    // Over the panel, nothing is checked again: the last element stays.
+    move w 700.0 300.0
+    settle w
+    button.Set(LayoutProps.margin, Thickness.Zero)
+    settle w
+    Assert.Equal(ValueSome "background", target ())
+
+/// Browser order: the inspector's delayed tree refresh can run between frames, so pointer moves can
+/// arrive while the new rows aren't laid out yet. Once the frame is drawn, the row the inspector shows
+/// as hovered must be the one under the pointer.
+[<Theory>]
+[<InlineData("Elmish")>]
+[<InlineData("Layers")>]
+[<InlineData("Layout")>]
+let ``after a pick expands the tree, the hovered row is the one under the pointer`` (tab: string) =
+    let platform, device = new FakePlatform(), new FakeDevice()
+    let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), Scribble.Samples.Counter.app @ [ Inspector.enable [] ])
+    let w = platform.Window.Value
+    let host = app :?> ElementHost
+    let size: PixelSize = { Width = 1000; Height = 700 }
+    w.Size <- size
+    w.Send(Resized size)
+    settle w
+    let at x y : PixelPoint = { X = x; Y = y }
+    let moveTo x y = w.Send(PointerMoved(Mouse, 0, at x y, Modifiers.None))
+    let wake () =
+        Threading.Thread.Sleep 150
+        platform.RunWake()
+    let rec text (e: Element) : string =
+        if e.Type.Name = "TextBlock" then e.Get TextProps.text
+        else e.Children |> Seq.map text |> Seq.tryFind (fun s -> s <> "") |> Option.defaultValue ""
+    let rec findAll (f: Element -> bool) (e: Element) : Element seq =
+        seq { if e.IsVisible then
+                if f e then yield e
+                for c in e.Children do yield! findAll f c }
+    let header = host.App.Tree.Root.Value |> findAll (fun e -> e.Type.Name = "TabHeader" && text e = tab) |> Seq.head
+    (header.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
+    settle w
+    let panel = host.Layers |> Seq.find (fun l -> l.Name = "Inspector")
+    let highlightTarget () =
+        let layer = host.Layers |> Seq.find (fun l -> l.Name = "Inspector highlight")
+        layer.Tree.Root.Value |> findAll (fun e -> obj.ReferenceEquals(e.Type, Highlight.Type)) |> Seq.head
+        |> fun h -> h.Get HighlightProps.target
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    wake ()
+    settle w
+    let target =
+        host.App.Tree.Root.Value
+        |> findAll (fun e -> e.Type.Name = "TextBlock" && e.VisibleBounds.Width > 0.0 && e.VisibleBounds.Y > 150.0 && e.VisibleBounds.X < 400.0)
+        |> Seq.head
+    let c = target.PositionInTree
+    moveTo (c.X + 5.0) (c.Y + 5.0)
+    settle w
+    w.Send(PointerPressed(Mouse, 0, at (c.X + 5.0) (c.Y + 5.0), MouseButton.Left, Modifiers.None))
+    w.Send(PointerReleased(Mouse, 0, at (c.X + 5.0) (c.Y + 5.0), MouseButton.Left, Modifiers.None))
+    // The pointer goes straight to the panel while the tree catches up (moves between frames).
+    moveTo 700.0 200.0
+    wake ()
+    moveTo 700.0 205.0
+    settle w
+    wake ()
+    moveTo 700.0 210.0
+    settle w
+    let problems = List<string>()
+    let mutable y = 60.0
+    while y < 690.0 do
+        moveTo 700.0 y
+        settle w
+        // The row under the pointer (22 DIPs high), and what the inspector shows as hovered.
+        let rec rowOf (e: Element) =
+            if e.Bounds.Height = 22.0 && e.Type.Name = "Border" then ValueSome e
+            else match e.Parent with ValueSome p -> rowOf p | ValueNone -> ValueNone
+        match panel.Tree.HitTest(700.0, y) |> ValueOption.bind rowOf with
+        | ValueSome row ->
+            let shown = row.Children |> Seq.map text |> String.concat ""
+            match highlightTarget () with
+            | ValueSome t when not ((text row).StartsWith(Format.label t)) ->
+                problems.Add($"y {y}: pointer on '{text row}', hovered '{Format.label t}'")
+            | ValueNone -> problems.Add($"y {y}: pointer on '{text row}', nothing hovered")
+            | _ -> ()
+            ignore shown
+        | ValueNone -> ()
+        y <- y + 11.0
+    Assert.True(problems.Count = 0, String.Join("\n", problems |> Seq.truncate 15))
+
+/// Browsers send a pointer move between press and release even when the mouse stands still. The press
+/// that picks ends pick mode; that move must not pick again (it left an element "hovered", shown on a
+/// tree row far from the pointer).
+[<Fact>]
+let ``a move between the picking press and its release doesn't pick again`` () =
+    let log = List<string>()
+    let w, host, panel = start log
+    let target () =
+        let layer = host.Layers |> Seq.find (fun l -> l.Name = "Inspector highlight")
+        let rec find (e: Element) =
+            if obj.ReferenceEquals(e.Type, Highlight.Type) then Some e else e.Children |> Seq.tryPick find
+        let h = layer.Tree.Root.Value |> find |> Option.get
+        h.Get HighlightProps.target |> ValueOption.map _.Name, h.Get HighlightProps.outlineOnly
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    move w 50.0 20.0
+    settle w
+    press w 50.0 20.0
+    move w 200.0 300.0 // the browser's move (here, far enough to land on the background)
+    release w 200.0 300.0
+    settle w
+    // The picked button is selected and only outlined; nothing is hovered.
+    Assert.Equal((ValueSome "appButton", true), target ())
+    // And the pointer goes back to normal: the app hovers again, so does the panel.
+    let appButton = host.App.Tree.Root.Value |> find "appButton" |> Option.get
+    move w 50.0 20.0
+    settle w
+    Assert.True(appButton.IsPointerOver, "the app's button isn't hovered after the pick")
+    move w 700.0 300.0
+    settle w
+    Assert.False(appButton.IsPointerOver)
+    let over = panel.Tree.HitTest(700.0, 300.0)
+    Assert.True(over.IsSome && over.Value.IsPointerOver, "the panel isn't hovered after the pick")
+
+/// Under Rider's browser debugger the release of the picking click was lost (input that arrives
+/// while the page is paused is dropped), which left the highlight holding the pointer: no hover
+/// anywhere, and every later click picked again. The page now cancels a press whose release went
+/// missing; after that, everything is back to normal.
+[<Fact>]
+let ``a picking press canceled instead of released leaves nothing stuck`` () =
+    let log = List<string>()
+    let w, host, panel = start log
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    move w 50.0 20.0
+    settle w
+    press w 50.0 20.0
+    settle w
+    // The release is lost; the page sees a move with no buttons down and cancels the press.
+    w.Send(PointerCanceled(Mouse, 0))
+    move w 52.0 22.0
+    settle w
+    let appButton = host.App.Tree.Root.Value |> find "appButton" |> Option.get
+    Assert.True(appButton.IsPointerOver, "the app's button isn't hovered")
+    move w 700.0 300.0
+    settle w
+    let over = panel.Tree.HitTest(700.0, 300.0)
+    Assert.True(over.IsSome && over.Value.IsPointerOver, "the panel isn't hovered")
+    // The next click is the app's, not another pick.
+    click w 50.0 20.0
+    settle w
+    Assert.Equal<string list>([ "appButton" ], List.ofSeq log)
+
+/// The Counter with the inspector on the fake platform, on `tab`, at 1000 × `height`.
+let private counterOn (tab: string) (height: int) =
+    let platform, device = new FakePlatform(), new FakeDevice()
+    let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), Scribble.Samples.Counter.app @ [ Inspector.enable [] ])
+    let w = platform.Window.Value
+    let host = app :?> ElementHost
+    let size: PixelSize = { Width = 1000; Height = height }
+    w.Size <- size
+    w.Send(Resized size)
+    settle w
+    let rec text (e: Element) : string =
+        if e.Type.Name = "TextBlock" then e.Get TextProps.text
+        else e.Children |> Seq.map text |> Seq.tryFind (fun s -> s <> "") |> Option.defaultValue ""
+    let rec findAll (f: Element -> bool) (e: Element) : Element seq =
+        seq { if e.IsVisible then
+                if f e then yield e
+                for c in e.Children do yield! findAll f c }
+    let header = host.App.Tree.Root.Value |> findAll (fun e -> e.Type.Name = "TabHeader" && text e = tab) |> Seq.head
+    (header.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
+    settle w
+    // The inspector refreshes its tree a little later, through the dispatcher.
+    let wake () =
+        Threading.Thread.Sleep 150
+        platform.RunWake()
+        settle w
+    w, host, platform, wake
+
+[<Fact>]
+let ``the wheel scrolls the app while picking`` () =
+    let w, host, _, _ = counterOn "Layers" 700
+    let messages = host.App.Tree.Root.Value |> find "messages" |> Option.get
+    let before = messages.PositionInTree.Y
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    let p = messages.Parent.Value.PositionInTree
+    let at: PixelPoint = { X = p.X + 40.0; Y = p.Y + 40.0 }
+    w.Send(PointerMoved(Mouse, 0, at, Modifiers.None))
+    settle w
+    w.Send(PointerWheel(at, 0.0, -3.0, Modifiers.None))
+    for _ in 1..30 do
+        settle w
+        host.App.Tree.Time <- host.App.Tree.Time + TimeSpan.FromMilliseconds 50.0
+        w.Send(PointerMoved(Mouse, 0, at, Modifiers.None))
+    settle w
+    Assert.True(messages.PositionInTree.Y < before - 10.0, $"the list didn't scroll ({before} -> {messages.PositionInTree.Y})")
+    // Still picking: a click picks, it doesn't reach the app.
+    let panel = host.Layers |> Seq.find (fun l -> l.Name = "Inspector")
+    Assert.Contains("Picking… (Esc stops)", texts panel)
+
+[<Fact>]
+let ``a pick scrolls the tree to the selected row`` () =
+    let w, host, _, wake = counterOn "Layers" 520
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    wake ()
+    // A message in the list: deep in the tree, far below the panel's bottom once expanded.
+    let messages = host.App.Tree.Root.Value |> find "messages" |> Option.get
+    let p = messages.Children[0].PositionInTree
+    let at: PixelPoint = { X = p.X + 20.0; Y = p.Y + 8.0 }
+    w.Send(PointerMoved(Mouse, 0, at, Modifiers.None))
+    settle w
+    w.Send(PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    w.Send(PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    settle w
+    wake ()
+    wake ()
+    for _ in 1..20 do // past the scroll animation
+        host.Layers |> Seq.iter (fun l -> l.Tree.Time <- l.Tree.Time + TimeSpan.FromMilliseconds 50.0)
+        w.Send(PointerMoved(Mouse, 0, at, Modifiers.None))
+        settle w
+    let panel = host.Layers |> Seq.find (fun l -> l.Name = "Inspector")
+    let row = panel.Tree.Root.Value |> find "inspectorSelectedRow" |> Option.get
+    Assert.True(abs (row.VisibleBounds.Height - 22.0) < 0.5, $"the selected row shows {row.VisibleBounds.Height} of 22")

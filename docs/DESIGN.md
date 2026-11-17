@@ -1175,6 +1175,63 @@ the differ resets a setting a new view leaves out.
     visible-work rule: unvisited pages cost nothing (measure and draw-list counts the same with 2 or 20 unvisited
     tabs).
 
+**Step 3a as built (2026-11-17; not yet checked by Tim).** As decided, with these details and additions:
+- **Own value = a value set by code.** The differ resets only settings a previous view had, so a control that isn't
+  controlled keeps its value with `element.Set` (`ControlValue.change` in `Elements/Control.fs`: "controlled" means
+  the current view has the setting). The inspector lists it as set by code. Consequence: an ItemsView row recycled
+  for another item keeps the own value of the item it was made for; in an ItemsView, give the value (README says so).
+- **New element part `Element.click`**: the type's own click behavior, after the element's `onClick`; elements whose
+  type has one are clickable without an `onClick` (ToggleButton toggles this way, so Enter and Space work as for
+  Button). Input: a press taken by a type's `pointerDown` now makes that element alone look pressed (`States.pressed`
+  on a Slider's thumb; a ScrollViewer while its thumb is dragged); nothing clicks.
+- **States** (in Core, from properties declared in Props.fs): `States.isChecked`, `States.isIndeterminate`,
+  `States.isSelected`. Not `States.checked`: F# reserves `checked` (warning FS0046, an error here). The Styles tab's
+  own chip state was renamed "chosen" so the inspector doesn't list two "selected".
+- **`element.Focus()`** (public): moves keyboard focus from code (`IElementRoot.Focus`, served by the layer's input
+  router) and brings the element into view. TabControl's arrow keys use it.
+- **Looks:** ToggleButton has Button's look and the accent while on. CheckBox and Switch use `background` and
+  `borderBrush` for the box or track and a new `markColor` for the tick, dash or knob (the tick is a path icon in
+  Core). Slider: `track`, `fill`, `thumb`, `thumbBorder`, `thumbShadow`, `overlay`; a white thumb can't lighten on
+  hover, so hover gives its edge the accent instead; the focus ring goes round the thumb (`FocusRing.drawAround`).
+  TabHeader (a Button made by the TabControl) is dim text, `text` when hovered or selected, its focus ring inside its
+  edge (the header row clips); TabControl draws the row's line (`line`) and the underline (`underline`), sliding
+  150 ms. Only the selected header is a Tab stop.
+- **TabControl internals:** `tabs` holds the TabItem views as plain values; the TabControl realizes the header row
+  (a ScrollViewer, horizontal `Hidden`, with a StackPanel of TabHeaders) and the visited pages itself (managed
+  children, like ItemsView), styling them as it adopts them. The selected header is brought into view after the
+  frame: asked during arrange, the ScrollViewer's request was swallowed when its ancestors finished arranging (found
+  by the phone picture; the unit test had passed only because hover kept causing layouts).
+- **Counter:** a DockPanel with the Light switch (a Switch, controlled by `Theme.current`) above a TabControl that
+  keeps its own selection (`onSelectedChanged` sets the window title); seven tabs with the new Controls tab. The
+  Load page now starts its one-second load when first shown, so `IdleTests` waits for it in real time.
+- **Tests:** 17 in `ControlsTests.fs`; `TabsTests` rewritten for the TabControl; the theme-switch and title tests
+  updated. Rendering: `controls@1x`, `controls-light@1x`, `counter-phone-controls@3x` new; the phone test checks the
+  selected header is fully visible and stops its "nothing past the right edge" check at scrollers. Regenerated
+  (looked at): `counter-demo`, `counter-demo-light`, the six other `counter-phone-*`, `layout-tab`,
+  `layout-grid-overlay`, `inspector-pick` (its pick moved onto the "+" button's padding), `inspector-floating`.
+  368 unit tests, 61 rendering tests.
+- **Follow-ups from Tim's first look (2026-11-17):** the Layers tab was slow to open in the interpreted browser
+  build: it made all 10,000 message texts up front (about 220,000 words; 8 ms on the desktop, far more interpreted).
+  A message is now its number; its text is made when its row is shown. Pick mode showed an element far from the
+  pointer: it only looked again when the mouse moved, so a list scrolled under a still pointer (rows recycled
+  elsewhere) left the highlight on the old row. It now looks again after every frame while picking (one hit test;
+  a change costs one more frame). The pointer-and-row mismatch Tim then narrowed down (browser only, only under
+  Rider's debugger, after a pick click) was a **lost pointerup**: a temporary pointer trace showed the picking press
+  with no release after it, so the host kept the button down and the highlight layer kept the pointer (no hover
+  anywhere; every later click picked again, the button count climbing). Chrome drops input that arrives while a page
+  is paused, as it can be briefly under a debugger; losing pointer capture can do the same without one. First guess,
+  wrong but kept: pick mode reacted to moves after it had ended (it now only picks in pick mode).
+  **Decision (platform contract): every press ends with a release or a cancel.** The browser page tracks the pointers
+  it saw pressed and sends PointerCanceled (no click: where the button came up isn't known) when a move arrives with no
+  buttons down, a new press comes for a pointer still pressed, or capture is lost without a pointerup
+  (`scribble-platform.js`). Win32 already cancels on WM_CAPTURECHANGED. 
+  Also asked for: a pick scrolls the tree to the selected row (named `inspectorSelectedRow`; `BringIntoView` after the
+  first frame that has the row, so the tree's ScrollViewer takes it), and the wheel scrolls the app while picking.
+  **Decision: `Layer.letWheelThrough`** (default false): the wheel skips such a layer even where it has an element;
+  the inspector's highlight layer sets it. Not a general "unhandled wheels fall through" rule: a ScrollViewer at the
+  end of its range leaves the wheel unhandled, and scrolling past the end of the inspector's tree would then have
+  scrolled the app behind the panel. 376 unit tests.
+
 ## M8 step 1b: non-uniform virtualization (2026-11-16)
 
 Tim (2026-11-16): "we need to add a series of tests for non-uniform virtualization". Decisions (agreed the same day,

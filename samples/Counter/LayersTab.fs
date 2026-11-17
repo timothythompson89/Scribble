@@ -87,8 +87,9 @@ let dialog =
             )
         ])
 
-/// A message in the long list.
-type Message = { Id: int; Text: string }
+/// A message in the long list: its number; its text is made when its row is shown (making all 10,000
+/// texts up front took a noticeable moment in the interpreted browser build).
+type Message = { Id: int; Added: bool }
 
 /// Words for messages of varying length (made up, repeatable: message n is always the same).
 let private words =
@@ -101,7 +102,7 @@ let private messageText (n: int) =
     let picked = [ for k in 0 .. count - 1 -> words[(n * 31 + k * 17) % words.Length] ]
     "#" + n.ToString("N0", Globalization.CultureInfo.InvariantCulture) + " " + String.Join(" ", picked)
 
-let private initialMessages = lazy (Array.init 10_000 (fun i -> { Id = i + 1; Text = messageText (i + 1) }))
+let private initialMessages = lazy (Array.init 10_000 (fun i -> { Id = i + 1; Added = false }))
 
 /// 10,000 messages of varying length in an ItemsView (only those on screen exist), with buttons
 /// that jump to one (the scroller), and one that adds a message and scrolls to it.
@@ -127,7 +128,7 @@ let private messages =
                             Button.text "Add message"
                             Button.onClick (fun _ ->
                                 let id = all.Current.Length + 1
-                                all.Set(Array.append all.Current [| { Id = id; Text = messageText id + " (added)" } |])
+                                all.Set(Array.append all.Current [| { Id = id; Added = true } |])
                                 // Applies at the next layout, once the new message is in the list.
                                 scroller.ScrollTo(id, ScrollAlign.End))
                         ]
@@ -144,7 +145,7 @@ let private messages =
                                 Border.create [
                                     Border.padding (10.0, 6.0)
                                     Border.background (if m.Id % 2 = 0 then Palette.surface else rowAlt)
-                                    Border.child (TextBlock.create [ TextBlock.text m.Text; TextBlock.textWrapping Wrap ])
+                                    Border.child (TextBlock.create [ TextBlock.text (messageText m.Id + (if m.Added then " (added)" else "")); TextBlock.textWrapping Wrap ])
                                 ])
                             ItemsView.scroller scroller
                         ]

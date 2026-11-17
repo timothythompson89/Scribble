@@ -33,6 +33,9 @@ type IElementRoot =
     abstract Theme: IThemeSource voption
     /// The app's app values (`AppValue`): the host's, shared by its layers; a bare tree has its own.
     abstract AppValues: AppValues
+    /// Moves keyboard focus to an element (an `Element`) if it can take it; the ring shows as it
+    /// did (it stays on while the keyboard is in use). Does nothing in a tree without input.
+    abstract Focus: element: obj -> unit
 
 [<AutoOpen>]
 module internal StyleMarks =
@@ -120,6 +123,9 @@ type ElementType =
       /// The type's own key behavior (a ScrollViewer's arrow keys): runs as a key bubbles from the
       /// focused element, after each element's own handler, if nothing handled it yet.
       KeyDown: (InputContext -> KeyEventArgs -> unit) voption
+      /// The type's own click behavior (a ToggleButton toggling): runs after the element's own
+      /// `onClick`. An element whose type has one is clickable without an `onClick` setting.
+      Click: (InputContext -> ClickEventArgs -> unit) voption
       /// The clip for the children, in the element's own coordinates (a ScrollViewer's viewport,
       /// without its scrollbars); by default its bounds when `clipToBounds` is set.
       ClipChildren: (RenderContext -> Rect) voption
@@ -141,6 +147,7 @@ type ElementType =
           PointerMove = ValueNone
           PointerUp = ValueNone
           KeyDown = ValueNone
+          Click = ValueNone
           ClipChildren = ValueNone
           Scrolling = ValueNone
           Measure =
@@ -755,6 +762,13 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | ValueNone -> ()
             e <- a
             p <- a.Parent
+
+    /// Moves keyboard focus here, if the element can take it (focusable, enabled, shown, in a
+    /// window's tree), and scrolls it into view.
+    member this.Focus() =
+        match root with
+        | ValueSome r -> r.Focus(box this)
+        | ValueNone -> ()
 
     /// Scrolls every scroller around this element so all of it shows (the least scroll, animated).
     member this.BringIntoView() =
@@ -1517,6 +1531,11 @@ module Element =
     /// The type's own key behavior: keys nothing handled bubble from the focused element up, and
     /// reach this after each element's own `onKeyDown`. Call `e.Handle()` when it used the key.
     let keyDown (f: InputContext -> KeyEventArgs -> unit) = ElementPart(fun t -> { t with KeyDown = ValueSome f })
+
+    /// The type's own click behavior (a ToggleButton toggling): runs on a click (press and release
+    /// over the element, Enter, or Space), after the element's own `onClick`. Elements of the type
+    /// are clickable without an `onClick` setting.
+    let click (f: InputContext -> ClickEventArgs -> unit) = ElementPart(fun t -> { t with Click = ValueSome f })
 
     /// The clip for the children (own coordinates) when `clipToBounds` is set, instead of the
     /// element's bounds.

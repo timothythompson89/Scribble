@@ -112,6 +112,13 @@ module States =
         prop.TestedByStyles <- true
         register (ElementState(name, (fun e -> test (unbox<'T> (e.UnstyledValue prop))), ValueSome(prop :> Prop)))
 
+    /// A ToggleButton (CheckBox, Switch) that is on (`isChecked`; F# reserves the word `checked`).
+    let isChecked = ofProp "checked" ToggleButtonProps.isChecked id
+    /// A CheckBox showing its "partly checked" dash.
+    let isIndeterminate = ofProp "indeterminate" ToggleButtonProps.isIndeterminate id
+    /// A TabControl's header for the selected tab.
+    let isSelected = ofProp "selected" TabHeaderProps.isSelected id
+
     /// The built-in states, in the order tools show them.
     let internal builtIn = [| hover; pressed; focused; focusVisible; disabled |]
 

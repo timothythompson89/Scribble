@@ -9,7 +9,8 @@ type internal LayerOptions =
       Order: int
       Modal: bool
       View: View voption
-      AppStyles: bool }
+      AppStyles: bool
+      WheelThrough: bool }
 
 /// One setting for a layer: `Layer.order 100`, `Layer.modal true`, `Layer.view (toasts ())`.
 [<Struct>]
@@ -51,8 +52,14 @@ type Layer internal (text: TextSystem, options: LayerOptions, setCursor: Cursor 
     /// inspector turn it off, so an app's styles don't restyle them.
     static member appStyles(value: bool) = LayerSetting(fun o -> { o with AppStyles = value })
 
+    /// The mouse wheel goes on to the layer below, even where this layer has an element under the
+    /// pointer: an overlay that takes clicks but shouldn't stop scrolling (the inspector's pick mode).
+    /// Default: false. A modal layer that shows something takes the wheel anyway.
+    static member letWheelThrough(value: bool) = LayerSetting(fun o -> { o with WheelThrough = value })
+
     member _.Name = options.Name
     member internal _.UsesAppStyles = options.AppStyles
+    member internal _.LetsWheelThrough = options.WheelThrough
     member _.Order = options.Order
     member _.IsModal = options.Modal
     member _.Tree = tree
@@ -71,7 +78,7 @@ type Layer internal (text: TextSystem, options: LayerOptions, setCursor: Cursor 
     member internal _.InitialView = options.View
 
     static member internal Create(text: TextSystem, settings: LayerSetting list, setCursor: Cursor -> unit) =
-        let defaults = { Name = "Layer"; Order = 100; Modal = false; View = ValueNone; AppStyles = true }
+        let defaults = { Name = "Layer"; Order = 100; Modal = false; View = ValueNone; AppStyles = true; WheelThrough = false }
         let options = settings |> List.fold (fun o (LayerSetting apply) -> apply o) defaults
         Layer(text, options, setCursor)
 

@@ -76,6 +76,12 @@ type internal Row =
     | Layer of Layer
     | Element of Element * depth: int
 
+/// Names the inspector gives its own elements, to find them again.
+module internal Names =
+    /// The selected element's row in the tree (scrolled into view after a pick).
+    [<Literal>]
+    let SelectedRow = "inspectorSelectedRow"
+
 /// Text for keys and values, by our own code (never `string` on unions: it isn't AOT-safe).
 module internal Format =
     let key (key: Key, mods: Modifiers) =
@@ -295,8 +301,15 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     let mutable isOpen = options.IsOpen
     let mutable side = options.Side
     let mutable picking = false
+    /// Pick mode: where the pointer is over the app (window DIPs), so what it points at can be
+    /// checked again after each frame: the app can move under a pointer that stands still (a list
+    /// scrolled by the wheel recycles the row under it to somewhere else).
+    let mutable pickPoint: Point voption = ValueNone
     let mutable hovered: Element voption = ValueNone
     let mutable selected: Element voption = ValueNone
+    /// The selected element's tree row should be scrolled into view (after a pick, which can
+    /// select something whose row is far down); done after the first frame that has the row.
+    let mutable revealSelected = false
     let mutable own: Layer list = []
     let mutable dirty = false
     let mutable lastRefresh = -1000.0
@@ -446,17 +459,20 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         if not isOpen then this.ClearForced()
         picking <- picking && isOpen
         hovered <- ValueNone
+        pickPoint <- ValueNone
         refresh ()
 
     member _.TogglePick() =
         picking <- not picking
         if picking then isOpen <- true
         hovered <- ValueNone
+        pickPoint <- ValueNone
         refresh ()
 
     member _.StopPicking() =
         picking <- false
         hovered <- ValueNone
+        pickPoint <- ValueNone
         notify ()
 
     // --- Where the panel is ------------------------------------------------------------------
@@ -589,6 +605,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     /// Selects an element and expands the rows down to it.
     member _.Select(e: Element) =
         selected <- ValueSome e
+        revealSelected <- true
         let mutable p = e.Parent
         let mutable top = e
         while p.IsSome do
@@ -626,6 +643,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     member _.Deselect() =
         if selected.IsSome then
             selected <- ValueNone
+            revealSelected <- false
             notify ()
 
     /// A click on a tree row: selects it, or deselects it when it's already selected.
@@ -647,21 +665,26 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         | _ -> ()
 
     /// Pick mode: the pointer moved to `p` (window DIPs).
+    /// Only while picking: the press that picks ends pick mode, and browsers send a move before its
+    /// release (the highlight still has the pointer then); picking again there left an element hovered.
     member _.PickAt(p: Point) =
-        let e = elementAt p
-        let same =
-            match e, hovered with
-            | ValueSome a, ValueSome b -> obj.ReferenceEquals(a, b)
-            | ValueNone, ValueNone -> true
-            | _ -> false
-        if not same then
-            hovered <- e
-            notify ()
+        if picking then
+            pickPoint <- ValueSome p
+            let e = elementAt p
+            let same =
+                match e, hovered with
+                | ValueSome a, ValueSome b -> obj.ReferenceEquals(a, b)
+                | ValueNone, ValueNone -> true
+                | _ -> false
+            if not same then
+                hovered <- e
+                notify ()
 
     /// Pick mode: a press at `p` selects what's there and ends pick mode.
     member this.PickSelect(p: Point) =
         picking <- false
         hovered <- ValueNone
+        pickPoint <- ValueNone
         match elementAt p with
         | ValueSome e -> this.Select e
         | ValueNone -> notify ()
@@ -687,7 +710,32 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
 
     /// After each frame: refresh the tree if the app changed, at most about 10 times a second.
     /// Once the app has been still for a second, one more refresh shows it idle (and then nothing).
+    /// Pick mode: the pointer went over the panel or out of the window; nothing to check again.
+    member _.PickLeft() = pickPoint <- ValueNone
+
     member this.AfterFrame(stats: FrameStats) =
+        // Pick mode: what the still pointer points at now (a change shows in the next frame).
+        match pickPoint with
+        | ValueSome p when picking -> this.PickAt p
+        | _ -> ()
+        // The selected row, once it exists: into view in the tree (outside layout, so the tree's
+        // ScrollViewer takes the request).
+        if revealSelected then
+            let rec named (e: Element) : Element voption =
+                if e.Name = Names.SelectedRow then ValueSome e
+                else
+                    let mutable found = ValueNone
+                    let mutable i = 0
+                    while found.IsNone && i < e.Children.Count do
+                        found <- named e.Children[i]
+                        i <- i + 1
+                    found
+            let row = own |> List.tryPick (fun l -> match l.Tree.Root with ValueSome r -> (match named r with ValueSome x -> Some x | ValueNone -> None) | ValueNone -> None)
+            match row with
+            | Some r ->
+                revealSelected <- false
+                r.BringIntoView()
+            | None -> ()
         let now = clock.Elapsed.TotalMilliseconds
         lastStats <- ValueSome stats
         if appChanged then
@@ -959,39 +1007,6 @@ module internal WrapRow =
 
     let create (settings: Setting<WrapRow> list) = View.Create(Type, settings)
 
-module internal CheckMarkProps =
-    let isChecked = Prop.define "IsChecked" false Affects.Render
-
-/// The box of the "Show defaults" checkbox, with a tick when checked (until M8's CheckBox).
-[<AbstractClass>]
-type internal CheckMark =
-    inherit Layoutable
-    static member isChecked<'k when 'k :> CheckMark>(value: bool) : Setting<'k> = Setting.create CheckMarkProps.isChecked value
-
-module internal CheckMark =
-    let private render (ctx: RenderContext) (list: DrawList) =
-        let r = Rect.Create(0.0, 0.0, ctx.Size.Width, ctx.Size.Height)
-        if ctx.Get CheckMarkProps.isChecked then
-            list.FillRoundedRect(r, CornerRadius.Uniform 3.0, Color.Hex 0x3D59A1)
-            // The tick: two legs of small squares, down to the right, then up to the right.
-            let dot (x: float) (y: float) = list.FillRect(Rect.Create(x, y, 1.5, 1.5), Color.White, EdgeMode.Precise)
-            for i in 0..5 do
-                let t = float i * 0.5
-                dot (3.0 + t) (6.0 + t)
-            for i in 0..11 do
-                let t = float i * 0.5
-                dot (5.5 + t) (8.5 - t)
-        else
-            list.StrokeRect(r, CornerRadius.Uniform 3.0, 1.0, Color.Hex 0x8A8AA0)
-
-    let Type =
-        Element.define "InspectorCheckMark" [
-            Element.measure (fun _ _ -> Size.Create(13.0, 13.0))
-            Element.render render
-        ]
-
-    let create (settings: Setting<CheckMark> list) = View.Create(Type, settings)
-
 /// The panel component's props: the shared state, and whether it fills the pop-out window.
 type internal PanelProps = { State: InspectorState; IsPoppedOut: bool }
 
@@ -1103,6 +1118,7 @@ module internal Views =
             // Hidden elements (and everything inside them) are dimmed.
             let fade (c: Color) = if e.IsVisible then c else c.WithAlpha 0.4f
             Border.create [
+                if isSelected then Border.name Names.SelectedRow
                 Border.height 22.0
                 Border.padding (Thickness.Create(left, 0.0, 6.0, 0.0))
                 Border.background (
@@ -1381,28 +1397,23 @@ module internal Views =
         | ValueSource.Inherited -> "inherited"
         | ValueSource.Default -> "default"
 
-    /// A checkbox made of a Button (focusable, Space and Enter work) with the box and a label.
+    /// A CheckBox, controlled by the inspector's state. The inspector takes no app styles or
+    /// theme, so its colors are set here (the accent while on).
     let private checkBox (label: string) (isChecked: bool) (onToggle: unit -> unit) =
-        Button.create [
-            Button.margin (Thickness.Create(6.0, 2.0, 0.0, 2.0))
-            Button.padding (4.0, 2.0)
-            Button.horizontalAlignment HorizontalAlignment.Left
-            Button.background Color.Transparent
-            Button.shadow { Blur = 0.0; OffsetX = 0.0; OffsetY = 0.0; Spread = 0.0; Color = Color.Transparent }
-            Button.onClick (fun _ -> onToggle ())
-            Button.child (
-                StackPanel.create [
-                    StackPanel.orientation Horizontal
-                    StackPanel.spacing 6.0
-                    StackPanel.children [
-                        CheckMark.create [ CheckMark.isChecked isChecked; CheckMark.verticalAlignment VerticalAlignment.Center ]
-                        TextBlock.create [
-                            TextBlock.text label
-                            TextBlock.fontSize 12.0
-                            TextBlock.foreground hintColor
-                            TextBlock.verticalAlignment VerticalAlignment.Center
-                        ]
-                    ]
+        CheckBox.create [
+            CheckBox.margin (Thickness.Create(10.0, 4.0, 0.0, 4.0))
+            CheckBox.horizontalAlignment HorizontalAlignment.Left
+            CheckBox.isChecked isChecked
+            CheckBox.onCheckedChanged (fun _ -> onToggle ())
+            CheckBox.background Color.Transparent
+            CheckBox.borderBrush (Color.Hex 0x8A8AA0)
+            CheckBox.on States.isChecked [ CheckBox.background (Color.Hex 0x3D59A1); CheckBox.borderBrush (Color.Hex 0x3D59A1) ]
+            CheckBox.child (
+                TextBlock.create [
+                    TextBlock.text label
+                    TextBlock.fontSize 12.0
+                    TextBlock.foreground hintColor
+                    TextBlock.verticalAlignment VerticalAlignment.Center
                 ]
             )
         ]
@@ -1685,6 +1696,7 @@ module internal Views =
                 Border.isHitTestVisible state.IsPicking
                 Border.cursor Cursor.Crosshair
                 Border.onPointerMove (fun a -> state.PickAt a.Position)
+                Border.onPointerLeave (fun _ -> state.PickLeft())
                 Border.onPointerDown (fun a ->
                     state.PickSelect a.Position
                     a.Handle())
@@ -1729,7 +1741,8 @@ type Inspector =
         let options = settings |> List.fold (fun o (InspectorSetting apply) -> apply o) InspectorOptions.Default
         let state = InspectorState(host, options)
         let highlightLayer =
-            host.AddLayer [ Layer.name "Inspector highlight"; Layer.order (Int32.MaxValue - 1); Layer.appStyles false; Layer.view (Views.highlight state) ]
+            // Pick mode takes clicks, not the wheel: the app scrolls under the highlight.
+            host.AddLayer [ Layer.name "Inspector highlight"; Layer.order (Int32.MaxValue - 1); Layer.appStyles false; Layer.letWheelThrough true; Layer.view (Views.highlight state) ]
         let panelLayer =
             host.AddLayer [ Layer.name "Inspector"; Layer.order Int32.MaxValue; Layer.appStyles false; Layer.view (Views.panel { State = state; IsPoppedOut = false }) ]
         // Its own theme, whatever the app's is (its layers ignore the app's styles and theme).
