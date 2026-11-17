@@ -623,7 +623,8 @@ App.run (settings @ [
   it moves.
 - It's built from Scribble's own elements and lives in two layers on top of everything (the panel, and a
   highlight that only takes the pointer in pick mode), so the app's layout never changes. Its toolbar icons are
-  Google's Material Symbols (Apache License 2.0).
+  Google's Material Symbols (Apache License 2.0). Its tree is an ItemsView: only the rows in view have elements,
+  so an app of 10,000 elements costs the panel what one of 100 does (a refresh: about 2 ms at 10,000 rows, Release).
 - Custom hosts: `Inspector.attach (host, [ Inspector.platform platform ])` (the platform enables popping out),
   disposable. Packages that plug into an app this way use
   `App.onStart (fun ctx -> ...)` (`ctx.Host`, `ctx.Platform`, `ctx.Title`), `host.AddKeyPreview` (keys before

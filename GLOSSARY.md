@@ -98,12 +98,16 @@ _Avoid_: state (for the app's model), store
 The part of an element that the scroll viewers around it currently show, passed down from them during layout.
 _Avoid_: visible area, clip rect (for the viewport)
 
+**Extent**:
+The full size of what a scroll viewer scrolls over; the viewport shows part of it. An items view's extent counts only the items it has measured.
+_Avoid_: content size, scroll size
+
 **Realized item**:
 An item of an items view that currently has an element; items outside the viewport have none and keep no state.
 _Avoid_: rendered item, materialized item
 
 **Recycling**:
-When an item scrolls out of an items view, its element is kept and given to an item scrolling in rather than made again; components inside it lose their state.
+When an item scrolls out of an items view, its element is kept and given to an item scrolling in rather than made again; components inside it lose their state. To the pointer it is then another item: a pointer over it leaves the old item and enters the new one, and a press on it no longer clicks.
 _Avoid_: pooling, reuse (for this)
 
 **Scroll anchor**:

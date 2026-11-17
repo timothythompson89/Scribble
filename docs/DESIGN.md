@@ -1232,6 +1232,87 @@ the differ resets a setting a new view leaves out.
   end of its range leaves the wheel unhandled, and scrolling past the end of the inspector's tree would then have
   scrolled the app behind the panel. 376 unit tests.
 
+## M8 step 3a+: the inspector tree on ItemsView (planned and built 2026-11-17)
+
+The inspector's tree built an element for every row of every expanded element (a keyed `StackPanel.items` in a
+ScrollViewer), against the rule that frame work follows what's visible. Decided with Tim (grilling, 2026-11-17),
+before 3b:
+
+1. **The tree only** goes on an ItemsView; the properties list stays a StackPanel (bounded by one element's
+   properties, not by the app).
+2. **`ItemsLayout.fixedStack 22.0`**: every row 22 DIPs, layer headers too (they were 24), so positions and the
+   scrollbar are exact with no measuring.
+3. **Recycling and the pointer: already right, now guarded by tests** (no Core change). Planned as a Core fix on the
+   belief that a recycled row under a still pointer kept the old item lit; tests disproved it. In one layout an
+   ItemsView realizes what's in range first (reusing elements released in earlier layouts) and releases what's out
+   of range after, so an element can't change items within a layout, and the refresh after it moves the hover to
+   whatever is under the pointer (40 jumps, never stale). A fix was built and reverted: it changed nothing a test
+   could see. `InputTests` "hover follows a still pointer through jumps that recycle rows" keeps the order honest.
+   GLOSSARY "Recycling" states the behavior.
+4. **Scrolling to the selection: the scroller's `ScrollTo(key, Nearest)`**, also for a row never realized; it replaces
+   3a's named row revealed after a frame (which only worked once the row existed).
+5. **Tests:** the same realized rows for 100 and 10,000 expanded rows; a wheel scroll under a still pointer moves the
+   hover (the inspector, and a plain ItemsView in Core); a pick of an element whose row was never realized scrolls it
+   into view; existing inspector tests pass; pictures change only by the layer header height.
+6. **A press on an element given to another item mid-press:** no click on release. Also already so: when the element
+   holding a press leaves the tree, the refresh after that layout ends the press (`endPress`), so the element coming
+   back later for another item can't be clicked by it. `InputTests` "a pressed row given to another item before the
+   release doesn't click" follows the element through jumps until it's back, moves onto it and releases. (That
+   refresh also ends a touch pan that started on the row; not looked at here.)
+7. **The tree's row data is still rebuilt on each refresh** (a walk over what's expanded, plain data, no elements;
+   up to 10 times a second while the app changes): measured in the test at 10,000 rows and recorded here; made
+   incremental only if it shows up in a profile.
+8. Done now, as its own step with "as built" notes, README, checklist and a commit.
+
+**As built (2026-11-17, not yet checked by Tim).**
+
+- **Tree:** `InspectorTree` is an `ItemsView` (`ItemsLayout.fixedStack 22.0`, keyed by `rowKey`, the state's
+  `TreeScroller`); `Rows()` returns an array and notes whether the selected element is listed. Layer header rows are
+  22 DIPs. The properties list is unchanged.
+- **Reveal:** after a frame where the selected element's row is listed (and a reveal is pending, set by `Select`),
+  `TreeScroller.ScrollTo(element, Nearest, animate = false)`. The named row (`Names.SelectedRow`) and its search
+  through the inspector's layers are gone.
+- **No Core change** (decisions 3 and 6 above): two `InputTests` guard what ItemsView already does.
+- **Found on the way:** the reveal's layout makes the input router look again under a still pointer, so after a pick
+  the app element under the pointer gets its hover look at once (it used to wait for the next move). Correct; the
+  inspector tests' `pickAppButton` now moves off the button and waits for the fade before checking looks.
+- **Timing (decision 7):** a tree refresh (the dispatcher's wake, the row walk, the ItemsView's new source and the
+  panel's frame) takes **1.97 ms with 10,000 listed rows, 0.45 ms with 100** (Release, fake platform, best of 20
+  after 5 warm-ups). Kept as is.
+- **Tests:** 380 unit tests (4 new: the two Core guards; the tree realizes the same rows for 100 and 10,000
+  elements, fewer than 60; a wheel over the tree moves the hover to the row under the still pointer); the reveal
+  test adapted (it finds the selected row by its color, and fails with the reveal turned off). 61 rendering tests;
+  `inspector-pick@1x` regenerated (rows 2 DIPs higher; regenerated on Tim's GPU, not lavapipe).
+
+## M8 step 3a++: sideways scrolling for stacked ItemsViews; the inspector tree scrolls sideways (planned 2026-11-17)
+
+Tim (2026-11-17): "should the inspector view have a horizontal scroll bar for deep trees?" Rows indent 12 DIPs per
+level in a panel about 380 wide, so names get cut off from about 25 levels down. Decided with Tim (grilling, the same
+day):
+
+1. **In Core, not inspector-only:** a stacked ItemsView in a ScrollViewer that scrolls sideways gets as wide as its
+   widest row (rejected: the inspector guessing a width from the deepest row, which cuts long names and pads short
+   ones).
+2. **Now, before 3b**, as its own step; 3a+ is committed first, separately.
+3. **Inspector layer header rows scroll sideways with everything else** (not pinned at the left edge).
+4. **A pick also scrolls the tree sideways** so the selected row's chevron and name are in view (a little indent kept
+   to its left), only when the name isn't already visible; hovering never scrolls sideways.
+5. **The extent's width:** the ItemsView keeps each item's natural width by key when it measures it (as it keeps
+   measured heights); the width is the largest of those for items still in the source. It grows when a wider item
+   is first measured, doesn't shrink while scrolling, shrinks when that item leaves the source; unmeasured items
+   don't count (rejected: the widest realized item only, which jumps on every vertical scroll).
+6. **Rows are arranged as wide as the extent or the viewport, whichever is larger**, so backgrounds span the width.
+7. **Stacked layouts only** (`stack`, `fixedStack`); wrap and grid keep flowing to the viewport's width.
+8. **Automatic** when the ItemsView's ScrollViewer has `ScrollViewer.horizontal ScrollBarMode.Auto`; no new
+   ItemsView setting.
+9. **Items are then measured at unlimited width** (text no longer wraps); README says so. Vertical-only stays the
+   default.
+10. **Tests:** a wide row makes the bar appear and rows span the extent; vertical scrolling without a wider row keeps
+    the width; removing the widest row shrinks it; Shift+wheel scrolls sideways; the cost rule (100 vs 10,000 items,
+    scroll step within 1.5×, same realized count); the inspector: a deep pick scrolls the name into view sideways, a
+    deep tree shows the bar and a shallow one doesn't.
+11. **GLOSSARY: Extent** added.
+
 ## M8 step 1b: non-uniform virtualization (2026-11-16)
 
 Tim (2026-11-16): "we need to add a series of tests for non-uniform virtualization". Decisions (agreed the same day,

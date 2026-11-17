@@ -147,7 +147,8 @@ let private canvasDemo =
                 Border.cornerRadius 8.0
                 Border.background b.Color
                 Border.borderThickness 2.0
-                Border.borderBrush (if selected.Current = b.Id then Color.White else Color.Transparent)
+                // The theme's text color: it shows against the page in both themes (white vanished in light).
+                if selected.Current = b.Id then Border.borderBrush Palette.text else Border.borderBrush Color.Transparent
                 Border.borderStyle BorderStyle.Dashed
                 Border.cursor Cursor.Move
                 Border.onPointerDown (fun e ->

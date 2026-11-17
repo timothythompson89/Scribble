@@ -307,3 +307,81 @@ let ``an icon cursor is the window's cursor over its element, and stays the same
     Assert.Equal(first, w.Cursor)
     move w 50 60
     Assert.Equal(Cursor.Default, w.Cursor)
+
+/// A ScrollViewer 100 DIPs tall with 100 rows of 20 DIPs in an ItemsView (fixed heights); each
+/// row logs enter, leave and click with its item number.
+let private recyclingList (log: List<string>) (scroller: Scroller) =
+    ScrollViewer.create [
+        ScrollViewer.height 100.0
+        ScrollViewer.verticalAlignment VerticalAlignment.Top
+        ScrollViewer.content (
+            ItemsView.create [
+                ItemsView.source [| 0..99 |]
+                ItemsView.key id
+                ItemsView.layout (ItemsLayout.fixedStack 20.0)
+                ItemsView.scroller scroller
+                ItemsView.view (fun (i: int) ->
+                    Border.create [
+                        Border.name "row"
+                        Border.height 20.0
+                        Border.onPointerEnter (fun _ -> log.Add("enter " + string i))
+                        Border.onPointerLeave (fun _ -> log.Add("leave " + string i))
+                        Border.onClick (fun _ -> log.Add("click " + string i))
+                    ])
+            ])
+    ]
+
+/// Item k is under the pointer (y = 10) after a jump to k rows.
+let private jumpOf (step: int) = (step * 37) % 95
+
+[<Fact>]
+let ``hover follows a still pointer through jumps that recycle rows`` () =
+    let log = List<string>()
+    let scroller = Scroller()
+    let w, host, _ = show (recyclingList log scroller)
+    move w 50 10
+    Assert.Equal<string list>([ "enter 0" ], List.ofSeq log)
+    let rec rows (e: Element) : Element list =
+        (if e.Name = "row" && e.Root.IsSome then [ e ] else []) @ (e.Children |> Seq.collect rows |> List.ofSeq)
+    for step in 1..40 do
+        let k = jumpOf step
+        scroller.ScrollToOffset(float k * 20.0, false)
+        while w.DeliverFrame() do ()
+        let entered = log |> Seq.filter (fun s -> s.StartsWith "enter") |> Seq.last
+        Assert.Equal("enter " + string k, entered)
+        let hovered = rows host.Tree.Root.Value |> List.filter _.IsPointerOver
+        Assert.Equal(1, hovered.Length)
+        let top = hovered.Head.PositionInTree.Y
+        Assert.True(top <= 10.0 && 10.0 < top + 20.0, $"jump to {k}: the hovered row is at {top}")
+
+[<Fact>]
+let ``a pressed row given to another item before the release doesn't click`` () =
+    let log = List<string>()
+    let scroller = Scroller()
+    let w, host, _ = show (recyclingList log scroller)
+    move w 50 10
+    let pressed = (host.Tree.HitTest(50.0, 10.0)).Value
+    press w 50 10
+    // Jump while the button stays down until the pressed element is back, showing another item
+    // (released in one jump, reused in a later one).
+    let random = System.Random 7
+    let mutable step = 1
+    let mutable away = false
+    let mutable back = false
+    while not back && step <= 100 do
+        scroller.ScrollToOffset(float (random.Next(0, 95)) * 20.0, false)
+        while w.DeliverFrame() do ()
+        if pressed.Root.IsNone then away <- true
+        elif away then back <- true
+        step <- step + 1
+    Assert.True(back, "the pressed element never came back")
+    // Onto it and let go: it shows another item now, which was never pressed.
+    let y = pressed.PositionInTree.Y + 10.0
+    move w 50 y
+    while w.DeliverFrame() do ()
+    release w 50 y
+    Assert.Empty(log |> Seq.filter (fun s -> s.StartsWith "click"))
+    // The next click there is an ordinary one.
+    press w 50 y
+    release w 50 y
+    Assert.Equal(1, log |> Seq.filter (fun s -> s.StartsWith "click") |> Seq.length)

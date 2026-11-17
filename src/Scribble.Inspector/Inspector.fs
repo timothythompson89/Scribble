@@ -76,12 +76,6 @@ type internal Row =
     | Layer of Layer
     | Element of Element * depth: int
 
-/// Names the inspector gives its own elements, to find them again.
-module internal Names =
-    /// The selected element's row in the tree (scrolled into view after a pick).
-    [<Literal>]
-    let SelectedRow = "inspectorSelectedRow"
-
 /// Text for keys and values, by our own code (never `string` on unions: it isn't AOT-safe).
 module internal Format =
     let key (key: Key, mods: Modifiers) =
@@ -308,8 +302,12 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     let mutable hovered: Element voption = ValueNone
     let mutable selected: Element voption = ValueNone
     /// The selected element's tree row should be scrolled into view (after a pick, which can
-    /// select something whose row is far down); done after the first frame that has the row.
+    /// select something whose row is far down); asked once the tree lists it.
     let mutable revealSelected = false
+    /// The last `Rows()` had the selected element's row.
+    let mutable selectedListed = false
+    /// Scrolls the tree (an ItemsView) by key.
+    let treeScroller = Scroller()
     let mutable own: Layer list = []
     let mutable dirty = false
     let mutable lastRefresh = -1000.0
@@ -433,10 +431,17 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     member _.IsCollapsed(l: Layer) = collapsedLayers.Contains l
 
     /// The rows to show: every layer but the inspector's, and the elements under expanded ones.
-    member _.Rows() : Row list =
+    /// Scrolls the tree by key (the tree's ItemsView uses it).
+    member _.TreeScroller = treeScroller
+
+    member _.Rows() : Row[] =
         let rows = List<Row>()
+        selectedListed <- false
         let rec add (e: Element) depth =
             rows.Add(Row.Element(e, depth))
+            match selected with
+            | ValueSome s when obj.ReferenceEquals(s, e) -> selectedListed <- true
+            | _ -> ()
             if expanded.Contains e then
                 for c in e.Children do
                     add c (depth + 1)
@@ -449,7 +454,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
                     if seenRoots.Add root then expanded.Add root |> ignore
                     if not (collapsedLayers.Contains layer) then add root 1
                 | ValueNone -> ()
-        List.ofSeq rows
+        rows.ToArray()
 
     member this.Toggle() =
         // Hiding a popped-out inspector closes its window (the panel goes back in for next time).
@@ -718,24 +723,13 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         match pickPoint with
         | ValueSome p when picking -> this.PickAt p
         | _ -> ()
-        // The selected row, once it exists: into view in the tree (outside layout, so the tree's
-        // ScrollViewer takes the request).
-        if revealSelected then
-            let rec named (e: Element) : Element voption =
-                if e.Name = Names.SelectedRow then ValueSome e
-                else
-                    let mutable found = ValueNone
-                    let mutable i = 0
-                    while found.IsNone && i < e.Children.Count do
-                        found <- named e.Children[i]
-                        i <- i + 1
-                    found
-            let row = own |> List.tryPick (fun l -> match l.Tree.Root with ValueSome r -> (match named r with ValueSome x -> Some x | ValueNone -> None) | ValueNone -> None)
-            match row with
-            | Some r ->
-                revealSelected <- false
-                r.BringIntoView()
-            | None -> ()
+        // The selected row, once the tree lists it (it refreshes a little later): into view, by key
+        // (the tree is an ItemsView; the row may never have been realized).
+        match selected with
+        | ValueSome e when revealSelected && selectedListed ->
+            revealSelected <- false
+            treeScroller.ScrollTo(box e, ScrollAlign.Nearest, false) // at once, as devtools do
+        | _ -> ()
         let now = clock.Elapsed.TotalMilliseconds
         lastStats <- ValueSome stats
         if appChanged then
@@ -1093,7 +1087,7 @@ module internal Views =
         | Row.Layer l ->
             let details = "order " + l.Order.ToString() + (if l.IsModal then " · modal" else "")
             Border.create [
-                Border.height 24.0
+                Border.height 22.0 // every row is 22 DIPs (the tree's ItemsView has fixed heights)
                 Border.padding (Thickness.Create(6.0, 0.0, 6.0, 0.0))
                 Border.background (Color.Hex 0x26263A)
                 Border.onPointerDown (fun _ -> state.ToggleLayer l)
@@ -1118,7 +1112,6 @@ module internal Views =
             // Hidden elements (and everything inside them) are dimmed.
             let fade (c: Color) = if e.IsVisible then c else c.WithAlpha 0.4f
             Border.create [
-                if isSelected then Border.name Names.SelectedRow
                 Border.height 22.0
                 Border.padding (Thickness.Create(left, 0.0, 6.0, 0.0))
                 Border.background (
@@ -1575,7 +1568,14 @@ module internal Views =
     // them on every pointer move made dragging lag).
     let private treeSection =
         Component.define "InspectorTree" (fun _ (p: SectionProps) ->
-            StackPanel.create [ StackPanel.items (p.State.Rows()) rowKey (row p.State) ])
+            // Only the rows in view exist (M8 step 3a+): every row is 22 DIPs, so positions are exact.
+            ItemsView.create [
+                ItemsView.source (p.State.Rows())
+                ItemsView.key rowKey
+                ItemsView.view (row p.State)
+                ItemsView.layout (ItemsLayout.fixedStack 22.0)
+                ItemsView.scroller p.State.TreeScroller
+            ])
 
     /// The selection's name, Deselect and its STATES: kept above the scrolling properties, so the
     /// state toggles stay in view while scrolling.

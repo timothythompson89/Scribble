@@ -340,6 +340,13 @@ let private pickAppButton (w: FakeWindow) =
     settle w
     click w 50.0 20.0
     settle w
+    // Off the button (to the background, clear of the panel), and until its hover look has faded:
+    // the tests then see the button at rest.
+    move w 300.0 300.0
+    let mutable n = 0
+    while w.DeliverFrame() && n < 100 do
+        System.Threading.Thread.Sleep 10
+        n <- n + 1
 
 /// The value and source shown after a property's name in the panel.
 let private shownFor (panel: Layer) (name: string) =
@@ -802,5 +809,86 @@ let ``a pick scrolls the tree to the selected row`` () =
         w.Send(PointerMoved(Mouse, 0, at, Modifiers.None))
         settle w
     let panel = host.Layers |> Seq.find (fun l -> l.Name = "Inspector")
-    let row = panel.Tree.Root.Value |> find "inspectorSelectedRow" |> Option.get
+    // The selected row: the realized row in the selection color.
+    let selectedColor = (Color.Hex 0x3D59A1).WithAlpha 0.6f
+    let rec selectedRow (e: Element) : Element option =
+        if e.Type.Name = "Border" && e.Bounds.Height = 22.0 && e.Get BorderProps.background = selectedColor then Some e
+        else e.Children |> Seq.tryPick selectedRow
+    let row = panel.Tree.Root.Value |> selectedRow |> Option.get
     Assert.True(abs (row.VisibleBounds.Height - 22.0) < 0.5, $"the selected row shows {row.VisibleBounds.Height} of 22")
+
+// --- The tree on an ItemsView (M8 step 3a+) ----------------------------------------------------
+
+/// An app of `n` rows 20 DIPs tall in a StackPanel, with the inspector open and the first row
+/// picked: its ancestors expand, so the tree lists every row. Returns the window, the host, the
+/// inspector's tree (its ItemsView) and `wake`.
+let private manyRows (n: int) =
+    let platform, device = new FakePlatform(), new FakeDevice()
+    let rows = [ for i in 0 .. n - 1 -> Border.create [ Border.name ("item" + string i); Border.height 20.0 ] ]
+    let app =
+        App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(),
+                   [ App.view (StackPanel.create [ StackPanel.children rows ]); Inspector.enable [] ])
+    let w = platform.Window.Value
+    let host = app :?> ElementHost
+    let size: PixelSize = { Width = 900; Height = 500 }
+    w.Size <- size
+    w.Send(Resized size)
+    settle w
+    let wake () =
+        Threading.Thread.Sleep 150
+        platform.RunWake()
+        settle w
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    move w 50.0 10.0
+    settle w
+    click w 50.0 10.0
+    settle w
+    wake ()
+    wake ()
+    let panel = host.Layers |> Seq.find (fun l -> l.Name = "Inspector")
+    let rec itemsView (e: Element) : Element option =
+        if e.Type.Name = "ItemsView" then Some e else e.Children |> Seq.tryPick itemsView
+    w, host, (panel.Tree.Root.Value |> itemsView |> Option.get), wake
+
+let private realizedRows (tree: Element) =
+    match ItemsView.realizedCount tree with
+    | ValueSome(struct (r, total)) -> r, total
+    | ValueNone -> failwith "not an ItemsView"
+
+[<Fact>]
+let ``the tree realizes the same rows for 100 and 10,000 elements`` () =
+    let _, _, small, _ = manyRows 100
+    let _, _, large, _ = manyRows 10_000
+    let smallRealized, smallTotal = realizedRows small
+    let largeRealized, largeTotal = realizedRows large
+    // Every element is listed (the layer, the StackPanel and its rows) ...
+    Assert.True(smallTotal >= 100 && largeTotal >= 10_000, $"rows listed: {smallTotal}, {largeTotal}")
+    // ... but only what fits in the panel has an element, the same for both.
+    Assert.Equal(smallRealized, largeRealized)
+    Assert.True(largeRealized < 60, $"{largeRealized} rows realized")
+
+[<Fact>]
+let ``a wheel scroll over the tree moves the hover to the row under the still pointer`` () =
+    let w, host, tree, _ = manyRows 1_000
+    let rowUnder (y: float) =
+        tree.Children |> Seq.tryFind (fun r -> let p = r.PositionInTree in p.Y <= y && y < p.Y + r.Bounds.Height)
+    // A point in the middle of the tree's viewport (its ScrollViewer).
+    let rec scrollViewer (e: Element) = if e.Type.Name = "ScrollViewer" then e else scrollViewer e.Parent.Value
+    let sv = scrollViewer tree
+    let top = sv.PositionInTree
+    let at: PixelPoint = { X = top.X + 60.0; Y = top.Y + sv.Bounds.Height / 2.0 }
+    w.Send(PointerMoved(Mouse, 0, at, Modifiers.None))
+    settle w
+    let first = (rowUnder at.Y).Value
+    Assert.True first.IsPointerOver
+    for _ in 1..3 do
+        w.Send(PointerWheel(at, 0.0, -3.0, Modifiers.None))
+        for _ in 1..20 do // past the scroll animation; the pointer stays put
+            host.Layers |> Seq.iter (fun l -> l.Tree.Time <- l.Tree.Time + TimeSpan.FromMilliseconds 50.0)
+            settle w
+    let hovered = tree.Children |> Seq.filter _.IsPointerOver |> List.ofSeq
+    Assert.Equal(1, hovered.Length)
+    Assert.True(obj.ReferenceEquals(hovered.Head, (rowUnder at.Y).Value), "the hovered row isn't the one under the pointer")
+    // The tree did scroll.
+    Assert.True(tree.PositionInTree.Y < top.Y - 50.0, $"the tree didn't scroll ({tree.PositionInTree.Y} vs {top.Y})")
