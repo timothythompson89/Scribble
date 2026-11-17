@@ -253,3 +253,83 @@ let ``a themed Button in a row that just scrolled in has its theme look in its f
             let button = c.Children[0]
             Assert.True((button.Get BorderProps.background) = themed, $"step {step}: {button.Name} has no theme background")
         Assert.True(t.FirstQueuedRestyle.IsNone, $"step {step}: a restyle was left queued")
+
+// --- New sources (DESIGN.md, "Recycling measured; styles on realization; new sources", decision 3) ---
+
+let private sourceOf (a: int[]) = ItemsSource(a, (fun () -> a.Length), (fun i -> box a[i]), (fun () -> box a))
+
+[<Fact>]
+let ``the key store updated in place agrees with one built from scratch, through random edits`` () =
+    let r = Random 11
+    let keyFn = TypedKeyFunc<int, int>(fun x -> x * 7) :> KeyFunc
+    let mutable store = keyFn.CreateStore()
+    let mutable items = Array.init 50 id
+    let mutable next = 50
+    // Heights measured so far, by key (as ItemsView records them).
+    let measured = Dictionary<int, float>()
+    for step in 1 .. 400 do
+        let n = items.Length
+        items <-
+            match r.Next 7 with
+            | 0 -> Array.append items (Array.init (r.Next(1, 5)) (fun _ -> next <- next + 1; next))            // append
+            | 1 -> Array.append (Array.init (r.Next(1, 5)) (fun _ -> next <- next + 1; next)) items            // insert at the front
+            | 2 when n > 5 -> let i = r.Next n in Array.append items[.. i - 1] items[i + 1 ..]                  // remove one
+            | 3 when n > 5 -> items[r.Next(1, 4) ..]                                                            // drop the first few
+            | 4 when n > 5 -> items[.. n - 1 - r.Next(1, 4)]                                                    // drop the last few
+            | 5 when n > 2 -> let a = Array.copy items in let i, j = r.Next n, r.Next n in (let t = a[i] in a[i] <- a[j]; a[j] <- t); a  // swap two
+            | _ -> Array.copy items                                                                             // same keys, new array
+        store <- store.Update(sourceOf items, keyFn)
+        // Measure a few items, as scrolling would.
+        for _ in 1 .. 3 do
+            if items.Length > 0 then
+                let i = r.Next items.Length
+                let h = float (r.Next(10, 60))
+                store.Record(i, h) |> ignore
+                measured[items[i] * 7] <- h
+        let fresh = keyFn.CreateStore().Update(sourceOf items, keyFn)
+        for i in 0 .. items.Length - 1 do
+            match measured.TryGetValue(items[i] * 7) with
+            | true, h -> fresh.Record(i, h) |> ignore
+            | _ -> ()
+        Assert.Equal(items.Length, store.Count)
+        for i in 0 .. items.Length - 1 do
+            Assert.Equal(box (items[i] * 7), store.KeyAt i)
+            Assert.True((store.IndexOf(box (items[i] * 7)) = ValueSome i), $"step {step}: index of item {i}")
+            Assert.Equal(fresh.Height i, store.Height i)
+        for i in 0 .. items.Length do
+            Assert.True((store.Prefix i = fresh.Prefix i), $"step {step}: sums before {i}")
+        // A key that's gone isn't found.
+        Assert.True((store.IndexOf(box -7) = ValueNone))
+
+[<Fact>]
+let ``appending one item to 10,000 allocates little in the ItemsView`` () =
+    let t = ElementTree(textSystem ())
+    let scroller = Scroller()
+    let view (source: Item[]) =
+        ScrollViewer.create [
+            ScrollViewer.content (
+                ItemsView.create [
+                    ItemsView.source source
+                    ItemsView.key (fun (it: Item) -> it.Id)
+                    ItemsView.view (fun (it: Item) -> Border.create [ Border.height it.Height ])
+                    ItemsView.scroller scroller
+                ])
+        ]
+    let mutable source = items 10_000 variable
+    t.Update(view source)
+    layoutAt t
+    scroller.ScrollToIndex(5_000, ScrollAlign.Start, false)
+    layoutAt t
+    let append () =
+        // The app's new array is made before measuring: only Scribble's work counts.
+        let next = Array.append source [| { Id = source.Length; Height = 30.0 } |]
+        let v = view next
+        source <- next
+        let before = GC.GetAllocatedBytesForCurrentThread()
+        t.Update v
+        layoutAt t
+        GC.GetAllocatedBytesForCurrentThread() - before
+    // Warm up (first calls make caches and compile code), then the real measurement.
+    for _ in 1 .. 3 do append () |> ignore
+    let bytes = append ()
+    Assert.True(bytes <= 64L * 1024L, $"{bytes / 1024L} KB allocated (at most 64 KB)")

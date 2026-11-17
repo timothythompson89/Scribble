@@ -28,31 +28,38 @@ module ItemsLayout =
 
 /// An ItemsView's items: any indexable collection, compared by reference (a new array is a change).
 [<Sealed>]
-type internal ItemsSource(original: obj, count: unit -> int, item: int -> obj) =
+type internal ItemsSource(original: obj, count: unit -> int, item: int -> obj, indexable: unit -> obj) =
     member _.Original = original
     member _.Count = count ()
     member _.Item(i: int) = item i
+    /// The items as an array or `IReadOnlyList` of their own type (for reading keys without boxing).
+    member _.Indexable = indexable ()
     override _.Equals(other) =
         match other with
         | :? ItemsSource as o -> obj.ReferenceEquals(original, o.Original)
         | _ -> false
     override _.GetHashCode() = Runtime.CompilerServices.RuntimeHelpers.GetHashCode original
-    static member Empty = ItemsSource(obj (), (fun () -> 0), (fun _ -> null))
+    static member Empty = ItemsSource(obj (), (fun () -> 0), (fun _ -> null), (fun () -> box Array.empty<obj>))
 
 /// A function from an item to something, stored untyped.
 [<Sealed>]
 type internal ItemsFunc<'R>(f: obj -> 'R) =
     member _.Invoke(item: obj) = f item
 
-/// Sums over item indices (heights and counts of measured items) in O(log n).
+/// Sums over item indices (heights and counts of measured items) in O(log n). Kept for its whole
+/// capacity, so items appended within it keep what's there (a Fenwick tree's entries past the
+/// length stay correct for when it grows).
 [<Sealed>]
-type internal SizeSums(n: int) =
-    let sums: float[] = Array.zeroCreate (n + 1)
-    let counts: int[] = Array.zeroCreate (n + 1)
+type internal SizeSums() =
+    let mutable sums: float[] = Array.zeroCreate 1
+    let mutable counts: int[] = Array.zeroCreate 1
+    let mutable n = 0
     member _.Length = n
+    member _.Capacity = sums.Length - 1
     member _.Add(i: int, height: float, count: int) =
+        let cap = sums.Length - 1
         let mutable j = i + 1
-        while j <= n do
+        while j <= cap do
             sums[j] <- sums[j] + height
             counts[j] <- counts[j] + count
             j <- j + (j &&& -j)
@@ -65,6 +72,178 @@ type internal SizeSums(n: int) =
             c <- c + counts[j]
             j <- j - (j &&& -j)
         struct (s, c)
+    /// A longer length within the capacity (appended items, all unmeasured so far): true if it fit.
+    member _.Grow(length: int) =
+        if length <= sums.Length - 1 then
+            n <- length
+            true
+        else false
+    /// Empty, `length` long (room for at least that many; doubles when it has to grow).
+    member _.Reset(length: int) =
+        if length > sums.Length - 1 then
+            let cap = max length (2 * (sums.Length - 1))
+            sums <- Array.zeroCreate (cap + 1)
+            counts <- Array.zeroCreate (cap + 1)
+        else
+            Array.Clear sums
+            Array.Clear counts
+        n <- length
+
+/// An items view's keys, read from the items with the `key` function and kept in their own type
+/// (no boxing), with the index from key to position and the measured heights by key (and their
+/// sums by position). A new source updates them in place: what kept its key and position isn't
+/// touched, and appended items leave everything before them as it was.
+[<AbstractClass>]
+type internal KeyStore() =
+    abstract Count: int
+    /// Item `i`'s key as an object (boxed once, while it stays at `i`).
+    abstract KeyAt: i: int -> obj
+    abstract IndexOf: key: obj -> int voption
+    abstract Height: i: int -> float voption
+    /// Records item `i`'s measured height; returns the one it had (ValueNone: newly measured).
+    abstract Record: i: int * height: float -> float voption
+    /// Forgets every measured height (the width changed).
+    abstract ClearHeights: unit -> unit
+    /// Height and count of measured items in [0, i).
+    abstract Prefix: i: int -> struct (float * int)
+    /// Takes a new source's keys; returns the store to use from now on (this one, or a new one if
+    /// the key function's types changed).
+    abstract Update: source: ItemsSource * keyFn: KeyFunc -> KeyStore
+
+/// The `key` setting's function, typed; it makes the store that holds its keys.
+and [<AbstractClass>] internal KeyFunc() =
+    abstract CreateStore: unit -> KeyStore
+
+and [<Sealed>] internal TypedKeyFunc<'T, 'K when 'K: equality>(f: 'T -> 'K) =
+    inherit KeyFunc()
+    member _.F = f
+    override _.CreateStore() = TypedKeyStore<'T, 'K>() :> KeyStore
+
+and [<Sealed>] internal TypedKeyStore<'T, 'K when 'K: equality>() =
+    inherit KeyStore()
+    let comparer = EqualityComparer<'K>.Default
+    let mutable keys: 'K[] = Array.zeroCreate 0
+    let mutable boxes: obj[] = Array.zeroCreate 0
+    let mutable n = 0
+    /// Built on the first lookup, then kept up to date.
+    let mutable index: Dictionary<'K, int> = null
+    let heights = Dictionary<'K, float>()
+    let sums = SizeSums()
+    /// Keys that left a position in an update (removed or moved), reused between updates.
+    let left = List<'K>()
+
+    let buildIndex () =
+        index <- Dictionary<'K, int>(n)
+        for i in 0 .. n - 1 do
+            index.TryAdd(keys[i], i) |> ignore
+
+    /// Sums from scratch: the measured heights of the items there now.
+    let rebuildSums () =
+        sums.Reset n
+        if heights.Count > 0 then
+            for i in 0 .. n - 1 do
+                match heights.TryGetValue keys[i] with
+                | true, h -> sums.Add(i, h, 1)
+                | _ -> ()
+
+    /// Positions before this kept their keys (during `Take`).
+    let mutable firstChanged = 0
+
+    /// Item `i`'s key `k` in a new source that replaced `old` items.
+    member private _.Put(i: int, k: 'K, old: int) =
+        // EqualityComparer<'K>.Default called directly: the JIT turns it into a plain compare.
+        if not (i < old && EqualityComparer<'K>.Default.Equals(keys[i], k)) then
+            if i < old then
+                left.Add keys[i]
+                if i < firstChanged then firstChanged <- i
+            keys[i] <- k
+            boxes[i] <- null
+            if not (isNull index) then index[k] <- i
+
+    member private this.Take(source: ItemsSource, f: 'T -> 'K) =
+        let count = source.Count
+        if count > keys.Length then
+            let cap = max count (2 * keys.Length)
+            Array.Resize(&keys, cap)
+            Array.Resize(&boxes, cap)
+        let old = n
+        firstChanged <- min old count
+        left.Clear()
+        // One loop per kind of collection (no call through a closure per item).
+        match source.Indexable with
+        | :? ('T[]) as a ->
+            for i in 0 .. count - 1 do
+                this.Put(i, f a[i], old)
+        | :? IReadOnlyList<'T> as l ->
+            for i in 0 .. count - 1 do
+                this.Put(i, f l[i], old)
+        | _ ->
+            for i in 0 .. count - 1 do
+                this.Put(i, f (unbox<'T> (source.Item i)), old)
+        for i in count .. old - 1 do
+            left.Add keys[i]
+            keys[i] <- Unchecked.defaultof<'K>
+            boxes[i] <- null
+        n <- count
+        // A key that left its position is gone from the index unless it's at another one now.
+        if not (isNull index) then
+            for k in left do
+                match index.TryGetValue k with
+                | true, i when i >= count || not (comparer.Equals(keys[i], k)) -> index.Remove k |> ignore
+                | _ -> ()
+        // Only appended (everything before kept its key and place): the sums stay; the new items
+        // count only if they were measured before (under the same key).
+        let appended = count >= old && firstChanged >= old
+        if appended && sums.Grow count then
+            if heights.Count > 0 then
+                for i in old .. count - 1 do
+                    match heights.TryGetValue keys[i] with
+                    | true, h -> sums.Add(i, h, 1)
+                    | _ -> ()
+        else rebuildSums ()
+
+    override _.Count = n
+    override _.KeyAt(i) =
+        match boxes[i] with
+        | null ->
+            let b = box keys[i]
+            boxes[i] <- b
+            b
+        | b -> b
+    override _.IndexOf(key: obj) =
+        match key with
+        | :? 'K as k ->
+            if isNull index then buildIndex ()
+            match index.TryGetValue k with
+            | true, i -> ValueSome i
+            | _ -> ValueNone
+        | _ -> ValueNone
+    override _.Height(i) =
+        match heights.TryGetValue keys[i] with
+        | true, h -> ValueSome h
+        | _ -> ValueNone
+    override _.Record(i, h) =
+        let k = keys[i]
+        match heights.TryGetValue k with
+        | true, old ->
+            if old <> h then
+                heights[k] <- h
+                sums.Add(i, h - old, 0)
+            ValueSome old
+        | _ ->
+            heights[k] <- h
+            sums.Add(i, h, 1)
+            ValueNone
+    override _.ClearHeights() =
+        heights.Clear()
+        sums.Reset n
+    override _.Prefix(i) = sums.Prefix i
+    override this.Update(source, keyFn) =
+        match keyFn with
+        | :? TypedKeyFunc<'T, 'K> as typed ->
+            this.Take(source, typed.F)
+            this :> KeyStore
+        | _ -> keyFn.CreateStore().Update(source, keyFn)
 
 /// A realized item: its element, index, and the view version it was last patched to.
 [<Sealed; AllowNullLiteral>]
@@ -77,12 +256,10 @@ type internal RealizedItem(element: Element) =
 [<Sealed; AllowNullLiteral>]
 type internal ItemsState() =
     member val Source = ItemsSource.Empty with get, set
-    member val Keys: obj[] = [||] with get, set
-    member val KeyIndex: Dictionary<obj, int> = null with get, set
-    /// Measured heights by key (stack), the width they were measured at, and their sums by index.
-    member val Heights = Dictionary<obj, float>() with get
+    /// The keys, their index, and the measured heights (stack) with their sums.
+    member val Store: KeyStore = TypedKeyStore<obj, obj>() :> KeyStore with get, set
+    /// The width the heights were measured at.
     member val MeasuredWidth = nan with get, set
-    member val Sums = SizeSums 0 with get, set
     member val SumMeasured = 0.0 with get, set
     member val CountMeasured = 0 with get, set
     /// The estimate before anything is measured (kept from earlier measures across a width change).
@@ -113,7 +290,7 @@ type internal Anchor = { Key: obj; Into: float; Height: float; Next: obj[] }
 
 module ItemsViewProps =
     let internal source = Prop.define "Source" ItemsSource.Empty Affects.Measure
-    let internal key = Prop.define "Key function" (ItemsFunc<obj>(fun item -> item)) Affects.Nothing
+    let internal key = Prop.define "Key function" (TypedKeyFunc<obj, obj>(id) :> KeyFunc) Affects.Nothing
     let internal view = Prop.define "View function" (ItemsFunc<View voption>(fun _ -> ValueNone)) Affects.Measure
     let layout = Prop.define "Layout" ItemsLayout.Stack Affects.Measure
     let scroller = Prop.define "Scroller" (ValueNone: Scroller voption) Affects.Measure
@@ -141,18 +318,18 @@ type ItemsView =
     static member source<'k, 'T when 'k :> ItemsView>(items: seq<'T>) : Setting<'k> =
         let source =
             match items with
-            | :? ('T array) as a -> ItemsSource(a, (fun () -> a.Length), (fun i -> box a[i]))
+            | :? ('T array) as a -> ItemsSource(a, (fun () -> a.Length), (fun i -> box a[i]), (fun () -> box a))
             | :? ('T list) as l ->
                 let array = lazy (List.toArray l)
-                ItemsSource(l, (fun () -> array.Value.Length), (fun i -> box array.Value[i]))
-            | :? IReadOnlyList<'T> as l -> ItemsSource(l, (fun () -> l.Count), (fun i -> box l[i]))
+                ItemsSource(l, (fun () -> array.Value.Length), (fun i -> box array.Value[i]), (fun () -> box array.Value))
+            | :? IReadOnlyList<'T> as l -> ItemsSource(l, (fun () -> l.Count), (fun i -> box l[i]), (fun () -> box l))
             | other ->
                 let array = lazy (Seq.toArray other)
-                ItemsSource(other, (fun () -> array.Value.Length), (fun i -> box array.Value[i]))
+                ItemsSource(other, (fun () -> array.Value.Length), (fun i -> box array.Value[i]), (fun () -> box array.Value))
         Setting.create ItemsViewProps.source source
     /// What identifies an item across updates (default: the item itself).
-    static member key<'k, 'T, 'K when 'k :> ItemsView>(f: 'T -> 'K) : Setting<'k> =
-        Setting.create ItemsViewProps.key (ItemsFunc<obj>(fun item -> box (f (unbox<'T> item))))
+    static member key<'k, 'T, 'K when 'k :> ItemsView and 'K: equality>(f: 'T -> 'K) : Setting<'k> =
+        Setting.create ItemsViewProps.key (TypedKeyFunc<'T, 'K>(f) :> KeyFunc)
     /// The view for one item; called only for items being realized (or when the items change).
     static member view<'k, 'T when 'k :> ItemsView>(f: 'T -> View) : Setting<'k> =
         Setting.create ItemsViewProps.view (ItemsFunc<View voption>(fun item -> ValueSome(f (unbox<'T> item))))
@@ -224,7 +401,7 @@ module ItemsView =
 
     /// The top of item `i` in a variable stack (measured heights exactly, others by the average).
     let private stackTop (s: ItemsState) (i: int) =
-        let struct (sum, count) = s.Sums.Prefix i
+        let struct (sum, count) = s.Store.Prefix i
         sum + float (i - count) * average s
 
     /// The item at height `y` in a variable stack (the last one starting at or above it).
@@ -238,21 +415,14 @@ module ItemsView =
             lo
 
     let private heightOf (s: ItemsState) (i: int) =
-        match s.Heights.TryGetValue s.Keys[i] with
-        | true, h -> h
-        | _ -> average s
+        match s.Store.Height i with
+        | ValueSome h -> h
+        | ValueNone -> average s
 
     let private record (s: ItemsState) (i: int) (h: float) =
-        let key = s.Keys[i]
-        match s.Heights.TryGetValue key with
-        | true, old ->
-            if old <> h then
-                s.Heights[key] <- h
-                s.Sums.Add(i, h - old, 0)
-                s.SumMeasured <- s.SumMeasured + h - old
-        | _ ->
-            s.Heights[key] <- h
-            s.Sums.Add(i, h, 1)
+        match s.Store.Record(i, h) with
+        | ValueSome old -> s.SumMeasured <- s.SumMeasured + h - old
+        | ValueNone ->
             s.SumMeasured <- s.SumMeasured + h
             s.CountMeasured <- s.CountMeasured + 1
 
@@ -287,38 +457,23 @@ module ItemsView =
 
     // --- Source changes ------------------------------------------------------------------------
 
+    /// A new source: its keys go into the store in place (O(items) to read them, but nothing is
+    /// rebuilt or boxed for what kept its key and position; DESIGN.md, "Recycling measured; styles
+    /// on realization; new sources", decision 3).
     let private sourceChanged (e: Element) (s: ItemsState) (source: ItemsSource) =
         s.Source <- source
-        let keyFn = e.Get ItemsViewProps.key
-        let n = source.Count
-        s.Keys <- Array.init n (fun i -> keyFn.Invoke(source.Item i))
-        s.KeyIndex <- null
+        s.Store <- s.Store.Update(source, e.Get ItemsViewProps.key)
         s.Version <- s.Version + 1
-        let sums = SizeSums n
-        for i in 0 .. n - 1 do
-            match s.Heights.TryGetValue s.Keys[i] with
-            | true, h -> sums.Add(i, h, 1)
-            | _ -> ()
-        s.Sums <- sums
 
     let private widthChanged (s: ItemsState) (width: float) =
         s.Fallback <- average s
-        s.Heights.Clear()
+        s.Store.ClearHeights()
         s.SumMeasured <- 0.0
         s.CountMeasured <- 0
-        s.Sums <- SizeSums s.Keys.Length
         s.CellHeight <- nan
         s.MeasuredWidth <- width
 
-    let private indexOfKey (s: ItemsState) (key: obj) =
-        if isNull s.KeyIndex then
-            let d = Dictionary<obj, int>()
-            for i in 0 .. s.Keys.Length - 1 do
-                d.TryAdd(s.Keys[i], i) |> ignore
-            s.KeyIndex <- d
-        match s.KeyIndex.TryGetValue key with
-        | true, i -> ValueSome i
-        | _ -> ValueNone
+    let private indexOfKey (s: ItemsState) (key: obj) = s.Store.IndexOf key
 
     // --- Realizing ---------------------------------------------------------------------------
 
@@ -347,7 +502,7 @@ module ItemsView =
 
     /// The realized item for index `i`, realized (from the pool when it can) or patched as needed.
     let private realize (e: Element) (s: ItemsState) (viewFn: ItemsFunc<View voption>) (i: int) : RealizedItem voption =
-        let key = s.Keys[i]
+        let key = s.Store.KeyAt(i)
         let attach (el: Element) =
             let t0 = stamp ()
             el.SetParent(ValueSome e)
@@ -444,7 +599,7 @@ module ItemsView =
     /// Realizes and measures the items between `top` and `bottom` (own coordinates); lets go of the rest.
     let private realizeRange (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) (top: float) (bottom: float) =
         let t0 = stamp ()
-        let n = s.Keys.Length
+        let n = s.Store.Count
         let viewFn = e.Get ItemsViewProps.view
         let keep = HashSet<obj>()
         let mutable first = n
@@ -456,7 +611,7 @@ module ItemsView =
                  match realize e s viewFn 0 with
                  | ValueSome item ->
                      s.CellHeight <- measureItem layout s width item
-                     keep.Add s.Keys[0] |> ignore
+                     keep.Add(s.Store.KeyAt(0)) |> ignore
                  | ValueNone -> s.CellHeight <- s.Fallback
              | _ -> ())
             let mutable i = indexAt layout s width n top
@@ -465,7 +620,7 @@ module ItemsView =
                 match realize e s viewFn i with
                 | ValueSome item ->
                     measureItem layout s width item |> ignore
-                    keep.Add s.Keys[i] |> ignore
+                    keep.Add(s.Store.KeyAt(i)) |> ignore
                 | ValueNone -> ()
                 i <- i + 1
             last <- i - 1
@@ -513,15 +668,15 @@ module ItemsView =
     /// The scroll anchor at viewport `v`: the item at its top, how far into it the top is, its
     /// height, and the keys after it (one of them takes over if the item is removed).
     let private anchorAt (s: ItemsState) (v: Rect) =
-        let n = s.Keys.Length
+        let n = s.Store.Count
         if n = 0 || s.Last < s.First then ValueNone
         else
             let i = Math.Clamp(stackIndexAt s n v.Y, 0, n - 1)
             ValueSome
-                { Key = s.Keys[i]
+                { Key = s.Store.KeyAt(i)
                   Into = v.Y - stackTop s i
                   Height = heightOf s i
-                  Next = s.Keys[i + 1 .. min (n - 1) (i + 16)] }
+                  Next = Array.init (max 0 (min (n - 1) (i + 16) - i)) (fun k -> s.Store.KeyAt(i + 1 + k)) }
 
     /// The anchor's index now (by key), or the first of the keys after it that's still there.
     let private findAnchor (s: ItemsState) (a: Anchor) =
@@ -541,7 +696,7 @@ module ItemsView =
         let mutable jumped = ValueNone
         let scrolled = scroller.HasRequests
         if scroller.HasRequests then
-            let n = s.Keys.Length
+            let n = s.Store.Count
             for r in scroller.Take() do
                 let byIndex (i: int) align animate extra =
                     if n > 0 then jumped <- ValueSome(jumpTo e s layout width (Math.Clamp(i, 0, n - 1)) align animate extra)
@@ -584,7 +739,7 @@ module ItemsView =
         let rewrapped = width <> s.MeasuredWidth
         if rewrapped then widthChanged s width
         s.Width <- width
-        let n = s.Keys.Length
+        let n = s.Store.Count
         s.Viewport <- viewport
         let struct (jumped, scrolled) = applyRequests e s layout width
         // A scroll request moved the view: the viewport is where it is now, and the anchor is what
@@ -662,7 +817,7 @@ module ItemsView =
     /// inside it, to let go of items); report the first visible item.
     let private viewportChanged (e: Element) =
         let s = stateOf e
-        let n = s.Keys.Length
+        let n = s.Store.Count
         let viewport = viewportOf e
         let layout = e.Get ItemsViewProps.layout
         match viewport with
@@ -676,7 +831,7 @@ module ItemsView =
             let i = indexAt layout s width n v.Y
             let slot = slotOf layout s width i
             let i, slot = if slot.Bottom <= v.Y && i + 1 < n then i + 1, slotOf layout s width (i + 1) else i, slot
-            (scrollerOf e s).ReportFirstVisible(ValueSome { Key = s.Keys[i]; Offset = v.Y - slot.Y })
+            (scrollerOf e s).ReportFirstVisible(ValueSome { Key = s.Store.KeyAt(i); Offset = v.Y - slot.Y })
             match nearestScrollViewer e with
             | ValueSome sv ->
                 let struct (x, y, _, _) = ScrollViewer.viewportOf sv
@@ -715,5 +870,5 @@ module ItemsView =
     let realizedCount (e: Element) : struct (int * int) voption =
         if obj.ReferenceEquals(e.Type, Type) then
             let s = stateOf e
-            ValueSome(struct (s.Realized.Count, s.Keys.Length))
+            ValueSome(struct (s.Realized.Count, s.Store.Count))
         else ValueNone

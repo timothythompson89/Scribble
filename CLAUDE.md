@@ -224,7 +224,7 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
   Separator, zIndex, attached settings, dashed/dotted borders, the inspector's Grid overlay, the Counter's Layout
   tab) is built, not yet checked by Tim; it changed decision 16 (Tim agreed) (a child spanning a star track doesn't size Auto
   tracks; see DESIGN.md "Step 2 as built"). M8 step 1b (non-uniform virtualization tests; the scroll anchor by key) is built, not yet checked by Tim (zero-height
-  runs: documented, debug warning; option A). Counts: 349 unit tests, 58 rendering tests. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
+  runs: documented, debug warning; option A). Counts: 351 unit tests, 58 rendering tests. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
 - **Next: M8 core controls**: steps 1 (ScrollViewer completed, ItemsView, scrollers) and 2 (panels, dashed
   lines) are done; then CheckBox, Image, Slider, ListBox,
   ComboBox, Dialog, Toast, the "show this in a layer" element, TabControl. Then M9 TextBox, M10 hot reload; later:

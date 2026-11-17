@@ -1334,6 +1334,23 @@ rows left queued after their frame went from about 1.2 per step to 0 in every sc
 layout (0.7 µs per step for the Counter's rows, 2.3 µs with a Button in each row); step times unchanged. Two unit
 tests (`ItemsViewTests`); both fail with the call removed.
 
+**Decision 3 as built (2026-11-17):** a `KeyStore` per ItemsView, made by the `key` setting (which knows the item
+and key types; `ItemsView.key` now requires `'K : equality`, which a usable key always had): keys in their own
+type in a buffer that doubles, the key index (`Dictionary<'K,int>`, built on the first lookup) updated in place,
+measured heights by key, and the height sums kept for their whole capacity, so an append leaves them as they are
+(anything else rebuilds them in one pass). A key is boxed only when ItemsView asks for it as an object (realized
+items, the anchor), once per position. `ItemsSource` exposes the typed collection, read in one tight loop per kind
+(array, `IReadOnlyList`, other). Tests: appending one item to 10,000 allocates 11.6 KB in Scribble (limit 64 KB;
+about 1.4 MB before); a randomized test checks the store updated in place against one built from scratch over 400
+edits (appends, front inserts, removals, swaps, trims).
+
+Benchmark, "Add message" (whole update: tree update, layout, draw list): 516 → 148 µs mean, p95 3.2 → 0.17 ms, max
+6.8 → 0.44 ms, 1.5 MB → 136 KB allocated (80 KB of that is the benchmark's own new array). **The "under 100 µs"
+goal (decision 9) was set wrong:** the 516 µs it was measured against includes the draw list (about 78 µs, the same
+in every scenario, nothing to do with the source), so the whole update can't go under about 100 µs. What depends
+on the source went from about 430 µs to about 64 µs of layout: reading 10,000 keys (about 35 µs, the O(items) part
+decision 3 accepted) and patching the 32 realized rows again (about 21 µs).
+
 ## Rendering test hangs (2026-11-16)
 
 Tim asked to look into "partial" rendering test runs (35–38 of 57 reported as "Passed!"). They were hangs:
