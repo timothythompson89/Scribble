@@ -333,3 +333,117 @@ let ``appending one item to 10,000 allocates little in the ItemsView`` () =
     for _ in 1 .. 3 do append () |> ignore
     let bytes = append ()
     Assert.True(bytes <= 64L * 1024L, $"{bytes / 1024L} KB allocated (at most 64 KB)")
+
+// --- Sideways scrolling (M8 step 3a++) ------------------------------------------------------------
+
+/// A 300×200 ScrollViewer that also scrolls sideways, holding an ItemsView of rows 20 high whose
+/// content is `width i` wide (rows named by number).
+let private buildSideways (source: int array) (width: int -> float) (layout: ItemsLayout) (scroller: Scroller) =
+    let t = ElementTree(textSystem ())
+    let view (src: int array) =
+        ScrollViewer.create [
+            ScrollViewer.horizontal ScrollBarMode.Auto
+            ScrollViewer.content (
+                ItemsView.create [
+                    ItemsView.source src
+                    ItemsView.key id
+                    ItemsView.view (fun (i: int) ->
+                        Border.create [
+                            Border.name (string i)
+                            Border.height 20.0
+                            Border.child (Border.create [ Border.width (width i); Border.horizontalAlignment HorizontalAlignment.Left ])
+                        ])
+                    ItemsView.layout layout
+                    ItemsView.scroller scroller
+                ])
+        ]
+    t.Update(view source)
+    layoutAt t
+    let sv = t.Root.Value
+    t, sv, sv.Children[0], (fun (src: int array) -> t.Update(view src); layoutAt t)
+
+[<Theory>]
+[<InlineData(false)>]
+[<InlineData(true)>]
+let ``a stack scrolling sideways is as wide as its widest row, and every row spans that width`` (fixedHeights: bool) =
+    let layout = if fixedHeights then ItemsLayout.fixedStack 20.0 else ItemsLayout.stack
+    let _, sv, iv, _ = buildSideways [| 0..999 |] (fun i -> if i = 3 then 640.0 else 120.0) layout (Scroller())
+    Assert.Equal(640.0, iv.Bounds.Width)
+    for row in iv.Children do
+        Assert.Equal(640.0, row.Bounds.Width)
+    let struct (_, _, vw, _) = ScrollViewer.viewportOf sv
+    Assert.True(640.0 > vw) // wider than the viewport: the bar shows
+
+[<Fact>]
+let ``the width doesn't shrink while scrolling, grows at a wider row, and shrinks when the widest leaves`` () =
+    let width i = if i = 0 then 500.0 elif i = 400 then 900.0 else 100.0 + float (i % 7) * 10.0
+    let scroller = Scroller()
+    let t, sv, iv, update = buildSideways [| 0..999 |] width ItemsLayout.stack scroller
+    Assert.Equal(500.0, iv.Bounds.Width)
+    // Far down, with row 0 long released: still 500.
+    ScrollViewer.jumpTo sv 4000.0
+    layoutAt t
+    Assert.DoesNotContain(0, shown iv)
+    Assert.Equal(500.0, iv.Bounds.Width)
+    // Row 400 comes into view: 900.
+    ScrollViewer.jumpTo sv 7900.0
+    layoutAt t
+    Assert.Contains(400, shown iv)
+    Assert.Equal(900.0, iv.Bounds.Width)
+    // Row 400 leaves the source: back to the widest measured one still there (row 0's 500).
+    update [| for i in 0..999 do if i <> 400 then yield i |]
+    Assert.Equal(500.0, iv.Bounds.Width)
+    // And row 0 too: the widest of the others measured so far.
+    update [| for i in 1..999 do if i <> 400 then yield i |]
+    Assert.InRange(iv.DesiredSize.Width, 100.0, 160.0) // arranged no narrower than the viewport
+
+[<Fact>]
+let ``wrap and grid layouts keep flowing to the viewport's width when the ScrollViewer scrolls sideways`` () =
+    for layout in [ ItemsLayout.wrap 100.0 40.0; ItemsLayout.grid 3 ] do
+        let _, sv, iv, _ = buildSideways [| 0..99 |] (fun _ -> 50.0) layout (Scroller())
+        let struct (_, _, vw, _) = ScrollViewer.viewportOf sv
+        Assert.True(iv.Bounds.Width <= vw + 0.5, $"{layout}: {iv.Bounds.Width} wide in a {vw} viewport")
+        // More than one column.
+        Assert.True(iv.Children |> Seq.exists (fun c -> c.Bounds.X > 0.0))
+    // Wrap measures its height with the viewport's columns (it used to measure one column: twice as tall).
+    let _, sv, iv, _ = buildSideways [| 0..99 |] (fun _ -> 50.0) (ItemsLayout.wrap 100.0 40.0) (Scroller())
+    let struct (_, _, vw, _) = ScrollViewer.viewportOf sv
+    let columns = int (Math.Floor(vw / 100.0))
+    Assert.Equal(float ((100 + columns - 1) / columns) * 40.0, iv.DesiredSize.Height)
+
+[<Fact>]
+let ``scrolling sideways keeps a scroll step's cost the same for 100 and 10,000 items`` () =
+    let measure (n: int) =
+        let t, sv, iv, _ = buildSideways [| 0 .. n - 1 |] (fun i -> 100.0 + float (i % 13) * 37.0) ItemsLayout.stack (Scroller())
+        let mutable offset = 0.0
+        let step () =
+            offset <- (if offset >= 1500.0 then 500.0 else offset + 37.0)
+            ScrollViewer.jumpTo sv offset
+            layoutAt t
+        for _ in 1..50 do step ()
+        let best (f: unit -> unit) = [ for _ in 1..60 -> (let sw = Stopwatch.StartNew() in f (); sw.Elapsed.TotalMilliseconds) ] |> List.min
+        best step, realized iv
+    let smallLayout, smallRealized = measure 100
+    let bigLayout, bigRealized = measure 10_000
+    Assert.Equal(smallRealized, bigRealized)
+    Assert.True(bigLayout <= 1.5 * smallLayout + 0.02, $"layout: 10,000 items {bigLayout:F4} ms, 100 items {smallLayout:F4} ms")
+
+[<Fact>]
+let ``scrolling to an item or an offset leaves a sideways scrolled stack where it is`` () =
+    for layout in [ ItemsLayout.stack; ItemsLayout.fixedStack 20.0 ] do
+        let scroller = Scroller()
+        let t, sv, iv, _ = buildSideways [| 0..999 |] (fun _ -> 900.0) layout scroller
+        iv.BringRectIntoView(Rect.Create(500.0, 0.0, 1.0, 1.0), ScrollAlign.Start, false)
+        layoutAt t
+        let struct (x0, _, _, _) = ScrollViewer.viewportOf sv
+        Assert.Equal(500.0, x0)
+        scroller.ScrollTo(box 600, ScrollAlign.Start, false)
+        layoutAt t
+        let struct (x, y, _, _) = ScrollViewer.viewportOf sv
+        Assert.Equal(500.0, x) // was NaN: the slot of an unlimited-width stack is infinitely wide
+        Assert.Equal(12_000.0, y, 3)
+        scroller.ScrollToOffset(40.0, false)
+        layoutAt t
+        let struct (x, y, _, _) = ScrollViewer.viewportOf sv
+        Assert.Equal(500.0, x) // was 0
+        Assert.Equal(40.0, y, 3)

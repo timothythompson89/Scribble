@@ -385,3 +385,33 @@ let ``a pressed row given to another item before the release doesn't click`` () 
     press w 50 y
     release w 50 y
     Assert.Equal(1, log |> Seq.filter (fun s -> s.StartsWith "click") |> Seq.length)
+
+[<Fact>]
+let ``Shift+wheel scrolls a sideways ItemsView sideways`` () =
+    let view =
+        ScrollViewer.create [
+            ScrollViewer.name "sv"
+            ScrollViewer.width 300.0
+            ScrollViewer.height 200.0
+            ScrollViewer.horizontalAlignment HorizontalAlignment.Left
+            ScrollViewer.verticalAlignment VerticalAlignment.Top
+            ScrollViewer.horizontal ScrollBarMode.Auto
+            ScrollViewer.content (
+                ItemsView.create [
+                    ItemsView.source [| 0..999 |]
+                    ItemsView.key id
+                    ItemsView.layout (ItemsLayout.fixedStack 20.0)
+                    ItemsView.view (fun (i: int) -> Border.create [ Border.height 20.0; Border.child (Border.create [ Border.width 900.0 ]) ])
+                ])
+        ]
+    let w, host, find = show view
+    let sv = find "sv"
+    let at: Scribble.Platform.PixelPoint = { X = 100.0; Y = 100.0 }
+    move w 100 100
+    w.Send(PointerWheel(at, 0.0, -3.0, Modifiers.Shift))
+    for _ in 1..30 do // past the scroll animation
+        host.App.Tree.Time <- host.App.Tree.Time + System.TimeSpan.FromMilliseconds 50.0
+        while w.DeliverFrame() do ()
+    let struct (x, y, _, _) = ScrollViewer.viewportOf sv
+    Assert.True(x > 0.0, $"not scrolled sideways (x {x})")
+    Assert.Equal(0.0, y)

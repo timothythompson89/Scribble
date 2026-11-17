@@ -274,7 +274,7 @@ let ``a forced disabled reaches everything inside, as isEnabled false does`` () 
     Assert.Contains(States.disabled, label.ActiveStates)
     Assert.NotEqual(red, outside.Get InheritedProps.foreground) // only inside
     Assert.True(button.IsEnabled && label.IsEnabled) // input still sees it enabled
-    button.ForceState(States.disabled, false)
+    button.UnforceState States.disabled
     layout t
     Assert.NotEqual(red, label.Get InheritedProps.foreground)
     Assert.DoesNotContain(States.disabled, label.ActiveStates)
@@ -289,7 +289,7 @@ let ``a forced hover reaches the ancestors, as the pointer over a child does`` (
     Assert.Equal(green, panel.Get BorderProps.background)
     Assert.DoesNotContain(States.hover, outside.ActiveStates) // a sibling isn't hovered
     Assert.False(button.IsPointerOver) // input doesn't see it
-    label.ForceState(States.hover, false)
+    label.UnforceState States.hover
     layout t
     Assert.DoesNotContain(States.hover, button.ActiveStates)
     Assert.NotEqual(green, panel.Get BorderProps.background)

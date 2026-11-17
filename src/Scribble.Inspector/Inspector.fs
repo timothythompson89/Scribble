@@ -77,6 +77,12 @@ type internal Row =
     | Element of Element * depth: int
 
 /// Text for keys and values, by our own code (never `string` on unions: it isn't AOT-safe).
+/// Names the inspector gives its own elements, to find them again.
+module internal Names =
+    /// The selected row's chevron and type name (scrolled into view sideways after a pick).
+    [<Literal>]
+    let SelectedLabel = "inspectorSelectedLabel"
+
 module internal Format =
     let key (key: Key, mods: Modifiers) =
         let name =
@@ -306,6 +312,8 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     let mutable revealSelected = false
     /// The last `Rows()` had the selected element's row.
     let mutable selectedListed = false
+    /// After the tree scrolled to the selected row: bring its name into view sideways once the row exists.
+    let mutable revealSideways = false
     /// Scrolls the tree (an ItemsView) by key.
     let treeScroller = Scroller()
     let mutable own: Layer list = []
@@ -625,12 +633,16 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
 
     // --- Forced states ------------------------------------------------------------------------
 
-    /// Forces `s` on `e`, or stops forcing it (looks only; see `element.ForceState`).
+    /// Forces `s` on `e` to the opposite of what it is now (on if off, off if on), or stops forcing it
+    /// (looks only; see `element.ForceState`).
     member _.ToggleForced(e: Element, s: ElementState) =
-        let on = not (e.ForcedStates |> List.exists (fun f -> obj.ReferenceEquals(f, s)))
-        e.ForceState(s, on)
-        if on then forcedOn.Add e |> ignore
-        elif e.ForcedStates.IsEmpty then forcedOn.Remove e |> ignore
+        if e.ForcedStates |> List.exists (fun (f, _) -> obj.ReferenceEquals(f, s)) then
+            e.UnforceState s
+            if e.ForcedStates.IsEmpty then forcedOn.Remove e |> ignore
+        else
+            let isOn = e.ActiveStates |> List.exists (fun a -> obj.ReferenceEquals(a, s))
+            e.ForceState(s, not isOn)
+            forcedOn.Add e |> ignore
         notify ()
 
     /// Some element has forced states.
@@ -649,6 +661,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         if selected.IsSome then
             selected <- ValueNone
             revealSelected <- false
+            revealSideways <- false
             notify ()
 
     /// A click on a tree row: selects it, or deselects it when it's already selected.
@@ -728,7 +741,26 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         match selected with
         | ValueSome e when revealSelected && selectedListed ->
             revealSelected <- false
+            revealSideways <- true
             treeScroller.ScrollTo(box e, ScrollAlign.Nearest, false) // at once, as devtools do
+        | _ when revealSideways ->
+            // The row exists now (the frame after the scroll): its chevron and name into view sideways,
+            // with a little indent to their left; nothing moves when they already show.
+            let rec named (e: Element) : Element voption =
+                if e.Name = Names.SelectedLabel then ValueSome e
+                else
+                    let mutable found = ValueNone
+                    let mutable i = 0
+                    while found.IsNone && i < e.Children.Count do
+                        found <- named e.Children[i]
+                        i <- i + 1
+                    found
+            let label = own |> List.tryPick (fun l -> match l.Tree.Root with ValueSome r -> (match named r with ValueSome x -> Some x | ValueNone -> None) | ValueNone -> None)
+            match label with
+            | Some l ->
+                revealSideways <- false
+                l.BringIntoView()
+            | None -> if selected.IsNone then revealSideways <- false
         | _ -> ()
         let now = clock.Elapsed.TotalMilliseconds
         lastStats <- ValueSome stats
@@ -1111,9 +1143,12 @@ module internal Views =
             let left = 6.0 + float depth * indentStep
             // Hidden elements (and everything inside them) are dimmed.
             let fade (c: Color) = if e.IsVisible then c else c.WithAlpha 0.4f
+            // The last part of the indent sits inside the label, so bringing the label into view sideways
+            // keeps a little of it to the left (M8 step 3a++).
+            let inset = min left 24.0
             Border.create [
                 Border.height 22.0
-                Border.padding (Thickness.Create(left, 0.0, 6.0, 0.0))
+                Border.padding (Thickness.Create(left - inset, 0.0, 6.0, 0.0))
                 Border.background (
                     if isSelected then (Color.Hex 0x3D59A1).WithAlpha 0.6f
                     elif isHovered then Color.White.WithAlpha 0.07f
@@ -1129,8 +1164,20 @@ module internal Views =
                         StackPanel.orientation Horizontal
                         StackPanel.spacing 4.0
                         StackPanel.children [
-                            chevron hasChildren isOpen
-                            text (Format.label e) (fade (if e.ComponentName.IsSome then componentColor else typeColor))
+                            Border.create [
+                                if isSelected then Border.name Names.SelectedLabel
+                                Border.padding (Thickness.Create(inset, 0.0, 0.0, 0.0))
+                                Border.child (
+                                    StackPanel.create [
+                                        StackPanel.orientation Horizontal
+                                        StackPanel.spacing 4.0
+                                        StackPanel.children [
+                                            chevron hasChildren isOpen
+                                            text (Format.label e) (fade (if e.ComponentName.IsSome then componentColor else typeColor))
+                                        ]
+                                    ]
+                                )
+                            ]
                             if e.Name.Length > 0 then text ("#" + e.Name) (fade nameColor)
                             if not e.ForcedStates.IsEmpty then text "• forced" forcedTextColor
                             // An ItemsView's count shows open or not; text hints only on collapsed rows.
@@ -1440,16 +1487,23 @@ module internal Views =
                 ]
             )
 
-    /// One state as a toggle: teal while forced, bright while on for real, dim while off. A click
-    /// forces it on, or stops forcing it.
-    let private stateChip (label: string) (isOn: bool) (isForced: bool) (onClick: unit -> unit) =
+    /// One state as a toggle: filled teal while forced on, a teal outline with the name struck through
+    /// while forced off, bright while on for real, dim while off. A click forces the opposite of what
+    /// it shows, or stops forcing it.
+    let private stateChip (label: string) (isOn: bool) (forced: bool voption) (onClick: unit -> unit) =
+        let forcedOn, forcedOff = forced = ValueSome true, forced = ValueSome false
+        let bright = forcedOn || forcedOff || isOn
         Border.create [
             Border.padding (6.0, 1.0)
             Border.cornerRadius 4.0
             Border.borderThickness 1.0
-            Border.borderBrush (if isForced || isOn then Color.Transparent else Color.White.WithAlpha 0.14f)
+            Border.borderBrush (
+                if forcedOff then forcedColor
+                elif forcedOn || isOn then Color.Transparent
+                else Color.White.WithAlpha 0.14f
+            )
             Border.background (
-                if isForced then forcedColor
+                if forcedOn then forcedColor
                 elif isOn then Color.White.WithAlpha 0.12f
                 else Color.Transparent
             )
@@ -1457,10 +1511,21 @@ module internal Views =
             Border.on States.hover [ Border.overlay (Color.White.WithAlpha 0.08f) ]
             Border.onClick (fun _ -> onClick ())
             Border.child (
-                TextBlock.create [
-                    TextBlock.text label
-                    TextBlock.fontSize 12.0
-                    TextBlock.foreground (if isForced || isOn then Color.White else dim)
+                // One cell: the name, and over it a line through its middle when forced off.
+                Grid.create [
+                    Grid.children [
+                        TextBlock.create [
+                            TextBlock.text label
+                            TextBlock.fontSize 12.0
+                            TextBlock.foreground (if bright then Color.White else dim)
+                        ]
+                        if forcedOff then
+                            Border.create [
+                                Border.height 1.0
+                                Border.verticalAlignment VerticalAlignment.Center
+                                Border.background (Color.White.WithAlpha 0.85f)
+                            ]
+                    ]
                 ]
             )
         ]
@@ -1470,16 +1535,18 @@ module internal Views =
     let private statesLine (state: InspectorState) (e: Element) =
         let active = e.ActiveStates
         let forced = e.ForcedStates
-        let has (list: ElementState list) (s: ElementState) = list |> List.exists (fun x -> obj.ReferenceEquals(x, s))
         let shown = builtInStates @ List.ofArray (States.customStates ())
         // Its own section (under the STATES heading), across the whole width.
         WrapRow.create [
             WrapRow.margin (Thickness.Create(10.0, 2.0, 10.0, 2.0))
             WrapRow.children [
                 for s in shown do
-                    // Forced states test as on: "on" here means on for real.
-                    let isForced = has forced s
-                    let isOn = has active s && not isForced
+                    // Forced states test as forced: "on" here means on for real (only asked when not forced).
+                    let isForced =
+                        match forced |> List.tryFind (fun (f, _) -> obj.ReferenceEquals(f, s)) with
+                        | Some(_, on) -> ValueSome on
+                        | None -> ValueNone
+                    let isOn = isForced.IsNone && active |> List.exists (fun x -> obj.ReferenceEquals(x, s))
                     stateChip s.Name isOn isForced (fun () -> state.ToggleForced(e, s))
                 if not e.IsVisible then text "hidden" hintColor
             ]
@@ -1610,6 +1677,7 @@ module internal Views =
                     yield
                         ScrollViewer.create [
                             ScrollViewer.height "1*"
+                            ScrollViewer.horizontal ScrollBarMode.Auto // deep rows scroll sideways (M8 step 3a++)
                             ScrollViewer.content (treeSection section)
                         ]
                     yield divider state

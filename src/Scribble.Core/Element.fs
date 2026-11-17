@@ -204,7 +204,8 @@ and [<Struct>] ArrangeContext internal (element: Element) =
 
 /// What a Render function can do: read properties, its size and its input states.
 and [<Struct>] RenderContext internal (element: Element) =
-    member _.Get<'T>(prop: Prop<'T>) : 'T = element.Get prop
+    /// A property's value; while a tool forces a state read from it (a forced checked), the forced value.
+    member _.Get<'T>(prop: Prop<'T>) : 'T = element.LooksValue prop
     /// A theme value for drawing (`ctx.Theme Palette.accent`), from the nearest theme.
     member _.Theme<'T>(themeValue: ThemeValue<'T>) : 'T = unbox<'T> (element.ThemeValueOf themeValue)
     /// The element's size; draw within (0, 0)–(Width, Height).
@@ -213,16 +214,16 @@ and [<Struct>] RenderContext internal (element: Element) =
         Size.Create(b.Width, b.Height)
     member _.Text: TextSystem = element.TextSystem
     /// The pointer is over the element (or something inside it).
-    member _.IsPointerOver = element.IsPointerOver || element.HasForcedHoverInside
+    member _.IsPointerOver = not (element.LooksForcedOff 1) && (element.IsPointerOver || element.HasForcedHoverInside)
     /// The element got a left-button press that hasn't been released, and the pointer is over it.
-    member _.IsPressed = element.IsPressed || element.LooksForced 2
+    member _.IsPressed = not (element.LooksForcedOff 2) && (element.IsPressed || element.LooksForced 2)
     /// False when the element or one of its ancestors has `isEnabled false`.
-    member _.IsEnabled = element.IsEnabled && not element.HasForcedDisabledAbove
+    member _.IsEnabled = not element.LooksDisabled
     /// The element has keyboard focus (however it got it).
-    member _.IsFocused = element.IsFocused || element.LooksForced 4
+    member _.IsFocused = not (element.LooksForcedOff 4) && (element.IsFocused || element.LooksForced 4)
     /// The element has focus and the user is using the keyboard: draw a focus ring
     /// (`FocusRing.draw`). False after a pointer press and while the window is inactive.
-    member _.IsFocusVisible = element.IsFocusVisible || element.LooksForced 8
+    member _.IsFocusVisible = not (element.LooksForcedOff 8) && (element.IsFocusVisible || element.LooksForced 8)
     /// The current frame's time.
     member _.Time = element.Time
     member internal _.Element = element
@@ -364,8 +365,12 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     // States a tool forced on (the inspector): ElementState values (declared after Element), and
     // the built-in ones as flags for RenderContext (1 hover, 2 pressed, 4 focus, 8 focus-visible,
     // 16 disabled). Looks only: input reads the real states.
-    let mutable forced: obj list = []
+    let mutable forced: struct (obj * bool) list = []
     let mutable forcedLooks = 0
+    /// The built-in states forced off, as flags like `forcedLooks`.
+    let mutable forcedOffLooks = 0
+    /// Property values render functions see while a state read from them is forced (a forced checked).
+    let mutable forcedValues: struct (Prop * obj) list = []
     /// Values animated by the render function (`ctx.Animate`), by key; created on first use.
     let mutable animations: Dictionary<string, obj> voption = ValueNone
     /// Running or finished transitions (`Style.transition`), by property id; created on first use.
@@ -670,18 +675,22 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// Has focus and should show it (the keyboard is in use and the window is active).
     member _.IsFocusVisible = focused && focusVisible
 
-    /// The states forced on by a tool (`element.ForceState`), as ElementState values.
+    /// The states a tool forces (`element.ForceState`): ElementState values, each on or off.
     member internal _.Forced = forced
 
     /// Replaces the forced states (and the built-in ones' flags); styles match again.
-    member internal this.SetForced(states: obj list, looks: int) =
-        let changed flag = (forcedLooks &&& flag) <> (looks &&& flag)
+    member internal this.SetForced(states: struct (obj * bool) list, looks: int, offLooks: int, values: struct (Prop * obj) list) =
+        forcedValues <- values
+        let changed flag = (forcedLooks &&& flag) <> (looks &&& flag) || (forcedOffLooks &&& flag) <> (offLooks &&& flag)
         // Elements are UI-thread-only, so plain counts do (the walks only run while one is forced).
-        let delta flag = if not (changed flag) then 0 elif looks &&& flag <> 0 then 1 else -1
-        ElementCounts.AddForced(delta 1, delta 16)
+        // Hovers: forced on (they reach the ancestors); disableds: forced on or off (they reach inside).
+        let hoverDelta = if (forcedLooks &&& 1) = (looks &&& 1) then 0 elif looks &&& 1 <> 0 then 1 else -1
+        let was, now = (forcedLooks ||| forcedOffLooks) &&& 16 <> 0, (looks ||| offLooks) &&& 16 <> 0
+        ElementCounts.AddForced(hoverDelta, (if was = now then 0 elif now then 1 else -1))
         let hoverChanged, disabledChanged = changed 1, changed 16
         forced <- states
         forcedLooks <- looks
+        forcedOffLooks <- offLooks
         this.InvalidateVisual()
         // A forced disabled reaches everything inside (as `isEnabled false` does); a forced hover
         // reaches the ancestors (as the pointer over a child does): those match again too.
@@ -694,6 +703,16 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     /// A built-in state forced on (see `forcedLooks`), for RenderContext.
     member internal _.LooksForced(flag: int) = forcedLooks &&& flag <> 0
+    /// A built-in state forced off, for RenderContext.
+    member internal _.LooksForcedOff(flag: int) = forcedOffLooks &&& flag <> 0
+
+    /// `prop` as render functions see it: a forced state's value (a forced checked reads `true`), else its own.
+    member internal this.LooksValue<'T>(prop: Prop<'T>) : 'T =
+        if forcedValues.IsEmpty then this.Get prop
+        else
+            match forcedValues |> List.tryFind (fun (struct (p, _)) -> obj.ReferenceEquals(p, prop)) with
+            | Some(struct (_, v)) -> unbox<'T> v
+            | None -> this.Get prop
 
     /// Looks hovered because of a forced hover on it or something inside it (the pointer over a
     /// child is over its ancestors too).
@@ -702,15 +721,20 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         && (let rec any (e: Element) = e.LooksForced 1 || e.Children |> Seq.exists any
             any this)
 
-    /// Looks disabled because of a forced disabled on it or an ancestor (as `isEnabled false`).
-    member internal this.HasForcedDisabledAbove =
-        ElementCounts.ForcedDisableds > 0
-        && (let mutable e = ValueSome this
-            let mutable found = false
-            while not found && e.IsSome do
-                found <- e.Value.LooksForced 16
-                e <- e.Value.Parent
-            found)
+    /// Looks disabled: from here up, the first element with `disabled` forced (on or off) or its own
+    /// `isEnabled false` decides; none: enabled. Without forcing anywhere, just `not IsEnabled`.
+    member internal this.LooksDisabled =
+        if ElementCounts.ForcedDisableds = 0 then not this.IsEnabled
+        else
+            let mutable e = ValueSome this
+            let mutable result = ValueNone
+            while result.IsNone && e.IsSome do
+                let x = e.Value
+                if x.LooksForced 16 then result <- ValueSome true
+                elif x.LooksForcedOff 16 then result <- ValueSome false
+                elif not (x.Get LayoutProps.isEnabled) then result <- ValueSome true
+                e <- x.Parent
+            result = ValueSome true
 
     member internal this.SetFocusState(isFocused: bool, isVisible: bool) =
         let before = this.IsFocused, this.IsFocusVisible

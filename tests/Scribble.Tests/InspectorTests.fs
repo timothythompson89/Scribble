@@ -480,7 +480,7 @@ let ``a state toggle forces the state's look until it's cleared or the inspector
     let button = (find "appButton" host.Tree.Root.Value).Value
     Assert.Equal(Color.Transparent, button.Get BorderProps.overlay)
     clickButton w panel "hover"
-    Assert.True(button.ForcedStates |> List.exists (fun s -> obj.ReferenceEquals(s, States.hover)))
+    Assert.True(button.ForcedStates |> List.exists (fun (s, on) -> on && obj.ReferenceEquals(s, States.hover)))
     Assert.False button.IsPointerOver // looks only: input still sees the real state
     Assert.DoesNotContain("hover (forced)", texts panel) // shown by color, not words
     Assert.Contains("• forced", texts panel) // marked in the tree
@@ -892,3 +892,90 @@ let ``a wheel scroll over the tree moves the hover to the row under the still po
     Assert.True(obj.ReferenceEquals(hovered.Head, (rowUnder at.Y).Value), "the hovered row isn't the one under the pointer")
     // The tree did scroll.
     Assert.True(tree.PositionInTree.Y < top.Y - 50.0, $"the tree didn't scroll ({tree.PositionInTree.Y} vs {top.Y})")
+
+// --- Sideways scrolling in the tree (M8 step 3a++) --------------------------------------------
+
+/// An app of Borders nested `depth` deep (the innermost 100×20 at the top left), with the inspector
+/// open and the innermost picked. Returns the host, the tree's ScrollViewer and its ItemsView.
+let private nested (depth: int) =
+    let platform, device = new FakePlatform(), new FakeDevice()
+    let rec chain d =
+        if d = 0 then Border.create [ Border.name "innermost"; Border.width 100.0; Border.height 20.0 ]
+        else Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.verticalAlignment VerticalAlignment.Top; Border.child (chain (d - 1)) ]
+    let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), [ App.view (chain depth); Inspector.enable [] ])
+    let w = platform.Window.Value
+    let host = app :?> ElementHost
+    let size: PixelSize = { Width = 900; Height = 500 }
+    w.Size <- size
+    w.Send(Resized size)
+    settle w
+    let wake () =
+        Threading.Thread.Sleep 150
+        platform.RunWake()
+        settle w
+    keyWith w (Key.Char 'c') ctrlShift
+    settle w
+    move w 50.0 10.0
+    settle w
+    click w 50.0 10.0
+    settle w
+    wake ()
+    wake ()
+    for _ in 1..20 do // past any scroll animation
+        host.Layers |> Seq.iter (fun l -> l.Tree.Time <- l.Tree.Time + TimeSpan.FromMilliseconds 50.0)
+        settle w
+    let panel = host.Layers |> Seq.find (fun l -> l.Name = "Inspector")
+    let rec first (f: Element -> bool) (e: Element) : Element option =
+        if f e then Some e else e.Children |> Seq.tryPick (first f)
+    let tree = panel.Tree.Root.Value |> first (fun e -> e.Type.Name = "ItemsView") |> Option.get
+    let sv = tree.Parent.Value
+    let sv = if sv.Type.Name = "ScrollViewer" then sv else (let rec up (e: Element) = if e.Type.Name = "ScrollViewer" then e else up e.Parent.Value in up tree)
+    host, panel, sv, tree, first
+
+[<Fact>]
+let ``a deep tree scrolls sideways; a shallow one doesn't`` () =
+    let _, _, shallowSv, shallowTree, _ = nested 2
+    let struct (_, _, vw, _) = ScrollViewer.viewportOf shallowSv
+    Assert.True(shallowTree.DesiredSize.Width <= vw, $"shallow: {shallowTree.DesiredSize.Width} wide in {vw}")
+    let _, _, deepSv, deepTree, _ = nested 60
+    let struct (_, _, vw, _) = ScrollViewer.viewportOf deepSv
+    Assert.True(deepTree.DesiredSize.Width > vw + 300.0, $"deep: {deepTree.DesiredSize.Width} wide in {vw}")
+
+[<Fact>]
+let ``a deep pick brings the selected row's name into view sideways`` () =
+    let _, panel, sv, _, first = nested 60
+    let label = panel.Tree.Root.Value |> first (fun e -> e.Name = "inspectorSelectedLabel") |> Option.get
+    let struct (x, _, vw, _) = ScrollViewer.viewportOf sv
+    Assert.True(x > 300.0, $"the tree didn't scroll sideways (x {x})")
+    // The label (chevron, the type name and a little indent) is inside the viewport, sideways.
+    let left = label.PositionInTree.X - sv.PositionInTree.X
+    Assert.True(left >= -0.5 && left + label.Bounds.Width <= vw + 0.5, $"label at {left}, {label.Bounds.Width} wide, viewport {vw}")
+
+// --- Forcing states off (Tim, 2026-11-17) ----------------------------------------------------
+
+[<Fact>]
+let ``a state chip forces the opposite of what it shows, then lets go`` () =
+    // A custom state that's always on, so its chip forces it off; removed again at the end.
+    let always = States.define "always-on-for-this-test" (fun _ -> true)
+    try
+        let log = List<string>()
+        let w, host, panel = start log
+        pickAppButton w
+        let button = (find "appButton" host.App.Tree.Root.Value).Value
+        let forcedAs (s: ElementState) = button.ForcedStates |> List.tryPick (fun (f, on) -> if obj.ReferenceEquals(f, s) then Some on else None)
+        // Off for real: forced on, then real again.
+        clickButton w panel "disabled"
+        Assert.Equal(Some true, forcedAs States.disabled)
+        clickButton w panel "disabled"
+        Assert.Equal(None, forcedAs States.disabled)
+        // On for real: forced off (styles no longer see it), then real again.
+        clickButton w panel "always-on-for-this-test"
+        Assert.Equal(Some false, forcedAs always)
+        Assert.DoesNotContain(always, button.ActiveStates)
+        Assert.Contains("• forced", texts panel)
+        clickButton w panel "always-on-for-this-test"
+        Assert.Equal(None, forcedAs always)
+        Assert.Contains(always, button.ActiveStates)
+        Assert.Empty(log) // none of it reached the app
+    finally
+        States.remove always

@@ -1284,7 +1284,7 @@ before 3b:
   test adapted (it finds the selected row by its color, and fails with the reveal turned off). 61 rendering tests;
   `inspector-pick@1x` regenerated (rows 2 DIPs higher; regenerated on Tim's GPU, not lavapipe).
 
-## M8 step 3a++: sideways scrolling for stacked ItemsViews; the inspector tree scrolls sideways (planned 2026-11-17)
+## M8 step 3a++: sideways scrolling for stacked ItemsViews; the inspector tree scrolls sideways (planned and built 2026-11-17)
 
 Tim (2026-11-17): "should the inspector view have a horizontal scroll bar for deep trees?" Rows indent 12 DIPs per
 level in a panel about 380 wide, so names get cut off from about 25 levels down. Decided with Tim (grilling, the same
@@ -1312,6 +1312,57 @@ day):
     scroll step within 1.5×, same realized count); the inspector: a deep pick scrolls the name into view sideways, a
     deep tree shows the bar and a shallow one doesn't.
 11. **GLOSSARY: Extent** added.
+
+**As built (2026-11-17, not yet checked by Tim).**
+
+- **Key store:** natural widths by key next to the heights (`RecordWidth`), and `MaxWidth` over the keys in the
+  source: kept as a running maximum, recomputed (over what was measured, not over the source) only when keys left
+  or arrived or the widest got narrower. Cleared with the heights on a width change.
+- **ItemsView measure:** at unlimited width, stacks record each measured item's width and report `MaxWidth` (it
+  used to report the widest realized item: the jumping rule decision 5 rejected); wrap and grid take the
+  viewport's width (they used to measure one column at unlimited width, twice as tall in the test).
+- **Found on the way (Core bug):** scrolling a stack to an item brought its slot into view, and at unlimited width
+  the slot is infinitely wide: the ScrollViewer's sideways offset became NaN. Scrolling to an offset used x 0, so it
+  would have snapped a sideways scrolled list back to the left. Vertical scroll requests on stacks now use a 0-wide
+  rect where the viewport already is sideways (`rowsAt`).
+- **Inspector:** the tree's ScrollViewer scrolls sideways. Rows keep the last 24 DIPs of their indent inside an
+  inner Border around the chevron and type name, named `inspectorSelectedLabel` on the selected row; the frame
+  after a pick's scroll to the row, that Border is brought into view (Nearest: nothing moves if it shows; animated
+  sideways, the vertical scroll before it isn't).
+- **Tests:** 389 unit tests (9 new: the extent rule (stack and fixedStack), the width over scrolling, removing and
+  re-adding, wrap and grid flowing to the viewport, the cost rule sideways (same realized count, scroll step within
+  1.5×), Shift+wheel, scrolling by key and offset keeping the sideways position, the inspector's bar for deep and
+  shallow trees, a deep pick bringing the name into view). The new ItemsView tests fail on the old ItemsView; the
+  NaN test and the inspector reveal test fail without the `rowsAt` fix. 61 rendering tests, no pictures changed.
+- **Also (Tim, 2026-11-17): forced property states draw.** A CheckBox forced to `checked` in the inspector got the
+  checked colours but no tick (render functions read the real `isChecked`). Now `ctx.Get` in a render function reads
+  `true` for a bool property behind a forced state (`States.ofProp` with a test that passes for `true`; the state
+  carries that forced value); `element.Get`, layout and input still read the real one. Forcing only adds a state:
+  a checked look can be shown on an unchecked box, not the other way. 2 unit tests (CheckBox tick, dash, Switch
+  knob draw exactly as the real ones; clearing takes the tick away), failing without the change. 391 unit tests.
+- **Forcing a state off (Tim, 2026-11-17: "can we make it so a 'forced' state is the opposite of the current
+  state?").** Decided the same day ("yes to all seven"):
+  1. A STATES chip forces the opposite of what it shows when clicked (on if off, off if on); clicking again stops
+     forcing. Fixed at the click, not a live opposite. A state is real, forced on or forced off.
+  2. A forced-off `disabled` reaches everything inside (a disabled panel shown enabled), except what has its own
+     `isEnabled false`; a forced-off `hover` and the others apply to the element only.
+  3. Render functions see forced-off states (`ctx.IsPointerOver`, `IsPressed`, `IsFocused`, `IsFocusVisible` false,
+     `IsEnabled` true; a bool property behind a state reads `false`); input still sees the real states.
+  4. A `States.define` state forced off works for styles only (render functions see it only through a property).
+  5. Inspector: forced on keeps the accent fill; forced off is the accent outline with the name struck through;
+     "• forced" covers both; "Clear forced" clears both.
+  6. API: `element.ForceState(state, on)` forces on or off; `element.UnforceState state` stops one;
+     `ClearForcedStates()` as before; `ForcedStates` lists `(state, on)` pairs.
+  7. Tests: a checked CheckBox forced off draws unchecked and stays checked; a disabled Button forced off looks
+     and draws enabled; forced-off `disabled` on a disabled panel reaches inside except a child disabled itself;
+     the chip goes off → forced → real; forced-off focus-visible draws no ring.
+  **As built:** `Element` keeps `(state, on)` pairs and on/off flags for the built-in states; `ctx.IsPointerOver`,
+  `IsPressed`, `IsFocused`, `IsFocusVisible` read false under a forced off; `LooksDisabled` walks up to the first
+  element with `disabled` forced (on or off) or its own `isEnabled false` (it replaces `HasForcedDisabledAbove`;
+  without any forced `disabled` it's just `not IsEnabled`). `States.ofProp` carries the forced on and off values
+  (`true`, `false` for a bool state whose test is the value itself). The STATES chip draws its strike-through as a
+  1-DIP line over the name in a one-cell Grid (Core has no text decorations yet). 5 new unit tests (396); each
+  forced-off branch turned off fails one. 61 rendering tests, no pictures changed.
 
 ## M8 step 1b: non-uniform virtualization (2026-11-16)
 

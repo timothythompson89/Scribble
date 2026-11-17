@@ -102,6 +102,10 @@ type internal KeyStore() =
     abstract Height: i: int -> float voption
     /// Records item `i`'s measured height; returns the one it had (ValueNone: newly measured).
     abstract Record: i: int * height: float -> float voption
+    /// Records item `i`'s natural width (measured at unlimited width, for a sideways scrolling stack).
+    abstract RecordWidth: i: int * width: float -> unit
+    /// The widest recorded width among the items in the source now (0 if none): the extent's width.
+    abstract MaxWidth: unit -> float
     /// Forgets every measured height (the width changed).
     abstract ClearHeights: unit -> unit
     /// Height and count of measured items in [0, i).
@@ -129,6 +133,11 @@ and [<Sealed>] internal TypedKeyStore<'T, 'K when 'K: equality>() =
     let mutable index: Dictionary<'K, int> = null
     let heights = Dictionary<'K, float>()
     let sums = SizeSums()
+    /// Natural widths by key (kept for keys that leave, like heights, in case they come back).
+    let widths = Dictionary<'K, float>()
+    /// The widest of `widths` among the keys in the source; recomputed when `maxDirty`.
+    let mutable maxWidth = 0.0
+    let mutable maxDirty = false
     /// Keys that left a position in an update (removed or moved), reused between updates.
     let left = List<'K>()
 
@@ -184,6 +193,9 @@ and [<Sealed>] internal TypedKeyStore<'T, 'K when 'K: equality>() =
             left.Add keys[i]
             keys[i] <- Unchecked.defaultof<'K>
             boxes[i] <- null
+        // Keys left or arrived (the widest may have gone; one measured before may be back): find the
+        // widest again when it's next asked for.
+        if widths.Count > 0 && (left.Count > 0 || count > old) then maxDirty <- true
         n <- count
         // A key that left its position is gone from the index unless it's at another one now.
         if not (isNull index) then
@@ -236,7 +248,27 @@ and [<Sealed>] internal TypedKeyStore<'T, 'K when 'K: equality>() =
             ValueNone
     override _.ClearHeights() =
         heights.Clear()
+        widths.Clear()
+        maxWidth <- 0.0
+        maxDirty <- false
         sums.Reset n
+    override _.RecordWidth(i, w) =
+        let k = keys[i]
+        let old = match widths.TryGetValue k with | true, o -> o | _ -> -1.0
+        widths[k] <- w
+        if not maxDirty then
+            if w >= maxWidth then maxWidth <- w
+            elif old >= maxWidth then maxDirty <- true // the widest got narrower
+    override this.MaxWidth() =
+        if maxDirty then
+            // Over what was measured (bounded by what has been realized), not over the source.
+            if isNull index then buildIndex ()
+            let mutable m = 0.0
+            for KeyValue(k, w) in widths do
+                if w > m && index.ContainsKey k then m <- w
+            maxWidth <- m
+            maxDirty <- false
+        maxWidth
     override _.Prefix(i) = sums.Prefix i
     override this.Update(source, keyFn) =
         match keyFn with
@@ -575,10 +607,12 @@ module ItemsView =
             match cells layout s width with
             | ValueSome(struct (_, w, h)) ->
                 el.Measure(Size.Create(w, (match layout with ItemsLayout.Grid _ when Double.IsNaN s.CellHeight -> Double.PositiveInfinity | _ -> h)))
+                if Double.IsInfinity width then s.Store.RecordWidth(item.Index, el.DesiredSize.Width)
                 el.DesiredSize.Height
             | ValueNone ->
                 el.Measure(Size.Create(width, Double.PositiveInfinity))
                 let h = el.DesiredSize.Height
+                if Double.IsInfinity width then s.Store.RecordWidth(item.Index, el.DesiredSize.Width)
                 record s item.Index h
                 h
         if ItemsProfile.On then ItemsProfile.Measure <- ItemsProfile.Measure + since t0
@@ -651,6 +685,12 @@ module ItemsView =
         if ItemsProfile.On then ItemsProfile.Range <- ItemsProfile.Range + since t0
 
     /// Scrolls to item `i`: realizes it (at its estimated place) and asks the scrollers around to show it.
+    /// A rect at `y`, `height` tall, where the viewport already is sideways (0 wide): a vertical
+    /// scroll leaves a sideways scrolled stack where it is (and never sees an unlimited width).
+    let private rowsAt (s: ItemsState) (y: float) (height: float) =
+        let x = match s.Viewport with ValueSome v -> max 0.0 v.X | ValueNone -> 0.0
+        Rect.Create(x, y, 0.0, height)
+
     let private jumpTo (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) (i: int) (align: ScrollAlign) (animate: bool) (extra: float) =
         let viewFn = e.Get ItemsViewProps.view
         match realize e s viewFn i with
@@ -662,6 +702,7 @@ module ItemsView =
                 let height = match s.Viewport with ValueSome v -> v.Height | ValueNone -> slot.Height
                 Rect.Create(slot.X, slot.Y + extra, slot.Width, height)
             else slot
+        let rect = match layout with ItemsLayout.Stack | ItemsLayout.FixedStack _ -> rowsAt s rect.Y rect.Height | _ -> rect
         e.BringRectIntoView(rect, align, animate)
         struct (i, slot)
 
@@ -712,10 +753,10 @@ module ItemsView =
                     | ValueNone -> ()
                 | ScrollRequest.ToOffset(y, animate) ->
                     let height = match s.Viewport with ValueSome v -> v.Height | ValueNone -> 0.0
-                    e.BringRectIntoView(Rect.Create(0.0, max 0.0 y, 1.0, height), ScrollAlign.Start, animate)
+                    e.BringRectIntoView(rowsAt s (max 0.0 y) height, ScrollAlign.Start, animate)
                 | ScrollRequest.By(dy, animate) ->
                     match s.Viewport with
-                    | ValueSome v -> e.BringRectIntoView(Rect.Create(0.0, max 0.0 (v.Y + dy), 1.0, v.Height), ScrollAlign.Start, animate)
+                    | ValueSome v -> e.BringRectIntoView(rowsAt s (max 0.0 (v.Y + dy)) v.Height, ScrollAlign.Start, animate)
                     | ValueNone -> ()
         struct (jumped, scrolled)
 
@@ -728,10 +769,15 @@ module ItemsView =
         if not (obj.ReferenceEquals(view, s.LastView)) then
             s.LastView <- view
             s.Version <- s.Version + 1
-        let width = available.Width
         s.Scale <- e.Scale
         // What shows now; before the first arrange, the top of the nearest ScrollViewer's viewport.
         let viewport = viewportOf e
+        // Unlimited width (a ScrollViewer scrolling sideways): a stack measures its items at their
+        // natural width (M8 step 3a++); wrap and grid flow to the viewport's width instead.
+        let width =
+            match layout, viewport with
+            | (ItemsLayout.Wrap _ | ItemsLayout.Grid _), ValueSome v when Double.IsInfinity available.Width -> v.Width
+            | _ -> available.Width
         // The scroll anchor, taken before the items or the width change: the first visible item
         // keeps its place on screen while sizes or items above it change.
         let before = match viewport with ValueSome v when layout = ItemsLayout.Stack -> anchorAt s v | _ -> ValueNone
@@ -790,13 +836,9 @@ module ItemsView =
                     realizeRange e s layout width (v.Y - extra) (v.Bottom + extra)
                     moveTo v (target ()) |> ignore
                 | ValueNone -> realizeRange e s layout width (v.Y - extra) (v.Bottom + extra)
-        let w =
-            if Double.IsInfinity width then
-                let mutable m = 0.0
-                for item in s.Realized.Values do
-                    m <- max m item.Element.DesiredSize.Width
-                m
-            else width
+        // Sideways: the widest item measured so far that's still in the source (the extent's width
+        // doesn't shrink while scrolling; DESIGN.md, M8 step 3a++, decision 5).
+        let w = if Double.IsInfinity width then s.Store.MaxWidth() else width
         Size.Create(w, totalHeight layout s width n)
 
     let private arrange (ctx: ArrangeContext) (size: Size) =

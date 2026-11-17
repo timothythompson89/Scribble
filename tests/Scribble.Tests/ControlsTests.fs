@@ -387,3 +387,108 @@ let ``tabs never visited cost nothing: the same elements with 2 or 20 of them`` 
         pages host |> List.sumBy (fun p -> Seq.length (all p))
     Assert.Equal(pageElements 2, pageElements 20)
     Assert.Equal(1 + 1 + 100, pageElements 20)
+
+// --- Forced states draw like the real ones (inspector STATES) -----------------------------------
+
+/// The draw list of `view` (a 200×40 tree), after `prepare` runs on its root element.
+let private drawn (view: View) (prepare: Element -> unit) =
+    let t = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    t.Theme <- ValueSome(Theme.dark []) // the built-in looks (a disabled Button's)
+    t.Update view
+    prepare t.Root.Value
+    t.UpdateLayout(Size.Create(200.0, 40.0))
+    let list = Scribble.Rendering.DrawList 1.0
+    t.Render list
+    list.InstanceData.ToArray()
+
+[<Fact>]
+let ``a forced checked CheckBox and Switch draw like checked ones, and their value stays off`` () =
+    let cases =
+        [ (fun on -> CheckBox.create [ CheckBox.isChecked on ]), "CheckBox"
+          (fun on -> Switch.create [ Switch.isChecked on ]), "Switch" ]
+    for make, name in cases do
+        let off = drawn (make false) ignore
+        let on = drawn (make true) ignore
+        let mutable forcedElement = Unchecked.defaultof<Element>
+        let forced = drawn (make false) (fun e -> forcedElement <- e; e.ForceState(States.isChecked, true))
+        Assert.False((off = on), name + ": checked and unchecked draw the same")
+        Assert.True((forced = on), name + ": forced checked doesn't draw like checked")
+        Assert.False(forcedElement.Get ToggleButtonProps.isChecked) // looks only
+    // Forced indeterminate draws the dash.
+    let dash = drawn (CheckBox.create [ CheckBox.isIndeterminate true ]) ignore
+    let forcedDash = drawn (CheckBox.create []) (fun e -> e.ForceState(States.isIndeterminate, true))
+    Assert.True((forcedDash = dash), "forced indeterminate doesn't draw the dash")
+
+[<Fact>]
+let ``clearing a forced checked state takes the tick away again`` () =
+    let t = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    t.Update(CheckBox.create [])
+    let e = t.Root.Value
+    let render () =
+        t.UpdateLayout(Size.Create(200.0, 40.0))
+        let list = Scribble.Rendering.DrawList 1.0
+        t.Render list
+        list.InstanceData.ToArray()
+    let off = render ()
+    e.ForceState(States.isChecked, true)
+    let on = render ()
+    e.ClearForcedStates()
+    let again = render ()
+    Assert.False((on = off))
+    Assert.True((again = off))
+
+// --- Forcing states off (Tim, 2026-11-17) ------------------------------------------------------
+
+[<Fact>]
+let ``a checked CheckBox forced off draws unchecked, and stays checked`` () =
+    let unchecked = drawn (CheckBox.create []) ignore
+    let mutable e = Unchecked.defaultof<Element>
+    let forcedOff = drawn (CheckBox.create [ CheckBox.isChecked true ]) (fun x -> e <- x; x.ForceState(States.isChecked, false))
+    Assert.True((forcedOff = unchecked), "forced off still draws the tick")
+    Assert.True(e.Get ToggleButtonProps.isChecked)
+    Assert.Contains((States.isChecked, false), e.ForcedStates)
+    // An indeterminate box forced off shows what isChecked says (here: nothing).
+    let notDash = drawn (CheckBox.create [ CheckBox.isIndeterminate true ]) (fun x -> x.ForceState(States.isIndeterminate, false))
+    Assert.True((notDash = unchecked), "forced-off indeterminate still draws the dash")
+
+[<Fact>]
+let ``a disabled Button forced off looks and draws enabled; input still sees it disabled`` () =
+    let enabled = drawn (Button.create [ Button.width 80.0; Button.height 30.0 ]) ignore
+    let disabled = drawn (Button.create [ Button.width 80.0; Button.height 30.0; Button.isEnabled false ]) ignore
+    Assert.False((enabled = disabled), "a disabled Button draws like an enabled one: nothing to check")
+    let mutable e = Unchecked.defaultof<Element>
+    let forcedOff = drawn (Button.create [ Button.width 80.0; Button.height 30.0; Button.isEnabled false ]) (fun x -> e <- x; x.ForceState(States.disabled, false))
+    Assert.True((forcedOff = enabled), "forced-off disabled still draws disabled")
+    Assert.False e.IsEnabled // input: still disabled
+    Assert.DoesNotContain(States.disabled, e.ActiveStates) // styles: not disabled
+
+[<Fact>]
+let ``a forced-off disabled reaches inside, except what has its own isEnabled false`` () =
+    let t = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    t.Update(
+        StackPanel.create [
+            StackPanel.isEnabled false
+            StackPanel.children [
+                Border.create [ Border.name "plain"; Border.height 10.0 ]
+                Border.create [ Border.name "own"; Border.height 10.0; Border.isEnabled false ]
+            ]
+        ])
+    t.UpdateLayout(Size.Create(100.0, 100.0))
+    let panel = t.Root.Value
+    let plain, own = panel.Children[0], panel.Children[1]
+    let disabled (e: Element) = e.ActiveStates |> List.exists (fun s -> obj.ReferenceEquals(s, States.disabled))
+    Assert.True(disabled plain && disabled own)
+    panel.ForceState(States.disabled, false)
+    Assert.False(disabled panel)
+    Assert.False(disabled plain) // reached
+    Assert.True(disabled own) // its own isEnabled false stays
+    panel.UnforceState States.disabled
+    Assert.True(disabled plain)
+
+[<Fact>]
+let ``focus-visible forced off draws no focus ring`` () =
+    let plain = drawn (CheckBox.create []) ignore
+    let focused = drawn (CheckBox.create []) (fun e -> e.SetFocusState(true, true))
+    Assert.False((focused = plain), "the focus ring doesn't draw: nothing to check")
+    let forcedOff = drawn (CheckBox.create []) (fun e -> e.SetFocusState(true, true); e.ForceState(States.focusVisible, false))
+    Assert.True((forcedOff = plain), "forced-off focus-visible still draws the ring")

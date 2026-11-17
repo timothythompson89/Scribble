@@ -218,7 +218,8 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      Click "hover": it turns teal, the button looks hovered with the mouse
      elsewhere, the tree marks it "• forced" and its `overlay` shows `theme`, "from Button:hover"; scroll the panel freely.
      "pressed" sinks it, "focus-visible" draws the ring, "disabled" fades it, yet the button still clicks. Click a
-     toggle again to stop forcing; "Clear forced" (next to Deselect) stops them all, and so does closing the
+     toggle again to stop forcing. A state that's on for real is forced off instead (a teal outline, the name struck
+     through): a ticked CheckBox's "checked" shows it unticked. "Clear forced" (next to Deselect) stops them all, and so does closing the
      inspector (F12). In the Styles tab, forcing `selected` on an unselected chip makes it look selected.
 12. The title (an app value, `WindowTitle.current`; verified): the window, or the browser tab, is called "Counter – Elmish" at
    the start and names whichever tab you select. A popped-out inspector ("Inspector – Counter – …") follows it.
@@ -582,6 +583,12 @@ let messages =
 - **Layouts:** `ItemsLayout.stack` (default: each item as tall as it wants; measured as realized, others estimated
   from the average, so the bar may adjust a little), `fixedStack height`, `wrap width height` and `grid columns`
   (exact, by arithmetic).
+- **Sideways:** in a ScrollViewer with `ScrollViewer.horizontal ScrollBarMode.Auto`, a `stack` or `fixedStack`
+  measures its items at their natural width (text in them doesn't wrap) and is as wide as the widest item measured
+  so far that's still in the source: the bar grows when a wider item first scrolls in, doesn't shrink while you
+  scroll, and shrinks when that item leaves the source. Every item spans that width (or the viewport's, if wider).
+  Shift+wheel scrolls sideways; scrolling to an item or offset leaves the sideways position alone. `wrap` and `grid`
+  keep flowing to the viewport's width.
 - **Scroll anchor** (`stack`): the first visible item, by key, keeps its place on screen while anything above it
   changes: estimates corrected, items inserted, removed or resized, the width changed (then the same fraction of
   it stays scrolled past). If it's removed, the next item takes its place. Filter hidden items out of the source
@@ -625,6 +632,7 @@ App.run (settings @ [
   highlight that only takes the pointer in pick mode), so the app's layout never changes. Its toolbar icons are
   Google's Material Symbols (Apache License 2.0). Its tree is an ItemsView: only the rows in view have elements,
   so an app of 10,000 elements costs the panel what one of 100 does (a refresh: about 2 ms at 10,000 rows, Release).
+  Deep trees scroll sideways (Shift+wheel or the bar); a pick brings the selected row's name into view.
 - Custom hosts: `Inspector.attach (host, [ Inspector.platform platform ])` (the platform enables popping out),
   disposable. Packages that plug into an app this way use
   `App.onStart (fun ctx -> ...)` (`ctx.Host`, `ctx.Platform`, `ctx.Title`), `host.AddKeyPreview` (keys before
@@ -695,10 +703,16 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
   may have changed.
 - The inspector shows a value a style set as `style`, with the selector under it (`from Button.primary:hover`). Its
   own layers ignore `App.styles` (`Layer.appStyles false`). Its STATES section is a row of toggles: every built-in
-  state and every custom one (`States.customStates ()`; bright when on, `element.ActiveStates`). Clicking one forces it on, for looks
-  only (styles and render functions see it, input doesn't), so you can inspect hover or pressed with the mouse
-  elsewhere; tools can do the same with `element.ForceState(state, true)`. Forced states spread like real ones: a
-  forced `disabled` reaches everything inside the element, a forced `hover` its ancestors.
+  state and every custom one (`States.customStates ()`; bright when on, `element.ActiveStates`). Clicking one forces the opposite of what it
+  shows (on if it's off, off if it's on; again to stop), for looks only (styles and render functions see it, input doesn't), so you can inspect hover or pressed with the mouse
+  elsewhere; tools can do the same with `element.ForceState(state, on)` (`element.UnforceState state` stops it;
+  `element.ForcedStates` lists `(state, on)` pairs). Forced states spread like real ones: a
+  forced `disabled` (on or off) reaches everything inside the element (forced off, except what has its own
+  `isEnabled false`), a forced-on `hover` its ancestors. A state read from a bool
+  property (`checked`, `indeterminate`, `selected`, or an app's `States.ofProp "x" prop id`) forced makes render
+  functions read that property as `true` or `false` (`ctx.Get`): a forced checked CheckBox draws its tick, a Switch its knob on
+  the right. Its real value doesn't change. (A TabControl's underline is the TabControl's: a forced `selected`
+  header changes only the header's own look.)
 
 **Themes** (M7 step 2a). The built-in looks are styles made by a theme, matched below every other style:
 

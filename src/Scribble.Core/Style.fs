@@ -40,7 +40,7 @@ and SelectorPart internal (apply: Selector -> Selector) =
 /// (`States.define`, `States.ofProp`). The same value is a selector part
 /// (`Button.style [ Style.cls "primary"; States.hover ] [ ... ]`) and a block
 /// (`Style.on States.hover [ ... ]`, `Button.on States.hover [ ... ]`).
-and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop: Prop voption) =
+and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop: Prop voption, forcedValues: struct (obj * obj) voption) =
     inherit SelectorPart(id)
     // An element holds at most one inline block per state (`Button.on States.hover [ ... ]`).
     let blockProp =
@@ -49,11 +49,21 @@ and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop:
         p
 
     member _.Name = name
-    /// On for real, or forced on by a tool (`element.ForceState`).
-    member internal this.Test(e: Element) = (e.Forced |> List.exists (fun s -> obj.ReferenceEquals(s, this))) || test e
+    /// Forced on or off by a tool (`element.ForceState`), else whether it's on for real.
+    member internal this.Test(e: Element) =
+        match e.Forced |> List.tryFind (fun (struct (s, _)) -> obj.ReferenceEquals(s, this)) with
+        | Some(struct (_, on)) -> on
+        | None -> test e
     member internal _.BlockProp = blockProp
     /// The property it reads (`States.ofProp`), so an ancestor part testing it can be re-matched.
     member internal _.Prop = prop
+    /// What render functions read from `Prop` while the state is forced on, and off (`true` and `false`
+    /// for a bool state read as is), so a forced checked CheckBox draws its tick; ValueNone: none known
+    /// (only styles follow).
+    member internal _.ForcedValue(on: bool) =
+        match forcedValues with
+        | ValueSome(struct (whenOn, whenOff)) -> ValueSome(if on then whenOn else whenOff)
+        | ValueNone -> ValueNone
     override _.ToString() = name
 
 /// Settings that apply while an element is in a state: `Style.on States.hover [ ... ]` inside a
@@ -76,15 +86,15 @@ and [<Sealed>] internal StateBlock(state: ElementState, settings: struct (Prop *
 /// The built-in states, and `States.define` for an element type's own.
 module States =
     /// The pointer is over the element or something inside it.
-    let hover = ElementState("hover", (fun e -> e.IsPointerOver || e.HasForcedHoverInside), ValueNone)
+    let hover = ElementState("hover", (fun e -> e.IsPointerOver || e.HasForcedHoverInside), ValueNone, ValueNone)
     /// Pressed with the left button (and the pointer still over it), or Space held while focused.
-    let pressed = ElementState("pressed", (fun e -> e.IsPressed), ValueNone)
+    let pressed = ElementState("pressed", (fun e -> e.IsPressed), ValueNone, ValueNone)
     /// Has keyboard focus.
-    let focused = ElementState("focus", (fun e -> e.IsFocused), ValueNone)
+    let focused = ElementState("focus", (fun e -> e.IsFocused), ValueNone, ValueNone)
     /// Has focus and shows it (the keyboard is in use).
-    let focusVisible = ElementState("focus-visible", (fun e -> e.IsFocusVisible), ValueNone)
+    let focusVisible = ElementState("focus-visible", (fun e -> e.IsFocusVisible), ValueNone, ValueNone)
     /// `isEnabled false` on the element or one of its ancestors.
-    let disabled = ElementState("disabled", (fun e -> not e.IsEnabled || e.HasForcedDisabledAbove), ValueNone)
+    let disabled = ElementState("disabled", (fun e -> e.LooksDisabled), ValueNone, ValueNone)
 
     // Every custom state made, in order, for `element.ActiveStates` (states are usually made at
     // module level, possibly on several threads at once).
@@ -103,14 +113,20 @@ module States =
     /// An element type's own state, tested by any function. Call `element.RefreshStates()` when it
     /// may have changed, so styles are matched again. For a state that only reads a property, use
     /// `ofProp` (it is matched again by itself).
-    let define (name: string) (test: Element -> bool) = register (ElementState(name, test, ValueNone))
+    let define (name: string) (test: Element -> bool) = register (ElementState(name, test, ValueNone, ValueNone))
 
     /// A state read from a property (M8's CheckBox: `States.ofProp "checked" CheckBoxProps.isChecked id`):
     /// the element is in it while `test` passes for its own value (else its default; never a style's,
     /// so a style can't switch its own state). Matched again whenever that value changes.
     let ofProp (name: string) (prop: Prop<'T>) (test: 'T -> bool) =
         prop.TestedByStyles <- true
-        register (ElementState(name, (fun e -> test (unbox<'T> (e.UnstyledValue prop))), ValueSome(prop :> Prop)))
+        // Forced, render functions read `true` (on) or `false` (off) for a bool property whose test
+        // passes for `true` only.
+        let forcedValues =
+            match box test with
+            | :? (bool -> bool) as t when t true && not (t false) -> ValueSome(struct (box true, box false))
+            | _ -> ValueNone
+        register (ElementState(name, (fun e -> test (unbox<'T> (e.UnstyledValue prop))), ValueSome(prop :> Prop), forcedValues))
 
     /// A ToggleButton (CheckBox, Switch) that is on (`isChecked`; F# reserves the word `checked`).
     let isChecked = ofProp "checked" ToggleButtonProps.isChecked id
@@ -139,17 +155,25 @@ module ElementStateExtensions =
                           false
                   if on then s ]
 
-        /// States forced on by `ForceState`.
-        member this.ForcedStates: ElementState list = [ for s in this.Forced -> s :?> ElementState ]
+        /// The states forced by `ForceState`, each with whether it's forced on (true) or off (false).
+        member this.ForcedStates: (ElementState * bool) list = [ for struct (s, on) in this.Forced -> (s :?> ElementState), on ]
 
-        /// Forces a state on (or stops forcing it), for tools such as the inspector: styles match
-        /// as if the element were in it and render functions see it (`ctx.IsPointerOver`), but
-        /// input doesn't (a forced `pressed` doesn't click, a forced `disabled` doesn't block). Like the
-        /// real states, a forced `disabled` also disables everything inside the element and a forced
-        /// `hover` also hovers its ancestors; other states apply to this element only.
+        /// Forces a state on or off (`on` false: as if the element weren't in it), for tools such as the
+        /// inspector: styles match as if it were so and render functions see it (`ctx.IsPointerOver`,
+        /// a bool property behind the state), but input doesn't (a forced `pressed` doesn't click, a
+        /// forced `disabled` doesn't block, a forced-off one doesn't unblock). Like the real states, a
+        /// forced `disabled` (on or off) reaches everything inside the element, except what has its own
+        /// `isEnabled false` under a forced-off one, and a forced-on `hover` also hovers its ancestors;
+        /// the rest apply to this element only. `UnforceState` stops forcing it.
         member this.ForceState(state: ElementState, on: bool) =
-            let others = this.ForcedStates |> List.filter (fun s -> not (obj.ReferenceEquals(s, state)))
-            let states = if on then others @ [ state ] else others
+            let others = this.ForcedStates |> List.filter (fun (s, _) -> not (obj.ReferenceEquals(s, state)))
+            this.SetForcedStates(others @ [ state, on ])
+
+        /// Stops forcing a state: it follows the element again.
+        member this.UnforceState(state: ElementState) =
+            this.SetForcedStates(this.ForcedStates |> List.filter (fun (s, _) -> not (obj.ReferenceEquals(s, state))))
+
+        member private this.SetForcedStates(states: (ElementState * bool) list) =
             let flag (s: ElementState) =
                 if obj.ReferenceEquals(s, States.hover) then 1
                 elif obj.ReferenceEquals(s, States.pressed) then 2
@@ -157,10 +181,12 @@ module ElementStateExtensions =
                 elif obj.ReferenceEquals(s, States.focusVisible) then 8
                 elif obj.ReferenceEquals(s, States.disabled) then 16
                 else 0
-            this.SetForced([ for s in states -> box s ], states |> List.sumBy flag)
+            let values = [ for s, on in states do match s.Prop, s.ForcedValue on with ValueSome p, ValueSome v -> struct (p, v) | _ -> () ]
+            let flags on = states |> List.sumBy (fun (s, o) -> if o = on then flag s else 0)
+            this.SetForced([ for s, on in states -> struct (box s, on) ], flags true, flags false, values)
 
         /// Stops forcing every state.
-        member this.ClearForcedStates() = if not this.Forced.IsEmpty then this.SetForced([], 0)
+        member this.ClearForcedStates() = if not this.Forced.IsEmpty then this.SetForced([], 0, 0, [])
 
 
 module internal Selector =
