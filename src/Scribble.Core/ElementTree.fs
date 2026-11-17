@@ -129,6 +129,11 @@ type ElementTree(text: TextSystem) =
     /// Matches styles for elements that asked (joined the tree, changed classes or states, ...),
     /// parents before children. Part of UpdateLayout, after components run.
     member this.RunScheduledStyles() =
+        let t0 = if ItemsProfile.On then Diagnostics.Stopwatch.GetTimestamp() else 0L
+        this.RunScheduledStylesNow()
+        if ItemsProfile.On then ItemsProfile.Restyle <- ItemsProfile.Restyle + (Diagnostics.Stopwatch.GetTimestamp() - t0)
+
+    member private this.RunScheduledStylesNow() =
         let mutable rounds = 0
         while restyleQueue.Count > 0 && rounds < 10 do
             rounds <- rounds + 1
@@ -149,6 +154,7 @@ type ElementTree(text: TextSystem) =
                 if isOurs then
                     let struct (queued, deep) = e.TakeRestyle()
                     if queued then
+                        if ItemsProfile.On then ItemsProfile.Restyled <- ItemsProfile.Restyled + 1
                         let scopes = StyleEngine.scopesAbove e
                         let found =
                             if deep then StyleEngine.applyDeep theme appStyles scopes e

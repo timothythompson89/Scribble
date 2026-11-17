@@ -72,6 +72,53 @@ type internal Ids private () =
     static member NextThemeKey() = lock typeof<Ids> (fun () -> Ids.themeKey <- Ids.themeKey + 1; Ids.themeKey)
     static member NextProp() = lock typeof<Ids> (fun () -> Ids.prop <- Ids.prop + 1; Ids.prop)
 
+/// Where ItemsView's time goes, for `tools/Scribble.Bench` (Stopwatch ticks and counts). Off unless
+/// the benchmark sets `On`; then only one thread may use elements. Costs one static bool read per
+/// realized item while off.
+type internal ItemsProfile private () =
+    [<DefaultValue>] static val mutable private on: bool
+    [<DefaultValue>] static val mutable private noPool: bool
+    static member On with get () = ItemsProfile.on and set v = ItemsProfile.on <- v
+    /// True: recycled elements are dropped instead of pooled (to compare reuse with creating).
+    static member NoPool with get () = ItemsProfile.noPool and set v = ItemsProfile.noPool <- v
+    [<DefaultValue>] static val mutable private viewTicks: int64
+    [<DefaultValue>] static val mutable private attachTicks: int64
+    [<DefaultValue>] static val mutable private patchTicks: int64
+    [<DefaultValue>] static val mutable private createTicks: int64
+    [<DefaultValue>] static val mutable private measureTicks: int64
+    [<DefaultValue>] static val mutable private releaseTicks: int64
+    [<DefaultValue>] static val mutable private rangeTicks: int64
+    [<DefaultValue>] static val mutable private restyleTicks: int64
+    [<DefaultValue>] static val mutable private reused: int
+    [<DefaultValue>] static val mutable private created: int
+    [<DefaultValue>] static val mutable private repatched: int
+    [<DefaultValue>] static val mutable private released: int
+    [<DefaultValue>] static val mutable private themeWalks: int
+    [<DefaultValue>] static val mutable private restyled: int
+    /// Elements whose styles were matched again (each queued element; deep ones count once).
+    static member Restyled with get () = ItemsProfile.restyled and set v = ItemsProfile.restyled <- v
+    static member View with get () = ItemsProfile.viewTicks and set v = ItemsProfile.viewTicks <- v
+    static member Attach with get () = ItemsProfile.attachTicks and set v = ItemsProfile.attachTicks <- v
+    static member Patch with get () = ItemsProfile.patchTicks and set v = ItemsProfile.patchTicks <- v
+    static member Create with get () = ItemsProfile.createTicks and set v = ItemsProfile.createTicks <- v
+    static member Measure with get () = ItemsProfile.measureTicks and set v = ItemsProfile.measureTicks <- v
+    static member Release with get () = ItemsProfile.releaseTicks and set v = ItemsProfile.releaseTicks <- v
+    /// All of `realizeRange` (the parts above plus its own bookkeeping).
+    static member Range with get () = ItemsProfile.rangeTicks and set v = ItemsProfile.rangeTicks <- v
+    static member Restyle with get () = ItemsProfile.restyleTicks and set v = ItemsProfile.restyleTicks <- v
+    static member Reused with get () = ItemsProfile.reused and set v = ItemsProfile.reused <- v
+    static member Created with get () = ItemsProfile.created and set v = ItemsProfile.created <- v
+    /// Realized items patched again because the items changed (same key, new version).
+    static member Repatched with get () = ItemsProfile.repatched and set v = ItemsProfile.repatched <- v
+    static member Released with get () = ItemsProfile.released and set v = ItemsProfile.released <- v
+    /// Nearest-theme lookups that had to walk up (their remembered one was from an older epoch).
+    static member ThemeWalks with get () = ItemsProfile.themeWalks and set v = ItemsProfile.themeWalks <- v
+    static member Reset() =
+        ItemsProfile.View <- 0L; ItemsProfile.Attach <- 0L; ItemsProfile.Patch <- 0L; ItemsProfile.Create <- 0L
+        ItemsProfile.Measure <- 0L; ItemsProfile.Release <- 0L; ItemsProfile.Range <- 0L; ItemsProfile.Restyle <- 0L
+        ItemsProfile.Reused <- 0; ItemsProfile.Created <- 0; ItemsProfile.Repatched <- 0; ItemsProfile.Released <- 0
+        ItemsProfile.ThemeWalks <- 0; ItemsProfile.Restyled <- 0
+
 /// Counts shared by every element tree on every thread (plain static fields, for the same reason as
 /// `Ids`; changed under a lock, read without one: an int read is atomic, and a stale read only costs
 /// a walk or a theme lookup).

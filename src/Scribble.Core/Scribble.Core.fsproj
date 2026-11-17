@@ -43,6 +43,7 @@
     <!-- Tests set element states (pointer over, pressed) directly to draw them. -->
     <InternalsVisibleTo Include="Scribble.Tests" />
     <InternalsVisibleTo Include="Scribble.Tests.Rendering" />
+    <InternalsVisibleTo Include="Scribble.Bench" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />

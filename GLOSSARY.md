@@ -90,6 +90,10 @@ _Avoid_: visible area, clip rect (for the viewport)
 An item of an items view that currently has an element; items outside the viewport have none and keep no state.
 _Avoid_: rendered item, materialized item
 
+**Recycling**:
+When an item scrolls out of an items view, its element is kept and given to an item scrolling in rather than made again; components inside it lose their state.
+_Avoid_: pooling, reuse (for this)
+
 **Scroll anchor**:
 The item of an items view that keeps its place on screen while sizes or items above it change: the first visible item, found by key (the next one if it's removed).
 _Avoid_: pinned item, sticky item

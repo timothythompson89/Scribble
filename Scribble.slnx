@@ -42,6 +42,7 @@
     <Project Path="samples/Icons.Browser/Icons.Browser.fsproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/Scribble.Bench/Scribble.Bench.fsproj" />
     <Project Path="tools/Scribble.Serve/Scribble.Serve.fsproj" />
   </Folder>
   <Folder Name="/tests/">

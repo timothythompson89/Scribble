@@ -20,5 +20,6 @@
     <ProjectReference Include="../Scribble.Rendering/Scribble.Rendering.fsproj" />
     <InternalsVisibleTo Include="Scribble.Tests" />
     <InternalsVisibleTo Include="Scribble.Tests.Rendering" />
+    <InternalsVisibleTo Include="Scribble.Bench" />
   </ItemGroup>
 </Project>

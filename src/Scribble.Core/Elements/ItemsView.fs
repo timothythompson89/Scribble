@@ -322,12 +322,19 @@ module ItemsView =
 
     // --- Realizing ---------------------------------------------------------------------------
 
+    // Profiling (tools/Scribble.Bench): a timestamp when it's on, and the time since one.
+    let inline private stamp () = if ItemsProfile.On then Stopwatch.GetTimestamp() else 0L
+    let inline private since (t0: int64) = Stopwatch.GetTimestamp() - t0
+
     let private release (s: ItemsState) (item: RealizedItem) =
+        let t0 = stamp ()
         let el = item.Element
         el.SetParent ValueNone
         el.SetRoot ValueNone
         // Component state is dropped with the element (it would show in another item otherwise).
-        if not (hasComponent el) then
+        if ItemsProfile.On then
+            ItemsProfile.Released <- ItemsProfile.Released + 1
+        if not (hasComponent el) && not ItemsProfile.NoPool then
             let stack =
                 match s.Pool.TryGetValue el.Type with
                 | true, st -> st
@@ -336,36 +343,55 @@ module ItemsView =
                     s.Pool[el.Type] <- st
                     st
             if stack.Count < 64 then stack.Push el
+        if ItemsProfile.On then ItemsProfile.Release <- ItemsProfile.Release + since t0
 
     /// The realized item for index `i`, realized (from the pool when it can) or patched as needed.
     let private realize (e: Element) (s: ItemsState) (viewFn: ItemsFunc<View voption>) (i: int) : RealizedItem voption =
         let key = s.Keys[i]
         let attach (el: Element) =
+            let t0 = stamp ()
             el.SetParent(ValueSome e)
             el.SetRoot e.Root
             el.InvalidateAll()
+            if ItemsProfile.On then ItemsProfile.Attach <- ItemsProfile.Attach + since t0
+        let viewOf (item: obj) =
+            let t0 = stamp ()
+            let v = viewFn.Invoke item
+            if ItemsProfile.On then ItemsProfile.View <- ItemsProfile.View + since t0
+            v
+        let patch (el: Element) (v: View) =
+            let t0 = stamp ()
+            el.Patch v
+            if ItemsProfile.On then ItemsProfile.Patch <- ItemsProfile.Patch + since t0
         match s.Realized.TryGetValue key with
         | true, item ->
             item.Index <- i
             if item.Version <> s.Version then
-                match viewFn.Invoke(s.Source.Item i) with
-                | ValueSome v when obj.ReferenceEquals(v.Type, item.Element.Type) -> item.Element.Patch v
+                match viewOf (s.Source.Item i) with
+                | ValueSome v when obj.ReferenceEquals(v.Type, item.Element.Type) ->
+                    if ItemsProfile.On then ItemsProfile.Repatched <- ItemsProfile.Repatched + 1
+                    patch item.Element v
                 | _ -> ()
                 item.Version <- s.Version
             ValueSome item
         | _ ->
-            match viewFn.Invoke(s.Source.Item i) with
+            match viewOf (s.Source.Item i) with
             | ValueNone -> ValueNone
             | ValueSome v ->
                 let el =
                     match s.Pool.TryGetValue v.Type with
                     | true, stack when stack.Count > 0 ->
                         let el = stack.Pop()
+                        if ItemsProfile.On then ItemsProfile.Reused <- ItemsProfile.Reused + 1
                         attach el
-                        el.Patch v
+                        patch el v
                         el
                     | _ ->
+                        let t0 = stamp ()
                         let el = Element.RealizingIn(e.Root, fun () -> Element.Realize v)
+                        if ItemsProfile.On then
+                            ItemsProfile.Create <- ItemsProfile.Create + since t0
+                            ItemsProfile.Created <- ItemsProfile.Created + 1
                         attach el
                         el
                 let item = RealizedItem(el)
@@ -376,16 +402,20 @@ module ItemsView =
 
     /// Measures a realized item for its slot; returns its height.
     let private measureItem (layout: ItemsLayout) (s: ItemsState) (width: float) (item: RealizedItem) =
+        let t0 = stamp ()
         let el = item.Element
-        match cells layout s width with
-        | ValueSome(struct (_, w, h)) ->
-            el.Measure(Size.Create(w, (match layout with ItemsLayout.Grid _ when Double.IsNaN s.CellHeight -> Double.PositiveInfinity | _ -> h)))
-            el.DesiredSize.Height
-        | ValueNone ->
-            el.Measure(Size.Create(width, Double.PositiveInfinity))
-            let h = el.DesiredSize.Height
-            record s item.Index h
-            h
+        let h =
+            match cells layout s width with
+            | ValueSome(struct (_, w, h)) ->
+                el.Measure(Size.Create(w, (match layout with ItemsLayout.Grid _ when Double.IsNaN s.CellHeight -> Double.PositiveInfinity | _ -> h)))
+                el.DesiredSize.Height
+            | ValueNone ->
+                el.Measure(Size.Create(width, Double.PositiveInfinity))
+                let h = el.DesiredSize.Height
+                record s item.Index h
+                h
+        if ItemsProfile.On then ItemsProfile.Measure <- ItemsProfile.Measure + since t0
+        h
 
     let private scrollerOf (e: Element) (s: ItemsState) =
         let scroller =
@@ -401,6 +431,7 @@ module ItemsView =
 
     /// Realizes and measures the items between `top` and `bottom` (own coordinates); lets go of the rest.
     let private realizeRange (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) (top: float) (bottom: float) =
+        let t0 = stamp ()
         let n = s.Keys.Length
         let viewFn = e.Get ItemsViewProps.view
         let keep = HashSet<obj>()
@@ -450,6 +481,7 @@ module ItemsView =
         s.RealizedTop <- if last >= first then (slotOf layout s width first).Y else 0.0
         s.RealizedBottom <- if last >= first then (let r = slotOf layout s width last in r.Bottom) else 0.0
         e.SetManagedChildren(s.Realized.Values |> Seq.sortBy _.Index |> Seq.map _.Element |> Seq.toArray)
+        if ItemsProfile.On then ItemsProfile.Range <- ItemsProfile.Range + since t0
 
     /// Scrolls to item `i`: realizes it (at its estimated place) and asks the scrollers around to show it.
     let private jumpTo (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) (i: int) (align: ScrollAlign) (animate: bool) (extra: float) =

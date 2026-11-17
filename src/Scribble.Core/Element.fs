@@ -876,6 +876,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         let epoch = ElementCounts.ThemeEpoch
         if nearestThemeEpoch = epoch then nearestTheme
         else
+            if ItemsProfile.On then ItemsProfile.ThemeWalks <- ItemsProfile.ThemeWalks + 1
             let found =
                 match this.OwnTheme with
                 | ValueSome t -> ValueSome t

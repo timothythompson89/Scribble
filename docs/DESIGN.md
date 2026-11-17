@@ -1291,6 +1291,42 @@ the whole list) went past the viewport, over the header, and off the window as i
 - The tree shows an ItemsView's "realized N of M" whether its row is open or not (it used to vanish on open
   rows), and the details panel has an "items" line with it.
 
+## Recycling measured; styles on realization; new sources (Tim, 2026-11-17)
+
+Measured with `tools/Scribble.Bench` (Release, Tim's desktop; Counter-like rows: a Border with wrapping text,
+HarfBuzz; 10,000 items, 800 × 600, 48-DIP steps, best of 5): a scroll step costs 0.09 ms (0.14 ms with text never
+shaped before), of which the draw list is about 80 µs and layout 12 µs (42 µs with new text). Recycling an element
+(view, attach, patch) costs about 1 µs per row; dropping the pool (creating every row) measured the same; the
+theme-epoch bumps cost about 24 extra theme lookups per step, too little to show. New text: about 29 µs per row to
+measure (shaping), 4.6 µs once shaped. "Add message" (a new array of 10,000): 0.5 ms mean, p95 3 ms, 1.5 MB
+allocated, nearly all of it taking in the new source (every key computed and boxed, the key index and the height
+sums rebuilt); patching the 32 realized rows again is 21 µs. And every realized row's restyle was still queued
+after its frame (see the first decision). Decided:
+
+1. **A realized element gets its styles when it's realized, before it's measured** (not in a second restyle
+   pass): ItemsView realizes during layout, after that frame's restyle pass, and the host ignores what a frame
+   asks for, so rows were measured unstyled and restyled only when something else asked for a frame (a style
+   that changes size would also have measured them wrong).
+2. **A recycled element always gets a full (deep) restyle**: correct whatever the patch changed; not measurably
+   slower.
+3. **Taking a new source stays O(items), made lean, with no new API**: unboxed keys, the key index updated rather
+   than rebuilt, height sums built in one pass. "Proportional to what's visible" is about frames (scrolling);
+   a model update is O(items) in the app too (a new array). Telling ItemsView what changed (a change-tracking
+   collection or change hints) was rejected: it breaks "items are data, a new array is a change".
+4. **"Recycling"** is the term (glossary).
+5. **`tools/Scribble.Bench` and Core's `ItemsProfile` counters stay** (internal, off unless the benchmark sets
+   them; one static bool read per realized item).
+6. **Not doing:** cheaper recycling itself (it's about 1 µs per row). **Later:** the draw list's cost per frame,
+   measured first on Tim's phone with an AOT build.
+7. **Checking 1:** unit tests: rows styled through a class (padding) have it in their height in the same
+   `UpdateLayout` that realizes them, with no restyle left queued; a themed Button in a row that just scrolled in
+   has its theme background in its first frame. The benchmark's "left queued after their frame" goes to 0.
+8. **Work left over after a frame** (a restyle still queued): a warning in debug builds naming the element, no
+   extra frame (asking for one would break the power rule).
+9. **Checking 3:** a unit test on allocations: 10,000 int-keyed items scrolled to the middle, a new array with one
+   more item: at most 64 KB allocated by ItemsView (about 1.4 MB before; the app's array not counted). The
+   benchmark's "Add message" reports the time; the goal is under 100 µs on Tim's desktop in Release (516 µs before).
+
 ## Rendering test hangs (2026-11-16)
 
 Tim asked to look into "partial" rendering test runs (35–38 of 57 reported as "Passed!"). They were hangs:
