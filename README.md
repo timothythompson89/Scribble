@@ -988,7 +988,7 @@ scrolled in may show the own value of the item it was made for before.
 
 | Project | Purpose |
 | --- | --- |
-| `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer, ItemsView; layers; App settings and runtime |
+| `src/Scribble.Core` | Views, the differ, elements and layout, styles and themes, input, components, layers, App settings and runtime. Folders follow compile order: `Foundation` (primitives, properties, dispatcher, app values, commands), `Framework` (Element, styles, the element tree, input), `Elements/Basic`, `Elements/Panels`, `Elements/Scrolling`, `Elements/Controls`, `Themes`, `Hosting` (components, layers, ElementHost, App) |
 | `src/Scribble.Desktop` | `App.run` on the desktop: the platform, WebGPU renderer and HarfBuzz shaping in one reference |
 | `src/Scribble.Inspector` | Opt-in inspector: `Inspector.enable [ ... ]` (element tree of every layer, pick mode, highlight, properties, frame stats) |
 | `src/Scribble.Icons.Material` | Opt-in Material Symbols: `Material.home`, `Material.filled`, `Material.icon "name"` (© Google, Apache 2.0) |

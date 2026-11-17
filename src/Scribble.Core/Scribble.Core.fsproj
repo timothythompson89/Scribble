@@ -1,49 +1,51 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
-    <Description>Scribble's element tree: layout (measure/arrange), invalidation, Border, StackPanel, TextBlock, and the host that connects a tree to a window.</Description>
+    <Description>Scribble's core: views and the differ, elements, layout, styles and themes, input, components, the element types (panels, scrolling, controls), and the host that connects element trees to a window.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Primitives.fs" />
-    <Compile Include="InputTypes.fs" />
-    <Compile Include="Props.fs" />
-    <Compile Include="Icon.fs" />
-    <Compile Include="Cursor.fs" />
-    <Compile Include="Palette.fs" />
-    <Compile Include="Dispatcher.fs" />
-    <Compile Include="Scroller.fs" />
-    <Compile Include="AppValue.fs" />
-    <Compile Include="Cmd.fs" />
-    <Compile Include="Animation.fs" />
-    <Compile Include="Element.fs" />
-    <Compile Include="Style.fs" />
-    <Compile Include="Layoutable.fs" />
-    <Compile Include="ElementTree.fs" />
-    <Compile Include="Input.fs" />
-    <Compile Include="Elements/FocusRing.fs" />
-    <Compile Include="Elements/Border.fs" />
-    <Compile Include="Elements/StackPanel.fs" />
-    <Compile Include="Elements/TextBlock.fs" />
-    <Compile Include="Elements/IconView.fs" />
-    <Compile Include="Elements/Button.fs" />
-    <Compile Include="Elements/Control.fs" />
-    <Compile Include="Elements/ToggleButton.fs" />
-    <Compile Include="Elements/CheckBox.fs" />
-    <Compile Include="Elements/Switch.fs" />
-    <Compile Include="Elements/Slider.fs" />
-    <Compile Include="Elements/ScrollViewer.fs" />
-    <Compile Include="Elements/ItemsView.fs" />
-    <Compile Include="Elements/TabControl.fs" />
-    <Compile Include="Elements/Grid.fs" />
-    <Compile Include="Elements/DockPanel.fs" />
-    <Compile Include="Elements/Canvas.fs" />
-    <Compile Include="Elements/WrapPanel.fs" />
-    <Compile Include="Elements/Separator.fs" />
-    <Compile Include="Theme.fs" />
-    <Compile Include="Component.fs" />
-    <Compile Include="Layer.fs" />
-    <Compile Include="ElementHost.fs" />
-    <Compile Include="App.fs" />
+    <Compile Include="Foundation/Primitives.fs" />
+    <Compile Include="Foundation/InputTypes.fs" />
+    <Compile Include="Foundation/Props.fs" />
+    <Compile Include="Foundation/Icon.fs" />
+    <Compile Include="Foundation/Cursor.fs" />
+    <Compile Include="Foundation/Palette.fs" />
+    <Compile Include="Foundation/Dispatcher.fs" />
+    <Compile Include="Foundation/Scroller.fs" />
+    <Compile Include="Foundation/AppValue.fs" />
+    <Compile Include="Foundation/Cmd.fs" />
+    <Compile Include="Foundation/Animation.fs" />
+    <Compile Include="Framework/Element.fs" />
+    <Compile Include="Framework/Style.fs" />
+    <Compile Include="Framework/Layoutable.fs" />
+    <Compile Include="Framework/ElementTree.fs" />
+    <Compile Include="Framework/Input.fs" />
+    <Compile Include="Elements/Basic/FocusRing.fs" />
+    <Compile Include="Elements/Basic/Border.fs" />
+    <Compile Include="Elements/Basic/TextBlock.fs" />
+    <Compile Include="Elements/Basic/IconView.fs" />
+    <Compile Include="Elements/Basic/Separator.fs" />
+    <Compile Include="Elements/Panels/StackPanel.fs" />
+    <Compile Include="Elements/Panels/Grid.fs" />
+    <Compile Include="Elements/Panels/DockPanel.fs" />
+    <Compile Include="Elements/Panels/Canvas.fs" />
+    <Compile Include="Elements/Panels/WrapPanel.fs" />
+    <Compile Include="Elements/Scrolling/ScrollViewer.fs" />
+    <Compile Include="Elements/Scrolling/ItemsLayout.fs" />
+    <Compile Include="Elements/Scrolling/KeyStore.fs" />
+    <Compile Include="Elements/Scrolling/ItemsView.fs" />
+    <Compile Include="Elements/Controls/Control.fs" />
+    <Compile Include="Elements/Controls/Button.fs" />
+    <Compile Include="Elements/Controls/ToggleButton.fs" />
+    <Compile Include="Elements/Controls/CheckBox.fs" />
+    <Compile Include="Elements/Controls/Switch.fs" />
+    <Compile Include="Elements/Controls/Slider.fs" />
+    <Compile Include="Elements/Controls/TabControl.fs" />
+    <Compile Include="Themes/Theme.fs" />
+    <Compile Include="Hosting/Component.fs" />
+    <Compile Include="Hosting/Layer.fs" />
+    <Compile Include="Hosting/ElementHost.fs" />
+    <Compile Include="Hosting/App.fs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Tests set element states (pointer over, pressed) directly to draw them. -->

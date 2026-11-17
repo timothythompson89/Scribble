@@ -1748,6 +1748,38 @@ Round 3 (Tim accepted every recommendation):
 19. **CI waits until just before the public push,** planned together with decision 13's backend checks (unit
     tests on GitHub's Windows runners; rendering tests on a software GPU, lavapipe or WARP).
 
+Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q22 after a closer look):
+
+21. **One clock and delayed work come from the platform:** `IPlatform` gets a monotonic `Elapsed: TimeSpan`,
+    and `Dispatcher.PostAfter(delay, action)` runs work later through the platform's own one-shot timer (fires
+    only when asked, so the power rule holds). `App.start`, `ElementHost` and the inspector read time from it;
+    the tests' fake platform moves time only when a test says so. `ElementHost.create` used without `App` gets
+    an `ElementHost.clock` setting (default: a stopwatch). `AsyncTests`' sleeps that test real threads stay.
+22. **Where errors are caught** (decision 1 made precise). Catching only per frame would freeze the whole window
+    at its last good frame when one element's render throws every time, so: each event handler call on its own
+    (`update` runs inside `dispatch`, so a throwing update leaves the model as it was); the Elmish `view` keeps
+    the elements of the last view; each component run keeps the component's last output and rolls back its hook
+    slots; each element's `render` skips that element and its children for the frame; measure and arrange
+    (custom elements only) drop the frame; each effect on its own. An error identical to the last (type,
+    message, place) is counted, not reported again, until a frame finishes without it. The render `try` is
+    checked with `Scribble.Bench` for frame-time cost.
+    **Without `App.onError`, every error is rethrown on the UI thread** (the app ends), posted work included:
+    this changes the dispatcher's log-and-continue default so all errors behave alike (loud while developing; the
+    debugger stops there). Apps that should survive set `App.onError`.
+23. **Core's folders follow compile order**, each folder one unbroken run (Rider shows a split folder twice):
+    `Foundation/` (Primitives, InputTypes, Props, Icon, Cursor, Palette, Animation, Dispatcher, AppValue, Cmd),
+    `Framework/` (Element, Style, Layoutable, ElementTree, Input), `Elements/Basic` (FocusRing, Border,
+    TextBlock, IconView, Separator), `Elements/Panels` (StackPanel, Grid, DockPanel, Canvas, WrapPanel),
+    `Elements/Scrolling` (ScrollViewer, ItemsLayout, KeyStore, ItemsView), `Elements/Controls` (Control, Button,
+    ToggleButton, CheckBox, Switch, Slider, TabControl), `Themes/` (Theme), `Hosting/` (Component, Layer,
+    ElementHost, App). Namespaces stay `Scribble.Core`. `Scroller` stays in Foundation: app values keep named
+    scrollers, before any element exists.
+24. **Big files split:** `ItemsView.fs` into `ItemsLayout.fs` (the layout kinds), `KeyStore.fs` (the items
+    source, size sums and per-key stores) and the element. **As built:** the `Element` module couldn't move to an
+    `ElementDefine.fs`: F# rejects a module and a type of the same name in two files of one namespace (FS0250),
+    so it stays at the end of `Element.fs`, with the rest of it (one recursive type group).
+25. **The reorganisation is its own commit,** with nothing else in it; step 1 lands in the new layout.
+
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
 The working summaries kept in CLAUDE.md while each milestone was built, moved here unchanged when CLAUDE.md
