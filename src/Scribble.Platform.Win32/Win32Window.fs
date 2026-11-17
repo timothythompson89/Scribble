@@ -356,8 +356,10 @@ type Win32Window internal (hinstance: nativeint, onEvent: PlatformEvent -> unit,
             and set value =
                 title <- value
                 if not closed then
-                    use p = fixed value
-                    SetWindowTextW(hwnd, p) |> ignore
+                    // A handle, not `fixed` (see HarfBuzzShaper).
+                    let pin = GCHandle.Alloc(value, GCHandleType.Pinned)
+                    try SetWindowTextW(hwnd, pin.AddrOfPinnedObject()) |> ignore
+                    finally pin.Free()
 
         member _.RequestFrame() = if not closed then frameRequested <- true
 

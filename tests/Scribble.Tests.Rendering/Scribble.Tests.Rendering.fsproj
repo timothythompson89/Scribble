@@ -14,6 +14,7 @@
     <Compile Include="DashboardTests.fs" />
     <Compile Include="CounterTests.fs" />
     <Compile Include="PhoneTests.fs" />
+    <Compile Include="ScrollStressTests.fs" />
     <Compile Include="IconGalleryTests.fs" />
     <Compile Include="ButtonTests.fs" />
     <Compile Include="IconRenderingTests.fs" />

@@ -292,6 +292,8 @@ let view (seconds: float) (hovered: int option) (order: int list) (toolbar: View
             // The rest of the window; the cards scroll (wheel or finger) when they don't all fit.
             ScrollViewer.create [
                 ScrollViewer.name "card scroller"
+                // Over the cards: their 24-DIP margin leaves room for the bar.
+                ScrollViewer.scrollBarSpace ScrollBarSpace.Overlay
                 ScrollViewer.height "1*"
                 ScrollViewer.content (
                     // 24 DIPs below the top bar's bottom edge (the 1 DIP divider sits inside that gap).

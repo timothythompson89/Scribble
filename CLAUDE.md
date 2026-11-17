@@ -140,6 +140,10 @@ dotnet run --project tools/Scribble.Serve      # the browser samples to the loca
 - **No F# printf family** in shipped code (`printfn`, `sprintf`, `failwithf`, `%A`, `$"..."` with `%d`-style
   specifiers): crashes under NativeAOT. Use .NET interpolation (`$"{x:F1}"`) and `Console.WriteLine`. A literal `%`
   inside `$"..."` is read as a format specifier: concatenate it as a separate plain string.
+- **Never `fixed` on a string** for native calls: pin with `GCHandle.Alloc(s, GCHandleType.Pinned)` and pass
+  `AddrOfPinnedObject()` as `nativeint`. A background GC misread a `fixed` string pin (a pinned `char&`) as an object
+  start while HarfBuzz ran and killed the process with "Internal CLR error (0x80131506)" (2026-11-16, .NET 10.0.15;
+  found with a crash dump: the GC read text as a type pointer). `fixed` on arrays has caused nothing so far.
 - Native interop: `DllImport` with blittable signatures only (F# can't use LibraryImport/JSImport generators);
   callbacks via `Marshal.GetFunctionPointerForDelegate<'T>` (generic overload) with the delegate kept alive; struct
   layouts checked against the C headers. Browser interop: `JSFunctionBinding.BindJSFunction/InvokeJS`; void returns
@@ -202,10 +206,10 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
 
 - **Done and verified by Tim** (Windows and browser): M0–M7 and M7b (window and GPU, browser, draw list, text,
   elements and layout, views and differ, input, components, async, layers, inspector, styles, themes, app
-  values, icons, the Material package, image cursors). M7c (custom title bars) was skipped. Counts: 284 unit
-  tests, 50 rendering tests. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
-- **Next: M8 core controls**, virtualization first (see the rule above), then Grid, DockPanel, Canvas, dashed
-  lines, the rest of ScrollViewer (draggable thumb, keyboard, horizontal), CheckBox, Image, Slider, ListBox,
+  values, icons, the Material package, image cursors). M7c (custom title bars) was skipped. M8 step 1 (scrolling and
+  ItemsView) is done and verified by Tim (Windows, 2026-11-16). Counts: 295 unit tests, 51 rendering tests. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
+- **Next: M8 core controls**: step 1 (ScrollViewer completed, ItemsView, scrollers) is done; then Grid,
+  DockPanel, Canvas, dashed lines, CheckBox, Image, Slider, ListBox,
   ComboBox, Dialog, Toast, the "show this in a layer" element, TabControl. Then M9 TextBox, M10 hot reload; later:
   animation, accessibility, bidi/complex scripts, IME, macOS/Linux, mobile, Vulkan backend, game UI hosts (keep the
   draw list plain data, no assumption that the core owns the window or loop, low per-frame allocations).

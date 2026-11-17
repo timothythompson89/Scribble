@@ -1,5 +1,6 @@
-/// Every Material Symbol (`Scribble.Icons.Material`) in a scrolling grid: an Outlined/Filled
-/// switch, and a click on a tile shows the F# to write for that icon.
+/// Every Material Symbol (`Scribble.Icons.Material`) in a scrolling grid: an ItemsView, so only the
+/// tiles on screen exist (about 70 of 4,304). An Outlined/Filled switch, a search field that
+/// scrolls to the first match, and a click on a tile shows the F# to write for that icon.
 module Scribble.Samples.IconGallery
 
 open System
@@ -19,7 +20,7 @@ let memberName (name: string) =
 
 /// One tile: the icon above its name; a click picks it. Over it, the pointer becomes that icon (a
 /// cursor made from it, pointing at its center), to see how it works as a cursor.
-let private tile (name: string) (filled: bool) (pick: string -> unit) =
+let private tile (name: string) (filled: bool) (isMatch: bool) (pick: string -> unit) =
     let icon = Material.icon name
     let icon = if filled then icon.filled else icon
     Border.create [
@@ -28,6 +29,8 @@ let private tile (name: string) (filled: bool) (pick: string -> unit) =
         Border.height 76.0
         Border.cornerRadius 6.0
         Border.padding (6.0, 10.0)
+        Border.borderThickness (if isMatch then 1.5 else 0.0)
+        Border.borderBrush Palette.accent
         Border.on States.hover [ Border.background Palette.surface ]
         Border.onClick (fun _ -> pick name)
         Border.child (
@@ -61,20 +64,71 @@ let private switchButton (text: string) (selected: bool) (onClick: unit -> unit)
         Button.onClick (fun _ -> onClick ())
     ]
 
+/// Every icon's name, in Google's order (the ItemsView's items; made once).
+let private names = lazy (Array.ofSeq (Material.names ()))
+
+/// The first icon whose name starts with `query`, else the first that contains it.
+let firstMatch (query: string) =
+    if query = "" then None
+    else
+        let all = names.Value
+        match all |> Array.tryFind (fun n -> n.StartsWith(query, StringComparison.Ordinal)) with
+        | Some n -> Some n
+        | None -> all |> Array.tryFind (fun n -> n.Contains(query, StringComparison.Ordinal))
+
+/// A field that takes typed keys (a stand-in until M9's TextBox): click it (or Tab to it) and type.
+let private searchField (query: string) (found: bool) (onKey: KeyEventArgs -> unit) =
+    Border.create [
+        Border.name "search"
+        Border.focusable true
+        Border.width 220.0
+        Border.padding (10.0, 6.0)
+        Border.cornerRadius 6.0
+        Border.background Palette.surface
+        Border.borderThickness 1.0
+        Border.borderBrush (if query <> "" && not found then Palette.danger else Palette.border)
+        Border.on States.focused [ Border.borderBrush Palette.accent ]
+        Border.onKeyDown onKey
+        Border.child (
+            TextBlock.create [
+                TextBlock.text (if query = "" then "Search icons…" else query)
+                TextBlock.foreground (if query = "" then Palette.textDim else Palette.text)
+            ]
+        )
+    ]
+
 let gallery =
     Component.define "IconGallery" (fun ctx () ->
         let filled = ctx.useState false
         let picked = ctx.useState ""
-        // Made again only when Outlined/Filled changes: picking an icon re-runs this component,
-        // and the same View object lets the differ skip all 4,304 tiles.
+        let query = ctx.useState ""
+        let scroller = ctx.useScroller ()
+        let found = firstMatch query.Current
+        let onKey (e: KeyEventArgs) =
+            let next =
+                match e.Key with
+                | Key.Char c when c = '_' || Char.IsLetterOrDigit c -> Some(query.Current + string c)
+                | Key.Backspace when query.Current <> "" -> Some(query.Current.Substring(0, query.Current.Length - 1))
+                | Key.Escape when query.Current <> "" -> Some ""
+                | _ -> None
+            match next with
+            | Some q ->
+                e.Handle()
+                query.Set q
+                // An action: scroll to the first match (it applies at the next layout).
+                match firstMatch q with
+                | Some name -> scroller.ScrollTo(name, ScrollAlign.Start)
+                | None -> ()
+            | None -> ()
+        // Only the tiles on screen are made: the ItemsView calls `view` for those.
         let grid =
-            ctx.useMemo(filled.Current, fun isFilled ->
-                WrapPanel.create [
-                    WrapPanel.name "icons"
-                    WrapPanel.spacing 4.0
-                    WrapPanel.lineSpacing 4.0
-                    WrapPanel.children [ for name in Material.names () -> tile name isFilled picked.Set ]
-                ])
+            ItemsView.create [
+                ItemsView.name "icons"
+                ItemsView.source names.Value
+                ItemsView.view (fun (name: string) -> tile name filled.Current (Some name = found) picked.Set)
+                ItemsView.layout (ItemsLayout.wrap 116.0 80.0)
+                ItemsView.scroller scroller
+            ]
         let code =
             if picked.Current = "" then "Click an icon to see its F# name."
             else "Material." + memberName picked.Current + (if filled.Current then ".filled" else "")
@@ -95,6 +149,7 @@ let gallery =
                             StackPanel.orientation Horizontal
                             StackPanel.spacing 8.0
                             StackPanel.children [
+                                searchField query.Current found.IsSome onKey
                                 switchButton "Outlined" (not filled.Current) (fun () -> filled.Set false)
                                 switchButton "Filled" filled.Current (fun () -> filled.Set true)
                             ]

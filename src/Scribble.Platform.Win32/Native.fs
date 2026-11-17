@@ -245,7 +245,7 @@ extern int GetClientRect(nativeint hwnd, RECT* lpRect)
 extern int SetWindowPos(nativeint hwnd, nativeint hwndInsertAfter, int x, int y, int cx, int cy, uint32 uFlags)
 
 [<DllImport("user32.dll", ExactSpelling = true)>]
-extern int SetWindowTextW(nativeint hwnd, char* lpString)
+extern int SetWindowTextW(nativeint hwnd, nativeint lpString)
 
 [<DllImport("user32.dll", ExactSpelling = true)>]
 extern nativeint LoadCursorW(nativeint hInstance, nativeint lpCursorName)

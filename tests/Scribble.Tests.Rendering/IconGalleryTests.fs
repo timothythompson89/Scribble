@@ -45,7 +45,11 @@ type IconGalleryTests(fixture: TextFixture) =
     member this.``the gallery shows every icon, Filled switches them, and a click shows the F# name``() =
         let tree = this.Build()
         let find name = all tree.Root.Value |> Seq.find (fun e -> e.Name = name)
-        Assert.Equal(4304, (find "icons").Children.Count)
+        // An ItemsView: all 4,304 icons, but only the tiles on screen (and a little more) exist.
+        let struct (realized, total) = (ItemsView.realizedCount (find "icons")).Value
+        Assert.Equal(4304, total)
+        Assert.InRange(realized, 40, 120)
+        Assert.Equal(realized, (find "icons").Children.Count)
         let button text = all tree.Root.Value |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && texts e = [ text ])
         // The first tile is Google's first icon: 10k.
         let first () = (find "icons").Children[0]
@@ -105,8 +109,7 @@ type IconGalleryTests(fixture: TextFixture) =
         let scrollLayout =
             best 20 (fun () ->
                 offset <- offset + 50.0
-                scroller.SetLocal(ScrollViewerProps.offset, offset)
-                scroller.InvalidateArrange()
+                ScrollViewer.jumpTo scroller offset
                 tree.UpdateLayout(Size.Create(width, height)))
         let render = best 20 (fun () -> tree.Render(DrawList 1.0))
         // Startup parts: the icon values, the view, realizing it, the first measure (text layout).

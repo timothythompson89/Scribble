@@ -11,6 +11,7 @@
     <Compile Include="Cursor.fs" />
     <Compile Include="Palette.fs" />
     <Compile Include="Dispatcher.fs" />
+    <Compile Include="Scroller.fs" />
     <Compile Include="AppValue.fs" />
     <Compile Include="Cmd.fs" />
     <Compile Include="Animation.fs" />
@@ -26,6 +27,7 @@
     <Compile Include="Elements/IconView.fs" />
     <Compile Include="Elements/Button.fs" />
     <Compile Include="Elements/ScrollViewer.fs" />
+    <Compile Include="Elements/ItemsView.fs" />
     <Compile Include="Theme.fs" />
     <Compile Include="Component.fs" />
     <Compile Include="Layer.fs" />

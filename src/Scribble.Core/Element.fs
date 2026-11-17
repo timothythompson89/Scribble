@@ -108,7 +108,23 @@ type ElementType =
       Wheel: (InputContext -> WheelEventArgs -> unit) voption
       /// The type's own touch-drag behavior (scrolling by finger): given how far the finger moved
       /// (x, y in DIPs), returns true if the element takes the drag. See `Element.pan`.
-      Pan: (InputContext -> float -> float -> bool) voption }
+      Pan: (InputContext -> float -> float -> bool) voption
+      /// The finger that was panning lifted (`false`) or the pan was canceled (`true`).
+      PanEnded: (InputContext -> bool -> unit) voption
+      /// The type's own pointer behavior (a scrollbar's thumb): runs as the event bubbles, after
+      /// each element's own handler, if nothing handled it yet. Handling a press in it captures
+      /// the pointer to this element (moves and the release come here).
+      PointerDown: (InputContext -> PointerEventArgs -> unit) voption
+      PointerMove: (InputContext -> PointerEventArgs -> unit) voption
+      PointerUp: (InputContext -> PointerEventArgs -> unit) voption
+      /// The type's own key behavior (a ScrollViewer's arrow keys): runs as a key bubbles from the
+      /// focused element, after each element's own handler, if nothing handled it yet.
+      KeyDown: (InputContext -> KeyEventArgs -> unit) voption
+      /// The clip for the children, in the element's own coordinates (a ScrollViewer's viewport,
+      /// without its scrollbars); by default its bounds when `clipToBounds` is set.
+      ClipChildren: (RenderContext -> Rect) voption
+      /// How it takes part in scrolling (ScrollViewer, ItemsView).
+      Scrolling: ScrollHooks voption }
 
     override t.ToString() = t.Name
 
@@ -120,6 +136,13 @@ type ElementType =
           RenderAfter = ValueNone
           Wheel = ValueNone
           Pan = ValueNone
+          PanEnded = ValueNone
+          PointerDown = ValueNone
+          PointerMove = ValueNone
+          PointerUp = ValueNone
+          KeyDown = ValueNone
+          ClipChildren = ValueNone
+          Scrolling = ValueNone
           Measure =
             fun ctx available ->
                 let mutable w, h = 0.0, 0.0
@@ -134,6 +157,16 @@ type ElementType =
                     ctx.Arrange(child, Rect.Create(0.0, 0.0, size.Width, size.Height))
           Render = fun _ _ -> () }
 
+/// How an element type takes part in scrolling. ScrollViewer and ItemsView set it.
+and ScrollHooks =
+    { /// Scrolls so that `rect` (the element's own coordinates) shows, as `align` says; returns
+      /// how far that rect moved (x, y; the change in scroll offset).
+      MakeVisible: Element -> Rect -> ScrollAlign -> bool -> Point
+      /// What a scroller above shows of it changed (scrolled, resized), or it was arranged.
+      ViewportChanged: Element -> unit
+      /// Scrolls to its item or element with `key`; false if it has none.
+      ScrollToKey: Element -> obj -> ScrollAlign -> bool -> bool }
+
 /// What a Measure function can do: read properties, measure children, use text.
 and [<Struct>] MeasureContext internal (element: Element) =
     member _.Get<'T>(prop: Prop<'T>) : 'T = element.Get prop
@@ -146,6 +179,7 @@ and [<Struct>] MeasureContext internal (element: Element) =
     member _.Scale = element.Scale
     /// Stores private data (a cache) without invalidating anything; see `Prop.local`.
     member _.SetLocal<'T>(prop: Prop<'T>, value: 'T) = element.SetLocal(prop, value)
+    member internal _.Element = element
 
 /// What an Arrange function can do: read properties and place children.
 and [<Struct>] ArrangeContext internal (element: Element) =
@@ -157,6 +191,9 @@ and [<Struct>] ArrangeContext internal (element: Element) =
     member _.Arrange(child: Element, slot: Rect) = child.Arrange slot
     member _.Text: TextSystem = element.TextSystem
     member _.SetLocal<'T>(prop: Prop<'T>, value: 'T) = element.SetLocal(prop, value)
+    /// The current frame's time.
+    member _.Time = element.Time
+    member internal _.Element = element
 
 /// What a Render function can do: read properties, its size and its input states.
 and [<Struct>] RenderContext internal (element: Element) =
@@ -181,6 +218,7 @@ and [<Struct>] RenderContext internal (element: Element) =
     member _.IsFocusVisible = element.IsFocusVisible || element.LooksForced 8
     /// The current frame's time.
     member _.Time = element.Time
+    member internal _.Element = element
 
     /// A value that moves to `target` over `duration` whenever the target changes (the first
     /// target is taken at once). Frames keep coming while it moves; nothing else re-runs.
@@ -206,6 +244,15 @@ and [<Struct>] InputContext internal (element: Element) =
     member _.InvalidateArrange() = element.InvalidateArrange()
     /// Only appearance changed.
     member _.InvalidateVisual() = element.InvalidateVisual()
+    /// Its size may change: measure again.
+    member _.InvalidateMeasure() = element.InvalidateMeasure()
+    /// The pointer is over the element (or something inside it).
+    member _.IsPointerOver = element.IsPointerOver
+    /// The current frame's time.
+    member _.Time = element.Time
+    /// Scrolls every scroller around the element so all of it shows (the least scroll).
+    member _.BringIntoView() = element.BringIntoView()
+    member internal _.Element = element
 
 /// What a component's input carries (its function and props); equal inputs don't re-run it.
 and [<AbstractClass>] internal ComponentInput() =
@@ -660,6 +707,40 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         if before <> (pointersPressing > 0) then
             this.InvalidateVisual()
             this.RequestRestyle(false, true)
+
+    /// Replaces the children with elements the element type manages itself (an ItemsView's
+    /// realized items), already attached; nothing is realized or patched here.
+    member internal _.SetManagedChildren(next: Element[]) = children <- next
+
+    /// Scrolls every scroller around this element so that `rect` (its own coordinates) shows,
+    /// the innermost first.
+    member internal this.BringRectIntoView(rect: Rect, align: ScrollAlign, animate: bool) =
+        let mutable r = rect
+        let mutable e = this
+        let mutable p = parent
+        while p.IsSome do
+            let b = e.Bounds
+            r <- r.Offset(b.X, b.Y)
+            let a = p.Value
+            match a.Type.Scrolling with
+            | ValueSome s ->
+                let moved = s.MakeVisible a r align animate
+                r <- r.Offset(-moved.X, -moved.Y)
+            | ValueNone -> ()
+            e <- a
+            p <- a.Parent
+
+    /// Scrolls every scroller around this element so all of it shows (the least scroll, animated).
+    member this.BringIntoView() =
+        this.BringRectIntoView(Rect.Create(0.0, 0.0, bounds.Width, bounds.Height), ScrollAlign.Nearest, true)
+
+    /// What scrollers above show of the elements inside changed: they're told.
+    member internal _.ViewportChangedBelow() =
+        for c in children do
+            match c.Type.Scrolling with
+            | ValueSome s -> s.ViewportChanged c
+            | ValueNone -> ()
+            c.ViewportChangedBelow()
 
     /// The element's top-left in tree coordinates (DIPs), after the last arrange.
     member _.PositionInTree: Point =
@@ -1265,7 +1346,10 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             elementType.Render (RenderContext this) list
             if children.Length > 0 then
                 let clip = lv.ClipToBounds
-                if clip then list.PushClip(Rect.Create(0.0, 0.0, bounds.Width, bounds.Height))
+                if clip then
+                    match elementType.ClipChildren with
+                    | ValueSome f -> list.PushClip(f (RenderContext this))
+                    | ValueNone -> list.PushClip(Rect.Create(0.0, 0.0, bounds.Width, bounds.Height))
                 for child in children do
                     child.Render list
                 if clip then list.PopClip()
@@ -1354,6 +1438,33 @@ module Element =
     /// (to an outer element, or to stay a press). Later calls' results don't matter.
     /// Not used when a view's `onPointerDown` handled the press, and never for the mouse.
     let pan (f: InputContext -> float -> float -> bool) = ElementPart(fun t -> { t with Pan = ValueSome f })
+
+    /// Runs when the finger that was panning (see `pan`) lifts (`false`) or the pan is canceled
+    /// (`true`): a scroller flings on.
+    let panEnded (f: InputContext -> bool -> unit) = ElementPart(fun t -> { t with PanEnded = ValueSome f })
+
+    /// The type's own press behavior (a scrollbar thumb): runs as the press bubbles, after each
+    /// element's own `onPointerDown`, if nothing handled it yet. Call `e.Handle()` to take the
+    /// press: the pointer is then captured to this element (`pointerMove` and `pointerUp` get the
+    /// rest of the drag) and nothing clicks.
+    let pointerDown (f: InputContext -> PointerEventArgs -> unit) = ElementPart(fun t -> { t with PointerDown = ValueSome f })
+
+    /// The type's own pointer-move behavior (after each element's `onPointerMove`).
+    let pointerMove (f: InputContext -> PointerEventArgs -> unit) = ElementPart(fun t -> { t with PointerMove = ValueSome f })
+
+    /// The type's own release behavior (after each element's `onPointerUp`).
+    let pointerUp (f: InputContext -> PointerEventArgs -> unit) = ElementPart(fun t -> { t with PointerUp = ValueSome f })
+
+    /// The type's own key behavior: keys nothing handled bubble from the focused element up, and
+    /// reach this after each element's own `onKeyDown`. Call `e.Handle()` when it used the key.
+    let keyDown (f: InputContext -> KeyEventArgs -> unit) = ElementPart(fun t -> { t with KeyDown = ValueSome f })
+
+    /// The clip for the children (own coordinates) when `clipToBounds` is set, instead of the
+    /// element's bounds.
+    let clipChildren (f: RenderContext -> Rect) = ElementPart(fun t -> { t with ClipChildren = ValueSome f })
+
+    /// Scrolling hooks (ScrollViewer, ItemsView).
+    let internal scrolling (hooks: ScrollHooks) = ElementPart(fun t -> { t with Scrolling = ValueSome hooks })
 
     /// Values for this element type's properties when a view doesn't set them (a view's own
     /// settings win; removing one from a later view goes back to these). Not for child properties.

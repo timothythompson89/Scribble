@@ -99,7 +99,10 @@ type Win32Platform() =
 
         let window = new Win32Window(hinstance, onEvent, fun h -> windows.Remove h |> ignore)
         let w, h = outerSize (GetDpiForSystem())
-        use titlePtr = fixed options.Title
+        // Pinned with a handle, not `fixed` (see HarfBuzzShaper: a background GC misread a `fixed`
+        // string pin); CreateWindowExW calls back into managed code, so a GC can happen meanwhile.
+        let titlePin = GCHandle.Alloc(options.Title, GCHandleType.Pinned)
+        use _titleFree = { new IDisposable with member _.Dispose() = titlePin.Free() }
         // An owned window stays above its owner, minimizes with it and has no taskbar button.
         let owner =
             match options.Owner with
@@ -113,7 +116,7 @@ type Win32Platform() =
             CreateWindowExW(
                 0u,
                 classNamePtr,
-                NativeInterop.NativePtr.toNativeInt titlePtr,
+                titlePin.AddrOfPinnedObject(),
                 style,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,

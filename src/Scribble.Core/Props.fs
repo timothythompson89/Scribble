@@ -294,6 +294,8 @@ module LayoutProps =
     /// Can take keyboard focus (Tab stops here; a press focuses it). Render, so turning it off
     /// gets a frame, after which the focus manager lets go.
     let focusable = Prop<bool>("Focusable", false, Affects.Render, PropKind.Value)
+    /// Tab stops here (when focusable). False: focusable by a press only (a ScrollViewer).
+    let isTabStop = Prop<bool>("IsTabStop", true, Affects.Nothing, PropKind.Value)
     /// The element's style classes: plain names, matched by `Style.cls "name"`.
     let classes = Prop<string list>("Classes", [], Affects.Nothing, PropKind.Value)
     /// Fades the element and everything inside it (0 to 1); each shape fades on its own.

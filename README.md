@@ -156,9 +156,12 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
 6. Nothing redraws while you don't click; an animation draws until it arrives, then stops. A pending load or
    "+1 in a second" draws one frame when it finishes, not continuously while waiting.
 7. Tab, Enter and Space work as in the Hello sample.
-8. The Layers tab (layers and ScrollViewer, M6 step 1):
-   - The list scrolls with the wheel (or touchpad) and stops at both ends; a thin bar on the right shows where you
-     are. Rows are cut off cleanly at the edges, and the wheel elsewhere on the page does nothing.
+8. The Layers tab (layers, M6; 10,000 messages in an ItemsView, M8 step 1):
+   - 10,000 messages of different lengths scroll smoothly (wheel notches glide; a touchpad follows directly); only
+     those on screen exist (the inspector says "realized N of 10,000"). "Jump to #1", "#5,000", "#9,000" and
+     "Random" put that message at the top; "Add message" adds one at the end and scrolls to it. The bar: drag the
+     thumb, click the track to page; it widens under the pointer. After a click in the list, arrows, PageUp/Down
+     and Home/End scroll it.
    - "Show a toast" puts a blue toast at the bottom right for 2.5 seconds; several stack up. The app keeps
      working everywhere except on the toast itself (a toast over the list or a button blocks only its own area).
    - "Open a modal layer" dims the window and shows a dialog. Nothing below reacts: no hover, no clicks, no wheel,
@@ -221,9 +224,11 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
 The browser version is `samples/Counter.Browser` (port 5281).
 
 The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,
-port 5282) shows all 4,304 Material Symbols in a ScrollViewer, in tiles that wrap to the window's width:
+port 5282) shows all 4,304 Material Symbols in an ItemsView (`ItemsLayout.wrap`: only the tiles on screen exist):
 
-1. Outlined/Filled switches every icon (about 30 ms here: 17,000 elements, no virtualization yet).
+1. Outlined/Filled switches every icon. The search field (click it, then type; Backspace, Escape clears) scrolls
+   to the first icon whose name starts with (else contains) what you typed and outlines it. It's a stand-in that
+   takes keys until M9's TextBox, so it doesn't open a phone's keyboard.
 2. A click on a tile shows the F# to write for it above the grid: `Material.arrowUpward`, with `.filled` when
    filled, ``Material.``class`` `` for keywords, `Material._10k` for a leading digit.
 3. Tiles light up under the pointer, and the pointer becomes that tile's icon (white with a black outline,
@@ -515,16 +520,63 @@ App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (
   `host.RemoveLayer layer` takes it away (its components stop). For now a layer's view is fixed; an element that
   shows view content in a layer from wherever it's declared (and Dialog, Toast) come with M8.
 
-**ScrollViewer** (basic, from M6): `ScrollViewer.create [ ScrollViewer.height 300.0; ScrollViewer.content list ]`
-scrolls its content vertically with the wheel or a finger when it's taller than the ScrollViewer, clips it, and
-draws a thin position bar. Give it a bounded height. At either end the wheel passes to whatever is outside it. A
-finger that moves more than 8 DIPs (mostly up or down) after touching down scrolls: the content follows it,
-without momentum yet, even at an end. The press it started on is canceled, so a button under it doesn't click, and
-nothing inside reacts to the finger sliding over it; a shorter touch is a tap, and a sideways drag stays a press. Horizontal
-scrolling, momentum, dragging the bar and keyboard come with M8. Element authors: `Element.wheel` (a type's own
-wheel behavior, after the view's `onWheel`), `Element.pan` (a type's own touch-drag behavior: return true to take
-the drag, and it keeps the finger; not used when a view's `onPointerDown` handled the press) and
-`Element.renderAfter` (drawn over the children) are what it uses.
+**ScrollViewer** (M6, completed in M8 step 1): `ScrollViewer.create [ ScrollViewer.height 300.0; ScrollViewer.content list ]`
+scrolls its content when it's bigger than the ScrollViewer. Give it a bounded height.
+- **Directions:** `ScrollViewer.vertical` and `ScrollViewer.horizontal` take `ScrollBarMode.Auto` (scrolls, with a
+  bar), `Hidden` (scrolls, no bar) or `Disabled` (the content gets the viewer's size, so text wraps). Defaults:
+  vertical `Auto`, horizontal `Disabled`.
+- **The bar:** a 12-DIP gutter is kept on each `Auto` side (`ScrollViewer.scrollBarSpace Reserved`, default), whether
+  or not the content overflows, so the content's width never changes when it starts to (it can't re-wrap and flip
+  back). `Overlay` draws the bar over the content instead (the app leaves room; the Hello dashboard does). The thumb
+  is 4 DIPs at rest and widens with a faint track under the pointer; drag it, or click the track to page.
+  `barSize`, `thumb` and `track` are theme values (`Palette.scrollThumb`, `Palette.scrollTrack`).
+- **Wheel:** a notch scrolls 48 DIPs, animated over 100 ms; a touchpad's fine deltas apply directly. Shift+wheel
+  and sideways deltas scroll horizontally. At an end the wheel passes to whatever is outside.
+- **Keys:** a press inside focuses the ScrollViewer (Tab doesn't stop on it: `isTabStop false`), and keys nothing
+  handled bubble to it: arrows (one step), PageUp/PageDown, Home/End. Tab to something inside scrolls it into view.
+- **Touch:** a finger that moves more than 8 DIPs scrolls (the press it started on is canceled), and a fling
+  slows to a stop after release; a touch stops a fling. No bounce at the ends.
+- **From code:** `let scroller = ctx.useScroller ()`, `ScrollViewer.scroller scroller`, then `scroller.ScrollToOffset`,
+  `ScrollBy`, `ScrollToTop`, or `ScrollTo key` (an element with that `key`, or an item of an ItemsView inside).
+  They animate briefly (`animate = false` jumps; far away always jumps) and apply at the next layout. An element
+  can bring itself into view: `ctx.BringIntoView()` (input context).
+- **Element authors:** `Element.wheel`, `Element.pan`/`panEnded`, `Element.pointerDown`/`pointerMove`/`pointerUp`
+  (a type's own pointer behavior; handling a press captures the pointer), `Element.keyDown`, `Element.renderAfter`
+  and `Element.clipChildren` are what it uses.
+
+**ItemsView** (M8 step 1): shows many items, realizing only those the ScrollViewers around it show plus a little
+more, so 10,000 items cost about what 40 do (tested: the same elements realized for 100 and 10,000, a scroll step
+within 1.5×, scrolling to item 9,000 without realizing those between).
+
+```fsharp
+let messages =
+    Component.define "Messages" (fun ctx (items: Message array) ->
+        let scroller = ctx.useScroller ()
+        ScrollViewer.create [
+            ScrollViewer.content (
+                ItemsView.create [
+                    ItemsView.source items                          // array, list, ResizeArray, any seq
+                    ItemsView.key (fun (m: Message) -> m.Id)        // identifies an item across updates
+                    ItemsView.view (fun (m: Message) -> TextBlock.create [ TextBlock.text m.Text ])
+                    ItemsView.scroller scroller                     // scroller.ScrollTo(id, ScrollAlign.Start)
+                ])
+        ])
+```
+
+- **Layouts:** `ItemsLayout.stack` (default: each item as tall as it wants; measured as realized, others estimated
+  from the average, the first visible item kept in place as estimates are corrected, so the bar may adjust a
+  little), `fixedStack height`, `wrap width height` and `grid columns` (exact, by arithmetic).
+- **Anywhere inside a ScrollViewer:** headers above it scroll with it; several on a page each virtualize. Outside
+  any ScrollViewer it realizes everything.
+- **Recycling:** items scrolled out give their elements to items scrolling in (patched by the differ). A component
+  inside an item loses its state when it scrolls out (keep what must survive in the model, by key). The item with
+  focus stays realized.
+- **Scrolling to items:** `scroller.ScrollTo(key, ?align, ?animate)`, `ScrollToIndex`, `ScrollTo(position)` with
+  `scroller.FirstVisible` (key and offset, to come back exactly), `ScrollAlign.Nearest` (default: no move when
+  already visible), `Start`, `Center`, `End`. From Elmish: `Cmd.scrollTo "messages" key align` finds the
+  ItemsView or ScrollViewer by its `name`. A key added in the same handler or update works (requests apply at the
+  next layout). `ItemsView.view` needs the item type written (`fun (m: Message) -> ...`): F# can't infer it from
+  `source` across settings.
 
 ### Inspector
 
@@ -841,7 +893,7 @@ few microseconds; building, diffing and laying out a 1,000-element view with one
 
 | Project | Purpose |
 | --- | --- |
-| `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer; layers; App settings and runtime |
+| `src/Scribble.Core` | Views, the differ, elements and layout; Border, StackPanel, TextBlock, Button, ScrollViewer, ItemsView; layers; App settings and runtime |
 | `src/Scribble.Desktop` | `App.run` on the desktop: the platform, WebGPU renderer and HarfBuzz shaping in one reference |
 | `src/Scribble.Inspector` | Opt-in inspector: `Inspector.enable [ ... ]` (element tree of every layer, pick mode, highlight, properties, frame stats) |
 | `src/Scribble.Icons.Material` | Opt-in Material Symbols: `Material.home`, `Material.filled`, `Material.icon "name"` (© Google, Apache 2.0) |

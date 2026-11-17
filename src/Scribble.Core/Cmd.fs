@@ -57,6 +57,19 @@ module Cmd =
     /// Sets an app value (`AppValue.define`) for the whole app: `Cmd.setAppValue compactMode true`.
     let setAppValue (value: AppValue<'T>) (next: 'T) : Cmd<'Msg> = Cmd [ fun values _ -> values.Set(value, next) ]
 
+    /// Scrolls the ItemsView or ScrollViewer with `name` (its `name` setting) to the item with `key`,
+    /// as its scroller's `ScrollTo(key, align)` would: `Cmd.scrollTo "messages" newId ScrollAlign.End`.
+    /// Applies at the next layout, so an item added by the same update can be scrolled to; a name
+    /// nothing has does nothing.
+    let scrollTo (name: string) (key: obj) (align: ScrollAlign) : Cmd<'Msg> =
+        Cmd [ fun values _ ->
+                match values.NamedScrollers.TryGetValue name with
+                | true, w ->
+                    match w.TryGetTarget() with
+                    | true, s -> s.ScrollTo(key, align)
+                    | _ -> ()
+                | _ -> () ]
+
     /// Runs a command's effects with `dispatch`. Errors (from an effect, or from a dispatch that
     /// happens later) go to `onError` instead of being lost.
     let internal execute (onError: exn -> unit) (values: AppValues) (dispatch: 'Msg -> unit) (Cmd effects: Cmd<'Msg>) =

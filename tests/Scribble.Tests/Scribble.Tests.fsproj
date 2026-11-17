@@ -28,6 +28,7 @@
     <Compile Include="ThemeValueTests.fs" />
     <Compile Include="AppValueTests.fs" />
     <Compile Include="LayerTests.fs" />
+    <Compile Include="ItemsViewTests.fs" />
     <Compile Include="InspectorTests.fs" />
   </ItemGroup>
   <ItemGroup>

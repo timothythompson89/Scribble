@@ -185,6 +185,12 @@ let ``a removed layer's components stop`` () =
 // --- ScrollViewer --------------------------------------------------------------------------------
 
 let private wheel (w: FakeWindow) x y notches = w.Send(PointerWheel({ X = x; Y = y }, 0.0, notches, Modifiers.None))
+/// Delivers frames until nothing more is asked for (a wheel scroll animates for about 100 ms).
+let private settle (w: FakeWindow) =
+    let mutable n = 0
+    while w.DeliverFrame() && n < 100 do
+        System.Threading.Thread.Sleep 10
+        n <- n + 1
 
 /// A 200×100 ScrollViewer at the top left holding ten 40-high rows (400 high in all).
 let private scroller (outerWheel: List<float>) =
@@ -218,23 +224,23 @@ let ``a ScrollViewer shows its content's top, and the wheel scrolls it within it
     Assert.Equal(400.0, content.Bounds.Height)
     Assert.Equal(0.0, content.Bounds.Y)
     wheel w 50.0 50.0 -1.0 // towards the user: down by one step
-    w.DeliverFrame() |> ignore
+    settle w
     Assert.Equal(-48.0, content.Bounds.Y)
     wheel w 50.0 50.0 -100.0 // far past the end: stops at 300 (400 - 100)
-    w.DeliverFrame() |> ignore
+    settle w
     Assert.Equal(-300.0, content.Bounds.Y)
     Assert.Empty outer // the scroller used the wheel both times
     wheel w 50.0 50.0 -1.0 // at the end already: the wheel goes on to the outer element
     Assert.Equal<float list>([ -1.0 ], List.ofSeq outer)
     wheel w 50.0 50.0 1.0
-    w.DeliverFrame() |> ignore
+    settle w
     Assert.Equal(-252.0, content.Bounds.Y)
 
 [<Fact>]
 let ``scrolled-away content isn't hit outside the ScrollViewer`` () =
     let w, host = start [ App.view (scroller (List<float>())) ]
     wheel w 50.0 50.0 -2.0 // rows 0–2 are now above the viewport
-    w.DeliverFrame() |> ignore
+    settle w
     // Row 2 sits at y -16..24 relative to the scroller: only its visible part is hit.
     Assert.Equal("row2", (host.Tree.HitTest(50.0, 10.0)).Value.Name)
     // Row 7 is below the viewport (y 184..224 in the window) and must not catch the pointer there.
@@ -244,12 +250,12 @@ let ``scrolled-away content isn't hit outside the ScrollViewer`` () =
 let ``a ScrollViewer keeps its offset within range when its content shrinks`` () =
     let w, host = start [ App.view (scroller (List<float>())) ]
     wheel w 50.0 50.0 -100.0
-    w.DeliverFrame() |> ignore
+    settle w
     let content = named host "content"
     // Make the content short: 5 rows of 40 = 200, so the furthest offset is 100.
     for i in 5..9 do
         (named host $"row{i}").Set(LayoutProps.isVisible, false)
-    w.DeliverFrame() |> ignore
+    settle w
     Assert.Equal(-100.0, content.Bounds.Y)
 
 

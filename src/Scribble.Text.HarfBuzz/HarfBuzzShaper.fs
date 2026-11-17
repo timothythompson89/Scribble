@@ -69,7 +69,7 @@ module internal Native =
     extern void hb_buffer_destroy(nativeint buffer)
 
     [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
-    extern void hb_buffer_add_utf16(nativeint buffer, char* text, int textLength, uint32 itemOffset, int itemLength)
+    extern void hb_buffer_add_utf16(nativeint buffer, nativeint text, int textLength, uint32 itemOffset, int itemLength)
 
     [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
     extern void hb_buffer_guess_segment_properties(nativeint buffer)
@@ -139,8 +139,12 @@ type HarfBuzzShaper() =
             else
                 let hb = hbFont font
                 Native.hb_buffer_clear_contents buffer
-                use chars = fixed text
-                Native.hb_buffer_add_utf16(buffer, chars, text.Length, 0u, text.Length)
+                // Pinned with a handle, not `fixed`: a background GC (2026-11-16, .NET 10) read the
+                // `fixed` local (a pinned char& into the string) as an object start and crashed the
+                // runtime ("Internal CLR error") while HarfBuzz ran. HarfBuzz copies the text here.
+                let pin = GCHandle.Alloc(text, GCHandleType.Pinned)
+                try Native.hb_buffer_add_utf16(buffer, pin.AddrOfPinnedObject(), text.Length, 0u, text.Length)
+                finally pin.Free()
                 Native.hb_buffer_guess_segment_properties buffer
                 Native.hb_shape(hb, buffer, 0n, 0u)
                 let mutable count = 0u

@@ -91,10 +91,18 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         PointerEventArgs(s.Kind, s.Id, p, button, s.Modifiers)
 
     /// Raises a routed event: Preview from the root down to the target, then normal from the target
-    /// up, stopping once handled. Returns the element that handled the Preview event, if any.
-    let routed (route: Element list) (preview: Prop<('a -> unit) voption> voption) (normal: Prop<('a -> unit) voption>) (args: 'a) =
+    /// up, stopping once handled; on the way up each element's type gets it after the element's own
+    /// handler (`typeHook`). Returns the elements that handled it in Preview and in a type hook.
+    let routedWith
+        (route: Element list)
+        (preview: Prop<('a -> unit) voption> voption)
+        (normal: Prop<('a -> unit) voption>)
+        (typeHook: ElementType -> (InputContext -> 'a -> unit) voption)
+        (args: 'a)
+        =
         let origin = box args :?> RoutedEventArgs
         let mutable previewHandler = ValueNone
+        let mutable typeHandler = ValueNone
         match preview with
         | ValueSome previewProp ->
             for e in List.rev route do
@@ -104,6 +112,17 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         | ValueNone -> ()
         for e in route do
             if not origin.IsHandled then invoke e normal args origin
+            if not origin.IsHandled then
+                match typeHook e.Type with
+                | ValueSome f ->
+                    origin.Origin <- e.PositionInTree
+                    f (InputContext e) args
+                    if origin.IsHandled then typeHandler <- ValueSome e
+                | ValueNone -> ()
+        struct (previewHandler, typeHandler)
+
+    let routed (route: Element list) (preview: Prop<('a -> unit) voption> voption) (normal: Prop<('a -> unit) voption>) (args: 'a) =
+        let struct (previewHandler, _) = routedWith route preview normal (fun _ -> ValueNone) args
         previewHandler
 
     let updateCursor (over: Element list) =
@@ -139,6 +158,15 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         match s.Captured with
         | ValueSome c when isAttached c && c.IsEnabled -> ValueSome c
         | _ -> List.tryHead s.Over |> Option.toValueOption
+
+    /// Tells the panning element its finger is gone (`canceled`: no fling).
+    let endPan (s: PointerState) (canceled: bool) =
+        match s.Panning with
+        | ValueSome e when isAttached e ->
+            match e.Type.PanEnded with
+            | ValueSome f -> f (InputContext e) canceled
+            | ValueNone -> ()
+        | _ -> ()
 
     let endPress (s: PointerState) =
         s.Buttons <- 0
@@ -223,7 +251,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         let result = ResizeArray<Element>()
         let rec walk (e: Element) =
             if e.IsVisible && e.Get LayoutProps.isEnabled then
-                if e.Get LayoutProps.focusable then result.Add e
+                if e.Get LayoutProps.focusable && e.Get LayoutProps.isTabStop then result.Add e
                 for child in e.Children do
                     walk child
         tree.Root |> ValueOption.iter walk
@@ -256,7 +284,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         s.Modifiers <- modifiers
         trackPan s position
         setOver s (overAt s position)
-        routed (routeOf (target s)) ValueNone LayoutProps.onPointerMove (pointerArgs s ValueNone) |> ignore
+        routedWith (routeOf (target s)) ValueNone LayoutProps.onPointerMove _.PointerMove (pointerArgs s ValueNone) |> ignore
 
     member this.PointerPressed(kind: PointerKind, id: int, position: Point, button: MouseButton, modifiers: Modifiers) =
         let s = stateFor kind id
@@ -271,19 +299,22 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             keyboardMode <- false
             setFocus (route |> List.tryFind canFocus |> Option.toValueOption)
         let args = pointerArgs s (ValueSome button)
-        let previewHandler = routed route (ValueSome LayoutProps.onPreviewPointerDown) LayoutProps.onPointerDown args
+        let struct (previewHandler, typeHandler) =
+            routedWith route (ValueSome LayoutProps.onPreviewPointerDown) LayoutProps.onPointerDown _.PointerDown args
         if s.Buttons = 0 then
-            // The element that took the press in Preview gets it; otherwise the deepest one.
+            // The element that took the press in Preview, or in its type's own behavior (a
+            // scrollbar thumb), gets it; otherwise the deepest one.
             s.Captured <-
-                match previewHandler with
-                | ValueSome e -> ValueSome e
-                | ValueNone -> List.tryHead route |> Option.toValueOption
+                match previewHandler, typeHandler with
+                | ValueSome e, _
+                | ValueNone, ValueSome e -> ValueSome e
+                | ValueNone, ValueNone -> List.tryHead route |> Option.toValueOption
             // A finger may drag to pan, unless a handler took the press (it wants the drag itself).
             if kind = PointerKind.Touch && not args.IsHandled then
                 s.PanCandidates <- route |> List.filter (fun e -> e.Type.Pan.IsSome)
                 s.PanStart <- if s.PanCandidates.IsEmpty then ValueNone else ValueSome position
         s.Buttons <- s.Buttons + 1
-        if button = MouseButton.Left && previewHandler.IsNone then
+        if button = MouseButton.Left && previewHandler.IsNone && typeHandler.IsNone then
             s.PressRoute <- route
             s.Clickable <- route |> List.tryFind (fun e -> (e.Get LayoutProps.onClick).IsSome) |> Option.toValueOption
         refresh s
@@ -293,7 +324,8 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         s.Position <- ValueSome position
         s.Modifiers <- modifiers
         setOver s (overAt s position)
-        routed (routeOf (target s)) (ValueSome LayoutProps.onPreviewPointerUp) LayoutProps.onPointerUp (pointerArgs s (ValueSome button)) |> ignore
+        routedWith (routeOf (target s)) (ValueSome LayoutProps.onPreviewPointerUp) LayoutProps.onPointerUp _.PointerUp (pointerArgs s (ValueSome button))
+        |> ignore
         let clicked =
             if button = MouseButton.Left then
                 let c = s.Clickable
@@ -305,7 +337,9 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
                 | _ -> ValueNone
             else ValueNone
         s.Buttons <- max 0 (s.Buttons - 1)
-        if s.Buttons = 0 then endPress s
+        if s.Buttons = 0 then
+            endPan s false
+            endPress s
         refresh s
         clicked |> ValueOption.iter (fun e -> click e (ClickSource.Pointer kind) modifiers)
 
@@ -328,6 +362,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
     /// The press was taken away: no release, no click.
     member _.PointerCanceled(kind: PointerKind, id: int) =
         let s = stateFor kind id
+        endPan s true
         endPress s
         refresh s
 
@@ -380,6 +415,8 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
                 | FocusDirection.Next, i -> (i + 1) % order.Count
                 | FocusDirection.Previous, i -> (i - 1 + order.Count) % order.Count
             setFocus (ValueSome order[next])
+            // Into view through every scroller around it.
+            order[next].BringIntoView()
 
     /// Routes a key down from the focused element (else the root), then does what's built in if no
     /// handler took it: Tab moves focus, Enter clicks, Space presses (clicking on release), Escape
@@ -387,7 +424,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
     member this.KeyDown(key: Key, modifiers: Modifiers, isRepeat: bool) : bool =
         let target = match currentFocus () with ValueSome e -> ValueSome e | ValueNone -> tree.Root
         let args = KeyEventArgs(key, modifiers, isRepeat)
-        routed (routeOf target) (ValueSome LayoutProps.onPreviewKeyDown) LayoutProps.onKeyDown args |> ignore
+        routedWith (routeOf target) (ValueSome LayoutProps.onPreviewKeyDown) LayoutProps.onKeyDown _.KeyDown args |> ignore
         if args.IsHandled then true
         else
             let plain = modifiers &&& (Modifiers.Control ||| Modifiers.Alt ||| Modifiers.Meta) = Modifiers.None

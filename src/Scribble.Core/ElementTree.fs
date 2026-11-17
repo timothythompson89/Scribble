@@ -171,8 +171,14 @@ type ElementTree(text: TextSystem) =
         this.RunScheduledStyles()
         match root with
         | ValueSome r ->
-            r.Measure size
-            r.Arrange(Rect.Create(0.0, 0.0, size.Width, size.Height))
+            // Arranging can ask for another pass: a scroller that moved shows other items, which an
+            // ItemsView realizes and measures. A few passes settle it (bounded, in case something
+            // keeps asking).
+            let mutable passes = 0
+            while passes = 0 || (passes < 6 && not (r.IsMeasureValid && r.IsArrangeValid)) do
+                passes <- passes + 1
+                r.Measure size
+                r.Arrange(Rect.Create(0.0, 0.0, size.Width, size.Height))
         | ValueNone -> ()
 
     member _.Render(list: DrawList) = root |> ValueOption.iter (fun r -> r.Render list)

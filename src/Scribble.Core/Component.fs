@@ -338,6 +338,16 @@ type ComponentContext internal (instance: ComponentInstance) =
             slot.HasValue <- true
         slot.Value
 
+    /// A scroller to scroll a ScrollViewer or an ItemsView from code: give it to the element
+    /// (`ItemsView.scroller scroller`), then call it from handlers (`scroller.ScrollTo key`). The
+    /// same scroller for as long as the component lives.
+    member _.useScroller() : Scroller =
+        let slot = instance.Slot("useScroller", fun () -> MemoSlot<unit, Scroller>())
+        if not slot.HasValue then
+            slot.Value <- Scroller()
+            slot.HasValue <- true
+        slot.Value
+
     /// Runs `effect` after the frame that shows the component, the first time and whenever `deps`
     /// change (F# equality; use a tuple for several values, `()` for "once").
     member _.useEffect<'D>(deps: 'D, effect: 'D -> unit) : unit =

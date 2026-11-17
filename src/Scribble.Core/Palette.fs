@@ -30,6 +30,8 @@ module Palette =
     let pressTint = ThemeValue.define "Palette.pressTint" (Color.Black.WithAlpha 0.2f)
     /// The scrollbar's thumb.
     let scrollThumb = ThemeValue.define "Palette.scrollThumb" (Color.White.WithAlpha 0.3f)
+    /// The faint track under the scrollbar thumb while the pointer is on the bar.
+    let scrollTrack = ThemeValue.define "Palette.scrollTrack" (Color.White.WithAlpha 0.06f)
     /// A raised control's shadow (a button at rest; the theme flattens it when pressed or disabled).
     let shadow =
         ThemeValue.define "Palette.shadow" { Blur = 3.0; OffsetX = 0.0; OffsetY = 1.0; Spread = 0.0; Color = Color.Rgba(0.0f, 0.0f, 0.0f, 0.35f) }

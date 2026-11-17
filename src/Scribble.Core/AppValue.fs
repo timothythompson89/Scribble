@@ -42,6 +42,16 @@ type AppValues() =
     /// Where sets from other threads go (`App.run` sets it); without one they run where they're made.
     member val internal Dispatcher: Dispatcher voption = ValueNone with get, set
 
+    /// The scrollers of named ScrollViewers and ItemsViews (their `name` setting), registered at
+    /// layout, for `Cmd.scrollTo`. Weak: a removed element's scroller goes away with it.
+    member val internal NamedScrollers = Dictionary<string, WeakReference<Scroller>>() with get
+
+    /// Registers a named scroller; called at every arrange, so it allocates only when it changes.
+    member internal this.RegisterScroller(name: string, scroller: Scroller) =
+        match this.NamedScrollers.TryGetValue name with
+        | true, existing when (match existing.TryGetTarget() with | true, s -> obj.ReferenceEquals(s, scroller) | _ -> false) -> ()
+        | _ -> this.NamedScrollers[name] <- WeakReference<Scroller>(scroller)
+
     member _.Get<'T>(value: AppValue<'T>) : 'T =
         match values.TryGetValue value.Id with
         | true, v -> unbox<'T> v

@@ -109,6 +109,10 @@ module internal Format =
     /// A hint after the name: a TextBlock's text, or the text of a TextBlock directly inside.
     let hint (e: Element) =
         let textOf (t: Element) = "\"" + clip 28 (t.Get TextProps.text) + "\""
+        let count (n: int) = n.ToString("N0", Globalization.CultureInfo.InvariantCulture)
+        match ItemsView.realizedCount e with
+        | ValueSome(struct (realized, total)) -> "realized " + count realized + " of " + count total
+        | ValueNone ->
         if e.Type.Name = "TextBlock" then textOf e
         else
             match e.Children |> Seq.tryFind (fun c -> c.Type.Name = "TextBlock") with

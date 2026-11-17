@@ -987,6 +987,38 @@ notch jumps 48 DIPs; touch drags without a fling; no keyboard or horizontal scro
     match; the Counter demo's Layers tab list becomes 10,000 messages of varying length (variable sizes) with
     "Jump to #…" and "Add message" (add and scroll to it).
 
+**Step 1 as built (2026-11-16; verified by Tim on Windows the same day).** What the decisions above became, and choices made while building:
+- **Element types got input hooks** (`Element.pointerDown`/`pointerMove`/`pointerUp`, `keyDown`, `panEnded`,
+  `clipChildren`), run as events bubble after each element's own handler, like `Element.wheel`. A type hook that
+  handles a press captures the pointer to its element (a thumb drag). An internal `ScrollHooks` record
+  (`MakeVisible`, `ViewportChanged`, `ScrollToKey`) is how ScrollViewer, ItemsView and `BringIntoView` talk.
+- **The viewport** is found by walking up from the ItemsView through the ScrollViewers (intersecting what each
+  shows); a ScrollViewer whose offset or size changed tells the elements inside (`ViewportChangedBelow`, a walk
+  of the realized elements: proportional to what's visible). An ItemsView whose realized range no longer covers
+  what shows (or covers far more) measures again, and **layout repeats** (up to 6 passes) while a pass asks.
+- **Variable heights:** measured heights by key, summed by index in a Fenwick tree (O(log n) positions; unmeasured
+  items count as the average), so a scroll step doesn't grow with the item count. Anchoring keeps the first
+  visible item (or the item scrolled to) where it is when measurements correct estimates above it.
+- **Recycling** keeps up to 64 elements per element type; elements with a component inside aren't reused (its
+  state would show in another item), only dropped.
+- **`ItemsView.source` takes any `seq<'T>`** (arrays and `IReadOnlyList`s used directly, lists and others copied
+  once): separate overloads for arrays and `IReadOnlyList` were ambiguous in F#.
+- **`isTabStop`** (new setting, default true): a ScrollViewer is focusable by a press but not a Tab stop.
+- **Theme:** `Palette.scrollTrack` added; `ScrollViewer.barSize`, `thumb` and `track` settings.
+- **Samples:** the Icons search is a focusable field taking keys (a stand-in until M9's TextBox; no phone keyboard).
+  The Hello dashboard's ScrollViewer uses `Overlay` (its cards' 24-DIP margin holds the bar, and it must match
+  the hand-drawn dashboard pixel for pixel).
+- **Screenshots:** three references changed (icon gallery, layers-scroll, the Counter Layers tab on a phone),
+  regenerated on Tim's machine (RTX 4070 Ti, Vulkan), not on lavapipe.
+- **A crash found in checking (fixed):** dragging the thumb hard through 10,000 messages killed the process with
+  "Internal CLR error". A crash dump showed a background GC scanning the stack of the thread inside `hb_shape` and
+  reading the `fixed` pin of the string being shaped (a pinned `char&` into its characters) as an object start.
+  Pinning with a `GCHandle` instead stopped it (stress test: about 1 crash in 5 runs before, 0 in 40 after); the
+  Win32 window title pins changed the same way. Scrollers named for `Cmd.scrollTo` are registered without making
+  a new weak reference at every arrange.
+- **Not built:** keyboard paging that repeats while the track is held; bounce at the ends; keys reaching a
+  ScrollViewer when nothing has focus.
+
 ## One entry point and the sample layout (2026-11-16, before M8 step 1)
 
 Tim: "I only want the user to have to worry about swapping out the dependencies of Scribble.Desktop and
