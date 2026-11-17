@@ -94,7 +94,7 @@ let demo =
 /// Components and app values (the theme, the title) hold all the state, so the app has no messages of its own (hence `unit`).
 let app: AppSetting<unit> list =
     [ App.title (appTitle + " – " + fst pages[0])
-      App.size (640.0, 980.0) // the Layout tab, the tallest page, fits without scrolling
+      App.size (520.0, 520.0)
       App.theme darkTheme
       App.view (demo ())
       App.layer [ Layer.name "Toasts"; Layer.view (LayersTab.toasts ()) ]
