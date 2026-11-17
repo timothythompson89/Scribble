@@ -23,6 +23,7 @@
     <Compile Include="LayerTests.fs" />
     <Compile Include="InspectorTests.fs" />
     <Compile Include="ControlTests.fs" />
+    <Compile Include="BackendTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />

@@ -14,10 +14,13 @@ open Scribble.Rendering.WebGPU
 type internal GpuLifetime =
     static member val Lock = obj ()
 
-/// One device per test class (each class's fixture); created and disposed one at a time.
+/// One device per test class (each class's fixture); created and disposed one at a time. Honours
+/// SCRIBBLE_GPU_BACKEND like apps do, so the suite can be run on each backend.
 type GpuFixture() =
     let errors = Collections.Concurrent.ConcurrentQueue<GpuError>()
-    let device = lock GpuLifetime.Lock (fun () -> WebGpuDevice.Create [ WebGpuDevice.onError errors.Enqueue ])
+    let device =
+        lock GpuLifetime.Lock (fun () ->
+            WebGpuDevice.Create [ WebGpuDevice.onError errors.Enqueue; WebGpuDevice.backend (WebGpuDevice.BackendFromEnvironment()) ])
     member _.Device = device :> IRenderDevice
     member _.Errors = errors
     interface IDisposable with

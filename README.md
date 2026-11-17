@@ -313,8 +313,8 @@ dotnet test
 
 - `Scribble.Tests`: unit tests (no GPU).
 - `Scribble.Tests.Rendering`: renders offscreen through WebGPU and checks the pixels. Needs a GPU.
-  Screenshot tests compare with PNGs in `tests/Scribble.Tests.Rendering/References`, with a small tolerance for
-  differences between GPUs. On a mismatch the actual image is written to `tests/Scribble.Tests.Rendering/bin/snapshots`.
+  Screenshot tests compare with PNGs in `tests/Scribble.Tests.Rendering/References` exactly, pixel for pixel (and
+  D3D12 with Vulkan, which must agree too). On a mismatch the actual image is written to `tests/Scribble.Tests.Rendering/bin/snapshots`.
   To accept new output as the reference, run `$env:SCRIBBLE_UPDATE_SNAPSHOTS = "1"; dotnet test`.
 
 ## Text

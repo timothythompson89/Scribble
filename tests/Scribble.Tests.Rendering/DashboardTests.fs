@@ -76,7 +76,9 @@ type DashboardTests(fixture: TextFixture) =
     [<InlineData(1.0)>]
     [<InlineData(2.0)>]
     member this.``the element dashboard looks like the hand-drawn one``(scale: float) =
-        let width, height = 760.0, 520.0
+        // Tall enough that the cards don't scroll: the element version draws a scroll bar the
+        // hand-drawn one doesn't have (at 520 tall they differed only there; 2026-11-17).
+        let width, height = 760.0, 760.0
         let tree = ElementTree(fixture.Text, Scale = scale)
         tree.Update(view 0.0 None allCards None ignore)
         tree.UpdateLayout(Size.Create(width, height))

@@ -78,9 +78,27 @@ fn premultiply(c: vec4f) -> vec4f {
   return vec4f(c.rgb * c.a, c.a);
 }
 
+// atan2 from + - * / only (a minimax polynomial, error about 1e-5 rad): WGSL leaves the built-in's
+// precision to each backend, and D3D12 and Vulkan placed dashes on arcs differently (hundreds of
+// pixels one step apart; decision 13).
+fn atan2_exact(y: f32, x: f32) -> f32 {
+  let ax = abs(x);
+  let ay = abs(y);
+  let hi = max(ax, ay);
+  if (hi == 0.0) { return 0.0; }
+  let t = min(ax, ay) / hi;
+  let t2 = t * t;
+  var r = t * (0.99997726 + t2 * (-0.33262347 + t2 * (0.19354346 + t2 * (-0.11643287 + t2 * (0.05265332 + t2 * -0.01172120)))));
+  if (ay > ax) { r = 1.5707963 - r; }
+  if (x < 0.0) { r = 3.14159265 - r; }
+  if (y < 0.0) { r = -r; }
+  return r;
+}
+
 // How far along the border's centre line p lies, clockwise from where the top edge leaves the
 // top-left corner (x), and the centre line's whole length (y). b = half size, r = outer radii
 // (tl, tr, br, bl), w = border width. Corners follow arcs around the corner centres.
+
 fn border_position(p: vec2f, b: vec2f, r: vec4f, w: f32) -> vec2f {
   let rc = max(r - vec4f(0.5 * w), vec4f(0.0));        // centre-line radii
   let quarter = 1.5707963;
@@ -99,19 +117,19 @@ fn border_position(p: vec2f, b: vec2f, r: vec4f, w: f32) -> vec2f {
   // Corners: inside the square between the corner's centre and the box's corner.
   if (r.y > 0.0 && p.x > b.x - r.y && p.y < -b.y + r.y) {
     let v = p - vec2f(b.x - r.y, -b.y + r.y);
-    return vec2f(s1 + clamp(atan2(v.y, v.x) + quarter, 0.0, quarter) * rc.y, total);
+    return vec2f(s1 + clamp(atan2_exact(v.y, v.x) + quarter, 0.0, quarter) * rc.y, total);
   }
   if (r.z > 0.0 && p.x > b.x - r.z && p.y > b.y - r.z) {
     let v = p - vec2f(b.x - r.z, b.y - r.z);
-    return vec2f(s3 + clamp(atan2(v.y, v.x), 0.0, quarter) * rc.z, total);
+    return vec2f(s3 + clamp(atan2_exact(v.y, v.x), 0.0, quarter) * rc.z, total);
   }
   if (r.w > 0.0 && p.x < -b.x + r.w && p.y > b.y - r.w) {
     let v = p - vec2f(-b.x + r.w, b.y - r.w);
-    return vec2f(s5 + clamp(atan2(v.y, v.x) - quarter, 0.0, quarter) * rc.w, total);
+    return vec2f(s5 + clamp(atan2_exact(v.y, v.x) - quarter, 0.0, quarter) * rc.w, total);
   }
   if (r.x > 0.0 && p.x < -b.x + r.x && p.y < -b.y + r.x) {
     let v = p - vec2f(-b.x + r.x, -b.y + r.x);
-    var a = atan2(v.y, v.x);
+    var a = atan2_exact(v.y, v.x);
     if (a < 0.0) { a = a + 4.0 * quarter; }
     return vec2f(s7 + clamp(a - 2.0 * quarter, 0.0, quarter) * rc.x, total);
   }
@@ -126,8 +144,19 @@ fn border_position(p: vec2f, b: vec2f, r: vec4f, w: f32) -> vec2f {
   return vec2f(s6 + (b.y - r.w) - p.y, total);
 }
 
+// Rounds to the 8-bit step the target stores, in the shader, so every backend stores the same
+// value (same pixels on every platform: project review 2026-11-17, decision 13). Without it D3D12
+// and Vulkan on the same GPU disagreed by one step in a few anti-aliased pixels.
+fn exact8(c: vec4f) -> vec4f {
+  return round(clamp(c, vec4f(0.0), vec4f(1.0)) * 255.0) / 255.0;
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4f {
+  return exact8(shade(in));
+}
+
+fn shade(in: VertexOut) -> vec4f {
   let shape = shapes[in.index];
 
   // Rectangular clip, in pixels. position.xy is the pixel centre.

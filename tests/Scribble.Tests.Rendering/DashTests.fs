@@ -7,7 +7,7 @@ open Scribble.Platform
 open Scribble.Rendering
 open Scribble.Tests.Rendering.TextRenderingTests
 
-let private draw (list: DrawList) =
+let internal draw (list: DrawList) =
     let ink = Color.Hex 0xE0E0F0
     let box x y w h r t style =
         list.DrawBox(Rect.Create(x, y, w, h), CornerRadius.Uniform r, Color.Hex 0x2A2A42, t, ink, style = style)

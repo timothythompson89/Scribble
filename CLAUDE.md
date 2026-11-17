@@ -46,7 +46,7 @@ dotnet publish samples/Hello.Browser -c Release -p:BrowserAot=true   # wasm AOT 
 dotnet run --project tools/Scribble.Serve      # the browser samples to the local network over HTTPS; hub + QR on :5279
 ```
 
-- **A test run only counts if nothing aborted and the total is right** (61 rendering tests, 2026-11-17): a hang
+- **A test run only counts if nothing aborted and the total is right** (62 rendering tests, 2026-11-17): a hang
   killed by `--blame-hang-timeout` still prints "Passed!" with only the finished tests in the minimal summary.
   Check for "Test Run Aborted" and the total, not for "Passed!". `TestResults/` (hang dumps, gigabytes) is
   git-ignored; delete dumps once read.
@@ -54,11 +54,14 @@ dotnet run --project tools/Scribble.Serve      # the browser samples to the loca
   several threads at once deadlocked in NVIDIA's driver under the Windows loader lock. Instances enable only the
   backends that can be used (`InstanceExtras`: primary = Vulkan, Metal, D3D12; or the one forced), never OpenGL
   unless nothing else gives an adapter.
-- Screenshot tests compare against PNGs in `tests/Scribble.Tests.Rendering/References` with a tolerance (channel
-  difference 6, 0.5% of pixels). **The references were generated on a software Vulkan GPU (lavapipe) on Linux**;
-  a real GPU may differ slightly at anti-aliased edges. If a test fails only by a little on Tim's machine, look at
-  the diff before regenerating. `SCRIBBLE_UPDATE_SNAPSHOTS=1` rewrites references; `SCRIBBLE_REPO_ROOT` overrides
-  where they're found. Some tests (dashboard, counter) compare two renderings with each other and must be 0 pixels.
+- Screenshot tests compare against PNGs in `tests/Scribble.Tests.Rendering/References` **exactly** (same pixels
+  on every platform is a rule, decision 13). The references come from Tim's machine on the default backend (D3D12,
+  RTX 4070 Ti, 2026-11-17). `BackendTests` renders the same scenes on D3D12 and Vulkan and requires the same
+  pixels; its one written exception is `dashes@2x` (2 pixels, one step). A mismatch is a bug or a stale picture:
+  look at the diff before regenerating. `SCRIBBLE_UPDATE_SNAPSHOTS=1` rewrites references; `SCRIBBLE_REPO_ROOT`
+  overrides where they're found; the fixture honours `SCRIBBLE_GPU_BACKEND`. Shader maths must give the same
+  result on every backend: no built-in whose precision WGSL leaves open (`atan2` is a polynomial), colours rounded
+  to 8 bits in the shader (`exact8`).
 - Tests use real xUnit (until 2026-11-15 they ran against a local stand-in; the first real run on Tim's machine
   passed everything, on a real GPU too).
 - `SCRIBBLE_GPU_BACKEND=d3d12|vulkan` forces a wgpu backend. Default on Windows: D3D12 (since 2026-11-17; Vulkan
@@ -233,7 +236,7 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
   Separator, zIndex, attached settings, dashed/dotted borders, the inspector's Grid overlay, the Counter's Layout
   tab) is built, not yet checked by Tim; it changed decision 16 (Tim agreed) (a child spanning a star track doesn't size Auto
   tracks; see DESIGN.md "Step 2 as built"). M8 step 1b (non-uniform virtualization tests; the scroll anchor by key) is built, not yet checked by Tim (zero-height
-  runs: documented, debug warning; option A). M8 step 3a (ToggleButton, CheckBox, Switch, Slider, TabControl; the Counter on a TabControl with a Controls tab) is built, not yet checked by Tim (DESIGN.md "Step 3a as built"). M8 step 3a+ (the inspector tree on ItemsView) is built, not yet checked by Tim (DESIGN.md "M8 step 3a+"); so is 3a++ (stacked ItemsViews scroll sideways; the inspector tree too). Project review 2026-11-17 step 1 (the platform clock and timers; errors to `App.onError`, the app keeps running) and the Core folders are built, not yet checked by Tim (DESIGN.md "Project review 2026-11-17"). Counts: 408 unit tests (1–2 s), 61 rendering tests. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
+  runs: documented, debug warning; option A). M8 step 3a (ToggleButton, CheckBox, Switch, Slider, TabControl; the Counter on a TabControl with a Controls tab) is built, not yet checked by Tim (DESIGN.md "Step 3a as built"). M8 step 3a+ (the inspector tree on ItemsView) is built, not yet checked by Tim (DESIGN.md "M8 step 3a+"); so is 3a++ (stacked ItemsViews scroll sideways; the inspector tree too). Project review 2026-11-17 step 1 (the platform clock and timers; errors to `App.onError`, the app keeps running) and the Core folders are built, not yet checked by Tim (DESIGN.md "Project review 2026-11-17"). Counts: 408 unit tests (1–2 s), 62 rendering tests. Project review step 2 (exact pictures, the backend test) is built, not yet checked by Tim. Per-milestone summaries: `docs/DESIGN.md`, "Milestone summaries"; decisions there too.
 - **Next: M8 core controls**: steps 1 (ScrollViewer completed, ItemsView, scrollers) and 2 (panels, dashed
   lines) are done, 3a (toggles, Slider, TabControl) is built; then 3b Image (decoding gets its own round), then step 4: RadioButton, ListBox,
   ComboBox, Dialog, Toast, tooltips, the "show this in a layer" element. Then M9 TextBox, M10 hot reload; later:

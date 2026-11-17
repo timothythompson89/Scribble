@@ -1,18 +1,20 @@
 /// Screenshot comparison against reference PNGs stored next to the tests.
 ///
-/// GPUs and drivers rasterize anti-aliased edges very slightly differently, so the comparison
-/// allows a small per-channel difference and a small share of differing pixels.
-/// To accept new output as the reference, run the tests with SCRIBBLE_UPDATE_SNAPSHOTS=1.
+/// The comparison is exact (project review 2026-11-17, decision 13: same pixels on every platform).
+/// The references come from the default backend on Tim's machine (D3D12, NVIDIA RTX 4070 Ti;
+/// regenerated 2026-11-17); BackendTests checks that the other backends draw the same pixels.
+/// To accept new output as the reference, run the tests with SCRIBBLE_UPDATE_SNAPSHOTS=1 and look
+/// at every changed picture before committing it.
 module Scribble.Tests.Rendering.Snapshot
 
 open System
 open System.IO
 open Scribble.Rendering
 
-/// Per-channel difference (0–255) below which a pixel counts as equal.
-let channelTolerance = 6
-/// Share of pixels allowed to differ by more than that.
-let pixelTolerance = 0.005
+/// Per-channel difference (0–255) that still counts as equal: none.
+let channelTolerance = 0
+/// Share of pixels allowed to differ: none.
+let pixelTolerance = 0.0
 
 let private repoRoot =
     lazy

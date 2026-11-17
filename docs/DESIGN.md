@@ -1807,6 +1807,25 @@ Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q
   without the render guard are the same within noise (72–98 µs a step either way). Tests: `ErrorTests.fs`
   (8: handler and update, no onError, view, render repeating, measure, component and hook rules, effects,
   ItemsView items); the render and component tests were checked to fail with their fix taken out.
+- *Same pixels (13, step 2):* compared exactly, 10 pictures failed. Stale (the tolerance hid them): the
+  inspector's two (the tree's sideways scroll bar from 3a++ reserves a gutter, so the tree shows about 8 DIPs
+  less and a partly cut row; see the open point below), the Layout tab's three (the Canvas outline is now
+  `Palette.text`). Not a GPU difference but a test that couldn't pass exactly: the dashboard's hand-drawn and
+  element versions differed only in the element version's scroll bar (520 tall, the cards overflow); the test
+  now renders 760 tall and the two match to the pixel. A real backend difference the tolerance also hid: D3D12
+  and Vulkan on the same GPU disagreed by one step in 473 pixels (dashes along rounded corners, one text pixel).
+  Two shader changes fix nearly all of it: `atan2` replaced by a polynomial of + − × ÷ (`atan2_exact`, error
+  about 1e-5 rad; WGSL leaves the built-in's precision to each backend), and the fragment's colour rounded to
+  the 8-bit step in the shader (`exact8`). Left: 2 pixels of 588,816 in `dashes@2x`, one step, where WGSL's
+  allowed division error and each compiler's fusing of a*b+c land on either side of a rounding step; that is
+  `BackendTests`' one written exception (at most 4 pixels, 1 step). The references were regenerated on Tim's
+  machine (D3D12, RTX 4070 Ti): 40 pictures changed, 34 of them by at most 2 steps per channel (the two shader changes and rounding against lavapipe); the 6 larger ones were looked at; `Snapshot` compares exactly (channel
+  difference 0, no share of pixels). `BackendTests` renders shapes, text, emoji, dashes and the element dashboard
+  at 1× and 2× on every backend the machine offers (Windows: D3D12 and Vulkan; a Mac: Metal and Vulkan) and
+  compares them; with one backend it says so and passes. The test fixture now honours `SCRIBBLE_GPU_BACKEND`, so
+  the whole suite can run on Vulkan (it passes except that same `dashes@2x` exception, against D3D12's
+  references). *Open:* should the inspector tree's sideways bar overlay the rows (`ScrollBarSpace.Overlay`)
+  instead of taking a gutter even when nothing is wide? Not changed without Tim.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
