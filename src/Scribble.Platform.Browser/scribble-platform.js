@@ -47,10 +47,23 @@ function push(kind, a = 0, b = 0, c = 0, d = 0, e = 0, f = 0) {
 let notifyWake = null;
 let wakeScheduled = false;
 
-export function init(onEvents, onFrame, onWake) {
+let notifyTimer = null;
+let timer = null;
+
+export function init(onEvents, onFrame, onWake, onTimer) {
   notifyEvents = onEvents;
   notifyFrame = onFrame;
   notifyWake = onWake;
+  notifyTimer = onTimer;
+}
+
+// Delayed work (IPlatform.After): one timer, for the earliest; .NET keeps the queue and re-arms it.
+export function setTimer(ms) {
+  if (timer !== null) clearTimeout(timer);
+  timer = ms < 0 ? null : setTimeout(() => {
+    timer = null;
+    if (notifyTimer) notifyTimer();
+  }, ms);
 }
 
 // Scribble's dispatcher has work queued: drain it soon (a macrotask, so a burst of wakes and the

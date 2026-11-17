@@ -10,13 +10,21 @@ open System.Threading.Tasks
 /// setters and Elmish dispatch use it when called from another thread, and `await` inside an app
 /// resumes on the UI thread through `DispatcherSynchronizationContext`.
 [<Sealed>]
-type Dispatcher(wake: unit -> unit) =
+type Dispatcher private (wake: unit -> unit, after: (TimeSpan -> (unit -> unit) -> unit) voption) =
     let queue = ConcurrentQueue<unit -> unit>()
     let threadId = Environment.CurrentManagedThreadId
     /// 1 while a wake is on its way (so a burst of posts wakes the platform once).
     let mutable wakePending = 0
     let mutable onError: exn -> unit =
         fun e -> Console.Error.WriteLine("Scribble: unhandled error in work posted to the UI thread: " + string e)
+
+    /// A dispatcher whose delayed work (`PostAfter`) waits on the platform's timer: `after delay
+    /// action` runs `action` on the UI thread once, `delay` from now (`IPlatform.After`).
+    new(wake: unit -> unit, after: TimeSpan -> (unit -> unit) -> unit) = Dispatcher(wake, ValueSome after)
+
+    /// A dispatcher whose delayed work waits on a .NET timer (real time), for hosts without a
+    /// platform. App.start uses the platform's timer instead.
+    new(wake: unit -> unit) = Dispatcher(wake, ValueNone)
 
     /// True on the UI thread (the thread that created the dispatcher).
     member _.CheckAccess() = Environment.CurrentManagedThreadId = threadId
@@ -25,6 +33,19 @@ type Dispatcher(wake: unit -> unit) =
     member _.Post(action: unit -> unit) =
         queue.Enqueue action
         if Interlocked.Exchange(&wakePending, 1) = 0 then wake ()
+
+    /// Queues `action` to run on the UI thread `delay` from now, on the platform's clock (a test
+    /// platform moves it only when the test says). Safe from any thread; errors go to OnError.
+    member this.PostAfter(delay: TimeSpan, action: unit -> unit) =
+        let guarded () =
+            try
+                action ()
+            with e ->
+                onError e
+        match after with
+        | ValueSome after when this.CheckAccess() -> after delay guarded
+        | ValueSome after -> this.Post(fun () -> after delay guarded)
+        | ValueNone -> Task.Delay(delay).ContinueWith(fun (_: Task) -> this.Post guarded) |> ignore
 
     /// Runs `work` on the UI thread and returns its result. Safe from any thread (on the UI thread
     /// it still queues, so it never runs re-entrantly).

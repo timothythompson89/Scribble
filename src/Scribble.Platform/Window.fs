@@ -74,6 +74,14 @@ type IPlatform =
     /// user is dragging a window. Safe from any thread; several wakes may become one call.
     abstract Wake: unit -> unit
 
+    /// Time since the platform started, from a monotonic clock. Everything that moves with time
+    /// (frame timing, animations, delayed work) reads it, so a test platform can control time.
+    abstract Elapsed: TimeSpan
+
+    /// Runs `action` on the UI thread once, `delay` from now (a one-shot OS timer: nothing runs
+    /// unless something asked). Call on the UI thread.
+    abstract After: delay: TimeSpan * action: (unit -> unit) -> unit
+
     /// Starts delivering events.
     ///
     /// Desktop: runs the message loop and returns when every window is closed. While nothing has

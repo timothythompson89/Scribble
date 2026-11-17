@@ -20,7 +20,9 @@ type internal ElementHostOptions =
       BeforeFrame: unit -> unit
       Styles: Style list
       Theme: Theme voption
-      AppValues: AppValues voption }
+      AppValues: AppValues voption
+      /// Time since some fixed start (the platform's `Elapsed`); a stopwatch when not set.
+      Clock: (unit -> System.TimeSpan) voption }
 
 /// One setting for `ElementHost.create`: `ElementHost.background (Color.Hex 0x181825)`.
 [<Struct>]
@@ -57,7 +59,13 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     do options.Theme |> ValueOption.iter (fun t -> sharedValues.Set(Theme.current, t))
     let mutable stats = { LayoutMilliseconds = 0.0; RenderMilliseconds = 0.0; Shapes = 0 }
     let runBeforeFrame = options.BeforeFrame
-    let clock = Stopwatch.StartNew()
+    let now =
+        match options.Clock with
+        | ValueSome f -> f
+        | ValueNone ->
+            let stopwatch = Stopwatch.StartNew()
+            fun () -> stopwatch.Elapsed
+    let started = now ()
 
     /// True while a frame is being prepared and drawn: changes made then (an update patched in
     /// before layout) are drawn by this frame, so they don't need to ask for another.
@@ -211,6 +219,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// change properties and so ask for the next frame themselves).
     static member beforeFrame(handler: unit -> unit) = ElementHostSetting(fun o -> { o with BeforeFrame = handler })
 
+    /// Where animation time comes from: time since some fixed start, from a monotonic clock
+    /// (App.start passes the platform's `Elapsed`). Without it, a stopwatch.
+    static member clock(now: unit -> System.TimeSpan) = ElementHostSetting(fun o -> { o with Clock = ValueSome now })
+
     /// Styles for every layer (except those with `Layer.appStyles false`); `App.styles` sets them.
     static member styles(value: Style list) = ElementHostSetting(fun o -> { o with Styles = value })
 
@@ -299,6 +311,9 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
 
     member _.LastFrame = stats
 
+    /// Time on the host's clock (`ElementHost.clock`) since the host was made: what animations see.
+    member _.Elapsed: System.TimeSpan = now () - started
+
     /// The UI thread's dispatcher (`ElementHost.dispatcher`; App.start sets one).
     member _.Dispatcher = app.Tree.Dispatcher
 
@@ -306,7 +321,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     member _.Update(view: View) = app.Update view
 
     member private this.DrawFrame() =
-        let time = clock.Elapsed
+        let time = now () - started
         for l in layers do
             l.Tree.Time <- time
         runBeforeFrame ()
@@ -471,6 +486,6 @@ module ElementHost =
     /// A host for `window`, drawing with `device` and `text`:
     /// `ElementHost.create window device text [ ElementHost.background (Color.Hex 0x181825) ]`.
     let create (window: IWindow) (device: IRenderDevice) (text: TextSystem) (settings: ElementHostSetting list) =
-        let defaults = { Background = ValueNone; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = []; Theme = ValueNone; AppValues = ValueNone }
+        let defaults = { Background = ValueNone; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = []; Theme = ValueNone; AppValues = ValueNone; Clock = ValueNone }
         let options = settings |> List.fold (fun o (ElementHostSetting apply) -> apply o) defaults
         new ElementHost(window, device, text, options)

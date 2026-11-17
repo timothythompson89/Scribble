@@ -189,7 +189,6 @@ let private wheel (w: FakeWindow) x y notches = w.Send(PointerWheel({ X = x; Y =
 let private settle (w: FakeWindow) =
     let mutable n = 0
     while w.DeliverFrame() && n < 100 do
-        System.Threading.Thread.Sleep 10
         n <- n + 1
 
 /// A 200×100 ScrollViewer at the top left holding ten 40-high rows (400 high in all).

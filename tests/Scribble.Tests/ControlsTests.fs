@@ -156,7 +156,6 @@ let ``the theme colors a checked CheckBox, Switch and ToggleButton with the acce
         Assert.True(isChecked (find name host))
     // Past the color transition.
     for _ in 1..20 do
-        System.Threading.Thread.Sleep 10
         w.DeliverFrame() |> ignore
     for name in [ "c"; "s"; "t" ] do
         Assert.Equal(accent, (find name host).Get BorderProps.background)
@@ -373,7 +372,6 @@ let ``the selected header is brought into view when the headers don't fit`` () =
     key w Key.End
     // The scroll animates (about 200 ms): deliver frames until it settles.
     for _ in 1..40 do
-        System.Threading.Thread.Sleep 10
         w.DeliverFrame() |> ignore
     Assert.Equal((last ()).Bounds.Width, visible (last ()), 6)
 

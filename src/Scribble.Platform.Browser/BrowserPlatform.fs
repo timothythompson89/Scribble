@@ -10,7 +10,8 @@ module internal PlatformJs =
     [<Literal>]
     let ModuleName = "scribble-platform"
 
-    let init = JsFunction(ModuleName, "init", T.void', [ T.action; T.action; T.action ])
+    let init = JsFunction(ModuleName, "init", T.void', [ T.action; T.action; T.action; T.action ])
+    let setTimer = JsFunction(ModuleName, "setTimer", T.void', [ T.double ])
     let wake = JsFunction(ModuleName, "wake", T.void', [])
     let takeEvents = JsFunction(ModuleName, "takeEvents", T.doubles, [])
     let takeTexts = JsFunction(ModuleName, "takeTexts", T.strings, [])
@@ -277,12 +278,28 @@ type BrowserPlatform private () =
     let onEventsAction = Action onEvents
     let onFrameAction = Action onFrame
     let onWakeAction = Action(fun () -> wakeHandler ())
+    // Time for `Elapsed` (performance.now underneath), and work for `After` on one JS timer.
+    let clock = Diagnostics.Stopwatch.StartNew()
+    let timers = TimerQueue()
+    let armTimer () =
+        let args = PlatformJs.setTimer.Args()
+        match timers.NextDue with
+        | ValueSome due -> args[2].ToJS(max 0.0 (Math.Ceiling (due - clock.Elapsed).TotalMilliseconds))
+        | ValueNone -> args[2].ToJS(-1.0)
+        PlatformJs.setTimer.Invoke args
+    let onTimerAction =
+        Action(fun () ->
+            try
+                timers.RunDue clock.Elapsed
+            finally
+                armTimer ())
 
     member private _.Start() =
         let args = PlatformJs.init.Args()
         args[2].ToJS onEventsAction
         args[3].ToJS onFrameAction
         args[4].ToJS onWakeAction
+        args[5].ToJS onTimerAction
         PlatformJs.init.Invoke args
 
     /// Loads the JavaScript side and returns a ready platform.
@@ -316,6 +333,11 @@ type BrowserPlatform private () =
 
         // WebAssembly is single-threaded here, so "any thread" is this one.
         member _.Wake() = PlatformJs.call0 PlatformJs.wake |> ignore
+
+        member _.Elapsed = clock.Elapsed
+
+        member _.After(delay, action) =
+            if timers.Add(clock.Elapsed + delay, action) then armTimer ()
 
         member _.Dispose() =
             window |> Option.iter (fun w -> (w :> IWindow).Close())

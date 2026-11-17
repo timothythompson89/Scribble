@@ -26,14 +26,13 @@ let private settle (w: FakeWindow) limit =
         n <- n + 1
     n
 
-/// True when frames are still requested after `ms` of real time (animations run on the clock,
-/// so a hover fade ends; a loop doesn't). Frames every 4 ms.
+/// True when frames are still requested after `ms` of fake time (each frame moves it 16 ms, so a
+/// hover fade ends; a loop doesn't).
 let private stillDrawingAfter (w: FakeWindow) (ms: float) =
-    let clock = System.Diagnostics.Stopwatch.StartNew()
+    let until = w.Time.Now + System.TimeSpan.FromMilliseconds ms
     let mutable drawing = true
-    while drawing && clock.Elapsed.TotalMilliseconds < ms do
+    while drawing && w.Time.Now < until do
         drawing <- w.DeliverFrame()
-        System.Threading.Thread.Sleep 4
     drawing && w.DeliverFrame()
 
 let private tabs = [ "Elmish"; "Load"; "List"; "Layers"; "Styles"; "Layout"; "Controls" ]
@@ -66,3 +65,10 @@ let ``the Counter demo goes idle wherever the pointer stops, on every tab`` () =
         settle w 50 |> ignore
     app.Dispose()
     Assert.True(looping.Count = 0, "keeps drawing with the pointer at: " + String.concat "; " (Seq.truncate 40 looping) + $" ({looping.Count} points)")
+
+[<Fact>]
+let ``the idle check sees an app that keeps drawing`` () =
+    // An animation that never ends: the check above must call it a loop.
+    let w, _, app = start [ App.program 0.0 (fun (d: float) t -> t + d) (fun t _ -> TextBlock.create [ TextBlock.text (string t) ]); App.onFrame (fun time -> Some time.Delta.TotalSeconds) ]
+    Assert.True(settle w 30 >= 30 && stillDrawingAfter w 600.0)
+    app.Dispose()

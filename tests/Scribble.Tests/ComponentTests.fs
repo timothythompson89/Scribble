@@ -244,13 +244,14 @@ let ``in an app, a pressed button animates for a moment and then frames stop`` (
     w.DeliverFrame() |> ignore
     Assert.False(w.DeliverFrame()) // idle
     w.Send(Scribble.Platform.PointerPressed(Scribble.Platform.Mouse, 0, { X = 50.0; Y = 150.0 }, MouseButton.Left, Modifiers.None))
-    let watch = Diagnostics.Stopwatch.StartNew()
+    let started = w.Time.Now
     let mutable frames = 0
-    while w.DeliverFrame() && watch.ElapsedMilliseconds < 2000L do
+    while frames < 200 && w.DeliverFrame() do
         frames <- frames + 1
-    // The 120 ms press keeps frames coming, then they stop by themselves.
+    // The 120 ms press keeps frames coming (16 ms of fake time each), then they stop by themselves.
+    let ms = (w.Time.Now - started).TotalMilliseconds
     Assert.True(frames > 1, $"{frames} frames")
-    Assert.True(watch.ElapsedMilliseconds >= 100L && watch.ElapsedMilliseconds < 2000L, $"{watch.ElapsedMilliseconds} ms")
+    Assert.True(ms >= 112.0 && ms < 300.0, string ms + " ms")
 
 [<Fact>]
 let ``in an app, effects run after the frame and the state they set gets its own frame`` () =

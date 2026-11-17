@@ -175,13 +175,13 @@ type App =
         for AppSetting apply in settings do
             apply config
         let text = TextSystem.create device shaper [ TextSystem.fallbacks config.Fonts ]
-        let clock = FrameClock()
+        let clock = FrameClock(fun () -> platform.Elapsed)
         let frameRate = FrameRateCounter()
         let host = ref ValueNone
         let dirty = ref true
         // Work from other threads reaches this (the UI) thread through the dispatcher; the
         // platform wakes the loop to run it.
-        let dispatcher = Dispatcher(platform.Wake)
+        let dispatcher = Dispatcher(platform.Wake, fun delay action -> platform.After(delay, action))
         config.OnError |> ValueOption.iter (fun handler -> dispatcher.OnError <- handler)
         platform.SetWakeHandler dispatcher.RunPending
         // The app values, shared by its windows and layers, with their starting values.
@@ -249,6 +249,7 @@ type App =
                 ElementHost.dispatcher dispatcher
                 ElementHost.appValues values
                 ElementHost.beforeFrame beforeFrame
+                ElementHost.clock (fun () -> platform.Elapsed)
                 ElementHost.styles config.Styles
             ]
         host.Value <- ValueSome h

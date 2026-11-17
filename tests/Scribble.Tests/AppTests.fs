@@ -10,17 +10,43 @@ open Scribble.Text
 open Scribble.Core
 open Scribble.Tests.TestShaping
 
-type FakeWindow(onEvent: PlatformEvent -> unit) =
+/// Time that moves only when a test (or a delivered frame) moves it; delayed work (`IPlatform.After`)
+/// runs as time passes it.
+type FakeTime() =
+    let timers = TimerQueue()
+    member val Now = TimeSpan.Zero with get, set
+    member this.After(delay: TimeSpan, action: unit -> unit) = timers.Add(this.Now + delay, action) |> ignore
+    /// Moves time on by `span`, running delayed work that comes due, each at its own time.
+    member this.Advance(span: TimeSpan) =
+        let target = this.Now + span
+        let mutable go = true
+        while go do
+            match timers.NextDue with
+            | ValueSome due when due <= target ->
+                this.Now <- max this.Now due
+                timers.RunDue this.Now
+            | _ -> go <- false
+        this.Now <- target
+    member this.AdvanceMs(ms: float) = this.Advance(TimeSpan.FromMilliseconds ms)
+
+/// How far a delivered frame moves fake time: a 60 Hz display.
+let frameStep = TimeSpan.FromMilliseconds 16.0
+
+type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
+    new(onEvent) = new FakeWindow(onEvent, FakeTime())
+    member _.Time = time
     member val FrameRequested = false with get, set
     member val Closed = false with get, set
     member val TitleText = "" with get, set
     member val Cursor = Cursor.Default with get, set
     member val Claimed: (Key * Modifiers) list = [] with get, set
     member val Size: PixelSize = { Width = 400; Height = 300 } with get, set
-    /// Delivers a requested frame, like the platform's loop does. Returns whether one was due.
+    /// Delivers a requested frame, like the platform's loop does, 16 ms of fake time after the last.
+    /// Returns whether one was due.
     member this.DeliverFrame() =
         if this.FrameRequested then
             this.FrameRequested <- false
+            time.Advance frameStep
             onEvent Frame
             true
         else false
@@ -40,6 +66,7 @@ type FakeWindow(onEvent: PlatformEvent -> unit) =
 
 type FakePlatform() =
     let mutable wakes = 0
+    member val Time = FakeTime()
     member val Window: FakeWindow option = None with get, set
     member val WakeHandler: unit -> unit = ignore with get, set
     /// How many times something woke the platform (any thread).
@@ -50,12 +77,14 @@ type FakePlatform() =
         member _.Name = "fake"
         member _.SupportsMultipleWindows = false
         member this.CreateWindow(options, onEvent) =
-            let w = new FakeWindow(onEvent, TitleText = options.Title)
+            let w = new FakeWindow(onEvent, this.Time, TitleText = options.Title)
             this.Window <- Some w
             w :> IWindow
         member _.Run() = ()
         member this.SetWakeHandler handler = this.WakeHandler <- handler
         member _.Wake() = Threading.Interlocked.Increment(&wakes) |> ignore
+        member this.Elapsed = this.Time.Now
+        member this.After(delay, action) = this.Time.After(delay, action)
         member _.Dispose() = ()
 
 type FakeDevice() =
@@ -133,10 +162,10 @@ let ``a click dispatches, rebuilds once and then goes idle`` () =
     Assert.Equal("Count: 1", label ())
     // The theme's hover tint fades in (100 ms) under the pointer; after that, nothing changes:
     // no further frames.
-    let watch = Diagnostics.Stopwatch.StartNew()
-    while w.DeliverFrame() && watch.ElapsedMilliseconds < 2000L do
-        Threading.Thread.Sleep 10
-    Assert.True(watch.ElapsedMilliseconds < 2000L, "frames kept coming after the hover fade")
+    let mutable frames = 0
+    while frames < 120 && w.DeliverFrame() do
+        frames <- frames + 1
+    Assert.True(frames < 120, "frames kept coming after the hover fade")
     Assert.False(w.DeliverFrame())
 
 [<Fact>]
@@ -174,7 +203,6 @@ let ``an animation driven by time starts without input, though the first frame's
         start [ App.program 0.0 (fun (d: float) t -> t + d) (fun t _ -> TextBlock.create [ TextBlock.text (string t) ])
                 App.onFrame (fun time ->
                     deltas <- deltas @ [ time.Delta ]
-                    Threading.Thread.Sleep 2 // so the next frame has time behind it
                     Some time.Delta.TotalSeconds) ]
     let mutable frames = 0
     while w.DeliverFrame() && frames < 5 do
@@ -274,3 +302,17 @@ let ``the window theme reaches every layer with app styles, not the inspector's 
     host.HandleEvent Frame |> ignore
     Assert.Equal(Palette.text.Default, text toast)
     Assert.Equal(InheritedProps.foreground.Default, text own)
+
+[<Fact>]
+let ``delayed work and animation time follow the platform's clock`` () =
+    let w, _, app = start [ counter ]
+    let host = app :?> ElementHost
+    w.DeliverFrame() |> ignore
+    let started = host.Elapsed
+    let mutable ran = false
+    host.Dispatcher.Value.PostAfter(TimeSpan.FromMilliseconds 100.0, fun () -> ran <- true)
+    w.Time.AdvanceMs 99.0
+    Assert.False ran
+    w.Time.AdvanceMs 1.0
+    Assert.True ran
+    Assert.Equal(TimeSpan.FromMilliseconds 100.0, host.Elapsed - started)

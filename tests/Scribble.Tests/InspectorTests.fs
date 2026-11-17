@@ -281,19 +281,22 @@ let ``the corner grip resizes a floating panel, and Right docks it again`` () =
 
 /// A platform that can open several (fake) windows.
 type private ManyWindows() =
+    member val Time = FakeTime()
     member val Windows = List<FakeWindow>()
     member val Options = List<WindowOptions>()
     interface IPlatform with
         member _.Name = "many"
         member _.SupportsMultipleWindows = true
         member this.CreateWindow(options, onEvent) =
-            let w = new FakeWindow(onEvent)
+            let w = new FakeWindow(onEvent, this.Time)
             w.TitleText <- options.Title
             this.Options.Add options
             this.Windows.Add w
             w :> IWindow
         member _.SetWakeHandler _ = ()
         member _.Wake() = ()
+        member this.Elapsed = this.Time.Now
+        member this.After(delay, action) = this.Time.After(delay, action)
         member _.Run() = ()
         member _.Dispose() = ()
 
@@ -345,7 +348,6 @@ let private pickAppButton (w: FakeWindow) =
     move w 300.0 300.0
     let mutable n = 0
     while w.DeliverFrame() && n < 100 do
-        System.Threading.Thread.Sleep 10
         n <- n + 1
 
 /// The value and source shown after a property's name in the panel.
@@ -615,7 +617,7 @@ let ``after a pick expands the tree, the hovered row is the one under the pointe
     let at x y : PixelPoint = { X = x; Y = y }
     let moveTo x y = w.Send(PointerMoved(Mouse, 0, at x y, Modifiers.None))
     let wake () =
-        Threading.Thread.Sleep 150
+        w.Time.AdvanceMs 150.0
         platform.RunWake()
     let rec text (e: Element) : string =
         if e.Type.Name = "TextBlock" then e.Get TextProps.text
@@ -760,7 +762,7 @@ let private counterOn (tab: string) (height: int) =
     settle w
     // The inspector refreshes its tree a little later, through the dispatcher.
     let wake () =
-        Threading.Thread.Sleep 150
+        w.Time.AdvanceMs 150.0
         platform.RunWake()
         settle w
     w, host, platform, wake
@@ -835,7 +837,7 @@ let private manyRows (n: int) =
     w.Send(Resized size)
     settle w
     let wake () =
-        Threading.Thread.Sleep 150
+        w.Time.AdvanceMs 150.0
         platform.RunWake()
         settle w
     keyWith w (Key.Char 'c') ctrlShift
@@ -910,7 +912,7 @@ let private nested (depth: int) =
     w.Send(Resized size)
     settle w
     let wake () =
-        Threading.Thread.Sleep 150
+        w.Time.AdvanceMs 150.0
         platform.RunWake()
         settle w
     keyWith w (Key.Char 'c') ctrlShift

@@ -24,6 +24,19 @@ type Win32Platform() =
     /// or resized.
     let mutable wakeWindow = 0n
     let mutable wakeHandler: unit -> unit = ignore
+    /// Time for `Elapsed`, and work for `After`, run by one timer on the wake window.
+    let clock = Diagnostics.Stopwatch.StartNew()
+    let timers = TimerQueue()
+    let wakeTimerId = 1n
+
+    /// Sets the wake window's timer for the earliest work (or stops it when there is none).
+    let armTimer () =
+        if wakeWindow <> 0n then
+            match timers.NextDue with
+            | ValueSome due ->
+                let ms = Math.Ceiling (due - clock.Elapsed).TotalMilliseconds
+                SetTimer(wakeWindow, wakeTimerId, uint32 (Math.Clamp(ms, 1.0, float Int32.MaxValue)), 0n) |> ignore
+            | ValueNone -> KillTimer(wakeWindow, wakeTimerId) |> ignore
 
     // An exception must never unwind through native frames, so the window procedure catches it,
     // stores it, and the message loop rethrows it with its original stack trace.
@@ -32,6 +45,12 @@ type Win32Platform() =
             try
                 if hwnd = wakeWindow && msg = WM_SCRIBBLE_WAKE then
                     wakeHandler ()
+                    0n
+                elif hwnd = wakeWindow && msg = WM_TIMER && wParam = wakeTimerId then
+                    try
+                        timers.RunDue clock.Elapsed
+                    finally
+                        armTimer ()
                     0n
                 else
                     match windows.TryGetValue hwnd with
@@ -144,6 +163,12 @@ type Win32Platform() =
         rethrowPending ()
         window :> IWindow
 
+    let ensureWakeWindow () =
+        if wakeWindow = 0n then
+            wakeWindow <- CreateWindowExW(0u, classNamePtr, 0n, 0u, 0, 0, 0, 0, HWND_MESSAGE, 0n, hinstance, 0n)
+            if wakeWindow = 0n then
+                raise (InvalidOperationException $"Creating the wake window failed (error {Marshal.GetLastPInvokeError()}).")
+
     let run () =
         let mutable msg = Unchecked.defaultof<MSG>
         let mutable quit = false
@@ -177,10 +202,13 @@ type Win32Platform() =
 
         member _.SetWakeHandler(handler) =
             wakeHandler <- handler
-            if wakeWindow = 0n then
-                wakeWindow <- CreateWindowExW(0u, classNamePtr, 0n, 0u, 0, 0, 0, 0, HWND_MESSAGE, 0n, hinstance, 0n)
-                if wakeWindow = 0n then
-                    raise (InvalidOperationException $"Creating the wake window failed (error {Marshal.GetLastPInvokeError()}).")
+            ensureWakeWindow ()
+
+        member _.Elapsed = clock.Elapsed
+
+        member _.After(delay, action) =
+            ensureWakeWindow ()
+            if timers.Add(clock.Elapsed + delay, action) then armTimer ()
 
         member _.Wake() =
             if wakeWindow <> 0n then PostMessageW(wakeWindow, WM_SCRIBBLE_WAKE, 0n, 0n) |> ignore

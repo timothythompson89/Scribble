@@ -297,7 +297,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     let expanded = HashSet<Element>(HashIdentity.Reference)
     let seenRoots = HashSet<Element>(HashIdentity.Reference)
     let collapsedLayers = HashSet<Layer>(HashIdentity.Reference)
-    let clock = Stopwatch.StartNew()
+    let clockMs () = host.Elapsed.TotalMilliseconds
     let mutable isOpen = options.IsOpen
     let mutable side = options.Side
     let mutable picking = false
@@ -379,7 +379,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
 
     let refresh () =
         dirty <- false
-        let now = clock.Elapsed.TotalMilliseconds
+        let now = clockMs ()
         lastRefresh <- now
         hovered <- alive hovered
         selected <- alive selected
@@ -533,7 +533,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
     /// A press on the title area (move), the corner grip or a docked panel's inner edge. Two
     /// quick presses on the title area collapse or expand the panel instead.
     member this.BeginDrag(kind: DragKind, p: Point) =
-        let now = clock.Elapsed.TotalMilliseconds
+        let now = clockMs ()
         let isDouble =
             kind = DragKind.Move && now - lastTitlePress < 400.0
             && abs (p.X - lastTitlePoint.X) < 4.0 && abs (p.Y - lastTitlePoint.Y) < 4.0
@@ -762,7 +762,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
                 l.BringIntoView()
             | None -> if selected.IsNone then revealSideways <- false
         | _ -> ()
-        let now = clock.Elapsed.TotalMilliseconds
+        let now = clockMs ()
         lastStats <- ValueSome stats
         if appChanged then
             appChanged <- false
@@ -771,7 +771,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
         let later (wait: float) (action: unit -> unit) =
             match host.Dispatcher with
             | ValueSome d ->
-                Task.Delay(TimeSpan.FromMilliseconds wait).ContinueWith(fun (_: Task) -> d.Post action) |> ignore
+                d.PostAfter(TimeSpan.FromMilliseconds wait, action)
                 true
             | ValueNone -> false
         let checkIdle () =
@@ -779,7 +779,7 @@ type internal InspectorState(host: ElementHost, options: InspectorOptions) =
                 idleCheckScheduled <-
                     later 1100.0 (fun () ->
                         idleCheckScheduled <- false
-                        trimFrames clock.Elapsed.TotalMilliseconds
+                        trimFrames (clockMs ())
                         if isOpen && not dirty && appFrames.Count = 0 then refresh ())
         if dirty && isOpen && not refreshScheduled then
             let wait = 100.0 - (now - lastRefresh)
