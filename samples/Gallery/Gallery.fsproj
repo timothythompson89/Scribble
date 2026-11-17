@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="Common.fs" />
+    <Compile Include="ComponentsPage.fs" />
+    <Compile Include="LayoutPage.fs" />
+    <Compile Include="ControlsPage.fs" />
+    <Compile Include="ScrollingPage.fs" />
+    <Compile Include="LayersPage.fs" />
+    <Compile Include="StylesPage.fs" />
+    <Compile Include="GalleryApp.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../Samples.Shared/Samples.Shared.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
+  </ItemGroup>
+</Project>

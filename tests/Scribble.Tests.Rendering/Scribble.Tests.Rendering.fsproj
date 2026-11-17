@@ -12,11 +12,11 @@
     <Compile Include="ShapeTests.fs" />
     <Compile Include="TextRenderingTests.fs" />
     <Compile Include="DashboardTests.fs" />
-    <Compile Include="CounterTests.fs" />
+    <Compile Include="GalleryTests.fs" />
     <Compile Include="PhoneTests.fs" />
     <Compile Include="ScrollStressTests.fs" />
     <Compile Include="DashTests.fs" />
-    <Compile Include="LayoutTabTests.fs" />
+    <Compile Include="LayoutPageTests.fs" />
     <Compile Include="IconGalleryTests.fs" />
     <Compile Include="ButtonTests.fs" />
     <Compile Include="IconRenderingTests.fs" />
@@ -35,6 +35,7 @@
     <ProjectReference Include="../../src/Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
     <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
     <ProjectReference Include="../../samples/Hello/Hello.fsproj" />
+    <ProjectReference Include="../../samples/Gallery/Gallery.fsproj" />
     <ProjectReference Include="../../samples/Counter/Counter.fsproj" />
     <ProjectReference Include="../../samples/Icons/Icons.fsproj" />
     <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />

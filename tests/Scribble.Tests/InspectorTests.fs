@@ -625,12 +625,12 @@ let ``picking follows the app when it moves under a pointer that stands still`` 
 /// arrive while the new rows aren't laid out yet. Once the frame is drawn, the row the inspector shows
 /// as hovered must be the one under the pointer.
 [<Theory>]
-[<InlineData("Elmish")>]
-[<InlineData("Layers")>]
+[<InlineData("Components")>]
+[<InlineData("Scrolling")>]
 [<InlineData("Layout")>]
 let ``after a pick expands the tree, the hovered row is the one under the pointer`` (tab: string) =
     let platform, device = new FakePlatform(), new FakeDevice()
-    let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), Scribble.Samples.Counter.app @ [ Inspector.enable [] ])
+    let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), Scribble.Samples.GalleryApp.app @ [ Inspector.enable [] ])
     let w = platform.Window.Value
     let host = app :?> ElementHost
     let size: PixelSize = { Width = 1000; Height = 700 }
@@ -688,6 +688,8 @@ let ``after a pick expands the tree, the hovered row is the one under the pointe
             if e.Bounds.Height = 22.0 && e.Type.Name = "Border" then ValueSome e
             else match e.Parent with ValueSome p -> rowOf p | ValueNone -> ValueNone
         match panel.Tree.HitTest(700.0, y) |> ValueOption.bind rowOf with
+        // A layer's row isn't an element: hovering it hovers nothing, and the highlight shows the selection.
+        | ValueSome row when (text row).StartsWith "Layer " -> ()
         | ValueSome row ->
             let shown = row.Children |> Seq.map text |> String.concat ""
             match highlightTarget () with
@@ -763,10 +765,10 @@ let ``a picking press canceled instead of released leaves nothing stuck`` () =
     settle w
     Assert.Equal<string list>([ "appButton" ], List.ofSeq log)
 
-/// The Counter with the inspector on the fake platform, on `tab`, at 1000 × `height`.
-let private counterOn (tab: string) (height: int) =
+/// The Gallery with the inspector on the fake platform, on `tab`, at 1000 × `height`.
+let private galleryOn (tab: string) (height: int) =
     let platform, device = new FakePlatform(), new FakeDevice()
-    let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), Scribble.Samples.Counter.app @ [ Inspector.enable [] ])
+    let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), Scribble.Samples.GalleryApp.app @ [ Inspector.enable [] ])
     let w = platform.Window.Value
     let host = app :?> ElementHost
     let size: PixelSize = { Width = 1000; Height = height }
@@ -792,7 +794,7 @@ let private counterOn (tab: string) (height: int) =
 
 [<Fact>]
 let ``the wheel scrolls the app while picking`` () =
-    let w, host, _, _ = counterOn "Layers" 700
+    let w, host, _, _ = galleryOn "Scrolling" 700
     let messages = host.App.Tree.Root.Value |> find "messages" |> Option.get
     let before = messages.PositionInTree.Y
     keyWith w (Key.Char 'c') ctrlShift
@@ -814,7 +816,7 @@ let ``the wheel scrolls the app while picking`` () =
 
 [<Fact>]
 let ``a pick scrolls the tree to the selected row`` () =
-    let w, host, _, wake = counterOn "Layers" 520
+    let w, host, _, wake = galleryOn "Scrolling" 520
     keyWith w (Key.Char 'c') ctrlShift
     settle w
     wake ()

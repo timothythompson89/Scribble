@@ -1,4 +1,4 @@
-/// M6 step 2 on the GPU: the inspector open over the Counter demo, after picking its "+" button.
+/// M6 step 2 on the GPU: the inspector open over the Gallery, after picking its first "+" button.
 module Scribble.Tests.Rendering.InspectorTests
 
 open System
@@ -48,7 +48,7 @@ type InspectorTests(fixture: TextFixture) =
         let pixels: PixelSize = { Width = 900; Height = 520 }
         let size = Size.Create(900.0, 520.0)
         let host = ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text []
-        host.Update(Scribble.Samples.Counter.demo ())
+        host.Update(Scribble.Samples.GalleryApp.gallery ())
         Inspector.attach (host, []) |> ignore
         let layout () =
             for _ in 1..3 do
@@ -57,13 +57,18 @@ type InspectorTests(fixture: TextFixture) =
                     l.Tree.RunAfterFrame() // effects and subscriptions start after a frame
         let send e = host.HandleEvent e |> ignore
         layout ()
-        // Pick the "+" button (Elmish tab, second button in the row).
+        // Pick the first "+" button (the Components page's Elmish counter, second button in its row).
         Assert.Equal(3, host.Layers.Count)
         Assert.True(host.HandleEvent(KeyDown(Key.Char 'c', Modifiers.Control ||| Modifiers.Shift, false)), "key")
         layout ()
         Assert.True(host.Layers[2].Tree.HasVisibleContent, "panel")
         Assert.True(host.Layers[1].Tree.HasVisibleContent, "highlight")
-        let at: PixelPoint = { X = 87.0; Y = 191.0 }
+        let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }
+        let plus =
+            all host.Tree.Root.Value
+            |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, Button.Type) && all e |> Seq.exists (fun t -> obj.ReferenceEquals(t.Type, TextBlock.Type) && t.Get TextProps.text = "+"))
+        let p = plus.PositionInTree
+        let at: PixelPoint = { X = p.X + plus.Bounds.Width / 2.0; Y = p.Y + plus.Bounds.Height / 2.0 }
         send (PointerMoved(Mouse, 0, at, Modifiers.None))
         send (PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
         send (PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None))
@@ -82,7 +87,7 @@ type InspectorTests(fixture: TextFixture) =
         let pixels: PixelSize = { Width = 900; Height = 520 }
         let size = Size.Create(900.0, 520.0)
         let host = ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text []
-        host.Update(Scribble.Samples.Counter.demo ())
+        host.Update(Scribble.Samples.GalleryApp.gallery ())
         Inspector.attach (host, [ Inspector.isOpen true ]) |> ignore
         let layout () =
             for _ in 1..3 do

@@ -1,6 +1,6 @@
 /// The power rule on real apps: once the pointer stops, an app whose model doesn't change draws
 /// nothing more. A hover that changes layout can move the element out from under the pointer and
-/// back, forever (2026-11-17: the Counter's Layout tab kept drawing 20–144 frames a second).
+/// back, forever (2026-11-17: the Counter's (now the Gallery's) Layout tab kept drawing 20–144 frames a second).
 module Scribble.Tests.IdleTests
 
 open Xunit
@@ -35,11 +35,11 @@ let private stillDrawingAfter (w: FakeWindow) (ms: float) =
         drawing <- w.DeliverFrame()
     drawing && w.DeliverFrame()
 
-let private tabs = [ "Elmish"; "Load"; "List"; "Layers"; "Styles"; "Layout"; "Controls" ]
+let private tabs = [ "Components"; "Layout"; "Controls"; "Scrolling"; "Layers"; "Styles" ]
 
 [<Fact>]
-let ``the Counter demo goes idle wherever the pointer stops, on every tab`` () =
-    let w, _, app = start Scribble.Samples.Counter.app
+let ``the Gallery goes idle wherever the pointer stops, on every tab`` () =
+    let w, _, app = start Scribble.Samples.GalleryApp.app
     let host = app :?> ElementHost
     let size: PixelSize = { Width = 1000; Height = 900 }
     w.Size <- size
@@ -51,7 +51,7 @@ let ``the Counter demo goes idle wherever the pointer stops, on every tab`` () =
             all host.Tree.Root.Value
             |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && firstText e = tab)
         (button.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
-        // A page is built on its first visit: the Load page starts its one-second load then.
+        // A page is built on its first visit: the Components page starts its one-second load then.
         Assert.False(settle w 50 >= 50 && stillDrawingAfter w 2500.0, $"the {tab} tab keeps drawing with no pointer")
         let mutable y = 2.0
         while y < float size.Height do

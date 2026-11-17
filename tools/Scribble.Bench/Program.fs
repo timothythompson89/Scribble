@@ -2,7 +2,7 @@
 ///
 ///     dotnet run -c Release --project tools/Scribble.Bench
 ///
-/// Rows like the Counter's 10,000 messages (a Border with wrapping text, real HarfBuzz shaping), in an
+/// Rows like the Gallery's 10,000 messages (a Border with wrapping text, real HarfBuzz shaping), in an
 /// 800 × 600 window, scrolled in 48-DIP steps (about a wheel notch). Each scenario runs several times and
 /// reports its best run (steady state: the code is warmed up first). Times come from `ItemsProfile`
 /// (Core's internal counters, on only here).
@@ -21,7 +21,7 @@ let private words =
     [| "layout"; "pixels"; "the"; "scroller"; "keeps"; "only"; "what"; "shows"; "and"; "a"; "little"; "more";
        "measured"; "as"; "it"; "scrolls"; "estimates"; "for"; "everything"; "else"; "GPU"; "frames"; "on"; "request" |]
 
-/// The Counter's message text (3 to about 60 words); `salt` gives other strings of the same lengths.
+/// The Gallery's message text (3 to about 60 words); `salt` gives other strings of the same lengths.
 let private messageText (n: int) (salt: int) =
     let count = 3 + (n * 7919 % 13) * (1 + n % 5)
     let picked = [ for k in 0 .. count - 1 -> words[(n * 31 + k * 17 + salt) % words.Length] ]
@@ -31,7 +31,7 @@ let private messages (n: int) (salt: int) = Array.init n (fun i -> { Id = i + 1;
 
 let private rowAlt = ThemeValue.define "RowAlt" (Color.Hex 0x2A2A42)
 
-/// The Counter's row.
+/// The Gallery's row.
 let private row (m: Message) =
     Border.create [
         Border.padding (10.0, 6.0)
@@ -107,7 +107,7 @@ type private Bench(text: TextSystem, themed: bool, rowView: Message -> View, ite
         scroller.ScrollToOffset(0.0, false)
         this.Frame()
 
-    /// Appends one message (as the Counter's "Add message" does) and draws.
+    /// Appends one message (as the Gallery's "Add message" does) and draws.
     member this.Append(m: Message) =
         items <- Array.append items [| m |]
         tree.Update(viewOf items)
@@ -192,7 +192,7 @@ let main _ =
     Console.WriteLine("ItemsView scroll steps: " + string n + " messages, 800 x 600, " + string steps + " steps of " + string step + " DIPs, best of " + string runs)
 
     // 1. New text: the strings were never shaped (scrolling through new content).
-    report "1. Counter rows, new text (pooling on, theme)" (best runs (fun r -> sweep (Bench(text, true, row, messages n (100 + r)))))
+    report "1. Gallery rows, new text (pooling on, theme)" (best runs (fun r -> sweep (Bench(text, true, row, messages n (100 + r)))))
 
     // 2. Same strings again: shaping is cached; what's left is the recycling itself.
     let warm (themed: bool) (view: Message -> View) (salt: int) =
@@ -200,21 +200,21 @@ let main _ =
         sweep b |> ignore
         b.ScrollToTop()
         sweep b
-    report "2. Counter rows, text seen before (pooling on, theme)" (best runs (fun _ -> warm true row 1))
+    report "2. Gallery rows, text seen before (pooling on, theme)" (best runs (fun _ -> warm true row 1))
 
     // 3. Creating every row instead of reusing.
     ItemsProfile.NoPool <- true
-    report "3. Counter rows, text seen before, NO pooling (every row created)" (best runs (fun _ -> warm true row 1))
+    report "3. Gallery rows, text seen before, NO pooling (every row created)" (best runs (fun _ -> warm true row 1))
     ItemsProfile.NoPool <- false
 
     // 4. Without a theme no styles are in use: no restyles, no theme lookups.
-    report "4. Counter rows, text seen before, no theme (styles not in use)" (best runs (fun _ -> warm false row 1))
+    report "4. Gallery rows, text seen before, no theme (styles not in use)" (best runs (fun _ -> warm false row 1))
 
     // 5. Rows with a themed Button (styles and states inside each row).
     report "5. Rows with a Button, text seen before (pooling on, theme)" (best runs (fun _ -> warm true rowWithButton 2))
 
     // 6. Small steps that stay inside the realized range: the cost of a step that realizes nothing new.
-    report "6. Counter rows, 4-DIP steps (mostly nothing new to realize)" (best runs (fun _ ->
+    report "6. Gallery rows, 4-DIP steps (mostly nothing new to realize)" (best runs (fun _ ->
         let b = Bench(text, true, row, messages n 1)
         b.ScrollBy 20_000.0
         measure b steps (fun i -> b.ScrollBy(if (i / 25) % 2 = 0 then 4.0 else -4.0))))

@@ -1,10 +1,39 @@
-/// What the Counter demo's tabs share: its own theme values and its two themes.
-module Scribble.Samples.CounterDemo.Common
+/// What the Gallery's pages share: the page and section layouts, the Gallery's own theme values and its two themes.
+module Scribble.Samples.Gallery.Common
 
 open Scribble.Rendering
+open Scribble.Text
 open Scribble.Core
 
-// The demo's colors beyond the built-in palette, as theme values: settings take them like
+/// A page: its title and a line on what it shows, then its sections. The Gallery scrolls a page that doesn't fit.
+let page (title: string) (line: string) (content: View list) =
+    StackPanel.create [
+        StackPanel.margin (24.0, 16.0, 24.0, 24.0)
+        StackPanel.spacing 22.0
+        StackPanel.children [
+            StackPanel.create [
+                StackPanel.spacing 4.0
+                StackPanel.children [
+                    TextBlock.create [ TextBlock.text title; TextBlock.fontSize 22.0; TextBlock.font (Fonts.SemiBold()) ]
+                    TextBlock.create [ TextBlock.text line; TextBlock.foreground Palette.textDim; TextBlock.textWrapping Wrap ]
+                ]
+            ]
+            yield! content
+        ]
+    ]
+
+/// A part of a page: a title, a note on what to try, then the demo.
+let section (title: string) (note: string) (content: View) =
+    StackPanel.create [
+        StackPanel.spacing 6.0
+        StackPanel.children [
+            TextBlock.create [ TextBlock.text title; TextBlock.fontSize 15.0 ]
+            TextBlock.create [ TextBlock.text note; TextBlock.foreground Palette.textDim; TextBlock.fontSize 12.0; TextBlock.textWrapping Wrap ]
+            content
+        ]
+    ]
+
+// The Gallery's colors beyond the built-in palette, as theme values: settings take them like
 // `Palette.surface` (`Border.borderBrush line`), and each theme gives its own value. The defaults
 // are the dark ones.
 
@@ -40,7 +69,7 @@ let dialogShadow =
 /// The dark theme: the theme values' defaults.
 let darkTheme = Theme.dark []
 
-/// The light theme, with the demo's light values.
+/// The light theme, with the Gallery's light values.
 let lightTheme =
     Theme.light [
         Theme.set highlight (Color.Hex 0x2F5BD3)

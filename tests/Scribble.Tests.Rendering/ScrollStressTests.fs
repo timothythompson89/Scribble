@@ -1,4 +1,4 @@
-/// Scrolling the Counter's 10,000 messages up and down hard while drawing on the GPU. Tim saw
+/// Scrolling the Gallery's 10,000 messages (the Counter's, before the Gallery) up and down hard while drawing on the GPU. Tim saw
 /// "Internal CLR error" doing that by hand (2026-11-16): shaping that much new text set off
 /// background GCs, and one misread HarfBuzzShaper's `fixed` pin of the string (now a GCHandle).
 /// Before the fix this crashed the test host about one run in five, so a pass here is evidence,
@@ -11,7 +11,7 @@ open Scribble.Platform
 open Scribble.Rendering
 open Scribble.Core
 open Scribble.Tests.Rendering.TextRenderingTests
-open Scribble.Samples.CounterDemo
+open Scribble.Samples.Gallery
 
 let rec private all (e: Element) : Element seq =
     seq {
@@ -32,7 +32,7 @@ type ScrollStressTests(fixture: TextFixture) =
         let width, height = 920.0, 720.0
         let tree = ElementTree(fixture.Text)
         tree.Theme <- ValueSome Common.darkTheme
-        tree.Update(Scribble.Samples.Counter.demo ())
+        tree.Update(Scribble.Samples.GalleryApp.gallery ())
         let size = Size.Create(width, height)
         let layout () =
             tree.UpdateLayout size
@@ -48,7 +48,7 @@ type ScrollStressTests(fixture: TextFixture) =
                 f.Clear(Color.Hex 0x181825)
                 tree.Render f.DrawList)
             |> ignore
-        click "Layers"
+        click "Scrolling"
         for b in [ "Jump to #1"; "#5,000"; "#9,000"; "Random"; "Add message"; "Add message" ] do
             click b
             frame ()

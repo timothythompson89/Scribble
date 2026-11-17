@@ -7,7 +7,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Scribble.Desktop/Scribble.Desktop.fsproj" />
-    <ProjectReference Include="../../src/Scribble.Inspector/Scribble.Inspector.fsproj" />
     <ProjectReference Include="../Counter/Counter.fsproj" />
   </ItemGroup>
 </Project>

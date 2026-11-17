@@ -32,7 +32,14 @@ let view count dispatch =
         StackPanel.spacing 16.0
         StackPanel.children [
             TextBlock.create [ TextBlock.text $"Count: {count}"; TextBlock.fontSize 28.0 ]
-            Button.create [ Button.text "+"; Button.onClick (fun _ -> dispatch Increment) ]
+            StackPanel.create [
+                StackPanel.orientation Horizontal
+                StackPanel.spacing 8.0
+                StackPanel.children [
+                    Button.create [ Button.text "−"; Button.onClick (fun _ -> dispatch Decrement) ]
+                    Button.create [ Button.text "+"; Button.onClick (fun _ -> dispatch Increment) ]
+                ]
+            ]
         ]
     ]
 
@@ -67,9 +74,9 @@ packages aren't published yet: until they are, reference the projects instead
 On the desktop `App.run` returns when the window closes; in the browser it starts the app and returns at once (the
 page keeps it running). A browser app that wants its own page adds `wwwroot/index.html` and `main.js`, and
 Scribble's are left out. For an app on both, put the app in a library and add a small host project per platform,
-as the samples do (`samples/Counter` is the app, `samples/Counter.Desktop` and `samples/Counter.Browser` its hosts,
-with the same Program.fs). A grown-up version of the code above (with a command) is the first tab of the Counter
-demo, `samples/Counter/ElmishTab.fs`; `dotnet run --project samples/Counter.Desktop` runs the demo.
+as the samples do (`samples/Counter` is the app above, `samples/Counter.Desktop` and `samples/Counter.Browser` its
+hosts, with the same one-line Program.fs; `dotnet run --project samples/Counter.Desktop` runs it). A grown-up version
+(with a command) opens the Gallery's Components page, `samples/Gallery/ComponentsPage.fs`.
 
 ## Requirements
 
@@ -140,26 +147,27 @@ app drew. Vulkan on Windows still has that problem with G-SYNC.
       `view`, `code` or `type`. Hover the card and press on it: "hovered" and "pressed" appear (within a
       tenth of a second). Tick "Show defaults" for the common properties at their defaults (dimmed).
     - Drag the divider between the tree and the properties up and down.
-    - In the Counter, pick a component row (purple, e.g. ElmishCounter): its hooks and their values, and the
+    - In the Gallery, pick a component row (purple, e.g. ElmishCounter): its hooks and their values, and the
       model changing as you click "+".
     - The footer shows the last frame's layout/render times, shapes and the app's frames per second; when the
       app stops changing it shows "app idle" about a second later, and nothing redraws after that.
 
-The counter (`dotnet run --project samples/Counter.Desktop`) is the components demo, on six tabs
-(Elmish, Load, List, Layers, Styles, Layout). The tabs are made from what's already there: every page stays in the tree and only the
+The Gallery (`dotnet run --project samples/Gallery.Desktop`; until M8 step 3b the Counter demo) shows everything, one
+page per tab (Components, Layout, Controls, Scrolling, Layers, Styles; Images comes with M8 step 3b), each opening
+with its title and a line on what it shows, in a 720 × 560 window (a page scrolls when it doesn't fit). Every visited page stays in the tree and only the
 selected one has `isVisible true`, so each page keeps its state while hidden.
 
-1. Change something on each tab (a count, the number on Load, the list), switch away and back: it's all still
+1. Change something on each page (a count, the number in the load, the list), switch away and back: it's all still
    there. The selected tab is blue; the others look and react like normal buttons. Tab (the key) only reaches the
-   visible page's buttons. Open Load more than a second after starting: its first result is already there (hidden
+   visible page's buttons. Visit Components more than a second after another page: its first result is already there (hidden
    pages keep running).
-2. The Elmish tab is the Elmish counter inside a component (`useElmishWithCmd`): the buttons change the count (a
+2. Components, Elmish: the Elmish counter inside a component (`useElmishWithCmd`): the buttons change the count (a
    press and a release on the same button counts as a click), Reset is disabled (faded, no hand cursor) at zero.
    "+1 in a second" adds one a second later (`Cmd.ofAsync`); press it several times quickly and each one lands.
    Try it while dragging or resizing the window too: the count should still go up during the drag.
-3. The Load tab shows "loading…" for a second, then `1² = 1`. Press − or + quickly several times: it stays on
+3. Components, useAsync: shows "loading…" for a second, then `1² = 1`. Press − or + quickly several times: it stays on
    "loading…" and only the last number's result appears (older loads are cancelled). Negative numbers work.
-4. The List tab has a list of counters, each with its own count (`useState`); the bar slides to the new count (0 to 10,
+4. Components, useState and useAnimated: a list of counters, each with its own count (`useState`); the bar slides to the new count (0 to 10,
    red when negative) over a quarter second (`useAnimated`). Add, Remove first and Reverse change the list: counts
    stay with their names (keyed). Clicking one counter re-runs only that counter.
 5. Buttons sink slightly (97%) while pressed and spring back; their faint shadow flattens. Pressing with Space
@@ -167,7 +175,7 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
 6. Nothing redraws while you don't click; an animation draws until it arrives, then stops. A pending load or
    "+1 in a second" draws one frame when it finishes, not continuously while waiting.
 7. Tab, Enter and Space work as in the Hello sample.
-8. The Layers tab (layers, M6; 10,000 messages in an ItemsView, M8 step 1):
+8. The Scrolling page (10,000 messages in an ItemsView, M8 step 1) and the Layers page (layers, M6):
    - 10,000 messages of different lengths scroll smoothly (wheel notches glide; a touchpad follows directly); only
      those on screen exist (the inspector says "realized N of 10,000"). "Jump to #1", "#5,000", "#9,000" and
      "Random" put that message at the top; "Add message" adds one at the end and scrolls to it. The bar: drag the
@@ -179,7 +187,7 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      and Tab cycles only through the dialog's two buttons (the app's focus ring goes away and comes back after).
      "Toast" in the dialog shows a toast under the dimming; Close brings the app back exactly as it was.
    - Hover a button, then open the dialog without moving the mouse: the button stops looking hovered.
-9. The Styles tab (M7 step 1, verified on Windows and in the browser 2026-11-16):
+9. The Styles page (M7 step 1, verified on Windows and in the browser 2026-11-16):
    - Primary is blue and Danger red (classes); the selected tab's blue comes from a style too.
    - Hover the card: its border and all three lines of text turn light blue (`Style.on States.hover` on the card,
      and text matched by `Style.inside Border.Type [ Style.cls "card"; States.hover ]`); the line below the card stays
@@ -205,17 +213,17 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    - Disabled buttons (Reset at zero, "Disable Danger") fade as before; their label is barely lighter (50%).
    - Moving between buttons quickly draws only while a fade runs, then stops (the frame counter in the title goes
      idle).
-11. Light and dark (M7 step 2b, verified): the Counter demo has a "Light"/"Dark" button at the right of the tab row.
+11. Light and dark (M7 step 2b, verified): the Gallery has a "Light" switch at the right above the tab row.
    - Light: a light grey window (the window's background follows the theme), white buttons with grey borders, dark
      text; the selected tab, Primary and Danger keep white text. Hover darkens a button slightly, press darkens it
      more and sinks it; disabled buttons fade.
-   - Every tab follows: the List tab's bars, the Layers tab's rows, scrollbar, toast and dialog (open it after
-     switching), the Styles tab's cards and chips. "Dark" switches back to exactly the old look (the count and
+   - Every page follows: the counters' bars, the Scrolling page's rows, scrollbar, toast and dialog (open it after
+     switching), the Styles page's cards and chips. "Dark" switches back to exactly the old look (the count and
      list text is now the theme's text color, a hair softer than white).
    - The inspector stays dark either way.
    - Inspector: pick a button and hover it: `overlay` shows `theme`, "from Button:hover"; `background` is `theme`,
      "from Button" (Primary's: `style`, "from Button.primary": the app's own style). Pick a button's label: `foreground` shows
-     `inherited`. Tab focus rings and the Layers tab's scrollbar look as before.
+     `inherited`. Tab focus rings and the Scrolling page's scrollbar look as before.
    - Inspector: a button at rest still lists what the theme can set, without "Show defaults": `overlay`
      (transparent, `default`), `scale`, `opacity`, `shadow`, with no line under them; hover it and `overlay` gets
      `theme`, "from Button:hover". Plain defaults like `margin` stay behind "Show defaults".
@@ -226,23 +234,23 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      "pressed" sinks it, "focus-visible" draws the ring, "disabled" fades it, yet the button still clicks. Click a
      toggle again to stop forcing. A state that's on for real is forced off instead (a teal outline, the name struck
      through): a ticked CheckBox's "checked" shows it unticked. "Clear forced" (next to Deselect) stops them all, and so does closing the
-     inspector (F12). In the Styles tab, forcing `selected` on an unselected chip makes it look selected.
-12. The title (an app value, `WindowTitle.current`; verified): the window, or the browser tab, is called "Counter – Elmish" at
-   the start and names whichever tab you select. A popped-out inspector ("Inspector – Counter – …") follows it.
+     inspector (F12). On the Styles page, forcing `selected` on an unselected chip makes it look selected.
+12. The title (an app value, `WindowTitle.current`; verified): the window, or the browser tab, is called "Gallery – Components" at
+   the start and names whichever tab you select. A popped-out inspector ("Inspector – Gallery – …") follows it.
 13. Icons: the Light/Dark switch shows Material's `light_mode` (or, in light, `dark_mode`) before its text, in the
    button's text color: light grey in dark, dark in light; it fades with the button when hovered or pressed like the
    text. Inspector: pick the switch; its `icon` property shows `light_mode` or `dark_mode`. (Hello's toolbar buttons
    have Material icons too.)
-14. Layout (M8 step 2, not yet checked): the Layout tab shows a form on a Grid (the fields' column keeps at least
+14. Layout (M8 step 2, not yet checked): the Layout page shows a form on a Grid (the fields' column keeps at least
    120 DIPs; the notes span two columns), an app shell on a DockPanel with Separators (one dashed), boxes to drag
    on a Canvas (a press brings one to the front and gives it a dashed outline) and chips in a WrapPanel (a new row
    after Elm; dotted and dashed chips). Inspector: select the form's Grid to see its lines (dashed) and gaps
    (shaded); pick a field: `Grid.row`/`Grid.column` are listed as written.
 15. Controls (M8 step 3a, not yet checked): the tabs are a TabControl (an underline slides to the selected tab;
    ←/→ on a focused tab switch; on a phone the tab row scrolls sideways) and Light/Dark is a Switch. The Controls
-   tab has CheckBoxes ("All toppings" shows a dash while some are picked), Switches, a ToggleButton and Sliders
+   page has CheckBoxes ("All toppings" shows a dash while some are picked), Switches, a ToggleButton and Sliders
    (controlled and own-value side by side, a continuous one, three vertical ones).
-The browser version is `samples/Counter.Browser` (port 5281).
+The browser version is `samples/Gallery.Browser` (port 5281); the Counter's is `samples/Counter.Browser` (port 5283).
 
 The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,
 port 5282) shows all 4,304 Material Symbols in an ItemsView (`ItemsLayout.wrap`: only the tiles on screen exist):
@@ -297,8 +305,8 @@ dotnet run --project tools/Scribble.Serve -- --self-signed   # nothing to instal
 ```
 
 It prints a QR code for **the hub**, `http://<this machine>:5279/` (plain HTTP, so a device can open it before it
-trusts anything): scan it with the phone's camera, or type the address printed under it. The hub links the three
-samples (Hello on port 5280, Counter on 5281, Icons on 5282, HTTPS) using the address the device reached it by,
+trusts anything): scan it with the phone's camera, or type the address printed under it. The hub links the four
+samples (Hello on port 5280, the Gallery on 5281, Icons on 5282, Counter on 5283, HTTPS) using the address the device reached it by,
 checks whether the device trusts the certificate yet (and if not, offers it with install steps for Android,
 iPhone/iPad, Windows and macOS), and shows whether the samples were published with WebAssembly AOT and when. The
 hub's address is the machine's main network (an adapter with a gateway, not a virtual one); the others are listed
@@ -1058,7 +1066,8 @@ Border.create [ Semantics.role Role.Switch; Semantics.label "Wi-Fi"; Semantics.i
 | `src/Scribble.Platform.Browser` | Browser backend: canvas, DOM events, `requestAnimationFrame` |
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
 | `samples/Hello` | The Hello sample (library): `HelloApp.fs` (model, update, app settings) and `Dashboard.fs` (the dashboard as a view function, also used by the rendering tests) |
-| `samples/Counter` | The Counter demo (library): one file per tab (`ElmishTab.fs`, `LoadTab.fs`, `ListTab.fs`, `LayersTab.fs`, `StylesTab.fs`, `LayoutTab.fs`), `Common.fs`, and `Counter.fs` (the tabs and the app) |
+| `samples/Counter` | The Counter (library): the README's first example, one file |
+| `samples/Gallery` | The Gallery (library): one file per page (`ComponentsPage.fs`, `LayoutPage.fs`, `ControlsPage.fs`, `ScrollingPage.fs`, `LayersPage.fs`, `StylesPage.fs`), `Common.fs` (page and section layouts, theme values, themes) and `GalleryApp.fs` (the tabs and the app) |
 | `samples/Icons` | The Material Symbols gallery (library) |
 | `samples/X.Desktop`, `samples/X.Browser` | Each sample's hosts: the same one-line Program.fs, a different SDK and Scribble package |
 | `samples/Samples.Shared` | `Adaptive.fs`: the samples' own `SplitRow` |

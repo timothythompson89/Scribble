@@ -1,5 +1,5 @@
 /// The samples at phone size (390 × 844 DIPs at 3×, a common phone), so their narrow layouts can
-/// be seen without a phone: Hello's toolbar under its title, Counter's tabs wrapped, every tab.
+/// be seen without a phone: Hello's toolbar under its title, the Gallery's tabs scrolling sideways, every page.
 module Scribble.Tests.Rendering.PhoneTests
 
 open Xunit
@@ -7,7 +7,7 @@ open Scribble.Platform
 open Scribble.Rendering
 open Scribble.Core
 open Scribble.Tests.Rendering.TextRenderingTests
-open Scribble.Samples.CounterDemo
+open Scribble.Samples.Gallery
 
 let private width, height, scale = 390.0, 844.0, 3.0
 
@@ -47,17 +47,16 @@ type PhoneTests(fixture: TextFixture) =
         this.Shoot(tree, Scribble.Samples.Dashboard.background, "hello-phone@3x")
 
     [<Theory>]
-    [<InlineData("Elmish")>]
-    [<InlineData("Load")>]
-    [<InlineData("List")>]
+    [<InlineData("Components")>]
+    [<InlineData("Scrolling")>]
     [<InlineData("Layers")>]
     [<InlineData("Styles")>]
     [<InlineData("Layout")>]
     [<InlineData("Controls")>]
-    member this.``Counter on a phone``(tab: string) =
+    member this.``the Gallery on a phone``(tab: string) =
         let tree = ElementTree(fixture.Text, Scale = scale)
         tree.Theme <- ValueSome Common.darkTheme
-        tree.Update(Scribble.Samples.Counter.demo ())
+        tree.Update(Scribble.Samples.GalleryApp.gallery ())
         let size = Size.Create(width, height)
         tree.UpdateLayout size
         tree.RunAfterFrame()
@@ -80,7 +79,7 @@ type PhoneTests(fixture: TextFixture) =
                 if obj.ReferenceEquals(e.Type, ScrollViewer.Type) then right
                 else e.Children |> Seq.fold (fun m c -> max m (widest c (x + e.Bounds.X))) right
         Assert.True(widest tree.Root.Value 0.0 <= width + 0.5, $"something reaches x = {widest tree.Root.Value 0.0}")
-        this.Shoot(tree, Color.Hex 0x181825, "counter-phone-" + tab.ToLowerInvariant() + "@3x")
+        this.Shoot(tree, Color.Hex 0x181825, "gallery-phone-" + tab.ToLowerInvariant() + "@3x")
         // The selected tab's header was scrolled into view (the headers don't all fit).
         let header = all tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, TabHeader.Type) && firstText e = tab)
         Assert.True(abs (header.VisibleBounds.Width - header.Bounds.Width) < 0.5, $"the {tab} header shows {header.VisibleBounds.Width} of {header.Bounds.Width}")

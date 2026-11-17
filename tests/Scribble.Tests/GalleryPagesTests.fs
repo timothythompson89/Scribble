@@ -1,6 +1,6 @@
-/// The Counter sample's tabs (a TabControl since M8 step 3a): a page is built on its first visit,
+/// The Gallery's pages (a TabControl since M8 step 3a): a page is built on its first visit,
 /// switching shows one page, and every visited page keeps its state.
-module Scribble.Tests.TabsTests
+module Scribble.Tests.GalleryPagesTests
 
 open System
 open Xunit
@@ -8,7 +8,7 @@ open Scribble.Core
 open Scribble.Tests.TestShaping
 
 let private frame (t: ElementTree) =
-    t.UpdateLayout(Size.Create(520.0, 520.0))
+    t.UpdateLayout(Size.Create(720.0, 560.0))
     t.RunAfterFrame()
 
 let rec private all (e: Element) : Element seq =
@@ -40,42 +40,47 @@ let private texts (e: Element) =
 [<Fact>]
 let ``only the selected page shows, and switching tabs keeps every visited page's state`` () =
     let tree = ElementTree(textSystem ())
-    tree.Update(Scribble.Samples.Counter.demo ())
+    tree.Update(Scribble.Samples.GalleryApp.gallery ())
     frame tree
     // Only the first page exists yet.
-    let elmish = (pages tree)[0]
+    let components = (pages tree)[0]
     Assert.Equal(1, (pages tree).Length)
 
-    // Change the Elmish page, then switch to the List page and change it too.
-    click elmish "+"
-    click elmish "+"
+    // Change the Components page (the Elmish counter's "+" comes first, then the list), then switch to the
+    // Styles page and change it too.
+    click components "+"
+    click components "+"
+    click components "Add"
     frame tree
-    click (tabControl tree) "List"
+    Assert.Contains("Cherries", texts components) |> ignore
+    click (tabControl tree) "Styles"
     frame tree
-    let list = (pages tree)[1]
+    let styles = (pages tree)[1]
     Assert.Equal<bool list>([ false; true ], [ for p in pages tree -> p.IsVisible ])
-    click list "Add"
+    click styles "Compact buttons"
     frame tree
-    Assert.Contains("Cherries", texts list) |> ignore
+    Assert.Contains("Normal buttons", texts styles) |> ignore
 
-    // Back to Elmish: the count survived, and the pages are the same elements (patched, not rebuilt).
-    click (tabControl tree) "Elmish"
+    // Back to Components: the count and the list survived, and the pages are the same elements (patched, not
+    // rebuilt).
+    click (tabControl tree) "Components"
     frame tree
     Assert.Equal<bool list>([ true; false ], [ for p in pages tree -> p.IsVisible ])
-    Assert.Same(elmish, (pages tree)[0])
-    Assert.Same(list, (pages tree)[1])
-    Assert.Contains("Count: 2", texts elmish)
-    click (tabControl tree) "List"
+    Assert.Same(components, (pages tree)[0])
+    Assert.Same(styles, (pages tree)[1])
+    Assert.Contains("Count: 2", texts components)
+    Assert.Contains("Cherries", texts components)
+    click (tabControl tree) "Styles"
     frame tree
-    Assert.Contains("Cherries", texts list)
+    Assert.Contains("Normal buttons", texts styles)
 
 [<Fact>]
 let ``pages not visited aren't built, and hidden ones aren't laid out`` () =
     let tree = ElementTree(textSystem ())
-    tree.Update(Scribble.Samples.Counter.demo ())
+    tree.Update(Scribble.Samples.GalleryApp.gallery ())
     frame tree
     let headers = all (tabControl tree) |> Seq.filter (fun e -> obj.ReferenceEquals(e.Type, TabHeader.Type)) |> Seq.length
-    Assert.Equal(7, headers)
+    Assert.Equal(6, headers)
     Assert.Equal(1, (pages tree).Length)
     let first = (pages tree)[0]
     Assert.True(first.Bounds.Height > 0.0)
@@ -83,3 +88,19 @@ let ``pages not visited aren't built, and hidden ones aren't laid out`` () =
     frame tree
     Assert.False first.IsVisible
     Assert.Equal(2, (pages tree).Length)
+
+[<Fact>]
+let ``every page opens with its title and a line on what it shows`` () =
+    let tree = ElementTree(textSystem ())
+    tree.Update(Scribble.Samples.GalleryApp.gallery ())
+    frame tree
+    let titles = [ "Components"; "Layout"; "Controls"; "Scrolling"; "Layers"; "Styles" ]
+    for title in titles do
+        click (tabControl tree) title
+        frame tree
+        let page = pages tree |> List.find (fun p -> p.IsVisible)
+        match texts page with
+        | first :: line :: _ ->
+            Assert.Equal(title, first)
+            Assert.True(line.Length > 20, $"the {title} page's line: \"{line}\"")
+        | other -> Assert.Fail($"the {title} page starts with {other.Length} texts")

@@ -33,16 +33,16 @@ dotnet build Scribble.slnx
 dotnet test tests/Scribble.Tests                  # unit tests on a fake platform (1–2 s)
 dotnet test tests/Scribble.Tests.Rendering        # GPU screenshot tests
 $env:SCRIBBLE_TIMING = "1"; dotnet test tests/Scribble.Tests -c Release --filter Category=Timing   # before each milestone report
-dotnet run --project samples/Counter.Desktop      # also Hello.Desktop, Icons.Desktop
-dotnet run --project samples/Counter.Browser      # http://localhost:5281 (Hello 5280, Icons 5282)
+dotnet run --project samples/Gallery.Desktop      # also Hello.Desktop, Icons.Desktop, Counter.Desktop
+dotnet run --project samples/Gallery.Browser      # http://localhost:5281 (Hello 5280, Icons 5282, Counter 5283)
 dotnet publish samples/Hello.Desktop -c Release   # NativeAOT exe (needs VS C++ tools; vswhere on PATH)
 dotnet publish samples/Hello.Browser -c Release -p:BrowserAot=true   # wasm AOT (wasm-tools workload)
 dotnet run --project tools/Scribble.Serve         # browser samples on the local network over HTTPS; hub + QR on :5279
 dotnet run -c Release --project tools/Scribble.Bench   # ItemsView costs
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 434 unit tests plus 5
-  timing tests skipped; 62 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 435 unit tests plus 5
+  timing tests skipped; 61 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and
   are compared exactly. A mismatch is a bug or a stale picture: look at the diff before regenerating

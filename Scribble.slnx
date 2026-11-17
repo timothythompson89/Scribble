@@ -31,6 +31,11 @@
     <Project Path="samples/Hello.Desktop/Hello.Desktop.fsproj" />
     <Project Path="samples/Hello.Browser/Hello.Browser.fsproj" />
   </Folder>
+  <Folder Name="/samples/Gallery/">
+    <Project Path="samples/Gallery/Gallery.fsproj" />
+    <Project Path="samples/Gallery.Desktop/Gallery.Desktop.fsproj" />
+    <Project Path="samples/Gallery.Browser/Gallery.Browser.fsproj" />
+  </Folder>
   <Folder Name="/samples/Counter/">
     <Project Path="samples/Counter/Counter.fsproj" />
     <Project Path="samples/Counter.Desktop/Counter.Desktop.fsproj" />

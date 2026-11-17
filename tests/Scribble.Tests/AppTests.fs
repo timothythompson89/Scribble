@@ -50,7 +50,13 @@ type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
             onEvent Frame
             true
         else false
-    member _.Send e = onEvent e
+    /// Sends an event as the platform would. After `Resized` the platforms draw a frame (Win32 at once or at the
+    /// next refresh, the browser at once), so a frame is due here too.
+    member this.Send e =
+        onEvent e
+        match e with
+        | Resized _ -> this.FrameRequested <- true
+        | _ -> ()
     interface IWindow with
         member this.ClientSize = this.Size
         member _.Scale = 1.0

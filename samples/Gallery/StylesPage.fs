@@ -1,12 +1,12 @@
-/// The Styles tab (M7): classes, state blocks, text styled inside a card, an inline block, chips
-/// styled from a property value, and a button that swaps the page's style list.
-module Scribble.Samples.CounterDemo.StylesTab
+/// The Styles page (M7): classes, state blocks, text styled inside a card, an inline block, chips styled from a
+/// property value, and a button that swaps the page's style list.
+module Scribble.Samples.Gallery.StylesPage
 
 open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
 open Scribble.Samples
-open Scribble.Samples.CounterDemo.Common
+open Scribble.Samples.Gallery.Common
 
 /// A property of our own for the chips below (ToggleButton has one built in, `isChecked`). Styles
 /// select on its value with `Style.prop`, or through a state made from it.
@@ -51,8 +51,9 @@ let private normalStyles =
 /// The same, plus smaller buttons: switching the page between the two lists swaps a style list.
 let private compactStyles = normalStyles @ [ Button.style [] [ Button.padding (8.0, 3.0) ] ]
 
-let stylesPage =
-    Component.define "StylesPage" (fun ctx () ->
+/// The page without its title (the rendering tests show it alone).
+let demo =
+    Component.define "Styles" (fun ctx () ->
         let compact = ctx.useState false
         let disabled = ctx.useState false
         let picked = ctx.useState (Set.ofList [ "Fast" ])
@@ -65,10 +66,8 @@ let stylesPage =
             ]
         StackPanel.create [
             StackPanel.styles (if compact.Current then compactStyles else normalStyles)
-            StackPanel.margin (24.0, 16.0, 24.0, 0.0)
             StackPanel.spacing 12.0
             StackPanel.children [
-                TextBlock.create [ TextBlock.text "Classes, a hover block, text inside cards, inline blocks"; TextBlock.foreground Palette.textDim; TextBlock.textWrapping TextWrapping.Wrap ]
                 // WrapPanels (Adaptive.fs): the rows wrap on a phone.
                 WrapPanel.create [
                     WrapPanel.spacing 8.0
@@ -137,3 +136,6 @@ let stylesPage =
                 ]
             ]
         ])
+
+let view () =
+    page "Styles" "Looks from style lists: classes, states, text inside a card, inline blocks and a selector on a property's value." [ demo () ]

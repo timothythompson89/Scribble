@@ -412,8 +412,8 @@ let private sized (w: FakeWindow) =
     settle w
 
 [<Fact>]
-let ``every Counter tab names whatever can be focused or clicked`` () =
-    let w, host = show (Scribble.Samples.Counter.app @ [ Scribble.Inspector.Inspector.enable [] ])
+let ``every Gallery page names whatever can be focused or clicked`` () =
+    let w, host = show (Scribble.Samples.GalleryApp.app @ [ Scribble.Inspector.Inspector.enable [] ])
     sized w
     let tabs = host.SemanticTree().Nodes |> Seq.filter (fun n -> n.Role = Role.Tab) |> Seq.map _.Name |> List.ofSeq
     Assert.True(tabs.Length >= 6, String.concat ", " tabs)
@@ -429,7 +429,7 @@ let ``every Counter tab names whatever can be focused or clicked`` () =
 
 [<Fact>]
 let ``the inspector is left out of the semantic tree`` () =
-    let w, host = show (Scribble.Samples.Counter.app @ [ Scribble.Inspector.Inspector.enable [] ])
+    let w, host = show (Scribble.Samples.GalleryApp.app @ [ Scribble.Inspector.Inspector.enable [] ])
     sized w
     let names () = host.SemanticTree().Nodes |> Seq.map (fun n -> string n.Role + " " + n.Name) |> List.ofSeq
     let before = names ()
@@ -437,7 +437,7 @@ let ``the inspector is left out of the semantic tree`` () =
     w.Send(KeyUp((Key.F 12), Modifiers.None))
     settle w
     Assert.True(host.Layers |> Seq.exists (fun l -> l.Name = "Inspector" && l.Tree.HasVisibleContent))
-    Assert.Equal<string list>(before, names ())
+    Assert.Equal(String.concat "\n" before, String.concat "\n" (names ()))
 
 [<Fact>]
 let ``Hello names whatever can be focused or clicked`` () =

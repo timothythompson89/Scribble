@@ -155,10 +155,10 @@ let ``in an app: a starting value, shared by every layer, set through AppContext
     Assert.Equal<string list>([ "app light"; "toast light" ], shown ())
 
 [<Fact>]
-let ``the Counter demo's switch sets Theme.current, and the window and its layers follow`` () =
-    let w, device, app = start Scribble.Samples.Counter.app
+let ``the Gallery's switch sets Theme.current, and the window and its layers follow`` () =
+    let w, device, app = start Scribble.Samples.GalleryApp.app
     let host = app :?> ElementHost
-    let light, dark = Scribble.Samples.CounterDemo.Common.lightTheme, Scribble.Samples.CounterDemo.Common.darkTheme
+    let light, dark = Scribble.Samples.Gallery.Common.lightTheme, Scribble.Samples.Gallery.Common.darkTheme
     w.DeliverFrame() |> ignore
     Assert.Same(dark, host.WindowTheme)
     let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }
@@ -219,15 +219,15 @@ let ``without App.title the window is called Scribble; with showStats the stats 
     app2.Dispose()
 
 [<Fact>]
-let ``the Counter demo's title names the selected tab`` () =
-    let w, _, app = start Scribble.Samples.Counter.app
+let ``the Gallery's title names the selected page`` () =
+    let w, _, app = start Scribble.Samples.GalleryApp.app
     let host = app :?> ElementHost
     w.DeliverFrame() |> ignore
-    Assert.Equal("Counter – Elmish", w.TitleText)
+    Assert.Equal("Gallery – Components", w.TitleText)
     let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }
     let tab =
         all host.Tree.Root.Value
         |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && texts e = [ "Styles" ])
     (tab.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
-    Assert.Equal("Counter – Styles", w.TitleText)
+    Assert.Equal("Gallery – Styles", w.TitleText)
     app.Dispose()

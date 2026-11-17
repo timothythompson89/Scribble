@@ -7,7 +7,7 @@
 ///
 /// The hub is on port 5279 (plain HTTP, so a new device can open it before trusting the certificate): it links the
 /// samples, says whether the device trusts the certificate and offers it; the terminal shows its QR code. Hello is on
-/// port 5280, Counter on 5281, Icons on 5282 (HTTPS). Published files and certificates go to `artifacts/serve`
+/// port 5280, the Gallery on 5281, Icons on 5282, Counter on 5283 (HTTPS). Published files and certificates go to `artifacts/serve`
 /// (git-ignored).
 module Scribble.Serve.Program
 
@@ -28,10 +28,12 @@ type private Sample = { Name: string; Project: string; Port: int; Title: string;
 let private samples =
     [ { Name = "hello"; Project = "samples/Hello.Browser"; Port = 5280
         Title = "Hello"; Description = "The dashboard: animated cards, a toolbar, text and emoji" }
-      { Name = "counter"; Project = "samples/Counter.Browser"; Port = 5281
-        Title = "Counter"; Description = "Components, async, lists, layers, styles and light/dark themes" }
+      { Name = "gallery"; Project = "samples/Gallery.Browser"; Port = 5281
+        Title = "Gallery"; Description = "Components, layout, controls, scrolling, layers, styles and light/dark themes" }
       { Name = "icons"; Project = "samples/Icons.Browser"; Port = 5282
-        Title = "Icons"; Description = "All 4,304 Material Symbols" } ]
+        Title = "Icons"; Description = "All 4,304 Material Symbols" }
+      { Name = "counter"; Project = "samples/Counter.Browser"; Port = 5283
+        Title = "Counter"; Description = "The smallest app: an Elmish counter" } ]
 
 let private hubPort = 5279
 

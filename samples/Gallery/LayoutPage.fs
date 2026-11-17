@@ -1,22 +1,12 @@
-/// The Layout tab (M8 step 2): a form on a Grid, an app shell on a DockPanel with Separators, boxes
-/// to drag on a Canvas (a click brings one to the front with zIndex; the selected one has a dashed
-/// outline) and chips in a WrapPanel, in a page the Counter scrolls.
-module Scribble.Samples.CounterDemo.LayoutTab
+/// The Layout page (M8 step 2): a form on a Grid, an app shell on a DockPanel with Separators, boxes to drag on a
+/// Canvas (a click brings one to the front with zIndex; the selected one has a dashed outline) and chips in a
+/// WrapPanel.
+module Scribble.Samples.Gallery.LayoutPage
 
 open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
-open Scribble.Samples.CounterDemo.Common
-
-let private section (title: string) (note: string) (content: View) =
-    StackPanel.create [
-        StackPanel.spacing 6.0
-        StackPanel.children [
-            TextBlock.create [ TextBlock.text title; TextBlock.fontSize 15.0 ]
-            TextBlock.create [ TextBlock.text note; TextBlock.foreground Palette.textDim; TextBlock.fontSize 12.0; TextBlock.textWrapping Wrap ]
-            content
-        ]
-    ]
+open Scribble.Samples.Gallery.Common
 
 /// A stand-in text field (TextBox comes with M9).
 let private field (placeholder: string) (settings: Setting<Border> list) =
@@ -213,15 +203,10 @@ let private chips =
         ]
     ]
 
-/// The page: the four parts (the Counter's tab scrolls it when the window is short).
-let layoutPage =
-    StackPanel.create [
-        StackPanel.margin (24.0, 16.0, 24.0, 24.0)
-        StackPanel.spacing 22.0
-        StackPanel.children [
-            section "Grid" "A form: labels in an Auto column, fields in a star column (at least 120), a span." form
-            section "DockPanel" "An app shell: toolbar, status bar, sidebar, Separators; the last child fills." shell
-            section "Canvas" "Drag the boxes; a press brings one to the front (zIndex) and outlines it." (canvasDemo ())
-            section "WrapPanel" "Chips that wrap; breakAfter after Elm starts a new row." chips
-        ]
+let view () =
+    page "Layout" "The panels: rows and columns, docking, positions of your own and wrapping." [
+        section "Grid" "A form: labels in an Auto column, fields in a star column (at least 120), a span." form
+        section "DockPanel" "An app shell: toolbar, status bar, sidebar, Separators; the last child fills." shell
+        section "Canvas" "Drag the boxes; a press brings one to the front (zIndex) and outlines it." (canvasDemo ())
+        section "WrapPanel" "Chips that wrap; breakAfter after Elm starts a new row." chips
     ]
