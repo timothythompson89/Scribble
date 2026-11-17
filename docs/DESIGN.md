@@ -1325,7 +1325,9 @@ after its frame (see the first decision). Decided:
    extra frame (asking for one would break the power rule).
 9. **Checking 3:** a unit test on allocations: 10,000 int-keyed items scrolled to the middle, a new array with one
    more item: at most 64 KB allocated by ItemsView (about 1.4 MB before; the app's array not counted). The
-   benchmark's "Add message" reports the time; the goal is under 100 µs on Tim's desktop in Release (516 µs before).
+   benchmark's "Add message" reports the time; the goal is the source-dependent part of an update (its layout,
+   without the draw list) under 100 µs on Tim's desktop in Release (about 430 µs before). Restated by Tim on
+   2026-11-17: first set as the whole update under 100 µs against 516 µs, which included the draw list.
 
 **Decision 1 as built (2026-11-17):** `ItemsView`'s `realize` calls the tree's internal `RunStylesWithin item`
 after attaching and patching: it matches what's queued inside that item now and leaves the rest of the queue for
@@ -1345,11 +1347,11 @@ about 1.4 MB before); a randomized test checks the store updated in place agains
 edits (appends, front inserts, removals, swaps, trims).
 
 Benchmark, "Add message" (whole update: tree update, layout, draw list): 516 → 148 µs mean, p95 3.2 → 0.17 ms, max
-6.8 → 0.44 ms, 1.5 MB → 136 KB allocated (80 KB of that is the benchmark's own new array). **The "under 100 µs"
-goal (decision 9) was set wrong:** the 516 µs it was measured against includes the draw list (about 78 µs, the same
-in every scenario, nothing to do with the source), so the whole update can't go under about 100 µs. What depends
-on the source went from about 430 µs to about 64 µs of layout: reading 10,000 keys (about 35 µs, the O(items) part
-decision 3 accepted) and patching the 32 realized rows again (about 21 µs).
+6.8 → 0.44 ms, 1.5 MB → 136 KB allocated (80 KB of that is the benchmark's own new array). The first goal (the
+whole update under 100 µs) was set against a figure that included the draw list (about 78 µs, the same in every
+scenario), so it couldn't be met; decision 9 now names the source-dependent part, which went from about 430 µs to
+about 64 µs of layout (**met**): reading 10,000 keys (about 35 µs, the O(items) part decision 3 accepted) and
+patching the 32 realized rows again (about 21 µs).
 
 ## Rendering test hangs (2026-11-16)
 
