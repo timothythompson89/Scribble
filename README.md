@@ -154,7 +154,7 @@ app drew. Vulkan on Windows still has that problem with G-SYNC.
 
 The Gallery (`dotnet run --project samples/Gallery.Desktop`; until M8 step 3b the Counter demo) shows everything, one
 page per tab (Components, Layout, Controls, Scrolling, Layers, Styles; Images comes with M8 step 3b), each opening
-with its title and a line on what it shows, in a 720 × 560 window (a page scrolls when it doesn't fit). Every visited page stays in the tree and only the
+with its title and a line on what it shows, in a 720 × 560 window (a page scrolls when it doesn't fit; Scrolling instead fills the window, its list taking the height left). Every visited page stays in the tree and only the
 selected one has `isVisible true`, so each page keeps its state while hidden.
 
 1. Change something on each page (a count, the number in the load, the list), switch away and back: it's all still

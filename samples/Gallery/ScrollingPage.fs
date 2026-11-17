@@ -1,5 +1,6 @@
 /// The Scrolling page: 10,000 messages of varying length in an ItemsView inside a ScrollViewer (only the rows on
 /// screen exist), with buttons that jump to one through a scroller, and one that adds a message and scrolls to it.
+/// The page fills the window (the list takes the height left) instead of scrolling as a whole.
 module Scribble.Samples.Gallery.ScrollingPage
 
 open System
@@ -34,10 +35,13 @@ let private messages =
         let random = ctx.useMemo((), fun () -> Random 7)
         let jump (label: string) (id: unit -> int) =
             Button.create [ Button.text label; Button.onClick (fun _ -> scroller.ScrollTo(id (), ScrollAlign.Start)) ]
-        StackPanel.create [
-            StackPanel.spacing 8.0
-            StackPanel.children [
+        DockPanel.create [
+            // The buttons on top; the list takes the height left (no fixed height), so the page never scrolls
+            // and the buttons stay under the pointer while the list moves.
+            DockPanel.children [
                 WrapPanel.create [
+                    DockPanel.dock Dock.Top
+                    WrapPanel.margin (0.0, 0.0, 0.0, 8.0)
                     WrapPanel.spacing 8.0
                     WrapPanel.lineSpacing 8.0
                     WrapPanel.children [
@@ -56,7 +60,6 @@ let private messages =
                     ]
                 ]
                 ScrollViewer.create [
-                    ScrollViewer.height 340.0
                     ScrollViewer.content (
                         ItemsView.create [
                             ItemsView.name "messages"
@@ -76,6 +79,5 @@ let private messages =
         ])
 
 let view () =
-    page "Scrolling" "10,000 messages in an ItemsView: only the rows on screen exist, measured as they show." [
-        section "ItemsView in a ScrollViewer" "Wheel, drag the thumb or click the track; after a click in the list, arrows, PageUp/Down and Home/End. The jumps put a message at the top." (messages ())
-    ]
+    fillingPage "Scrolling" "10,000 messages in an ItemsView: only the rows on screen exist, measured as they show." (
+        fillingSection "ItemsView in a ScrollViewer" "Wheel, drag the thumb or click the track; after a click in the list, arrows, PageUp/Down and Home/End. The jumps put a message at the top." (messages ()))

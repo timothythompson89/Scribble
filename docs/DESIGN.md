@@ -200,6 +200,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 | IME | With TextBox polish | Text input events can carry composition |
 | macOS, Linux, mobile | After M10 | Everything goes through `IPlatform`/`IWindow` |
 | Responsive layout | A round of its own (the Gallery wants a sidebar on wide windows, tabs on narrow ones) | The TabControl's header row scrolls sideways; views can't read the window size yet |
+| Scroll only the nearest viewer | When an app nests a list in a scrolling page and wants the page to stay put (the browser's `scrollIntoView({ container: "nearest" })`; DESIGN.md, "Scrolling to an item ...", Tim, 2026-11-17) | `BringRectIntoView` already treats the nearest viewer apart from the ones around it; the scroller's requests carry their options |
 | Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
 
 ---
@@ -2209,6 +2210,17 @@ came through: undoing the exact slot instead put "scroll to the top" 0.43 DIPs o
 `ItemsViewTests` (an item added and scrolled to, on a page with a margin, jumping and animated) and
 `GalleryPagesTests` (the Gallery's "Add message" at three window heights); all five fail without the fix.
 440 unit tests, 61 rendering tests.
+
+**Then the page moving at all (Tim, 2026-11-17):** with the fix, "Add message" scrolled the page, and the button moved
+out from under the pointer. That is what every framework does by default (the browser's `scrollIntoView()`, WPF's
+`BringIntoView`, Flutter's `ensureVisible`: every scrollable ancestor moves), and apps avoid it by layout: a list
+screen's list fills the height left, so nothing around it scrolls. **Decided** (Tim, option 1 of three): the
+Gallery's Scrolling page fills the window (`Common.fillingPage`, `fillingSection`; `GalleryApp`'s pages say
+`Scrolls` or `Fills`), the list taking the height left instead of a fixed 340, so the page never scrolls; the
+behaviour in Core stays. Turned down for now: an option to scroll only the nearest viewer (the browser's newer
+`scrollIntoView({ container: "nearest" })`), in Deferred work until an app needs it; leaving it as it was.
+`GalleryPagesTests` now also checks the button stays where it was; `gallery-phone-scrolling@3x` regenerated (the
+list down to the page's bottom margin).
 
 ## M8 step 3b: images, and the Counter becomes the Gallery (planned 2026-11-17)
 

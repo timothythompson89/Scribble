@@ -17,14 +17,24 @@ open Scribble.Core
 open Scribble.Samples.Gallery
 open Scribble.Samples.Gallery.Common
 
-/// The pages: tab title, then the page.
+/// How a page uses the window's height.
+type private Height =
+    /// The page scrolls as a whole when the window is short (most pages: sections one under another).
+    | Scrolls
+    /// The page fills the window and scrolls inside (a `fillingPage`: a list taking the height left), so
+    /// scrolling to something in it never moves the page under the pointer.
+    | Fills
+
+/// The pages: tab title, the page, and how it uses the height.
 let private pages =
-    [ "Components", ComponentsPage.view
-      "Layout", LayoutPage.view
-      "Controls", ControlsPage.view
-      "Scrolling", ScrollingPage.view
-      "Layers", LayersPage.view
-      "Styles", StylesPage.view ]
+    [ "Components", ComponentsPage.view, Scrolls
+      "Layout", LayoutPage.view, Scrolls
+      "Controls", ControlsPage.view, Scrolls
+      "Scrolling", ScrollingPage.view, Fills
+      "Layers", LayersPage.view, Scrolls
+      "Styles", StylesPage.view, Scrolls ]
+
+let private titleOf i = let title, _, _ = pages[i] in title
 
 /// The window title's start; the selected tab's name follows it.
 let private appTitle = "Gallery"
@@ -59,19 +69,23 @@ let gallery =
                 ]
                 TabControl.create [
                     TabControl.margin (10.0, 0.0, 10.0, 0.0)
-                    TabControl.onSelectedChanged (fun i -> windowTitle.Set(appTitle + " – " + fst pages[i]))
+                    TabControl.onSelectedChanged (fun i -> windowTitle.Set(appTitle + " – " + titleOf i))
                     TabControl.tabs [
-                        for title, view in pages ->
+                        for title, view, height in pages ->
                             TabItem.create [
                                 TabItem.header title
-                                // Each page scrolls as a whole when the window is short (a page inside a
+                                // Most pages scroll as a whole when the window is short (a page inside a
                                 // StackPanel would get unlimited height and never scroll). The bar sits over the
-                                // pages' margin, so a page keeps its width whether or not it scrolls.
+                                // pages' margin, so a page keeps its width whether or not it scrolls. A filling
+                                // page gets the window's height instead.
                                 TabItem.content (
-                                    ScrollViewer.create [
-                                        ScrollViewer.scrollBarSpace ScrollBarSpace.Overlay
-                                        ScrollViewer.content (view ())
-                                    ]
+                                    match height with
+                                    | Scrolls ->
+                                        ScrollViewer.create [
+                                            ScrollViewer.scrollBarSpace ScrollBarSpace.Overlay
+                                            ScrollViewer.content (view ())
+                                        ]
+                                    | Fills -> view ()
                                 )
                             ]
                     ]
@@ -81,7 +95,7 @@ let gallery =
 
 /// Components and app values (the theme, the title) hold all the state, so the app has no messages of its own (hence `unit`).
 let app: AppSetting<unit> list =
-    [ App.title (appTitle + " – " + fst pages[0])
+    [ App.title (appTitle + " – " + titleOf 0)
       App.size (720.0, 560.0)
       App.theme darkTheme
       App.view (gallery ())

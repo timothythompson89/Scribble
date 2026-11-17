@@ -105,13 +105,13 @@ let ``every page opens with its title and a line on what it shows`` () =
             Assert.True(line.Length > 20, $"the {title} page's line: \"{line}\"")
         | other -> Assert.Fail($"the {title} page starts with {other.Length} texts")
 
-/// Scrolling page: "Add message" scrolls the list to the new message and the page just enough to show all of it
-/// (the page's bottom is below the window at 720 × 560).
+/// Scrolling page: "Add message" scrolls the list to the new message and shows all of it; the page fills the window,
+/// so the button stays under the pointer (Tim found it jumping away when the page scrolled as a whole).
 [<Theory>]
 [<InlineData(560.0)>]
 [<InlineData(500.0)>]
 [<InlineData(420.0)>]
-let ``"Add message" shows the whole new message, moving the page as needed`` (height: float) =
+let ``"Add message" shows the whole new message, and the button stays where it was`` (height: float) =
     let tree = ElementTree(textSystem ())
     tree.Update(Scribble.Samples.GalleryApp.gallery ())
     let size = Size.Create(720.0, height)
@@ -123,6 +123,9 @@ let ``"Add message" shows the whole new message, moving the page as needed`` (he
     settle ()
     click (tabControl tree) "Scrolling"
     settle ()
+    let button () =
+        all tree.Root.Value |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && e.IsVisible && firstText e = "Add message")
+    let at = button().PositionInTree
     for n in 1 .. 3 do
         click (tabControl tree).Parent.Value "Add message"
         settle ()
@@ -134,3 +137,4 @@ let ``"Add message" shows the whole new message, moving the page as needed`` (he
         Assert.True(p.Y >= 0.0 && p.Y + row.Bounds.Height <= height + 0.5,
                     $"message {n}: at {p.Y}..{p.Y + row.Bounds.Height} in a window {height} high; shows {row.VisibleBounds.Height} of {row.Bounds.Height}")
         Assert.Equal(row.Bounds.Height, row.VisibleBounds.Height, 1)
+        Assert.Equal(at, button().PositionInTree)
