@@ -238,3 +238,17 @@ same-named module (modules aren't inherited, so nothing collides with Border's).
   2026-11-16 (DESIGN.md, "Rendering test hangs").
 - **Open questions:** license (MIT or Apache 2.0) before the first public push; is "Scribble" free on NuGet;
   `RenderOffscreen` must become async for browser screenshot tests.
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown under `.scratch/<feature>/` (no remote yet). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels, as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` at the root; decisions in `docs/DESIGN.md` (no ADR files). See `docs/agents/domain.md`.
