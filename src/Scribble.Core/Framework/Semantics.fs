@@ -32,6 +32,10 @@ type Role =
     | Separator
     /// An app's own container that wants a name ("Shipping address").
     | Group
+    /// Content over everything else that takes all input until it closes, named by its title.
+    | Dialog
+    /// A short message that shows by itself (a toast), named by its text.
+    | Alert
 
     // Written out: a union's generated ToString uses %A, which NativeAOT can't run.
     override r.ToString() =
@@ -53,6 +57,8 @@ type Role =
         | Image -> "Image"
         | Separator -> "Separator"
         | Group -> "Group"
+        | Dialog -> "Dialog"
+        | Alert -> "Alert"
 
 /// The checked state of a checkbox, switch or toggle button (pressed, for a button).
 [<RequireQualifiedAccess>]

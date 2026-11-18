@@ -53,6 +53,10 @@ type internal OpenFlyout(anchor: Element, anchorLayer: Layer, layer: Layer, retu
     /// Focus moves into it after its first layout.
     member val FocusPending = true with get, set
     member val Ring = false with get, set
+    /// A dialog: its layer is modal and fills the window (a scrim with the box in the middle), not placed by an anchor.
+    member val IsDialog = false with get, set
+    /// A dialog's scrim starts clear and fades in once it has been laid out.
+    member val Entered = false with get, set
 
 /// Connects element trees to a window: lays them out at the window's size and scale, draws them
 /// on every Frame, and asks for a frame whenever something in them changes. `App.start` makes
@@ -222,8 +226,11 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
 
     // --- Flyouts (DESIGN.md, "M8 step 4", round 1) -------------------------------------------------
 
-    /// Flyouts stack above the app's own layers (dialogs, toasts), below the inspector.
-    let flyoutOrder = System.Int32.MaxValue - 2
+    /// Above the app's own layers: dialogs, then flyouts (one opened in a dialog shows over it), then toasts (an error
+    /// stays in sight over a dialog); all below the inspector.
+    let dialogOrder = System.Int32.MaxValue - 5
+    let flyoutOrder = System.Int32.MaxValue - 4
+    let toastOrder = System.Int32.MaxValue - 3
     let flyoutGap = 4.0
 
     let flyoutOf (anchor: Element) = openFlyouts |> Seq.tryFind (fun f -> obj.ReferenceEquals(f.Anchor, anchor))
@@ -232,12 +239,17 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// Whether presses elsewhere and Escape close it: the Flyout's own setting (styles included).
     let lightDismissOf (f: OpenFlyout) =
         match f.Layer.Tree.Root with
+        // A dialog: whether Escape asks to close it (the box is the scrim's child).
+        | ValueSome root when f.IsDialog -> root.Children.Count = 0 || root.Children[0].Get DialogProps.closeOnEscape
         | ValueSome root -> root.Get FlyoutProps.lightDismiss
         | _ -> true
 
     let flyoutView (f: OpenFlyout) (content: View) =
+        // A dialog: the box on its scrim, clear until it has been laid out once (then it fades in).
+        if f.IsDialog then Scrim.create [ Scrim.opacity (if f.Entered then 1.0 else 0.0); Scrim.content content ]
         // Hidden while its anchor doesn't show (it closes after the frame).
-        if f.Shown then content else content.With(LayoutProps.isVisible, box false)
+        elif f.Shown then content
+        else content.With(LayoutProps.isVisible, box false)
 
     /// Asks the anchor to close its flyout (an uncontrolled one closes; a controlled one's view decides). During a
     /// frame, after it, so what the handler changes asks for the next frame.
@@ -268,18 +280,27 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 let want = anchor.Root.IsSome && isIn anchorLayer && Flyouts.hasFlyout anchor && Flyouts.isOpen anchor
                 match flyoutOf anchor, want with
                 | None, true ->
+                    // A Dialog in the view stands where a flyout's anchor would: its layer is modal and fills the window.
+                    let isDialog = obj.ReferenceEquals(anchor.Type, DialogAnchor.Type)
                     let layer =
                         Layer.Create(
                             text,
-                            [ Layer.name ("Flyout of " + (if anchor.Name <> "" then anchor.Name else anchor.Type.Name))
-                              Layer.order flyoutOrder
+                            [ if isDialog then
+                                  Layer.name "Dialog"
+                                  Layer.order dialogOrder
+                                  Layer.modal true
+                              else
+                                  Layer.name ("Flyout of " + (if anchor.Name <> "" then anchor.Name else anchor.Type.Name))
+                                  Layer.order flyoutOrder
                               Layer.appStyles anchorLayer.UsesAppStyles ],
                             window.SetCursor)
                     layer.Tree.Owner <- ValueSome anchor
                     let f = OpenFlyout(anchor, anchorLayer, layer, anchorLayer.Focused)
+                    f.IsDialog <- isDialog
                     // The Flyout is the layer's root, placed beside the anchor where it is now (the tree lays out its root every
                     // frame, and the anchor moving brings one).
-                    layer.Tree.Place <- ValueSome(fun root window -> FlyoutPlacement.flyout f.Rect flyoutGap root window)
+                    if not isDialog then
+                        layer.Tree.Place <- ValueSome(fun root window -> FlyoutPlacement.flyout f.Rect flyoutGap root window)
                     f.Ring <- anchorLayer.Input.KeyboardMode
                     openFlyouts.Add f
                     addLayer layer
@@ -298,7 +319,8 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             let b = a.Bounds
             let rect = Rect.Create(p.X, p.Y, b.Width, b.Height)
             let visible = a.VisibleBounds
-            let shown = visible.Width > 0.0 && visible.Height > 0.0
+            // A dialog shows wherever it stands in the view (which has no size).
+            let shown = f.IsDialog || (visible.Width > 0.0 && visible.Height > 0.0)
             let changed =
                 f.Content.IsNone || not (obj.ReferenceEquals(f.Content.Value, content)) || f.Rect <> rect || f.Shown <> shown
             if changed then
@@ -319,7 +341,15 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 let f = openFlyouts[i]
                 let v = f.Anchor.VisibleBounds
                 let onAnchor = p.X >= v.X && p.X < v.X + v.Width && p.Y >= v.Y && p.Y < v.Y + v.Height
-                if onAnchor || f.Layer.Tree.HitTest(p.X, p.Y).IsSome then stop <- true
+                if f.IsDialog then
+                    // Nothing below a dialog is reached. A press on its scrim (not the box) asks to close it, if it says so.
+                    stop <- true
+                    match f.Layer.Tree.Root, f.Layer.Tree.HitTest(p.X, p.Y) with
+                    | ValueSome root, ValueSome hit when obj.ReferenceEquals(root, hit) && root.Children.Count > 0 && root.Children[0].Get DialogProps.lightDismiss ->
+                        dismiss f
+                        dismissed <- true
+                    | _ -> ()
+                elif onAnchor || f.Layer.Tree.HitTest(p.X, p.Y).IsSome then stop <- true
                 elif lightDismissOf f then
                     dismiss f
                     dismissed <- true
@@ -593,6 +623,11 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                     f.FocusPending <- false
                     pressedLayer <- ValueSome l
                     l.Input.FocusFirst f.Ring
+                    if f.IsDialog then
+                        // Laid out once, clear: now it fades in (the theme's transition on the scrim's opacity).
+                        f.Entered <- true
+                        f.Content |> ValueOption.iter (fun content -> l.Update(flyoutView f content))
+                        window.RequestFrame()
                 | _ -> ()
             syncFlyouts ()
             // A layer that went away starts the walk again (laying out what's laid out is cheap).

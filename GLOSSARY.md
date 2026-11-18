@@ -165,6 +165,22 @@ _Avoid_: popup, dropdown (for the mechanism; a ComboBox's list is its flyout)
 **Tooltip**:
 A short hint shown near the pointer after it rests on an element; never focused, never clicked.
 
+**Dialog**:
+Content shown in its own layer over a scrim, taking all input until it closes; the view says whether it is open. The Dialog is also the box its content sits in.
+_Avoid_: modal, popup, message box
+
+**Scrim**:
+The dimming a dialog lays over everything below it.
+_Avoid_: backdrop, overlay, dimmer
+
+**Toast**:
+A short message shown for a few seconds at the window's edge, as an action; it never takes focus.
+_Avoid_: notification, snackbar, alert (for the message)
+
+**Toaster**:
+The controller an app shows toasts with (`toaster.Show "Saved"`), from anywhere.
+_Avoid_: notification service, toast manager
+
 **Host**:
 What runs a window's layers: input, frames and the window's theme (`ElementHost`).
 _Avoid_: window (for the host), root

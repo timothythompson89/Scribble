@@ -28,6 +28,8 @@ module Palette =
     let hoverTint = ThemeValue.define "Palette.hoverTint" (Color.White.WithAlpha 0.08f)
     /// Laid over a control while pressed.
     let pressTint = ThemeValue.define "Palette.pressTint" (Color.Black.WithAlpha 0.2f)
+    /// The dimming a dialog lays over everything below it.
+    let scrim = ThemeValue.define "Palette.scrim" (Color.Black.WithAlpha 0.55f)
     /// The scrollbar's thumb.
     let scrollThumb = ThemeValue.define "Palette.scrollThumb" (Color.White.WithAlpha 0.3f)
     /// The faint track under the scrollbar thumb while the pointer is on the bar.
@@ -57,6 +59,11 @@ module internal ThemeConvert =
         fun v ->
             let s = unbox<BoxShadow> v
             box (ValueSome { s with Blur = s.Blur * 4.0; OffsetY = s.OffsetY * 4.0 })
+    /// The same shadow under a dialog: wider and lower still.
+    let dialogShadow: obj -> obj =
+        fun v ->
+            let s = unbox<BoxShadow> v
+            box (ValueSome { s with Blur = s.Blur * 8.0; OffsetY = s.OffsetY * 8.0 })
     /// A number theme value as a uniform corner radius.
     let uniformCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v))
     /// Half of a number theme value as a uniform corner radius (a CheckBox's box).

@@ -443,6 +443,7 @@ type Theme internal (values: Dictionary<int, obj>, looks: Lazy<Style list * stru
     static member focusRing(value: Scribble.Rendering.Color) = Theme.set Palette.focusRing value
     static member hoverTint(value: Scribble.Rendering.Color) = Theme.set Palette.hoverTint value
     static member pressTint(value: Scribble.Rendering.Color) = Theme.set Palette.pressTint value
+    static member scrim(value: Scribble.Rendering.Color) = Theme.set Palette.scrim value
     static member scrollThumb(value: Scribble.Rendering.Color) = Theme.set Palette.scrollThumb value
     static member scrollTrack(value: Scribble.Rendering.Color) = Theme.set Palette.scrollTrack value
     static member shadow(value: BoxShadow) = Theme.set Palette.shadow value

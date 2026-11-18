@@ -70,9 +70,9 @@ inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`Button
 each in its own layer, light dismiss, placement) and tooltips. Rendering to an image and saving it (2026-11-18): `ViewImage.render`,
 `Capture`, `Image.toPng`, `Files.save`, the PNG encoder and async readback on desktop and browser. M8 step 4b (2026-11-18): `ItemsView.keySelector` and `viewSelector`, `ListBox` (selection by key in None, Single or Multiple mode, keyboard, invoking) with `ListBoxItem`, `RadioGroup` and `RadioButton`, and the Gallery's Lists page.
 
-Tim tried M8 step 4b on the desktop and passed it (2026-11-18), with Tab order as view order and `Dock.Fill`. M8 step 4c (2026-11-18), built and waiting for Tim: `ComboBox` (a box showing one item picked from a ListBox in its flyout; `source`, `keySelector`, `viewSelector`, `selected`, `placeholder`; both keyboards) and the Controls page's ComboBox section.
+Tim tried M8 step 4b on the desktop and passed it (2026-11-18), with Tab order as view order and `Dock.Fill`. Tim passed M8 step 4c too (2026-11-18, the whole checklist, the browser pass included): `ComboBox` (a box showing one item picked from a ListBox in its flyout; `source`, `keySelector`, `viewSelector`, `selected`, `placeholder`; both keyboards) and the Controls page's ComboBox section.
 
-Next: Tim tries M8 step 4c (section "4c: ComboBox"), then 4d Dialog and Toast. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: M8 step 4d Dialog and Toast. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -3278,7 +3278,7 @@ closes on the invoke; typeahead waits for M9 (4b, decision 4).
     and the phone pass at 390 DIPs.
 15. **GLOSSARY:** no new term (its list is "its flyout"; the closed part is "the box" in prose).
 
-Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18.
+Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18. Passed by Tim 2026-11-18.
 
 **As built (2026-11-18):**
 - `Elements/Controls/ComboBox.fs`, after RadioButton. The element manages its own content as TabControl does: in
@@ -3320,6 +3320,56 @@ Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18.
   STATES; `gallery-phone-controls@3x` has a shorter scrollbar thumb (the page is longer). The phone picture doesn't
   reach the ComboBox section (it's below the fold): not covered by a picture at 390 DIPs. Unit: 1,081 passed plus
   6 timing skipped. Rendering: 90. Timing: 6.
+
+### 4d: Dialog and Toast (planned 2026-11-18)
+
+Facts: a modal layer already blocks pointer and keyboard below it, has its own focus and Tab order and hides the
+layers below from the semantic tree; step 4's decision 4 gives each dialog its own layer in opening order and the
+toasts one fixed layer; the Gallery faked both with two fixed `App.layer`s listening to F# events, and timed its
+toasts with `Task.Delay` (against "time comes from the platform").
+
+**Round 1 (Tim: yes to all, 2026-11-18).**
+1. **A `Dialog` element in the view,** not a setting on another element: `Dialog.create [ Dialog.isOpen
+   model.Confirming; Dialog.onOpenChanged ...; Dialog.content view ]` sits anywhere, takes no space, and shows its
+   content in its own modal layer. A flyout belongs to its anchor; a dialog has none.
+2. **Always controlled:** `isOpen` and `onOpenChanged` (Flyout's names). Nothing clicks a dialog open, so an own
+   open state would have no trigger.
+3. **The Dialog is also the box** (as Flyout is): the theme's surface, corners, padding and a shadow, centred.
+   `Dialog.title "Delete file?"` is optional: a heading, and its name for screen readers. Buttons are the app's
+   content; a helper for an OK/Cancel row waits for two real dialogs.
+4. **Closing:** Escape asks to close by default; a press on the scrim does not. `Dialog.lightDismiss true` adds
+   the scrim press; `Dialog.closeOnEscape false` is for a dialog that must be answered.
+5. **Focus:** on opening, the first Tab stop inside; Tab stays inside; on closing, back to what had it. Choosing
+   another first element waits for focusing from code.
+6. **The scrim** is a theme value (`Palette.scrim`); scrim and box fade in over 120 ms.
+7. **Size:** at most 560 DIPs wide and never closer than 16 DIPs to the window's edges; content too tall scrolls
+   if the app puts it in a ScrollViewer.
+8. **Semantics:** a new role `Dialog`, named by its title.
+9. **A `Toaster` the app makes and gives to the app:** `let toaster = Toaster()`, `App.toaster toaster`, then
+   `toaster.Show "Saved"` from anywhere, on any thread. The Scroller pattern (a controller for an action); it
+   works where there is no component (`App.onError`, `update`). Rejected: a static `Toast.show` (static state
+   shared between hosts: engineering rule 6).
+10. **Two forms:** `toaster.Show "text"` and `toaster.Show [ Toast.text ...; Toast.kind ToastKind.Error;
+    Toast.duration ...; Toast.action ("Undo", undo) ]`. Kinds Info (default) and Error now; `Toast.content view`
+    in place of the text.
+11. **A toast stays 4 seconds,** waits while the pointer is over it, and has a close button; an Error stays until
+    closed. Platform time, no frames while waiting.
+12. **Placement is fixed:** bottom right, newest lowest; across the bottom on a window narrower than 480 DIPs. At
+    most three show; the rest wait.
+13. **They slide and fade** in and out over 150 ms.
+14. **Toasts never take keyboard focus** and Tab doesn't reach them. Known gap: a toast's action is pointer-only
+    until the keyboard has a way there (F6 on Windows). A new role `Alert` names them; announcing them waits for
+    the first screen-reader bridge.
+15. **Stacking:** app layers, dialogs, flyouts, toasts, the inspector. A flyout opened in a dialog is above it; an
+    error toast stays visible and closable over a dialog.
+16. **`App.onError` keeps its meaning** (no handler: an error ends the app). The Gallery's handler shows an Error
+    toast.
+17. **Gallery:** the Layers page's dialog and toasts move onto `Dialog` and the `Toaster`; the two `App.layer`
+    lines and the F# events go. No `App.layer` example stays in the Gallery (the README documents it).
+18. **GLOSSARY:** Dialog, Toast, Toaster, Scrim.
+19. **Two commits** (Dialog, then toasts), one checking pass.
+
+Status: **agreed (Tim, 2026-11-18: "yes to all").**
 
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 

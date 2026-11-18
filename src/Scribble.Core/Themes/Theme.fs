@@ -9,6 +9,8 @@ open Scribble.Rendering
 module internal ThemeLooks =
     /// How long hover and pressed tints fade.
     let private tintTime = TimeSpan.FromMilliseconds 100.0
+    /// How long a dialog takes to fade in.
+    let private fadeTime = TimeSpan.FromMilliseconds 120.0
     /// How long a press takes to sink in and spring back.
     let private pressTime = TimeSpan.FromMilliseconds 120.0
     /// The theme's shadow, flat (pressed or disabled).
@@ -147,6 +149,16 @@ module internal ThemeLooks =
               Flyout.padding 4.0
               Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
           ]
+          // A dialog (M8 step 4d): the scrim dims what's below and fades in with the box on it.
+          Scrim.style [] [ Scrim.background Palette.scrim; Style.transition LayoutProps.opacity fadeTime ]
+          Dialog.style [] [
+              Dialog.background Palette.surface
+              Dialog.borderBrush Palette.border
+              Dialog.borderThickness 1.0
+              Dialog.cornerRadius Palette.cornerRadius
+              Dialog.padding 20.0
+              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.dialogShadow
+          ]
           TooltipPresenter.style [] [
               TooltipPresenter.background Palette.surface
               TooltipPresenter.borderBrush Palette.border
@@ -194,6 +206,7 @@ module ThemeExtensions =
                   Theme.focusRing (Color.Hex 0x2F5BD3)
                   Theme.hoverTint (Color.Black.WithAlpha 0.05f)
                   Theme.pressTint (Color.Black.WithAlpha 0.1f)
+                  Theme.scrim (Color.Black.WithAlpha 0.3f)
                   Theme.scrollThumb (Color.Black.WithAlpha 0.3f)
                   Theme.scrollTrack (Color.Black.WithAlpha 0.05f)
                   Theme.shadow { Blur = 3.0; OffsetX = 0.0; OffsetY = 1.0; Spread = 0.0; Color = Color.Rgba(0.0f, 0.0f, 0.0f, 0.15f) } ]
