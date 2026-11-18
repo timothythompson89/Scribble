@@ -39,9 +39,10 @@ dotnet publish samples/Hello.Desktop -c Release   # NativeAOT exe (needs VS C++ 
 dotnet publish samples/Hello.Browser -c Release -p:BrowserAot=true   # wasm AOT (wasm-tools workload)
 dotnet run --project tools/Scribble.Serve         # browser samples on the local network over HTTPS; hub + QR on :5279
 dotnet run -c Release --project tools/Scribble.Bench   # ItemsView costs
+dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through WIC (only if PngSuite changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 440 unit tests plus 5
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 785 unit tests plus 6
   timing tests skipped; 61 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and
