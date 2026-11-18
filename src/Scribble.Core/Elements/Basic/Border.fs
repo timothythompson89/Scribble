@@ -2,9 +2,9 @@ namespace Scribble.Core
 
 open Scribble.Rendering
 
-/// How a Border's border is drawn along its length.
+/// How a line is drawn along its length: a Border's border (`borderStyle`), a Separator (`lineStyle`).
 [<RequireQualifiedAccess>]
-type BorderStyle =
+type LineStyle =
     | Solid
     /// Dashes 3 × the thickness long with 2 × the thickness between them, unless `Border.borderDash` says otherwise.
     | Dashed
@@ -17,8 +17,8 @@ module BorderProps =
     /// Border width in DIPs, the same on all sides (per-side borders come later).
     let borderThickness = Prop.define "BorderThickness" 0.0 Affects.Measure
     let cornerRadius = Prop.define "CornerRadius" CornerRadius.Zero Affects.Render
-    let borderStyle = Prop.define "BorderStyle" BorderStyle.Solid Affects.Render
-    /// Dash and gap lengths in DIPs for `BorderStyle.Dashed` (ValueNone: from the thickness).
+    let borderStyle = Prop.define "BorderStyle" LineStyle.Solid Affects.Render
+    /// Dash and gap lengths in DIPs for `LineStyle.Dashed` (ValueNone: from the thickness).
     let borderDash: Prop<struct (float * float) voption> = Prop.define "BorderDash" ValueNone Affects.Render
     let padding = Prop.define "Padding" Thickness.Zero Affects.Measure
     let shadow: Prop<BoxShadow voption> = Prop.define "Shadow" ValueNone Affects.Render
@@ -39,7 +39,7 @@ type Border =
     static member borderThickness<'k when 'k :> Border>(value: float) : Setting<'k> = Setting.create BorderProps.borderThickness value
     /// Solid (default), dashed or dotted. Dashes follow rounded corners and are evened out so the
     /// pattern meets itself.
-    static member borderStyle<'k when 'k :> Border>(value: BorderStyle) : Setting<'k> = Setting.create BorderProps.borderStyle value
+    static member borderStyle<'k when 'k :> Border>(value: LineStyle) : Setting<'k> = Setting.create BorderProps.borderStyle value
     /// Dash and gap lengths in DIPs for a dashed border (default: 3 × and 2 × the thickness).
     static member borderDash<'k when 'k :> Border>(dash: float, gap: float) : Setting<'k> = Setting.create BorderProps.borderDash (ValueSome(struct (dash, gap)))
     static member cornerRadius<'k when 'k :> Border>(value: CornerRadius) : Setting<'k> = Setting.create BorderProps.cornerRadius value
@@ -68,11 +68,11 @@ module Border =
         p.Horizontal + 2.0 * t, p.Vertical + 2.0 * t
 
     /// The drawing style for a border style, dash lengths and thickness.
-    let internal strokeStyle (style: BorderStyle) (dash: struct (float * float) voption) (thickness: float) =
+    let internal strokeStyle (style: LineStyle) (dash: struct (float * float) voption) (thickness: float) =
         match style with
-        | BorderStyle.Solid -> StrokeStyle.Solid
-        | BorderStyle.Dotted -> StrokeStyle.Dotted
-        | BorderStyle.Dashed ->
+        | LineStyle.Solid -> StrokeStyle.Solid
+        | LineStyle.Dotted -> StrokeStyle.Dotted
+        | LineStyle.Dashed ->
             match dash with
             | ValueSome(struct (d, g)) -> StrokeStyle.Dashed(d, g)
             | ValueNone -> StrokeStyle.Dashed(3.0 * thickness, 2.0 * thickness)

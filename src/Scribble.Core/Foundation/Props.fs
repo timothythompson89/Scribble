@@ -207,8 +207,15 @@ type internal ThemeRef(themeValue: ThemeKey, convert: (obj -> obj) voption) =
 ///
 /// Define properties once, as module-level values, with `Prop.define` (see Element.fs).
 [<AbstractClass>]
-type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed: obj, same: obj -> obj -> bool, lerp: (obj -> obj -> float -> obj) voption) =
+type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed: obj, same: obj -> obj -> bool, lerp: (obj -> obj -> float -> obj) voption, valueType: Type) =
     let id = Ids.NextProp()
+    // A handler: its value is a function, or an optional one (`onClick`). Styles can't set handlers (they have no model).
+    let isHandler =
+        let isFunction (t: Type) = t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<obj -> obj>
+        isFunction valueType
+        || (valueType.IsGenericType
+            && (valueType.GetGenericTypeDefinition() = typedefof<obj voption> || valueType.GetGenericTypeDefinition() = typedefof<obj option>)
+            && isFunction (valueType.GetGenericArguments()[0]))
     // This property's transition duration, as a property of its own (`Style.transition`), made on first use.
     let mutable transition: Prop<TimeSpan voption> voption = ValueNone
 
@@ -237,6 +244,12 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal IsStyles = false with get, set
     /// Styles can't set it (children, and what decides matching or identity).
     member val internal NotStylable = false with get, set
+    /// App state: a controlled value (`isChecked`, `value`, `selected`, `isOpen`) or a flyout. Styles can't set it, nor a
+    /// handler or content: a style has no model, no `dispatch`, no idea which element it's on (DESIGN.md, "M8 step 4",
+    /// round 1f).
+    member val internal IsAppState = false with get, set
+    /// Its value is a function (`onClick`, `onValueChanged`): a handler.
+    member internal _.IsHandler = isHandler
     /// Inherited: without a value of its own (or from a style or its type), an element takes its
     /// nearest ancestor's, else its theme's (`foreground`, `font`, `fontSize`).
     member val internal Inherits = false with get, set
@@ -294,8 +307,14 @@ and [<Sealed>] Prop<'T> internal (name: string, defaultValue: 'T, affects: Affec
     inherit Prop(
         name, affects, kind, box defaultValue,
         (fun a b -> EqualityComparer<'T>.Default.Equals(unbox<'T> a, unbox<'T> b)),
-        Interpolation.forType typeof<'T>)
+        Interpolation.forType typeof<'T>, typeof<'T>)
     member _.Default = defaultValue
+
+/// Marks a property as app state: styles can't set it (`Prop.IsAppState`).
+module internal AppState =
+    let mark (p: 'P when 'P :> Prop) =
+        p.IsAppState <- true
+        p
 
 /// Where elements find base values for inherited properties: a theme (`Layoutable.theme`,
 /// `App.theme`). Implemented by `Theme`.
@@ -424,9 +443,9 @@ module InheritedProps =
 module ToggleButtonProps =
     /// On or off. Given by the view: controlled; otherwise the control's own value, kept across
     /// rebuilds (a click sets it, and the view never had it, so a patch leaves it).
-    let isChecked = Prop<bool>("IsChecked", false, Affects.Render, PropKind.Value)
+    let isChecked = Prop<bool>("IsChecked", false, Affects.Render, PropKind.Value) |> AppState.mark
     /// A CheckBox's "partly checked" dash (display only).
-    let isIndeterminate = Prop<bool>("IsIndeterminate", false, Affects.Render, PropKind.Value)
+    let isIndeterminate = Prop<bool>("IsIndeterminate", false, Affects.Render, PropKind.Value) |> AppState.mark
     /// Called with the new value when the user changes it.
     let onCheckedChanged = Prop<(bool -> unit) voption>("OnCheckedChanged", ValueNone, Affects.Nothing, PropKind.Value)
     /// A CheckBox's tick and dash, a Switch's knob.
@@ -434,7 +453,7 @@ module ToggleButtonProps =
 
 /// A TabControl's header: whether it's the selected tab. Declared here so `States.isSelected` can read it.
 module TabHeaderProps =
-    let isSelected = Prop<bool>("IsSelected", false, Affects.Render, PropKind.Value)
+    let isSelected = Prop<bool>("IsSelected", false, Affects.Render, PropKind.Value) |> AppState.mark
 
 /// The engine's typed copy of an element's layout properties (read on every measure and arrange).
 [<Struct>]

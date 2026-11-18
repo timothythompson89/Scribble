@@ -202,6 +202,40 @@ let ``styles can't set children, classes or names`` () =
     Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Border.classes [ card ] ] |> ignore) |> ignore
     Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Border.name "x" ] |> ignore) |> ignore
 
+/// The message a style made with `make` refuses with.
+let private refusal (make: unit -> Style) = (Assert.Throws<ArgumentException>(fun () -> make () |> ignore)).Message
+
+[<Fact>]
+let ``styles never set app state: handlers, controlled values, content, flyouts and tooltips`` () =
+    // Handlers, found by their type: the built-in ones and an element author's own.
+    let onPoke: Prop<(int -> unit) voption> = Prop.define "OnPoke" ValueNone Affects.Nothing
+    for make in
+        [ (fun () -> Button.style [] [ Button.onClick (fun _ -> ()) ])
+          (fun () -> Slider.style [] [ Slider.onValueChanged ignore ])
+          (fun () -> Border.style [] [ Setting.create onPoke (ValueSome ignore) ]) ] do
+        Assert.Contains("handlers come from views", refusal make)
+    // Controlled values, content, a flyout or a tooltip.
+    for make in
+        [ (fun () -> CheckBox.style [] [ CheckBox.isChecked true ])
+          (fun () -> Slider.style [] [ Slider.value 5.0 ])
+          (fun () -> TabControl.style [] [ TabControl.selected 1 ])
+          (fun () -> Border.style [] [ Border.content (Border.create []) ])
+          (fun () -> Button.style [] [ Button.flyout (Border.create []) ])
+          (fun () -> Flyout.style [] [ Flyout.isOpen true ])
+          (fun () -> Flyout.style [] [ Flyout.onOpenChanged ignore ])
+          (fun () -> Button.style [] [ Button.tooltip "Hi" ]) ] do
+        Assert.Contains("come from views", refusal make)
+    Assert.Contains("content and app state", refusal (fun () -> CheckBox.style [] [ CheckBox.isChecked true ]))
+    // A state block is a style, in a view too: checked when it's made.
+    let inBlock = Assert.Throws<ArgumentException>(fun () -> Button.create [ Button.on States.hover [ Button.onClick (fun _ -> ()) ] ] |> ignore)
+    Assert.Contains("handlers come from views", inBlock.Message)
+
+[<Fact>]
+let ``styles still set how things look and behave`` () =
+    Flyout.style [ Style.parent Button.Type [] ] [ Flyout.placement Placement.Right; Flyout.lightDismiss false; Flyout.padding 0.0 ] |> ignore
+    Slider.style [] [ Slider.step 5.0; Slider.isEnabled false ] |> ignore
+    CheckBox.style [ Style.cls primary ] [ Style.on States.isChecked [ CheckBox.markColor red ] ] |> ignore
+
 [<Fact>]
 let ``Values says which style set a value`` () =
     let t = tree [ Button.style [ Style.cls primary ] [ Style.on States.hover [ Button.background red ] ] ]

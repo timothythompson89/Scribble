@@ -775,7 +775,12 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
   `isEnabled` or styles changing, a state changing (and the subtree when a style tests an ancestor's state, as with
   `inside Button.Type [ States.hover ]`). An app without styles pays nothing.
 - Styles compare by reference: define them once at module level, not inside a view function.
-- Styles can't set children, classes, styles, name or key (that throws when the style is made).
+- **Styles set how things look and behave, never app state:** a style has no model, no `dispatch` and no idea which
+  element it's on. So it can't set handlers (`onClick`, any `on…`), controlled values (`isChecked`, `value`,
+  `selected`, `Flyout.isOpen`), content (`content`, `children`, tabs, headers, items), a `flyout` or a tooltip. Nor
+  can it set what decides matching (classes, styles, name, key, theme). Each throws when the style (or a state block,
+  `Button.on States.hover [ … ]`) is made, saying
+  why; for "these buttons get this menu", use a function or a shared settings list in the view.
 - Element authors: add `let style parts (settings: Setting<MyElement> list) = Style.forType Type parts settings`
   next to `create`; a state read from a property is `States.ofProp "checked" CheckBoxProps.isChecked id` (matched
   again by itself); any other state is `States.define "name" (fun e -> ...)`, and `element.RefreshStates()` says it
@@ -994,8 +999,8 @@ Fixed and Auto columns come first; stars share what's left by weight (within the
 (a ScrollViewer's direction) stars act as Auto; a child that spans a star column doesn't widen the Auto columns it
 also spans. Lines land on whole physical pixels, so cells tile with no gaps. `DockPanel.dock Dock.Top`,
 `Canvas.left 40.0`, `Layoutable.zIndex 1` (drawn and hit above its siblings; Tab order stays the view's) and
-`Separator.create [ Separator.orientation Vertical; Separator.lineStyle BorderStyle.Dashed ]` work the same way.
-Borders can be dashed or dotted: `Border.borderStyle BorderStyle.Dashed`, `Border.borderDash (6.0, 3.0)`.
+`Separator.create [ Separator.orientation Vertical; Separator.lineStyle LineStyle.Dashed ]` work the same way.
+Borders can be dashed or dotted: `Border.borderStyle LineStyle.Dashed`, `Border.borderDash (6.0, 3.0)`.
 
 Settings are checked at compile time: `TextBlock.margin` works because every element has a margin, while
 `TextBlock.create [ Border.background … ]` is a type error. Every element has margin, width/height, min/max sizes,

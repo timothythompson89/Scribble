@@ -88,7 +88,7 @@ let private shell =
                         TextBlock.foreground Palette.textDim
                         TextBlock.margin (8.0, 4.0)
                     ]
-                    Separator.create [ DockPanel.dock Dock.Bottom; Separator.lineStyle BorderStyle.Dashed ]
+                    Separator.create [ DockPanel.dock Dock.Bottom; Separator.lineStyle LineStyle.Dashed ]
                     StackPanel.create [
                         DockPanel.dock Dock.Left
                         StackPanel.width 110.0
@@ -139,7 +139,7 @@ let private canvasDemo =
                 Border.borderThickness 2.0
                 // The theme's text color: it shows against the page in both themes (white vanished in light).
                 if selected.Current = b.Id then Border.borderBrush Palette.text else Border.borderBrush Color.Transparent
-                Border.borderStyle BorderStyle.Dashed
+                Border.borderStyle LineStyle.Dashed
                 Border.cursor Cursor.Move
                 Border.onPointerDown (fun e ->
                     let top = (boxes.Current |> List.map _.Z |> List.max) + 1
@@ -198,8 +198,8 @@ let private chips =
             chip "wgpu-native" []
             chip "NativeAOT" []
             chip "WebAssembly" []
-            chipWith 2.0 "dotted" [ Border.borderStyle BorderStyle.Dotted ]
-            chip "dashed" [ Border.borderStyle BorderStyle.Dashed ]
+            chipWith 2.0 "dotted" [ Border.borderStyle LineStyle.Dotted ]
+            chip "dashed" [ Border.borderStyle LineStyle.Dashed ]
         ]
     ]
 

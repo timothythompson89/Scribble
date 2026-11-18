@@ -36,8 +36,9 @@ module FlyoutProps =
     do
         // The host hears when the view gives an element another flyout (opened or closed, say).
         flyout.Watched <- true
-        for p in [ flyout :> Prop; isOpen; onOpenChanged ] do
-            p.NotStylable <- true
+        // App state: styles can't give an element its flyout or tooltip, or open one (round 1f).
+        for p in [ flyout :> Prop; isOpen; tooltip; tooltipView ] do
+            p.IsAppState <- true
 
 /// Opening and closing a flyout from its anchor (the host shows it).
 module internal Flyouts =

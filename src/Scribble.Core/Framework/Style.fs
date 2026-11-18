@@ -275,9 +275,15 @@ type internal Rule =
       AncestorStates: bool }
 
 module internal Rule =
-    let private check (p: Prop) =
-        if p.Kind <> PropKind.Value || p.NotStylable || p.IsStyles || p.IsLocal then
-            invalidArg "settings" ("Styles can't set " + p.Name + " (children, classes, styles, name and key are set in views).")
+    /// Styles set how things look and behave, never app state (DESIGN.md, "M8 step 4", round 1f): a style has no model,
+    /// no `dispatch` and no idea which element it's on. Nor what decides matching (classes, name, key, theme, styles).
+    let check (p: Prop) =
+        if p.IsHandler then
+            invalidArg "settings" ("Styles can't set " + p.Name + ": handlers come from views, where the model is.")
+        elif p.Kind <> PropKind.Value || p.IsAppState then
+            invalidArg "settings" ("Styles can't set " + p.Name + ": content and app state come from views, where the model is.")
+        elif p.NotStylable || p.IsStyles || p.IsLocal then
+            invalidArg "settings" ("Styles can't set " + p.Name + " (classes, styles, name, key and theme decide what styles match; set them in views).")
 
     /// The rules for a selector and its settings: the plain settings, then each state block's
     /// (nested blocks add their state to the selector), in order, so later ones win.
@@ -360,6 +366,9 @@ type Style internal (rules: Rule[], description: string) =
     /// `Button.style [ Style.cls "primary" ] [ Button.background c; Style.on States.hover [ ... ] ]`.
     /// Blocks nest (hover inside focused: both). In a view, write `Button.on` (the same thing).
     static member on<'k> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> =
+        // A state block is a style, in a style or a view: checked when made, like one.
+        for s in settings do
+            if not s.Prop.IsStateBlock then Rule.check s.Prop
         Setting.create state.BlockProp (ValueSome(StateBlock(state, [| for s in settings -> struct (s.Prop, s.Value) |])))
 
     /// Fades `prop` from its old value to its new one over `duration` whenever it changes (not when

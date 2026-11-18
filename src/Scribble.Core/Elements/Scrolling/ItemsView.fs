@@ -49,11 +49,11 @@ type internal ItemsState() =
 type internal Anchor = { Key: obj; Into: float; Height: float; Next: obj[] }
 
 module ItemsViewProps =
-    let internal source = Prop.define "Source" ItemsSource.Empty Affects.Measure
-    let internal key = Prop.define "Key function" (TypedKeyFunc<obj, obj>(id) :> KeyFunc) Affects.Nothing
-    let internal view = Prop.define "View function" (ItemsFunc<View voption>(fun _ -> ValueNone)) Affects.Measure
+    let internal source = Prop.define "Source" ItemsSource.Empty Affects.Measure |> AppState.mark
+    let internal key = Prop.define "Key function" (TypedKeyFunc<obj, obj>(id) :> KeyFunc) Affects.Nothing |> AppState.mark
+    let internal view = Prop.define "View function" (ItemsFunc<View voption>(fun _ -> ValueNone)) Affects.Measure |> AppState.mark
     let layout = Prop.define "Layout" ItemsLayout.Stack Affects.Measure
-    let scroller = Prop.define "Scroller" (ValueNone: Scroller voption) Affects.Measure
+    let scroller = Prop.define "Scroller" (ValueNone: Scroller voption) Affects.Measure |> AppState.mark
     let internal state = Prop.local "ItemsState" (null: ItemsState)
 
 /// Shows many items, realizing only the ones the ScrollViewers around it show (plus a little more),

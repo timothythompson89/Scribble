@@ -6,9 +6,9 @@ open Scribble.Rendering
 
 module TabItemProps =
     /// The header's text.
-    let header = Prop.define "Header" "" Affects.Nothing
+    let header = Prop.define "Header" "" Affects.Nothing |> AppState.mark
     /// Header content instead of text (an icon and text). A plain value, so the page doesn't realize it.
-    let headerView: Prop<View voption> = Prop.define "HeaderView" ValueNone Affects.Nothing
+    let headerView: Prop<View voption> = Prop.define "HeaderView" ValueNone Affects.Nothing |> AppState.mark
     /// The page.
     let content = Prop.content "Content"
     /// Keep the page (hidden, with its state) after leaving it; false lets it go.
@@ -76,10 +76,10 @@ module TabHeader =
 
 module TabControlProps =
     /// The selected tab's index. Given by the view: controlled; otherwise the control's own value.
-    let selected = Prop.define "Selected" 0 Affects.Measure
+    let selected = Prop.define "Selected" 0 Affects.Measure |> AppState.mark
     let onSelectedChanged: Prop<(int -> unit) voption> = Prop.define "OnSelectedChanged" ValueNone Affects.Nothing
     /// The tabs: TabItem views, kept as plain values (the TabControl realizes pages itself).
-    let tabs: Prop<View list> = Prop.define "Tabs" [] Affects.Measure
+    let tabs: Prop<View list> = Prop.define "Tabs" [] Affects.Measure |> AppState.mark
     /// The line under the header row and the selected tab's underline.
     let line = Prop.define "Line" (Color.Hex 0x4A4A68) Affects.Render
     let underline = Prop.define "Underline" (Color.Hex 0x3D59A1) Affects.Render

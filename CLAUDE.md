@@ -43,7 +43,7 @@ dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through 
 dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if a picture changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 876 unit tests plus 6
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 878 unit tests plus 6
   timing tests skipped; 76 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and
@@ -132,7 +132,8 @@ module ProgressBar =                                             // the element:
   Helpers go in the module as `private`, or `internal` when a derived element needs them (`Border.draw`).
 - **Naming** (decision 8): a control's value setting is named for what it is (`isChecked`, `value`, `selected`),
   its change event `on<Name>Changed`, the end of a drag `on<Name>Committed`. A control is controlled when the view
-  gives its value, else it keeps its own (`Control.fs`).
+  gives its value, else it keeps its own (`Control.fs`). Mark the value `|> AppState.mark` (styles never set app state;
+  handlers are found by their type).
 - Every element stretches by default; a control whose click area should stay small sets its own alignment
   (CheckBox and Switch: `Left`).
 - Unit tests for behaviour; a screenshot test when it draws something new.

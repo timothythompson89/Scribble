@@ -170,6 +170,9 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Naming:** a control's value setting is named for what it is (`isChecked`, `value`, `selected`), its change
   event `on<Name>Changed`, and the end of a drag `on<Name>Committed` (decision 8). Settings types and their
   element share a name; `create` and `Type` live in a same-named module.
+- **Styles set looks and behaviour, never app state:** no handlers, controlled values, content, flyouts or
+  tooltips from a style (it has no model and no idea which element it's on; "M8 step 4", round 1f). Broken, it throws when
+  the style or state block is made, saying why (round 1h: not a compile error).
 
 ## Tooling and testing
 
@@ -207,7 +210,6 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 | macOS, Linux, mobile | After M10 | Everything goes through `IPlatform`/`IWindow` |
 | Responsive layout | A round of its own (the Gallery wants a sidebar on wide windows, tabs on narrow ones) | The TabControl's header row scrolls sideways; views can't read the window size yet |
 | Scroll only the nearest viewer | When an app nests a list in a scrolling page and wants the page to stay put (the browser's `scrollIntoView({ container: "nearest" })`; DESIGN.md, "Scrolling to an item ...", Tim, 2026-11-17) | `BringRectIntoView` already treats the nearest viewer apart from the ones around it; the scroller's requests carry their options |
-| Content and flyouts from styles | When something needs it: control templates, or the theme giving controls default content (DESIGN.md, "M8 step 4", round 1e) | Views are descriptions, so a style's view can serve many elements (the instance sharing that trips WPF and Avalonia can't happen); one Flyout settings list already serves several elements |
 | Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
 
 ---
@@ -2987,7 +2989,119 @@ already exist. Allowing it means:
 Decision (Tim): **open item, not now.** It's a moderate change to Element, and it fits the model well. It waits for
 a use that a view function can't serve as well: control templates, or the theme giving controls default content.
 Until then, "these buttons get this menu" is a function or a shared settings list in the view. Listed under
-"Deferred work".
+"Deferred work". (Superseded by round 1f: not planned.)
+
+**Round 1f: styles never set app state (Tim, 2026-11-17).** Tim saw that `isOpen` and `onOpenChanged` and content
+are unstylable for the same reason: a style has no context. It's defined once, applies to many elements, and can't
+see the model, `dispatch` or which element it's on. So anything bound to app state means nothing from a style:
+- a controlled value would make every matched element controlled, with one constant;
+- a handler can't tell which element fired;
+- content can only be the same plain view everywhere.
+
+WPF needed `TemplateBinding` and data bindings to make style-set content useful. Scribble didn't follow the rule:
+styles could set `onClick`, `isChecked`, `Slider.value` and `onValueChanged`. The refused list was only what decides
+matching, plus 4a's flyout trio for a technical reason.
+
+Decision (Tim: yes): **styles set how things look and behave, never app state.** Not stylable:
+- every handler;
+- every controlled value;
+- content, children, a flyout and tooltips;
+- what decides matching, as before.
+
+Each kind gets an error saying why. Round 1e is **not planned** rather than open: it would come back only with
+something like template bindings. It's removed from "Deferred work".
+
+**As built (round 1f, 2026-11-17):**
+- `Prop.IsHandler` comes from the value's type: a function, or an optional one (`'a -> unit`, `voption`, `option`).
+  Every handler is covered, an element author's own included.
+- `Prop.IsAppState` (`AppState.mark`) is set on:
+  - `isChecked`, `isIndeterminate` and the tab header's `isSelected`;
+  - `Slider.value`;
+  - `TabControl.selected`, `tabs`, and `TabItem.header`/`headerView`;
+  - ItemsView's source, key and view functions;
+  - ItemsView's and ScrollViewer's `scroller`;
+  - `flyout`, `Flyout.isOpen`, `tooltip` and `tooltipView`.
+- `NotStylable` is back to its first meaning: classes, name, key and theme.
+- `Rule.check` gives three messages: handlers, content and app state, and matching.
+- Nothing in the theme, the samples or the tests set any of these from a style.
+- Left stylable as look rather than state: `TextBlock.text`, `IconView.icon`, `ImageView.image`.
+- 2 new tests: every kind refused with its reason, and looks still allowed.
+
+**Round 1g: the rule at compile time (Tim, 2026-11-17; reverted in round 1h).** Tim asked whether round 1f could be a compilation error.
+It can. A view's settings list and a style's had one type (`Setting<Button> list`), so they need two. Settings
+types come in pairs:
+- `ButtonStyle` holds Button's settings and inherits `BorderStyle`;
+- `Button` inherits `ButtonStyle` and implements `InViewsOnly`, an empty interface.
+
+A setter for a handler, app state, content or what decides matching asks for `'k :> InViewsOnly`. `create` takes
+`Setting<Button> list`; `style` takes `Setting<ButtonStyle> list`. So `Button.style [] [ Button.onClick … ]` gives
+"The type 'ButtonStyle' is not compatible with the type 'InViewsOnly'".
+
+Checked first in a scratch project:
+- views and inline styles compile unchanged;
+- a list kept in a `let` infers its type;
+- `Button.flyout`, an extension, is found through inheritance.
+
+App code rarely writes the `…Style` names. Element authors write the pair. Tim: yes, with the plain names for views.
+
+`BorderStyle` was taken by the line-style enum. Tim chose to rename the enum to **`LineStyle`** (my
+recommendation), which matches `Separator.lineStyle`: `Border.borderStyle LineStyle.Dashed`.
+
+**As built (round 1g, 2026-11-17):**
+- **Converted to pairs:** Core's 24 settings types, and the samples' CardGrid, Layers, AccentStrip, ProgressBar and
+  SplitRow.
+- **Left as they were:** the inspector's 4 internal types and the tests' `Box`. They inherit the view types, still
+  compile and work, and their styles are checked when made.
+- **Marked `InViewsOnly`:**
+  - every `on…` setter;
+  - `name`, `classes`, `styles`, `key`, `theme`;
+  - `content`, `children`, `items`, `Button.text`;
+  - `flyout`, `tooltip`, `tooltipView`, `Flyout.isOpen`;
+  - `isChecked`, `isIndeterminate`, `Slider.value`;
+  - `TabControl.selected` and `tabs`, `TabItem.header`;
+  - ItemsView's `source`, `key`, `view` and `scroller`, and ScrollViewer's `scroller`;
+  - `Semantics.isChecked` and `isSelected`.
+- **Smaller changes:**
+  - `Element.defaults<'k>` takes an explicit type: `Element.defaults<Slider> [ … Semantics.onAction … ]`, since a
+    list mixing view-only and plain setters can't pick a type alone.
+  - `Style.any` takes `Setting<LayoutableStyle> list`.
+- **What still checks at runtime:**
+  - **State blocks** (`Button.on States.hover [ … ]`): a block in a view has the view's type, so F# can't refuse its
+    handler. `Style.on` now checks its settings when the block is made, rather than when the element is styled.
+  - **Raw `Setting.create`** and element authors' own properties keep `Rule.check`. The refusal tests use raw
+    settings now; the setters no longer compile there.
+- **Seen at once:** while this was being built, Tim tried `Flyout.content` in the Layers page's `placementStyles`.
+  It stopped compiling, with the error at that line.
+
+**Round 1h: back to runtime-only (Tim, 2026-11-17).** Tim asked whether 1g introduced anything that would confuse
+users. It did, mostly type errors that name types the user never wrote:
+- a generic helper setting handlers: "missing a constraint 'when 'k :> InViewsOnly'";
+- one list used in both a view and a style: "Expecting 'Setting<BorderStyle>' but given 'Setting<Border>'";
+- `Element.defaults` with a handler: an ambiguous instantiation, needing `Element.defaults<Slider>`.
+
+Then there was the noise: 29 more names in autocomplete, longer signatures, and the compiler's sentence instead of
+ours. Tim asked whether a different design would be simpler. Considered:
+- one generic settings type per element (`Button<View>`): worse annotations for everyone;
+- a separate return type for view-only setters: needs implicit conversions in list literals, which F# warns about
+  (FS3391) and warnings-as-errors fails on;
+- an analyzer: an extra tool, uncertain in Rider;
+- the runtime check alone.
+
+Only the last is simpler, and it gives up the editor error. The mistake is still caught the first time the style is
+made, which for a module-level style list is the first run, with our own message.
+
+Decision (Tim): **runtime-only**. Kept from 1g:
+- `LineStyle` (it reads better: `Border.borderStyle LineStyle.Dashed`);
+- `Style.on` checking a state block's settings when the block is made. A handler in an inline
+  `Button.on States.hover [ … ]` throws when the view is built, not when the element is first styled.
+
+**As built (round 1h):**
+- The pairs, `InViewsOnly`, the extra constraints and `Element.defaults<'k>` are undone. Code is back to 1f, plus
+  `LineStyle` and the `Style.on` check.
+- The refusal tests use the setters again (they compile in a style), plus a state block in a view.
+- Unit tests: 878 passed, 6 skipped.
+- Rendering tests: 76, pixels unchanged.
+- Timing tests: 6.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
