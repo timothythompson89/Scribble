@@ -112,3 +112,36 @@ type DialogToastTests(fixture: TextFixture) =
 
     [<Fact>]
     member this.``a dialog with toasts above it, light``() = this.Shoot(Theme.light [], "dialog-toasts-light@1x")
+
+    /// A repeated toast counted, three showing, and the line that says how many wait.
+    [<Fact>]
+    member _.``many toasts: one counted, three showing, the rest behind "+N more"``() =
+        let pixels: PixelSize = { Width = 420; Height = 240 }
+        let dispatcher = Dispatcher(ignore, fun _ _ -> ())
+        let host =
+            ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text [
+                ElementHost.dispatcher dispatcher
+                ElementHost.theme (Theme.dark [])
+            ]
+        host.Update(Border.create [])
+        host.HandleEvent Frame |> ignore
+        let toaster = host.Toaster
+        for _ in 1..5 do
+            toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't reach the server" ]
+        toaster.Show [ Toast.severity Severity.Warning; Toast.text "The disk is almost full" ]
+        toaster.Show "Saved report.pdf"
+        for i in 1..4 do
+            toaster.Show("Waiting " + string i)
+        for _ in 1..4 do
+            dispatcher.RunPending()
+            for l in host.Layers do
+                l.Tree.Time <- l.Tree.Time + TimeSpan.FromSeconds 1.0
+            host.HandleEvent Frame |> ignore
+        let image =
+            fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
+                f.Clear host.ClearColor
+                for l in host.Layers do
+                    l.Tree.Render f.DrawList)
+        match Snapshot.check "toasts-many@1x" image with
+        | Some error -> Assert.Fail error
+        | None -> ()

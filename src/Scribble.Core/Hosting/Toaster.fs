@@ -69,6 +69,8 @@ module internal ToastLooks =
     /// A Warning stays twice as long.
     let warningDuration = TimeSpan.FromSeconds 8.0
     let maxShown = 3
+    /// The most that wait for a place; past it the oldest go (those that aren't Critical first).
+    let maxWaiting = 50
     /// How far a toast slides as it comes and goes, in DIPs.
     let slide = 12.0
     /// A bold cross, in a 24 × 24 box.
@@ -84,12 +86,17 @@ type internal ToastItem(id: int, options: ToastOptions) =
     member val Hovered = false with get, set
     /// Bumped whenever its timer starts again or stops: a timer that sees another number is stale.
     member val Generation = 0 with get, set
+    /// How many times it was shown: the same toast shown again while this one shows or waits adds here.
+    member val Count = 1 with get, set
+    /// When it got its place among those showing (they stand in that order, newest lowest).
+    member val Order = 0 with get, set
 
 /// One host's toasts: the list, their timers and the view of their layer. The UI thread only.
 [<Sealed>]
 type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
     let items = List<ToastItem>()
     let mutable nextId = 0
+    let mutable nextOrder = 0
 
     member _.Dispatcher = dispatcher
     member _.Count = items.Count
@@ -110,7 +117,7 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
             ToastPresenter.create [
                 ToastPresenter.key item.Id
                 // Its name for screen readers (not its content: that would read the Close button into it).
-                Semantics.label o.Text
+                Semantics.label (if item.Count > 1 then o.Text + ", " + string item.Count + " times" else o.Text)
                 ToastPresenter.classes [
                     match o.Severity with
                     | Severity.Informational -> ()
@@ -130,7 +137,8 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                             | ValueNone ->
                                 TextBlock.create [
                                     DockPanel.dock Dock.Fill
-                                    TextBlock.text o.Text
+                                    // Shown again while it showed or waited: one toast, with how many times.
+                                    TextBlock.text (if item.Count > 1 then o.Text + "  ×" + string item.Count else o.Text)
                                     TextBlock.textWrapping Wrap
                                     TextBlock.verticalAlignment VerticalAlignment.Center
                                 ]
@@ -155,8 +163,12 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                                         quiet o.Severity
                                         @ [ Semantics.label "Close"
                                             Button.icon ToastLooks.cross
+                                            // Beside the toast's text: on the middle of its letters, not of its line.
+                                            Setting.create ButtonProps.iconBesideText true
                                             Button.iconSize 14.0
-                                            Button.padding 5.0
+                                            // 25 DIPs tall with the 14-DIP icon, like the action button: an odd height, as a line of text has, so
+                                            // the button's middle and the text's can fall on the same place.
+                                            Button.padding (5.0, 5.5)
                                             Button.onClick (fun _ -> this.Dismiss item) ]
                                     )
                                 ]
@@ -165,7 +177,35 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                     ]
                 )
             ]
-        View.Create(ToastPanel.Type, [ Setting.create PanelProps.children [ for item in items do if item.Stage > 0 then toast item ] ])
+        // What waits has no place yet, so it would be out of sight: a line above the stack says how many, and
+        // "Close all" clears everything at once (an error that keeps happening is one click, not one each).
+        let waiting = items |> Seq.filter (fun i -> i.Stage = 0) |> Seq.sumBy (fun i -> i.Count)
+        let more =
+            ToastPresenter.create [
+                ToastPresenter.key "more"
+                ToastPresenter.classes [ "more" ]
+                Semantics.label (string waiting + " more waiting")
+                ToastPresenter.content (
+                    DockPanel.create [
+                        DockPanel.spacing 6.0
+                        DockPanel.children [
+                            TextBlock.create [
+                                DockPanel.dock Dock.Fill
+                                TextBlock.text ("+" + string waiting + " more")
+                                TextBlock.verticalAlignment VerticalAlignment.Center
+                            ]
+                            Button.create (
+                                quiet Severity.Informational
+                                @ [ DockPanel.dock Dock.Right; Button.text "Close all"; Button.padding (8.0, 4.0); Button.onClick (fun _ -> this.CloseAll()) ]
+                            )
+                        ]
+                    ]
+                )
+            ]
+        let shown = items |> Seq.filter (fun i -> i.Stage > 0) |> Seq.sortBy (fun i -> i.Order)
+        View.Create(ToastPanel.Type, [ Setting.create PanelProps.children [ if waiting > 0 then yield more
+                                                                            for item in shown do
+                                                                                yield toast item ] ])
 
     member this.Refresh() = update (this.View())
 
@@ -184,23 +224,67 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
         | ValueNone -> ()
 
     /// Gives waiting toasts the free places: each comes in clear and below its place, then slides up.
+    /// Critical ones first, then the oldest: a waiting error shows before a waiting "Saved".
     member private this.Promote() =
-        let mutable shown = 0
-        for item in items do
-            if shown < ToastLooks.maxShown then
-                shown <- shown + 1
-                if item.Stage = 0 then
-                    item.Stage <- 1
-                    dispatcher.Post(fun () ->
-                        if item.Stage = 1 then
-                            item.Stage <- 2
-                            this.Refresh()
-                            this.StartTimer item)
+        let mutable places = ToastLooks.maxShown - (items |> Seq.filter (fun i -> i.Stage > 0) |> Seq.length)
+        while places > 0 do
+            let waiting = items |> Seq.filter (fun i -> i.Stage = 0)
+            let next =
+                match waiting |> Seq.tryFind (fun i -> i.Options.Severity = Severity.Critical) with
+                | Some critical -> Some critical
+                | None -> Seq.tryHead waiting
+            match next with
+            | Some item ->
+                places <- places - 1
+                nextOrder <- nextOrder + 1
+                item.Order <- nextOrder
+                item.Stage <- 1
+                dispatcher.Post(fun () ->
+                    if item.Stage = 1 then
+                        item.Stage <- 2
+                        this.Refresh()
+                        this.StartTimer item)
+            | None -> places <- 0
+
+    /// The same toast as `options`, showing or waiting: same words and severity, with nothing of its own (an
+    /// action or a view) that a merge would lose.
+    member private _.Same(options: ToastOptions) =
+        if options.Text = "" || options.Action.IsSome || options.Content.IsSome then None
+        else
+            items
+            |> Seq.tryFind (fun i ->
+                i.Stage < 3
+                && i.Options.Text = options.Text
+                && i.Options.Severity = options.Severity
+                && i.Options.Action.IsNone
+                && i.Options.Content.IsNone)
 
     member this.Add(options: ToastOptions) =
-        nextId <- nextId + 1
-        items.Add(ToastItem(nextId, options))
-        this.Promote()
+        match this.Same options with
+        | Some item ->
+            // Shown again: one toast, counted, and its time starts over.
+            item.Count <- item.Count + 1
+            if item.Stage = 2 && not item.Hovered then this.StartTimer item
+            this.Refresh()
+        | None ->
+            nextId <- nextId + 1
+            items.Add(ToastItem(nextId, options))
+            // Too many waiting: the oldest go, those that aren't Critical first.
+            let waiting = items |> Seq.filter (fun i -> i.Stage = 0) |> List.ofSeq
+            if waiting.Length > ToastLooks.maxWaiting then
+                let drop =
+                    match waiting |> List.tryFind (fun i -> i.Options.Severity <> Severity.Critical) with
+                    | Some item -> item
+                    | None -> waiting.Head
+                items.Remove drop |> ignore
+            this.Promote()
+            this.Refresh()
+
+    /// Everything goes: what waits is dropped, what shows slides away.
+    member this.CloseAll() =
+        items.RemoveAll(fun i -> i.Stage = 0) |> ignore
+        for item in items.ToArray() do
+            this.Dismiss item
         this.Refresh()
 
     member private this.Hover(item: ToastItem, over: bool) =

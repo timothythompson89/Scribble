@@ -158,7 +158,7 @@ let view =
                 Inform.onClosed (fun () -> answer.Set "Was informed")
             ]
         page "Layers" "Content above the app, each in a layer of its own: toasts that never take the keyboard, modals and dialogs that take everything until they close, flyouts and tooltips." [
-            section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds (a warning 8) and waits while the pointer is on it; a critical one stays until closed. The app keeps working everywhere but on a toast." (
+            section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds (a warning 8) and waits while the pointer is on it; a critical one stays until closed. The same toast again is counted, not stacked; what waits shows as \"+N more\" with Close all. The app keeps working everywhere but on a toast." (
                 WrapPanel.create [
                     WrapPanel.spacing 8.0
                     WrapPanel.lineSpacing 8.0
@@ -171,6 +171,15 @@ let view =
                         Button.create [
                             Button.text "Show an error"
                             Button.onClick (fun _ -> toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't reach the server" ])
+                        ]
+                        Button.create [
+                            Button.text "Many at once"
+                            Button.onClick (fun _ ->
+                                // The same error five times is one toast, counted; the rest queue behind "+N more".
+                                for _ in 1..5 do
+                                    toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't reach the server" ]
+                                for name in [ "report.pdf"; "notes.txt"; "photo.png"; "data.csv"; "draft.md" ] do
+                                    toaster.Show("Saved " + name))
                         ]
                         Button.create [
                             Button.text "With an action"

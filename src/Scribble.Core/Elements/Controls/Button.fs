@@ -9,6 +9,9 @@ module ButtonProps =
     let icon: Prop<Icon voption> = Prop.define "Icon" ValueNone Affects.Measure
     /// The icon's width and height in DIPs.
     let iconSize = Prop.define "IconSize" 18.0 Affects.Measure
+    /// The button stands beside a line of text that isn't its own (a toast's close button): its icon is centred
+    /// on that text's optical middle, as an icon beside the button's own text is. Internal until an app needs it.
+    let internal iconBesideText = Prop.define "IconBesideText" false Affects.Measure
     /// Where the icon was placed by the last arrange.
     let iconRect: Prop<Rect> = Prop.local "IconRect" (Rect.Create(0.0, 0.0, 0.0, 0.0))
 
@@ -68,11 +71,13 @@ module Button =
     /// How far below the slot's middle a text's optical middle sits: halfway between the middle of
     /// its capitals and the middle of its lowercase letters, for one line centered in the slot. An icon
     /// beside text is centered there, since lowercase-heavy labels look low beside an exactly centered
-    /// icon. Only for a TextBlock (`Button.text`); other content keeps the icon centered.
+    /// icon. For a TextBlock inside the button (`Button.text`), or, with `iconBesideText`, for text beside the
+    /// button in the button's own font; other content keeps the icon centered.
     let private textNudge (ctx: ArrangeContext) =
-        if ctx.Children.Count = 0 || not (obj.ReferenceEquals(ctx.Children[0].Type, TextBlock.Type)) then 0.0
+        let ownText = ctx.Children.Count > 0 && obj.ReferenceEquals(ctx.Children[0].Type, TextBlock.Type)
+        if not ownText && not (ctx.Get ButtonProps.iconBesideText) then 0.0
         else
-            let text = ctx.Children[0]
+            let text = if ownText then ctx.Children[0] else ctx.Element
             let font = text.Get InheritedProps.font
             let face = font.Face
             let em = text.Get InheritedProps.fontSize / float face.UnitsPerEm

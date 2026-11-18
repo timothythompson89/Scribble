@@ -3687,6 +3687,33 @@ those work on anything derived from Border, so the docs and tests write
 `Toast.style [] [ Border.cornerRadius 12.0 ]` and `Dialog.style [] [ Border.padding 24.0 ]`. Considered:
 `Toast.cornerRadius`/`Dialog.cornerRadius` (making `Toast` and `Dialog` element settings types too would set
 `Dialog.title` and `Dialog.content` against the Modal's settings of the same names). No code changed.
+
+**A toast's close icon sat above its text (Tim, 2026-11-18: "the same issues our button used to have").** Two causes,
+measured in the screenshot test's host. (1) The icon was centred in its button, the text's letters lower in their
+line: the optical nudge Button gives an icon beside its *own* text (M7b) now also applies to an icon-only button
+that stands beside text, through an internal `ButtonProps.iconBesideText` (the toast's close button sets it;
+public when an app needs it). (2) The button was 24 DIPs tall against a 17-DIP line, so their middles were half a
+DIP apart whatever the nudge: the close button's padding is now `(5, 5.5)`, 25 DIPs like the action button, which
+also makes toasts with and without an action the same height. After both, the icon's centre and the text's
+optical middle are the same number (323.14 in the test). Tested (`ToastTests`); `dialog-toasts@1x` and `-light`
+regenerated (the × one DIP lower, the toasts one DIP taller). Unit: 1,136.
+
+**Many toasts (Tim, 2026-11-18: "should only 3 toasts be allowed even if they are all errors?").** The cap of three
+stays, for errors too: Critical toasts stay until closed, so without it a failure that repeats would stack up the
+window. What the cap hid is fixed instead (Tim: all four):
+52. **Repeats are one toast with a count.** A toast with the same text and severity as one showing or waiting
+    adds to it ("Couldn't reach the server ×5") and starts its time over. Not when either has an action or a view
+    of its own (a merge would lose them), nor when the text is empty.
+53. **What waits is said.** While toasts wait, a line above the stack reads "+N more" with a "Close all" button,
+    which drops what waits and closes what shows.
+54. **Critical first.** A waiting Critical toast gets the next place before waiting ones that aren't.
+55. **At most 50 wait.** Past that the oldest go, those that aren't Critical first.
+As built: `ToastStack` (`Hosting/Toaster.fs`). Each toast has a count and the order it got its place in (they
+stand in that order, newest lowest, now that places aren't given strictly oldest first). The "+N more" line is a
+`ToastPresenter` with the class `more`, first among the panel's children (so topmost); N counts repeats too.
+Tests: a repeat counted and its time starting over, what doesn't merge, forty errors as one toast, the line and
+Close all, Critical first, the limit of fifty keeping an early error. New screenshot `toasts-many@1x`. The Gallery
+has "Many at once". Unit: 1,141 passed plus 6 timing skipped (three runs). Rendering: 95. Timing: 6.
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 
 Found driving the Gallery's Lists page with a real keyboard: Tab went from the Reverse order button to the swatches

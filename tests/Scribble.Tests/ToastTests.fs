@@ -38,11 +38,16 @@ let private show (extra: AppSetting<unit> list) =
     pump w host
     w, host
 
-/// The toasts showing (their layer is made with the first toast).
-let private toasts (host: ElementHost) =
+/// Every box in the toasts' layer (made with the first toast): the toasts, and the line that says how many wait.
+let private boxes (host: ElementHost) =
     match host.Layers |> Seq.tryFind (fun l -> l.Name = "Toasts") |> Option.bind (fun l -> ValueOption.toOption l.Tree.Root) with
     | Some root -> all root |> Seq.filter (fun e -> obj.ReferenceEquals(e.Type, ToastPresenter.Type)) |> List.ofSeq
     | None -> []
+let private isMore (e: Element) = List.contains "more" (e.Get LayoutProps.classes)
+/// The toasts showing.
+let private toasts (host: ElementHost) = boxes host |> List.filter (fun e -> not (isMore e))
+/// The line above the stack that says how many wait.
+let private more (host: ElementHost) = boxes host |> List.tryFind isMore
 let private textOf (e: Element) =
     all e |> Seq.filter (fun x -> obj.ReferenceEquals(x.Type, TextBlock.Type)) |> Seq.map (fun x -> x.Get TextProps.text) |> String.concat " "
 let private texts (host: ElementHost) = toasts host |> List.map textOf
@@ -274,11 +279,12 @@ let ``ctx.useToaster gives the toasts of the window the component is in, the sam
     let send () = all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "send")
     clickOn w host (send ())
     clickOn w host (send ())
-    Assert.Equal<string list>([ "From the component"; "From the component" ], texts host)
+    // Shown twice with the same words: one toast, counted.
+    Assert.Equal<string list>([ "From the component  ×2" ], texts host)
     Assert.True(seen.Count >= 2)
     Assert.True(seen |> Seq.forall (fun t -> obj.ReferenceEquals(t, seen[0])))
     // It is the host's own toasts it reached.
-    Assert.Equal(2, host.Toaster.Count)
+    Assert.Equal(1, host.Toaster.Count)
 
 [<Fact>]
 let ``ctx.useToaster in a tree no host runs shows nothing`` () =
@@ -339,3 +345,115 @@ let ``a Warning toast has its own look and stays eight seconds; Toast.style reac
     Assert.Equal<string list>([ "Low on space" ], texts host)
     advance w host 4000.0
     Assert.Empty(toasts host)
+
+[<Fact>]
+let ``a toast's close icon is centred on its text's letters: the button's middle is the line's, and the icon sits lower by the text's optical nudge`` () =
+    let w, host = show []
+    host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text "Here" ]
+    host.Toaster.Show [ Toast.text "With an action"; Toast.action ("Undo", ignore) ]
+    pump w host
+    let middle (e: Element) = e.PositionInTree.Y + e.Bounds.Height / 2.0
+    for toast in toasts host do
+        let text = all toast |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, TextBlock.Type))
+        let close = buttons toast |> List.last
+        // The same middle (were the button an even height against the line's odd one, they'd be half a DIP apart).
+        Assert.Equal(middle text, middle close)
+        // The icon's box starts below the padding by the nudge: on the letters' middle, not the line's.
+        let icon = close.Get ButtonProps.iconRect
+        let padding = (close.Get BorderProps.padding).Top
+        Assert.True(icon.Y > padding, "the icon isn't nudged: " + string icon.Y)
+        Assert.True(icon.Y - padding < 2.0)
+    // With and without an action, toasts are the same height.
+    let shown = toasts host
+    Assert.Equal(shown[0].Bounds.Height, shown[1].Bounds.Height)
+
+// --- Many toasts: repeats, what waits, order, a limit (Tim, 2026-11-18) ---------------------------
+
+[<Fact>]
+let ``the same toast shown again is one toast with a count, and its time starts over`` () =
+    let w, host = show []
+    let toaster = host.Toaster
+    toaster.Show "Saved"
+    pump w host
+    advance w host 3000.0
+    toaster.Show "Saved"
+    toaster.Show "Saved"
+    pump w host
+    Assert.Equal<string list>([ "Saved  ×3" ], texts host)
+    Assert.Equal(1, toaster.Count)
+    // Four seconds from the last one, not from the first.
+    advance w host 3000.0
+    Assert.Equal<string list>([ "Saved  ×3" ], texts host)
+    advance w host 1500.0
+    Assert.Empty(toasts host)
+    // Another severity, an action or a view of its own is another toast.
+    toaster.Show "Saved"
+    toaster.Show [ Toast.severity Severity.Warning; Toast.text "Saved" ]
+    toaster.Show [ Toast.text "Saved"; Toast.action ("Undo", ignore) ]
+    pump w host
+    Assert.Equal(3, (toasts host).Length)
+
+[<Fact>]
+let ``an error that keeps happening is one toast, not a full stack`` () =
+    let w, host = show []
+    for _ in 1..40 do
+        host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't reach the server" ]
+    pump w host
+    Assert.Equal<string list>([ "Couldn't reach the server  ×40" ], texts host)
+    Assert.Equal(1, host.Toaster.Count)
+
+let private real (host: ElementHost) = toasts host
+
+[<Fact>]
+let ``when toasts wait, a line above the stack says how many, and Close all clears everything`` () =
+    let w, host = show []
+    for i in 1..5 do
+        host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text ("Error " + string i) ]
+    pump w host
+    Assert.Equal<string list>([ "Error 1"; "Error 2"; "Error 3" ], real host |> List.map textOf)
+    let line = (more host).Value
+    Assert.Equal("+2 more Close all", textOf line)
+    // It stands above the toasts.
+    Assert.True(line.PositionInTree.Y < (real host).Head.PositionInTree.Y)
+    // Closing one lets the next in, and the line counts down.
+    clickOn w host (buttons (real host).Head |> List.last)
+    advance w host 200.0
+    Assert.Equal<string list>([ "Error 2"; "Error 3"; "Error 4" ], real host |> List.map textOf)
+    Assert.Equal("+1 more Close all", textOf (more host).Value)
+    clickOn w host (buttons (more host).Value |> List.last)
+    advance w host 200.0
+    Assert.Empty(boxes host)
+    Assert.Equal(0, host.Toaster.Count)
+
+[<Fact>]
+let ``a waiting Critical toast gets a place before waiting ones that aren't`` () =
+    let w, host = show []
+    let toaster = host.Toaster
+    for i in 1..3 do
+        toaster.Show [ Toast.text ("Plain " + string i); Toast.duration (TimeSpan.FromSeconds 1.0) ]
+    toaster.Show "Waiting plain"
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "Waiting error" ]
+    pump w host
+    Assert.Equal<string list>([ "Plain 1"; "Plain 2"; "Plain 3" ], real host |> List.map textOf)
+    advance w host 1300.0
+    // The error went first though it was asked for last; the plain one follows.
+    Assert.Equal<string list>([ "Waiting error"; "Waiting plain" ], real host |> List.map textOf)
+    Assert.True((more host).IsNone)
+
+[<Fact>]
+let ``at most fifty wait: past that the oldest that aren't Critical go first`` () =
+    let w, host = show []
+    let toaster = host.Toaster
+    for i in 1..3 do
+        toaster.Show [ Toast.severity Severity.Critical; Toast.text ("Showing " + string i) ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "An early error" ]
+    for i in 1..60 do
+        toaster.Show("Plain " + string i)
+    pump w host
+    // Three showing and fifty waiting.
+    Assert.Equal(53, toaster.Count)
+    Assert.Equal("+50 more Close all", textOf (more host).Value)
+    // The early error is still among them: it shows as soon as there's a place.
+    clickOn w host (buttons (real host).Head |> List.last)
+    advance w host 200.0
+    Assert.Contains("An early error", real host |> List.map textOf)
