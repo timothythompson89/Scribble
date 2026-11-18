@@ -136,6 +136,11 @@ _Avoid_: window (for the host), root
 An immutable value naming a picture to show and how to read it (its source, its pixels per DIP); the same image is decoded once however many places show it.
 _Avoid_: bitmap, image source (for the value)
 
+**Decoded image**:
+An image's pixels once read from its file (or given as pixels), ready to draw; an Image has one once it has loaded,
+and element authors draw one.
+_Avoid_: bitmap, texture, image pixels
+
 **ImageView**:
 The element that draws an image in its box.
 _Avoid_: image control, picture box

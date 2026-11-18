@@ -34,7 +34,8 @@ let private scenes =
               tree.Update(Scribble.Samples.Dashboard.view 0.0 None Scribble.Samples.HelloApp.allCards None ignore)
               tree.UpdateLayout(Size.Create(760.0, 760.0))
               f.Clear(Color.Hex 0x11111B)
-              tree.Render f.DrawList } ]
+              tree.Render f.DrawList }
+      { Name = "images"; Width = 520.0; Height = 300.0; Draw = fun _ f -> ImageTests.draw f } ]
 
 /// Every scene at 1× and 2× on one backend, or None when this machine doesn't offer it. Devices are
 /// made and disposed one at a time (GpuLifetime).

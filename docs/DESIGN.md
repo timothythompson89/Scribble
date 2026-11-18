@@ -59,10 +59,11 @@ TabControl), 3a+ and 3a++ (the inspector tree on ItemsView, sideways scrolling),
 1–5 (the platform clock, errors to `App.onError`, exact pictures, small Core fixes, the inspector split, these
 docs), and the semantics stage (roles, names, states and actions for every element type; the inspector's
 SEMANTICS section), and M8 step 3b part (a): the Counter sample became the Gallery, plus a new one-file Counter;
-part (b), the PNG decoder (`Scribble.Imaging`), has nothing to look at yet but its tests.
+part (b), the PNG decoder (`Scribble.Imaging`); part (c), images on the GPU (`DrawList.DrawImage`, image atlas pages,
+mip levels), seen so far only in the screenshot tests.
 
-Next: the rest of M8 step 3b (section "M8 step 3b: images, and the Counter becomes the Gallery"): (c) RGBA atlas
-pages, the image instance kind and mip levels, then `ImageView`, with the Gallery's Images page growing alongside. Then step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
+Next: the rest of M8 step 3b (section "M8 step 3b: images, and the Counter becomes the Gallery"): (d) `ImageView`, the `Image` value and its cache,
+then (e) sources and loading, (f) cursors and the inspector, with the Gallery's Images page growing alongside. Then step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
 "show this in a layer" element). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
@@ -73,13 +74,13 @@ complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game
 | `Scribble.Platform` | Windows, events, DPI and time as interfaces (`IPlatform`, `IWindow`, `PlatformEvent`); the frame clock and timer queue |
 | `Scribble.Platform.Win32` | Hand-written Win32: per-monitor DPI v2, the draw-on-request loop, live resize, timers |
 | `Scribble.Platform.Browser` | The browser: a full-page canvas, JS interop in pure F# |
-| `Scribble.Rendering` | The draw list, colors, geometry, glyph atlases, `shapes.wgsl` |
+| `Scribble.Rendering` | The draw list, colors, geometry, glyph atlases, the image atlas (pages for decoded images, shared by both GPU backends), `shapes.wgsl` |
 | `Scribble.Rendering.WebGPU` | `webgpu.h` bindings and the renderer over wgpu-native (downloaded on first build) |
 | `Scribble.Rendering.WebGPU.Browser` | The renderer over the browser's `navigator.gpu` |
 | `Scribble.Text` | TrueType parser, rasterizer, text system, line breaking, wrapping and trimming, icon paths; Inter built in |
 | `Scribble.Text.HarfBuzz`, `.Browser` | Shaping: native HarfBuzz, harfbuzzjs in WebAssembly (identical output) |
 | `Scribble.Text.Emoji` | Opt-in Twemoji colour font (CC-BY 4.0 art: apps that use it must credit it) |
-| `Scribble.Imaging` | Image files to premultiplied RGBA: our own PNG decoder (zlib from the BCL); no GPU, no elements |
+| `Scribble.Imaging` | Image files to decoded images (premultiplied RGBA with mip levels): our own PNG decoder (zlib from the BCL); no GPU, no elements |
 | `Scribble.Core` | Views and the differ, elements, layout, input, styles, themes, components, app values, layers, the element types, `App`; folders in compile order: Foundation, Framework, Elements (Basic, Panels, Scrolling, Controls), Themes, Hosting |
 | `Scribble.Desktop`, `Scribble.Browser` | `App.run` for each: one reference brings platform, GPU and shaping |
 | `Scribble.Inspector` | Opt-in devtools-style inspector; files in compile order: InspectorTypes, Format, InspectorState, Highlight, Elements, Views, Inspector (the public type) |
@@ -2340,6 +2341,85 @@ does from (d). Choices made while building:
   files; non-images; cut-short and corrupted files failing only with `ImageFormatException`; the rounding formulas
   checked exhaustively; round trips through a small PNG writer in the tests (all five filters, mixed by row); an
   APNG; a file without IEND; unknown critical and ancillary chunks; 1024² correct, plus the timing test.
+
+**(c) decisions (grilled in two rounds; Tim: yes to all, 2026-11-17):** images on the GPU.
+1. **The backend places images:** the draw list records "this decoded image, this rectangle". The backend places
+   it in its atlas while encoding, uploading what's missing, and writes the atlas position into the draw list's
+   data through an internal method. The draw list stays free of any device; Core never holds one at draw time.
+   The glyph pattern, where the caller reserves atlas space, was turned down.
+2. **Element authors draw decoded images** (GLOSSARY.md). `DrawList.DrawImage` takes a `DecodedImage`; Core's render
+   context turns an `Image` into one, or nothing while it loads (d).
+3. **`DecodedImage` stays in Scribble.Imaging**, now a class with identity, mip levels and `Release`; Rendering
+   references Imaging. Moving it into Rendering would have made Imaging depend on Rendering.
+4. **Whole-number filtering:** bilinear in integers in the shader (fixed-point positions and 8-bit weights), so
+   every backend gives the same pixels by construction. That needs image rectangles snapped to whole pixels: a moving
+   image steps a pixel at a time. A precise mode with fixed-point origins comes when an animation needs it.
+5. **Mip levels:**
+   - **Building:** every level is built when the image is decoded, off the UI thread where decoding is, by exact
+     2×2 averaging. Built lazily at draw time, a grid of big photos scrolling in would stutter. An image made from
+     pixels gets its levels when first drawn small.
+   - **Drawing:** the first level shrunk by less than 2×, judged by the axis that shrinks more. No trilinear
+     blending.
+   - **Uploading:** only the levels drawn are uploaded. A 4000 × 3000 photo shown as a 120-pixel thumbnail puts
+     190 KB on the GPU, not 48 MB.
+6. **`Pixelated` changes enlarging only**, as CSS's `image-rendering: pixelated` does; shrinking is smooth.
+7. **Pages:**
+   - **Size and creation:** 2048² RGBA, created when the first image is drawn, with no CPU copy (the decoded image
+     holds the pixels).
+   - **Big images:** an image level over 2048 on a side gets a texture of its own size.
+   - **Packing:** shelves, reusing a freed slot an image fits, and giving an emptied page back. A better allocator
+     only if a real app shows waste; the inspector's page view (f) will show it.
+8. **Too big:** a decoded image over 8192 on a side is halved when it is made, until it fits, and marked "reduced".
+   A device whose own limit is lower (WebGPU's compatibility mode guarantees 4096) draws the first level that fits.
+9. **Lifetime:**
+   - **Releasing:** `DecodedImage.Release()` is called by Core alone (decision 18). Each device clears released
+     images out of its pages at its next frame. Devices never evict on their own.
+   - **The pool:** images in the recently-used pool keep their atlas space, and the pool's 32 MB counts CPU pixels
+     only.
+10. **Drawing order:** one draw call per run of images on the same page; shapes and glyphs between them join the
+    current run. A texture array (one draw call always) was turned down: all its layers must be the same size, and
+    growing it copies every page.
+11. **Drawing a released image** throws `ObjectDisposedException` from `DrawImage`, which reaches `ReportError` and
+    rolls back the element's drawing.
+
+**(c) as built (2026-11-17):**
+- **`DecodedImage`** (Scribble.Imaging, `Pixels.fs`) is now a class: `Width`, `Height`, `Pixels`, `Level k` (an
+  `ImageLevel`, built under a lock from the level above), `LevelCount`, `LevelsBuilt`, `BuildLevels()`, `Reduced`
+  with `OriginalWidth`/`OriginalHeight`, `Release()`/`IsReleased`, and a static `ReleaseCount` so devices sweep
+  only after a release. A level is half the one above, rounded up, `(a + b + c + d + 2) / 4` per channel, an odd
+  edge counted twice. `ImageDecoder.decode` builds every level; the 1024² timing test now reads about 27 ms, up from
+  24. Rendering references Imaging, so the (b) note's "nothing references it yet" no longer holds.
+- **`DrawList.DrawImage(rect, image, ?radius, ?scaling, ?source)`** snaps the rectangle, skips what's clipped
+  away, picks the level ((c) 5), and records an `ImageDraw` beside the instance (kind 3); `Mark`/`RollBack` cover
+  images. `ImageScaling` (`Smooth`, `Pixelated`) is in Rendering, for Core to reuse.
+- **The 24-float layout is unchanged.** For an image, fill holds the origin's whole texel x, y and the steps (1/65536
+  texel per pixel), border holds the texels it may read (x0, y0, x1, y1), the pattern word holds the origin's 1/256
+  fractions, and params x and y hold opacity and pixelated. Every value fits a float exactly, and the pattern is read
+  as a real `u32`, so no bit pattern passes through float arithmetic.
+- **The shader** (`image_pixel` in `shapes.wgsl`) computes the sample position in `i32`, splits it into texel and
+  8-bit weight with shifts, blends four `textureLoad`s in integers, then applies opacity and the rounded-corner
+  coverage (the shape code's SDF) before `exact8`. Binding 4 is the run's page, or a 1 × 1 placeholder.
+- **`ImageAtlas`** (Rendering, `ImageAtlas.fs`) does the device-independent part for both backends: shelf packing
+  (`ShelfPacker`: a shelf of about the right height first, then a new shelf, then any tall-enough one; freed
+  regions reused, a shelf's freed end and empty bottom shelves given back), pages through the backend's
+  `IImagePages` (`Create`, `Destroy`, `Upload`), placement per (image, level), the device limit, the sweep, and the
+  runs (`ImageRun`: first, count, page). The native renderer keeps a bind group per (format, page); the browser
+  keeps one per page and gets the runs as int32 triples; its limit comes from `device.limits.maxTextureDimension2D`.
+- **Tests:**
+  - **Unit (`ImageAtlasTests.fs`, 16):** halving exact; levels lazy, all built by decoding; reduction; level choice;
+    released images throwing; rollback; snapping; shared pages and only drawn levels uploaded; 1,000 images made
+    and 3 drawn giving 3 uploads; runs and order across small pages; own-size pages; a 4096 device; release and an
+    emptied page going; the values written; packing reuse.
+  - **GPU (`ImageTests.fs`, 11):**
+    - an exact 1:1 copy;
+    - a source part exact, reads kept inside it;
+    - filtering equal to the same formula computed on the CPU (enlarged, pixelated, shrunk, mixed by axis);
+    - mip level 2 at 5×;
+    - drawing order across three pages;
+    - opacity and corners;
+    - the pictures `images@1x` and `images@2x`, also in `BackendTests`, where D3D12 and Vulkan match exactly.
+- **Checked:** a NativeAOT publish of Hello starts. In the browser, the Gallery still renders with no WebGPU
+  errors, but nothing there draws an image yet, so the browser's image path is first seen in (d).
 
 **(a) as built (2026-11-17), waiting for Tim's check:** `samples/Gallery` (`Gallery`, `Gallery.Desktop`,
 `Gallery.Browser`, port 5281; `.run/Gallery.*`), files `Common.fs` (now also `page title line sections` and

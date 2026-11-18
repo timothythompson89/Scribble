@@ -42,8 +42,8 @@ dotnet run -c Release --project tools/Scribble.Bench   # ItemsView costs
 dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through WIC (only if PngSuite changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 785 unit tests plus 6
-  timing tests skipped; 61 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-17: 801 unit tests plus 6
+  timing tests skipped; 72 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and
   are compared exactly. A mismatch is a bug or a stale picture: look at the diff before regenerating

@@ -1,6 +1,7 @@
 namespace Scribble.Rendering.WebGPU.Browser
 
 open System
+open System.Runtime.InteropServices
 open System.Threading.Tasks
 open Scribble.Platform
 open Scribble.Platform.Browser.Js
@@ -31,10 +32,39 @@ module internal GpuJs =
             args[7].ToJS(Span<byte> packed)
             uploadAtlas.Invoke args
     let description = JsFunction(ModuleName, "description", T.string, [])
+    let maxTextureSize = JsFunction(ModuleName, "maxTextureSize", T.double, [])
+    let createImagePage = JsFunction(ModuleName, "createImagePage", T.void', [ T.double; T.double; T.double ])
+    let destroyImagePage = JsFunction(ModuleName, "destroyImagePage", T.void', [ T.double ])
+    let uploadImage = JsFunction(ModuleName, "uploadImage", T.void', [ T.double; T.double; T.double; T.double; T.double; T.bytes ])
+
+    /// The image pages, in JavaScript (DESIGN.md, "M8 step 3b", (c)).
+    let imagePages =
+        { new IImagePages with
+            member _.Create(page, w, h) =
+                let args = createImagePage.Args()
+                args[2].ToJS(float page)
+                args[3].ToJS(float w)
+                args[4].ToJS(float h)
+                createImagePage.Invoke args
+
+            member _.Destroy page =
+                let args = destroyImagePage.Args()
+                args[2].ToJS(float page)
+                destroyImagePage.Invoke args
+
+            member _.Upload(page, x, y, level) =
+                let args = uploadImage.Args()
+                args[2].ToJS(float page)
+                args[3].ToJS(float x)
+                args[4].ToJS(float y)
+                args[5].ToJS(float level.Width)
+                args[6].ToJS(float level.Height)
+                args[7].ToJS(Span<byte> level.Pixels)
+                uploadImage.Invoke args }
     let createSurface = JsFunction(ModuleName, "createSurface", T.void', [ T.string ])
     let destroySurface = JsFunction(ModuleName, "destroySurface", T.void', [ T.string ])
     let draw =
-        JsFunction(ModuleName, "draw", T.void', [ T.string; T.double; T.double; T.double; T.double; T.bytes; T.double ])
+        JsFunction(ModuleName, "draw", T.void', [ T.string; T.double; T.double; T.double; T.double; T.bytes; T.double; T.bytes ])
     let dispose = JsFunction(ModuleName, "dispose", T.void', [])
 
     let withId (f: JsFunction) (id: string) =
@@ -44,7 +74,7 @@ module internal GpuJs =
 
 /// A frame for a browser canvas: clear color plus a draw list, sent to JavaScript in one call.
 [<Sealed>]
-type internal BrowserFrame(elementId: string, size: PixelSize, scale: float, atlas: GlyphAtlas, colorAtlas: GlyphAtlas) =
+type internal BrowserFrame(elementId: string, size: PixelSize, scale: float, atlas: GlyphAtlas, colorAtlas: GlyphAtlas, images: ImageAtlas) =
     let mutable clearColor = Color.Transparent
     let drawList = DrawList(scale)
     let mutable finished = false
@@ -60,6 +90,12 @@ type internal BrowserFrame(elementId: string, size: PixelSize, scale: float, atl
                 finished <- true
                 GpuJs.upload 0 atlas
                 GpuJs.upload 1 colorAtlas
+                let runs = images.Prepare drawList
+                let runWords = Array.zeroCreate<int> (runs.Count * 3)
+                for i in 0 .. runs.Count - 1 do
+                    runWords[i * 3] <- runs[i].First
+                    runWords[i * 3 + 1] <- runs[i].Count
+                    runWords[i * 3 + 2] <- runs[i].Page
                 let args = GpuJs.draw.Args()
                 args[2].ToJS elementId
                 args[3].ToJS(float clearColor.R)
@@ -68,12 +104,13 @@ type internal BrowserFrame(elementId: string, size: PixelSize, scale: float, atl
                 args[6].ToJS(float clearColor.A)
                 args[7].ToJS drawList.InstanceBytes
                 args[8].ToJS(float drawList.Count)
+                args[9].ToJS(MemoryMarshal.AsBytes(Span<int> runWords))
                 GpuJs.draw.Invoke args
 
 /// A canvas surface. The canvas's pixel size is owned by the platform (it resizes the canvas);
 /// the browser reallocates the swap chain itself, so Resize only records the size.
 [<Sealed>]
-type internal BrowserSurface(elementId: string, initialSize: PixelSize, atlas: GlyphAtlas, colorAtlas: GlyphAtlas) =
+type internal BrowserSurface(elementId: string, initialSize: PixelSize, atlas: GlyphAtlas, colorAtlas: GlyphAtlas, images: ImageAtlas) =
     let mutable size = initialSize
     let mutable disposed = false
     do GpuJs.withId GpuJs.createSurface elementId
@@ -84,7 +121,7 @@ type internal BrowserSurface(elementId: string, initialSize: PixelSize, atlas: G
 
         member _.TryBeginFrame(scale) =
             if disposed || size.IsEmpty then None
-            else Some(new BrowserFrame(elementId, size, scale, atlas, colorAtlas) :> IFrame)
+            else Some(new BrowserFrame(elementId, size, scale, atlas, colorAtlas, images) :> IFrame)
 
     interface IDisposable with
         member _.Dispose() =
@@ -104,7 +141,7 @@ type BrowserGpuSetting = internal BrowserGpuSetting of (BrowserGpuOptions -> Bro
 /// Unlike the native backend, creation is asynchronous: the browser only answers adapter and
 /// device requests after control returns to its event loop.
 [<Sealed>]
-type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtlas: GlyphAtlas) =
+type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtlas: GlyphAtlas, images: ImageAtlas) =
     let mutable disposed = false
 
     /// Which GPU to prefer on machines with more than one. Default: the browser chooses.
@@ -132,7 +169,10 @@ type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtla
             do! returnedTask args
             let description = GpuJs.description.Args()
             GpuJs.description.Invoke description
-            return new BrowserGpuDevice(returnedString description, atlas, colorAtlas)
+            let limit = GpuJs.maxTextureSize.Args()
+            GpuJs.maxTextureSize.Invoke limit
+            let images = new ImageAtlas(GpuJs.imagePages, int (returnedDouble limit))
+            return new BrowserGpuDevice(returnedString description, atlas, colorAtlas, images)
         }
 
     interface IRenderDevice with
@@ -142,7 +182,7 @@ type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtla
 
         member _.CreateSurface(window, size) =
             match window with
-            | BrowserCanvas elementId -> new BrowserSurface(elementId, size, atlas, colorAtlas) :> IRenderSurface
+            | BrowserCanvas elementId -> new BrowserSurface(elementId, size, atlas, colorAtlas, images) :> IRenderSurface
             | other -> raise (PlatformNotSupportedException $"The browser WebGPU backend can't draw into {other}.")
 
         member _.RenderOffscreen(_, _, _) =
@@ -154,5 +194,6 @@ type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtla
         member _.Dispose() =
             if not disposed then
                 disposed <- true
+                (images :> IDisposable).Dispose()
                 let args = GpuJs.dispose.Args()
                 GpuJs.dispose.Invoke args

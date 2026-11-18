@@ -38,6 +38,7 @@
     <Compile Include="ControlsTests.fs" />
     <Compile Include="SemanticsTests.fs" />
     <Compile Include="PngTests.fs" />
+    <Compile Include="ImageAtlasTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <!-- PngSuite (Willem van Schaik, free to use: PngSuite/PngSuite.LICENSE) and the WIC references made by

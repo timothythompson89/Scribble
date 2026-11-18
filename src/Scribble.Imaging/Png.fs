@@ -407,4 +407,4 @@ let decode (data: byte[]) : DecodedImage =
             elif fast then convertRgb8 cur (NativePtr.add outPtr dst) w (dx * 4)
             else convertRow h k raw row w out dst (dx * 4)
             at <- at + 1 + rowBytes
-    { Width = h.Width; Height = h.Height; Pixels = out }
+    DecodedImage(h.Width, h.Height, out)

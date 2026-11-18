@@ -22,9 +22,23 @@ type StrokeStyle =
     /// Round dots as wide as the line, one line width apart (adjusted to meet evenly).
     | Dotted
 
+/// How an image is filtered when drawn bigger than its pixels.
+[<RequireQualifiedAccess>]
+type ImageScaling =
+    /// Bilinear: smooth when enlarging (and when shrinking).
+    | Smooth
+    /// Nearest pixel when enlarging, so pixels stay square (CSS `image-rendering: pixelated`); shrinking is
+    /// smooth, as in CSS.
+    | Pixelated
+
 /// A point in a draw list to go back to (`DrawList.Mark`, `DrawList.RollBack`).
 [<Struct>]
-type DrawListMark = internal { Shapes: int; Transforms: int; Clips: int; Opacities: int }
+type DrawListMark = internal { Shapes: int; Transforms: int; Clips: int; Opacities: int; Images: int }
+
+/// An image shape in a draw list, for the image atlas to place (DESIGN.md, "M8 step 3b", (c) 1): its instance,
+/// the decoded image, the part of it drawn (image pixels) and the mip level the draw list chose.
+[<Struct>]
+type internal ImageDraw = { Instance: int; Image: Scribble.Imaging.DecodedImage; Source: Rect; Level: int }
 
 /// A list of shapes to draw in one frame. Controls draw into this; a backend turns it into GPU
 /// work (one instanced draw call for all shapes).
@@ -38,7 +52,10 @@ type DrawListMark = internal { Shapes: int; Transforms: int; Clips: int; Opaciti
 /// The pattern is a u32 stored in the float's bits: 0 solid; else dash (high 16 bits) and gap (low 16
 /// bits) in 1/16 px; a dash of 0xFFFF means dotted.
 /// Kind 0 is a shape; kind 1 is a glyph (coverage atlas), kind 2 a color glyph (color atlas);
-/// for both, radii.xy hold the glyph's top-left texel in its atlas.
+/// for both, radii.xy hold the glyph's top-left texel in its atlas. Kind 3 is an image: radii round its
+/// corners, params.x is its opacity and params.y 1 for pixelated; the image atlas fills in the rest when it
+/// places the image (fill = whole texel of the origin x, y and the step x, y in 1/65536 texel per pixel;
+/// border = the texels it may read, x0, y0, x1, y1; pattern = the origin's 1/256 fractions, x << 8 | y).
 [<Sealed>]
 type DrawList(scale: float) =
     static let floatsPerShape = 24
@@ -52,6 +69,7 @@ type DrawList(scale: float) =
     let noClip = Rect.FromEdges(-1e7, -1e7, 1e7, 1e7)
     let mutable clip = noClip
     let opacities = Collections.Generic.Stack<float32>()
+    let images = ResizeArray<ImageDraw>()
     // Multiplies the alpha of every shape drawn (PushOpacity), 1 when none is active.
     let mutable opacity = 1.0f
 
@@ -142,6 +160,7 @@ type DrawList(scale: float) =
     /// Removes all shapes and resets the transform and clip stacks.
     member _.Reset() =
         count <- 0
+        images.Clear()
         transforms.Clear()
         clips.Clear()
         opacities.Clear()
@@ -151,11 +170,13 @@ type DrawList(scale: float) =
 
     /// Where the list is now: the shapes recorded and how deep the transform, clip and opacity
     /// stacks are. `RollBack` returns to it (an element whose drawing failed takes back what it drew).
-    member _.Mark: DrawListMark = { Shapes = count; Transforms = transforms.Count; Clips = clips.Count; Opacities = opacities.Count }
+    member _.Mark: DrawListMark =
+        { Shapes = count; Transforms = transforms.Count; Clips = clips.Count; Opacities = opacities.Count; Images = images.Count }
 
     /// Removes the shapes recorded since `mark` and pops what was pushed since then.
     member _.RollBack(mark: DrawListMark) =
         count <- min count mark.Shapes
+        if images.Count > mark.Images then images.RemoveRange(mark.Images, images.Count - mark.Images)
         while transforms.Count > mark.Transforms do
             transform <- transforms.Pop()
         while clips.Count > mark.Clips do
@@ -218,6 +239,69 @@ type DrawList(scale: float) =
     member _.DrawColorGlyph(x: int, y: int, width: int, height: int, atlasX: int, atlasY: int, tint: Color) =
         let radii = { TopLeft = float atlasX; TopRight = float atlasY; BottomRight = 0.0; BottomLeft = 0.0 }
         pushKind 2.0 (Rect.Create(float x, float y, float width, float height)) radii tint Color.Transparent 0.0 0.0
+
+    // --- Images ------------------------------------------------------------------------------
+
+    /// The image shapes recorded, in drawing order, for the image atlas.
+    member internal _.Images = images
+
+    /// For the image atlas: where an image shape reads its page (see the class summary for the slots).
+    member internal _.PlaceImage(instance: int, originX: int, originY: int, stepX: int, stepY: int, x0: int, y0: int, x1: int, y1: int, fractions: int) =
+        let i = instance * floatsPerShape
+        data[i + 8] <- float32 originX
+        data[i + 9] <- float32 originY
+        data[i + 10] <- float32 stepX
+        data[i + 11] <- float32 stepY
+        data[i + 12] <- float32 x0
+        data[i + 13] <- float32 y0
+        data[i + 14] <- float32 x1
+        data[i + 15] <- float32 y1
+        data[i + 19] <- BitConverter.Int32BitsToSingle fractions
+
+    /// For the image atlas: an instance's rectangle in physical pixels.
+    member internal _.InstanceRect(instance: int) =
+        let i = instance * floatsPerShape
+        Rect.Create(float data[i], float data[i + 1], float data[i + 2], float data[i + 3])
+
+    /// Draws a decoded image (premultiplied RGBA) stretched into `rect` (DIPs, snapped to whole pixels: DESIGN.md,
+    /// "M8 step 3b", (c) 4). `source` is the part of the image drawn, in its pixels (all of it by default);
+    /// `radius` rounds the corners; `scaling` Pixelated keeps pixels square when enlarging. The GPU device puts the
+    /// image in its atlas when it draws the frame. Throws ObjectDisposedException for a released image.
+    member _.DrawImage(rect: Rect, image: Scribble.Imaging.DecodedImage, ?radius: CornerRadius, ?scaling: ImageScaling, ?source: Rect) =
+        if image.IsReleased then
+            raise (ObjectDisposedException("DecodedImage", "This decoded image was released: it can't be drawn any more."))
+        let whole = Rect.Create(0.0, 0.0, float image.Width, float image.Height)
+        let source = match source with Some s -> s.Intersect whole | None -> whole
+        let target = snapRect (transform.Apply rect)
+        if not source.IsEmpty && target.Width >= 1.0 && target.Height >= 1.0 && opacity > 0.0f
+           && not (target.Intersect(clip).IsEmpty) then
+            // The first mip level shrunk by less than 2×, judged by the axis that shrinks more ((c) 5).
+            let mutable ratio = max (source.Width / target.Width) (source.Height / target.Height)
+            let mutable level = 0
+            while ratio >= 2.0 && level < image.LevelCount - 1 do
+                ratio <- ratio / 2.0
+                level <- level + 1
+            ensureCapacity ()
+            let i = count * floatsPerShape
+            Array.Clear(data, i, floatsPerShape)
+            let radii = radiiToPixels (defaultArg radius CornerRadius.Zero)
+            data[i] <- float32 target.X
+            data[i + 1] <- float32 target.Y
+            data[i + 2] <- float32 target.Width
+            data[i + 3] <- float32 target.Height
+            data[i + 4] <- float32 radii.TopLeft
+            data[i + 5] <- float32 radii.TopRight
+            data[i + 6] <- float32 radii.BottomRight
+            data[i + 7] <- float32 radii.BottomLeft
+            data[i + 16] <- opacity
+            data[i + 17] <- (if defaultArg scaling ImageScaling.Smooth = ImageScaling.Pixelated then 1.0f else 0.0f)
+            data[i + 18] <- 3.0f
+            data[i + 20] <- float32 clip.Left
+            data[i + 21] <- float32 clip.Top
+            data[i + 22] <- float32 clip.Right
+            data[i + 23] <- float32 clip.Bottom
+            images.Add { Instance = count; Image = image; Source = source; Level = level }
+            count <- count + 1
 
     // --- Shapes ------------------------------------------------------------------------------
 

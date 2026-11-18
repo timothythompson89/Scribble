@@ -8,6 +8,7 @@
     <Compile Include="Geometry.fs" />
     <Compile Include="GlyphAtlas.fs" />
     <Compile Include="DrawList.fs" />
+    <Compile Include="ImageAtlas.fs" />
     <Compile Include="Shaders.fs" />
     <Compile Include="RenderDevice.fs" />
   </ItemGroup>
@@ -16,5 +17,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />
+    <ProjectReference Include="../Scribble.Imaging/Scribble.Imaging.fsproj" />
+    <InternalsVisibleTo Include="Scribble.Tests" />
+    <InternalsVisibleTo Include="Scribble.Tests.Rendering" />
   </ItemGroup>
 </Project>

@@ -2,18 +2,19 @@ namespace Scribble.Imaging
 
 open System
 
+
 /// An image file's size, read from its header without decoding it (so the first layout is right).
 [<Struct>]
 type ImageInfo = { Width: int; Height: int }
-
-/// Decoded pixels: 8-bit RGBA, alpha premultiplied, row by row from the top with no padding
-/// (`Pixels.Length = Width * Height * 4`). Colours are sRGB: embedded colour profiles and gamma are ignored.
-type DecodedImage = { Width: int; Height: int; Pixels: byte[] }
 
 /// The data isn't an image Scribble can read: an unknown format, a corrupt or truncated file, or one too big to
 /// decode. Decoders throw only this (anything else would be a bug in the decoder).
 type ImageFormatException(message: string) =
     inherit Exception(message)
+
+/// One mip level of a decoded image: premultiplied RGBA, row by row from the top, no padding.
+[<Struct>]
+type ImageLevel = { Width: int; Height: int; Pixels: byte[] }
 
 /// The colour arithmetic decoders share, so every format rounds the same way.
 module internal Pixels =
@@ -25,3 +26,113 @@ module internal Pixels =
 
     /// The largest pixel count a decoded image may have (its RGBA array must fit in one .NET array).
     let maxPixels = int64 Array.MaxLength / 4L
+
+    /// The next mip level: half the size (rounded up), each pixel the rounded average of the 2 × 2 block above it;
+    /// at an odd edge the last row or column counts twice. Premultiplied, so averaging is right.
+    let halve (level: ImageLevel) : ImageLevel =
+        let w, h, src = level.Width, level.Height, level.Pixels
+        let nw, nh = max 1 ((w + 1) / 2), max 1 ((h + 1) / 2)
+        let out = GC.AllocateUninitializedArray<byte> (nw * nh * 4)
+        for y in 0 .. nh - 1 do
+            let y0 = min (y * 2) (h - 1)
+            let y1 = min (y * 2 + 1) (h - 1)
+            for x in 0 .. nw - 1 do
+                let x0 = min (x * 2) (w - 1)
+                let x1 = min (x * 2 + 1) (w - 1)
+                let a = (y0 * w + x0) * 4
+                let b = (y0 * w + x1) * 4
+                let c = (y1 * w + x0) * 4
+                let d = (y1 * w + x1) * 4
+                let o = (y * nw + x) * 4
+                for k in 0..3 do
+                    out[o + k] <- byte ((int src[a + k] + int src[b + k] + int src[c + k] + int src[d + k] + 2) / 4)
+        { Width = nw; Height = nh; Pixels = out }
+
+/// Counts releases process-wide, so a GPU device knows when to look for released images (DecodedImage.Release).
+type internal ReleaseCounter private () =
+    [<DefaultValue>] static val mutable private count: int
+    static member Count = lock typeof<ReleaseCounter> (fun () -> ReleaseCounter.count)
+    static member Bump() = lock typeof<ReleaseCounter> (fun () -> ReleaseCounter.count <- ReleaseCounter.count + 1)
+
+/// An image's pixels once read from its file (or given as pixels), ready to draw: premultiplied RGBA, sRGB, with its
+/// mip levels (each half the size of the one before, down to 1 × 1). Shared by every place that shows the image and
+/// every GPU device that draws it; thread-safe. An image over `MaxSize` on a side is halved until it fits when it is
+/// made (`Reduced`).
+///
+/// `Release()` says nobody will draw it again: GPU devices give back its atlas space at their next frame, and drawing
+/// it throws. Core calls it (DESIGN.md, "M8 step 3b", decision 18 and (c) 9).
+[<Sealed>]
+type DecodedImage(width: int, height: int, pixels: byte[]) =
+    do
+        if width < 1 || height < 1 then invalidArg (nameof width) "An image is at least 1 × 1."
+        if int64 width * int64 height * 4L <> int64 pixels.Length then
+            invalidArg (nameof pixels) "Pixels must be width × height × 4 bytes (premultiplied RGBA)."
+
+    static let maxSize = 8192
+
+    let levels =
+        let mutable level = { Width = width; Height = height; Pixels = pixels }
+        while level.Width > maxSize || level.Height > maxSize do
+            level <- Pixels.halve level
+        ResizeArray [ level ]
+
+    let first = levels[0]
+
+    let levelCount =
+        let mutable n = 1
+        let mutable w, h = first.Width, first.Height
+        while w > 1 || h > 1 do
+            w <- max 1 ((w + 1) / 2)
+            h <- max 1 ((h + 1) / 2)
+            n <- n + 1
+        n
+
+    let mutable released = false
+
+    /// The largest width or height a decoded image keeps (WebGPU's default texture limit).
+    static member MaxSize = maxSize
+
+    /// Width in pixels (after any reduction).
+    member _.Width = first.Width
+
+    /// Height in pixels (after any reduction).
+    member _.Height = first.Height
+
+    /// The full-size pixels: premultiplied RGBA, row by row from the top, no padding.
+    member _.Pixels = first.Pixels
+
+    /// The size the pixels came in at, before any reduction.
+    member _.OriginalWidth = width
+    member _.OriginalHeight = height
+
+    /// Whether the image was over `MaxSize` on a side and has been halved to fit.
+    member _.Reduced = first.Width <> width || first.Height <> height
+
+    /// How many mip levels there are, level 0 (full size) down to 1 × 1.
+    member _.LevelCount = levelCount
+
+    /// Mip level `k` (0 = full size), built from the ones above it if it hasn't been yet.
+    member _.Level(k: int) : ImageLevel =
+        if k < 0 || k >= levelCount then raise (ArgumentOutOfRangeException(nameof k))
+        lock levels (fun () ->
+            while levels.Count <= k do
+                levels.Add(Pixels.halve levels[levels.Count - 1])
+            levels[k])
+
+    /// Builds every mip level now (decoders do, off the UI thread where they run).
+    member this.BuildLevels() = this.Level(levelCount - 1) |> ignore
+
+    /// How many levels are built so far.
+    member _.LevelsBuilt = lock levels (fun () -> levels.Count)
+
+    /// Says nobody will draw the image again; see the type's summary.
+    member _.Release() =
+        if not released then
+            released <- true
+            ReleaseCounter.Bump()
+
+    member _.IsReleased = released
+
+    /// For GPU devices: changes whenever any decoded image is released, so a device only looks for released images
+    /// when there are some.
+    static member ReleaseCount = ReleaseCounter.Count

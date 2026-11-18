@@ -88,13 +88,73 @@ type internal ShapeRenderer(ctx: GpuContext, atlas: GlyphAtlas, colorAtlas: Glyp
         upload atlas atlasTexture
         upload colorAtlas colorTexture
 
+    // ---- Image pages (DESIGN.md, "M8 step 3b", (c)) ----
+
+    let createRgbaTexture (w: int) (h: int) =
+        let mutable descriptor: TextureDescriptor =
+            { NextInChain = 0n
+              Label = StringView.Null
+              Usage = TextureUsage.TextureBinding ||| TextureUsage.CopyDst
+              Dimension = TextureDimension.D2
+              Size = { Width = uint32 w; Height = uint32 h; DepthOrArrayLayers = 1u }
+              Format = TextureFormat.RGBA8Unorm
+              MipLevelCount = 1u
+              SampleCount = 1u
+              ViewFormatCount = 0un
+              ViewFormats = 0n }
+        let texture = wgpuDeviceCreateTexture(ctx.Device, &&descriptor)
+        struct (texture, wgpuTextureCreateView(texture, 0n))
+
+    let releaseTexture (struct (texture: nativeint, view: nativeint)) =
+        wgpuTextureViewRelease view
+        wgpuTextureDestroy texture
+        wgpuTextureRelease texture
+
+    /// Bound when a draw call has no image: the bind group layout always has a page.
+    let placeholder = createRgbaTexture 1 1
+    let imagePages = Dictionary<int, struct (nativeint * nativeint)>()
+
+    /// Bind groups per target format and image page (-1: the placeholder). They also hold the shapes buffer, so
+    /// they are dropped whenever that buffer is reallocated.
+    let bindGroups = Dictionary<struct (TextureFormat * int), nativeint>()
+
+    let dropBindGroups (page: int voption) =
+        for KeyValue(struct (format, p), g) in Seq.toArray bindGroups do
+            if page.IsNone || page.Value = p then
+                wgpuBindGroupRelease g
+                bindGroups.Remove(struct (format, p)) |> ignore
+
+    let images =
+        new ImageAtlas(
+            { new IImagePages with
+                member _.Create(page, w, h) = imagePages[page] <- createRgbaTexture w h
+
+                member _.Destroy(page) =
+                    dropBindGroups (ValueSome page)
+                    releaseTexture imagePages[page]
+                    imagePages.Remove page |> ignore
+
+                member _.Upload(page, x, y, level) =
+                    let struct (texture, _) = imagePages[page]
+                    let mutable destination: TexelCopyTextureInfo =
+                        { Texture = texture
+                          MipLevel = 0u
+                          Origin = { X = uint32 x; Y = uint32 y; Z = 0u }
+                          Aspect = TextureAspect.All }
+                    let mutable layout: TexelCopyBufferLayout =
+                        { Offset = 0UL; BytesPerRow = uint32 (level.Width * 4); RowsPerImage = uint32 level.Height }
+                    let mutable extent: Extent3D = { Width = uint32 level.Width; Height = uint32 level.Height; DepthOrArrayLayers = 1u }
+                    use pixels = fixed level.Pixels
+                    wgpuQueueWriteTexture(ctx.Queue, &&destination, NativePtr.toNativeInt pixels, unativeint level.Pixels.Length, &&layout, &&extent) },
+            // RequiredLimits is left out when the device is made, so it has WebGPU's defaults.
+            8192
+        )
+
     let mutable shapesCapacity = 1024
     let mutable shapes = createBuffer BufferUsage.Storage (uint64 (shapesCapacity * DrawList.BytesPerShape))
 
-    /// Pipeline and bind group layout per target format. Bind groups depend on the shapes buffer,
-    /// so they are cached separately and dropped whenever that buffer is reallocated.
+    /// Pipeline and bind group layout per target format.
     let pipelines = Dictionary<TextureFormat, struct (nativeint * nativeint)>()
-    let bindGroups = Dictionary<TextureFormat, nativeint>()
 
     let createPipeline (format: TextureFormat) =
         let vsMain = utf8 "vs_main"
@@ -160,16 +220,18 @@ type internal ShapeRenderer(ctx: GpuContext, atlas: GlyphAtlas, colorAtlas: Glyp
             pipelines[format] <- p
             p
 
-    let bindGroupFor format =
-        match bindGroups.TryGetValue format with
+    let bindGroupFor (format: TextureFormat) (page: int) =
+        match bindGroups.TryGetValue(struct (format, page)) with
         | true, g -> g
         | _ ->
             let struct (_, layout) = pipelineFor format
+            let struct (_, pageView) = if page < 0 then placeholder else imagePages[page]
             let entries =
                 [| { NextInChain = 0n; Binding = 0u; Buffer = globals; Offset = 0UL; Size = uint64 Shaders.GlobalsSize; Sampler = 0n; TextureView = 0n }
                    { NextInChain = 0n; Binding = 1u; Buffer = shapes; Offset = 0UL; Size = UInt64.MaxValue; Sampler = 0n; TextureView = 0n }
                    { NextInChain = 0n; Binding = 2u; Buffer = 0n; Offset = 0UL; Size = 0UL; Sampler = 0n; TextureView = atlasView }
-                   { NextInChain = 0n; Binding = 3u; Buffer = 0n; Offset = 0UL; Size = 0UL; Sampler = 0n; TextureView = colorView } |]
+                   { NextInChain = 0n; Binding = 3u; Buffer = 0n; Offset = 0UL; Size = 0UL; Sampler = 0n; TextureView = colorView }
+                   { NextInChain = 0n; Binding = 4u; Buffer = 0n; Offset = 0UL; Size = 0UL; Sampler = 0n; TextureView = pageView } |]
             use entriesPtr = fixed entries
             let mutable descriptor: BindGroupDescriptor =
                 { NextInChain = 0n
@@ -178,7 +240,7 @@ type internal ShapeRenderer(ctx: GpuContext, atlas: GlyphAtlas, colorAtlas: Glyp
                   EntryCount = unativeint entries.Length
                   Entries = NativePtr.toNativeInt entriesPtr }
             let group = wgpuDeviceCreateBindGroup(ctx.Device, &&descriptor)
-            bindGroups[format] <- group
+            bindGroups[struct (format, page)] <- group
             group
 
     let ensureCapacity (count: int) =
@@ -188,17 +250,20 @@ type internal ShapeRenderer(ctx: GpuContext, atlas: GlyphAtlas, colorAtlas: Glyp
             wgpuBufferDestroy shapes
             wgpuBufferRelease shapes
             shapes <- createBuffer BufferUsage.Storage (uint64 (shapesCapacity * DrawList.BytesPerShape))
-            for g in bindGroups.Values do
-                wgpuBindGroupRelease g
-            bindGroups.Clear()
+            dropBindGroups ValueNone
 
     do
         if shaderModule = 0n then raise (InvalidOperationException "WebGPU: the shape shader failed to compile.")
 
-    /// Uploads the shapes and records the draw into an open render pass.
+    /// This device's image atlas (pages, uploads), for tests and the inspector.
+    member _.Images = images
+
+    /// Uploads the shapes and records the draw into an open render pass: one draw call per run of shapes on the same
+    /// image page (one in all when the frame has no more than one page).
     member _.Encode(pass: nativeint, format: TextureFormat, size: PixelSize, drawList: DrawList) =
         if drawList.Count > 0 then
             uploadAtlases ()
+            let runs = images.Prepare drawList
             ensureCapacity drawList.Count
 
             let viewport = [| float32 size.Width; float32 size.Height; 0.0f; 0.0f |]
@@ -211,13 +276,15 @@ type internal ShapeRenderer(ctx: GpuContext, atlas: GlyphAtlas, colorAtlas: Glyp
 
             let struct (pipeline, _) = pipelineFor format
             wgpuRenderPassEncoderSetPipeline(pass, pipeline)
-            wgpuRenderPassEncoderSetBindGroup(pass, 0u, bindGroupFor format, 0un, 0n)
-            wgpuRenderPassEncoderDraw(pass, 6u, uint32 drawList.Count, 0u, 0u)
+            for run in runs do
+                wgpuRenderPassEncoderSetBindGroup(pass, 0u, bindGroupFor format run.Page, 0un, 0n)
+                wgpuRenderPassEncoderDraw(pass, 6u, uint32 run.Count, 0u, uint32 run.First)
 
     interface IDisposable with
         member _.Dispose() =
-            for g in bindGroups.Values do
-                wgpuBindGroupRelease g
+            dropBindGroups ValueNone
+            (images :> IDisposable).Dispose()
+            releaseTexture placeholder
             for struct (pipeline, layout) in pipelines.Values do
                 wgpuBindGroupLayoutRelease layout
                 wgpuRenderPipelineRelease pipeline
@@ -225,8 +292,6 @@ type internal ShapeRenderer(ctx: GpuContext, atlas: GlyphAtlas, colorAtlas: Glyp
             wgpuBufferRelease shapes
             wgpuBufferDestroy globals
             wgpuBufferRelease globals
-            for struct (texture, view) in [ struct (atlasTexture, atlasView); struct (colorTexture, colorView) ] do
-                wgpuTextureViewRelease view
-                wgpuTextureDestroy texture
-                wgpuTextureRelease texture
+            for t in [ struct (atlasTexture, atlasView); struct (colorTexture, colorView) ] do
+                releaseTexture t
             wgpuShaderModuleRelease shaderModule

@@ -18,7 +18,7 @@ struct Shape {
   radii: vec4f,   // top-left, top-right, bottom-right, bottom-left (px); glyphs: xy = atlas texel
   fill: vec4f,    // rgba
   border: vec4f,  // rgba
-  params: vec3f,  // x = border width (px), y = shadow sigma (px, 0 = solid), z = kind (0 shape, 1 glyph, 2 color glyph)
+  params: vec3f,  // x = border width (px), y = shadow sigma (px, 0 = solid), z = kind (0 shape, 1 glyph, 2 color glyph, 3 image)
   pattern: u32,   // border pattern: 0 solid; else dash (high 16 bits) and gap (low 16 bits) in 1/16 px; dash 0xFFFF = dotted
   clip: vec4f,    // x0, y0, x1, y1 (pixels)
 }
@@ -27,6 +27,7 @@ struct Shape {
 @group(0) @binding(1) var<storage, read> shapes: array<Shape>;
 @group(0) @binding(2) var glyph_atlas: texture_2d<f32>;   // r8unorm coverage
 @group(0) @binding(3) var color_atlas: texture_2d<f32>;   // rgba8unorm, premultiplied (emoji)
+@group(0) @binding(4) var image_atlas: texture_2d<f32>;   // rgba8unorm, premultiplied: the image page this draw call reads
 
 struct VertexOut {
   @builtin(position) position: vec4f,
@@ -151,6 +152,42 @@ fn exact8(c: vec4f) -> vec4f {
   return round(clamp(c, vec4f(0.0), vec4f(1.0)) * 255.0) / 255.0;
 }
 
+// An image texel as whole 8-bit numbers (textureLoad gives k / 255; rounding gets k back on every backend).
+fn texel8(p: vec2i) -> vec4i {
+  return vec4i(round(textureLoad(image_atlas, p, 0) * 255.0));
+}
+
+// An image (kind 3; DESIGN.md, "M8 step 3b", (c) 4): bilinear filtering in whole numbers, so every backend gives
+// the same pixels. The quad is snapped to whole pixels; j is the pixel's index in it. Its sample position in the
+// page is origin + (j + 1/2) step - 1/2 texel, in 1/65536 texel, then split into a texel and an 8-bit weight.
+// Pixelated, an axis that isn't shrunk takes the nearest texel. Reads stay inside the image's own texels (border).
+fn image_pixel(shape: Shape, pixel: vec2f, local: vec2f) -> vec4f {
+  let j = vec2i(floor(pixel - shape.rect.xy));
+  let fractions = vec2i(i32(shape.pattern >> 8u), i32(shape.pattern & 0xFFu));
+  let origin = vec2i(shape.fill.xy) * 65536 + fractions * 256;
+  let step = vec2i(shape.fill.zw);
+  let lo = vec2i(shape.border.xy);
+  let hi = vec2i(shape.border.zw);
+  let s = origin + j * step + (step >> vec2u(1u)) - vec2i(32768);
+  let pixelated = shape.params.y > 0.5;
+  let nearest = vec2<bool>(pixelated && step.x <= 65536, pixelated && step.y <= 65536);
+  let t = s >> vec2u(8u);
+  let base = select(t >> vec2u(8u), (s + vec2i(32768)) >> vec2u(16u), nearest);
+  let w = select(t & vec2i(255), vec2i(0), nearest);
+  let p0 = clamp(base, lo, hi);
+  let p1 = clamp(base + vec2i(1), lo, hi);
+  let sum = texel8(p0) * ((256 - w.x) * (256 - w.y))
+          + texel8(vec2i(p1.x, p0.y)) * (w.x * (256 - w.y))
+          + texel8(vec2i(p0.x, p1.y)) * ((256 - w.x) * w.y)
+          + texel8(p1) * (w.x * w.y);
+  let color = vec4f((sum + vec4i(32768)) >> vec4u(16u)) / 255.0;
+  // Rounded corners, anti-aliased like shapes; inside a square-cornered quad this is 1 everywhere.
+  let half = 0.5 * shape.rect.zw;
+  let radii = min(shape.radii, vec4f(min(half.x, half.y)));
+  let coverage = clamp(0.5 - sd_rounded_box(local, half, radii), 0.0, 1.0);
+  return color * (shape.params.x * coverage);
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4f {
   return exact8(shade(in));
@@ -163,6 +200,10 @@ fn shade(in: VertexOut) -> vec4f {
   let pixel = in.position.xy;
   if (pixel.x < shape.clip.x || pixel.y < shape.clip.y || pixel.x >= shape.clip.z || pixel.y >= shape.clip.w) {
     discard;
+  }
+
+  if (shape.params.z == 3.0) {
+    return image_pixel(shape, pixel, in.local);
   }
 
   if (shape.params.z >= 1.0) {

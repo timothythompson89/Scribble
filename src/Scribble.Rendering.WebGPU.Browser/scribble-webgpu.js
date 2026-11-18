@@ -1,6 +1,7 @@
 // Browser side of Scribble.Rendering.WebGPU.Browser: drives navigator.gpu for canvases.
 // It mirrors the native backend: the same WGSL shape shader (passed in from .NET), the same
-// shape layout (24 floats per shape), one instanced draw per frame. The browser presents a
+// shape layout (24 floats per shape), one instanced draw per run of shapes on the same image page
+// (one per frame unless images span pages). The browser presents a
 // canvas's current texture automatically when the task that drew it ends.
 
 const BYTES_PER_SHAPE = 24 * 4;
@@ -12,7 +13,10 @@ let pipeline = null;
 let globals = null;
 let shapes = null;
 let shapesCapacity = 0;
-let bindGroup = null;
+// Bind groups per image page (-1: the 1 × 1 placeholder), dropped when the shapes buffer is reallocated.
+const bindGroups = new Map();
+const imagePages = new Map(); // id → rgba8unorm texture (DESIGN.md, "M8 step 3b", (c))
+let placeholder = null;
 let atlas = null;      // r8unorm coverage
 let colorAtlas = null; // rgba8unorm, premultiplied
 const contexts = new Map();
@@ -24,15 +28,26 @@ function ensureCapacity(count) {
   if (shapes) shapes.destroy();
   shapes = device.createBuffer({ label: "Scribble shapes", size: capacity * BYTES_PER_SHAPE, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   shapesCapacity = capacity;
-  bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: globals } },
-      { binding: 1, resource: { buffer: shapes } },
-      { binding: 2, resource: atlas.createView() },
-      { binding: 3, resource: colorAtlas.createView() },
-    ],
-  });
+  bindGroups.clear();
+}
+
+function bindGroupFor(page) {
+  let group = bindGroups.get(page);
+  if (!group) {
+    const texture = page < 0 ? placeholder : imagePages.get(page);
+    group = device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: globals } },
+        { binding: 1, resource: { buffer: shapes } },
+        { binding: 2, resource: atlas.createView() },
+        { binding: 3, resource: colorAtlas.createView() },
+        { binding: 4, resource: texture.createView() },
+      ],
+    });
+    bindGroups.set(page, group);
+  }
+  return group;
 }
 
 // powerPreference: "" for the browser's choice, or "high-performance" / "low-power".
@@ -84,6 +99,7 @@ export async function init(powerPreference, shaderSource, atlasSize, colorAtlasS
   const atlasUsage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST;
   atlas = device.createTexture({ label: "Scribble glyph atlas", size: [atlasSize, atlasSize], format: "r8unorm", usage: atlasUsage });
   colorAtlas = device.createTexture({ label: "Scribble color glyph atlas", size: [colorAtlasSize, colorAtlasSize], format: "rgba8unorm", usage: atlasUsage });
+  placeholder = device.createTexture({ label: "Scribble image placeholder", size: [1, 1], format: "rgba8unorm", usage: atlasUsage });
   ensureCapacity(1);
 }
 
@@ -113,9 +129,32 @@ export function uploadAtlas(which, x, y, width, height, pixels) {
   device.queue.writeTexture({ texture, origin: [x, y] }, pixels.slice(), { bytesPerRow: width * bytesPerPixel }, [width, height]);
 }
 
+// The largest texture this device takes (compatibility mode on phones may give 4096).
+export function maxTextureSize() {
+  return device.limits.maxTextureDimension2D;
+}
+
+// Image pages: RGBA8 textures the image atlas (ImageAtlas.fs) fills.
+export function createImagePage(id, width, height) {
+  imagePages.set(id, device.createTexture({ label: `Scribble image page ${id}`, size: [width, height], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST }));
+}
+
+export function destroyImagePage(id) {
+  const texture = imagePages.get(id);
+  if (texture) texture.destroy();
+  imagePages.delete(id);
+  bindGroups.delete(id);
+}
+
+// Copies a mip level (tightly packed premultiplied RGBA rows) into a page at (x, y).
+export function uploadImage(id, x, y, width, height, pixels) {
+  device.queue.writeTexture({ texture: imagePages.get(id), origin: [x, y] }, pixels.slice(), { bytesPerRow: width * 4 }, [width, height]);
+}
+
 // Clears the canvas and draws `count` shapes from `shapeBytes` (a .NET MemoryView, valid only
-// during this call) in one render pass.
-export function draw(id, r, g, b, a, shapeBytes, count) {
+// during this call) in one render pass: a draw call per run of shapes on the same image page
+// (`runBytes`: int32 first, count, page for each run).
+export function draw(id, r, g, b, a, shapeBytes, count, runBytes) {
   const context = contexts.get(id);
   if (!context || context.canvas.width === 0 || context.canvas.height === 0) return;
   const width = context.canvas.width;
@@ -133,8 +172,11 @@ export function draw(id, r, g, b, a, shapeBytes, count) {
   });
   if (count > 0) {
     pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bindGroup);
-    pass.draw(6, count);
+    const runs = new Int32Array(runBytes.slice().buffer);
+    for (let i = 0; i + 2 < runs.length; i += 3) {
+      pass.setBindGroup(0, bindGroupFor(runs[i + 2]));
+      pass.draw(6, runs[i + 1], 0, runs[i]);
+    }
   }
   pass.end();
   device.queue.submit([encoder.finish()]);
