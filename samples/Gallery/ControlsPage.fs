@@ -1,7 +1,8 @@
-/// The Controls page (M8 step 3a): CheckBox (with a "select all" that shows a dash), Switch, ToggleButton and
-/// Slider, each controlled by the page's state next to one that keeps its own value.
+/// The Controls page (M8 step 3a): CheckBox (with a "select all" that shows a dash), Switch, ToggleButton,
+/// Slider and ComboBox (M8 step 4c), each controlled by the page's state next to one that keeps its own value.
 module Scribble.Samples.Gallery.ControlsPage
 
+open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
 open Scribble.Accessibility
@@ -18,7 +19,36 @@ let private row (children: View list) =
         StackPanel.children children
     ]
 
+/// Side by side while there is room, then one under another (a phone).
+let private wrap (children: View list) =
+    WrapPanel.create [ WrapPanel.spacing 12.0; WrapPanel.lineSpacing 10.0; WrapPanel.children children ]
+
 let private toppings = [ "Cheese"; "Olives"; "Mushrooms" ]
+
+let private sizes = [| "Small"; "Medium"; "Large"; "Extra large" |]
+
+let private numbers = lazy (Array.init 10_000 (fun i -> "Item " + string (i + 1)))
+
+type private Swatch = { Name: string; Color: Color }
+
+let private swatches =
+    [| { Name = "Lagoon"; Color = Color.Hex 0x2A9D8F }
+       { Name = "Saffron"; Color = Color.Hex 0xE9C46A }
+       { Name = "Clay"; Color = Color.Hex 0xE76F51 }
+       { Name = "Night"; Color = Color.Hex 0x264653 }
+       { Name = "Orchid"; Color = Color.Hex 0xB56CC9 }
+       { Name = "Moss"; Color = Color.Hex 0x6A994E } |]
+
+/// A swatch's view: a round chip of the colour and its name.
+let private swatchView (s: Swatch) =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 8.0
+        StackPanel.children [
+            Border.create [ Border.width 14.0; Border.height 14.0; Border.cornerRadius 7.0; Border.background s.Color; Border.verticalAlignment VerticalAlignment.Center ]
+            TextBlock.create [ TextBlock.text s.Name; TextBlock.verticalAlignment VerticalAlignment.Center ]
+        ]
+    ]
 
 let private controls =
     Component.define "Controls" (fun ctx () ->
@@ -27,6 +57,7 @@ let private controls =
         let bold = ctx.useState false
         let volume = ctx.useState 40.0
         let committed = ctx.useState 40.0
+        let size = ctx.useState "Medium"
         let some = picked.Current
         StackPanel.create [
             StackPanel.spacing 22.0
@@ -87,6 +118,37 @@ let private controls =
                                     Slider.step 10.0
                                     Semantics.label ("Level " + string i)
                                 ]
+                        ]
+                    ])
+                section "ComboBox" "A click, Space or Enter opens the list: there the arrows move, Enter or a click picks, Escape closes. Closed, ↑ and ↓ pick straight away." (
+                    column [
+                        wrap [
+                            // Controlled: the line below follows it.
+                            ComboBox.create [
+                                ComboBox.width 220.0
+                                ComboBox.source sizes
+                                ComboBox.selected (ValueSome size.Current)
+                                ComboBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<string, string>) ->
+                                    e.Key |> ValueOption.iter size.Set)
+                            ]
+                            // A view per item; it keeps its own selection.
+                            ComboBox.create [
+                                ComboBox.width 220.0
+                                ComboBox.source swatches
+                                ComboBox.keySelector (fun (s: Swatch) -> s.Name)
+                                ComboBox.viewSelector swatchView
+                                ComboBox.placeholder "Pick a colour"
+                            ]
+                        ]
+                        TextBlock.create [ TextBlock.text ("Size: " + size.Current) ]
+                        wrap [
+                            // 10,000 items: the list realizes only what shows.
+                            ComboBox.create [
+                                ComboBox.width 220.0
+                                ComboBox.source numbers.Value
+                                ComboBox.placeholder "One of 10,000"
+                            ]
+                            ComboBox.create [ ComboBox.width 220.0; ComboBox.source sizes; ComboBox.selected (ValueSome "Large"); ComboBox.isEnabled false ]
                         ]
                     ])
             ]

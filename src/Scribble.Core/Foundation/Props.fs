@@ -462,6 +462,10 @@ module ToggleButtonProps =
 module TabHeaderProps =
     let isSelected = Prop<bool>("IsSelected", false, Affects.Render, PropKind.Value) |> AppState.mark
 
+/// Whether a ComboBox's list is open. Declared here so `States.isOpen` can read it.
+module ComboBoxOpenProps =
+    let isOpen = Prop<bool>("IsListOpen", false, Affects.Measure, PropKind.Value) |> AppState.mark
+
 /// The engine's typed copy of an element's layout properties (read on every measure and arrange).
 [<Struct>]
 type internal LayoutValues =

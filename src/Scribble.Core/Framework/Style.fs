@@ -134,6 +134,8 @@ module States =
     let isIndeterminate = ofProp "indeterminate" ToggleButtonProps.isIndeterminate id
     /// A TabControl's header for the selected tab, a ListBox's selected item.
     let isSelected = ofProp "selected" TabHeaderProps.isSelected id
+    /// A ComboBox whose list is open.
+    let isOpen = ofProp "open" ComboBoxOpenProps.isOpen id
 
     /// The built-in states, in the order tools show them.
     let internal builtIn = [| hover; pressed; focused; focusVisible; disabled |]

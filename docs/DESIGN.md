@@ -23,7 +23,7 @@ questions", as paragraphs starting with the name given here.
 | M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
-| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" (4a flyouts, 4b ListBox and RadioButton, 4c ComboBox) |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
@@ -70,7 +70,9 @@ inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`Button
 each in its own layer, light dismiss, placement) and tooltips. Rendering to an image and saving it (2026-11-18): `ViewImage.render`,
 `Capture`, `Image.toPng`, `Files.save`, the PNG encoder and async readback on desktop and browser. M8 step 4b (2026-11-18): `ItemsView.keySelector` and `viewSelector`, `ListBox` (selection by key in None, Single or Multiple mode, keyboard, invoking) with `ListBoxItem`, `RadioGroup` and `RadioButton`, and the Gallery's Lists page.
 
-Next: Tim tries M8 step 4b (built 2026-11-18, section "4b: ListBox and RadioButton"), then 4c ComboBox and 4d Dialog and Toast. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Tim tried M8 step 4b on the desktop and passed it (2026-11-18), with Tab order as view order and `Dock.Fill`. M8 step 4c (2026-11-18), built and waiting for Tim: `ComboBox` (a box showing one item picked from a ListBox in its flyout; `source`, `keySelector`, `viewSelector`, `selected`, `placeholder`; both keyboards) and the Controls page's ComboBox section.
+
+Next: Tim tries M8 step 4c (section "4c: ComboBox"), then 4d Dialog and Toast. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -146,7 +148,8 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl (controls are controlled when the view gives their value, else keep their own).
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox (controls are controlled when the view gives their value,
+  else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
   focus-visible.
@@ -3236,6 +3239,87 @@ Status: **agreed (Tim, 2026-11-18: "yes, record it and build").** Built 2026-11-
   `gallery-phone-lists@3x`. 8 Gallery references changed only in the tab row (checked pixel by pixel). Unit:
   1,062 passed plus 6 timing skipped. Rendering: 88. Timing: 6. Driven in Chrome (browser build): click, hover,
   double-click, arrows, End, Multiple's Ctrl/Shift+click and Ctrl+A, radio arrows, None mode, the swatch list.
+
+### 4c: ComboBox (planned and built 2026-11-18)
+
+Facts: its list is a flyout (GLOSSARY) and `Flyout.matchAnchorWidth` exists for it; ListBox virtualizes and was
+built to be reused (4b, decision 1); 4b's decision 19 says a ComboBox selects and invokes on a click or Enter and
+closes on the invoke; typeahead waits for M9 (4b, decision 4).
+
+**Round 1 (Tim: yes to all, 2026-11-18).**
+1. **Select-only now.** Typing into it waits for TextBox (M9): an editable ComboBox is a TextBox with a list.
+2. **Its own element type extending Border, not Button** (`Button.text` and `onClick` would mean nothing on it). It
+   takes focus and the hover and pressed states itself and builds its flyout.
+3. **Settings mirror ListBox:** `ComboBox.source`, `keySelector`, `viewSelector`, passed to the list inside. It
+   can't inherit them from ItemsView (it isn't the list), so it declares the same names.
+4. **The selection is one key:** `ComboBox.selected (key: 'K voption)` and `ComboBox.onSelectedChanged` with
+   ListBox's `SelectionChangedEventArgs<'T, 'K>`. `ValueNone` shows the placeholder. Controlled when given, else it
+   keeps its own. Considered: `selected (key: 'K)` plus a second setting for "none" (two settings for one job).
+5. **The closed box shows the selected item through the same `viewSelector`;** `ComboBox.placeholder "Pick one"`
+   when nothing is selected. A selector of its own for the box waits for a case that needs it.
+6. **Closed keyboard:** Space, Enter, Alt+Down and F4 open it; Up/Down and Home/End change the selection without
+   opening (Windows, WinUI). The wheel over a closed box does nothing.
+7. **Open:** focus goes to the selected item, scrolled into view; the arrows move the highlight only; Enter or a
+   click commits and closes; Escape, Tab or a press elsewhere closes with no change; focus returns to the box.
+   Committing on every arrow would raise `onSelectedChanged` for items only passed through. Inside, the ListBox is
+   in None mode showing the current key as selected, and the invoke is the commit.
+8. **Flyout:** below (flipping above), at least as wide as the box, at most 320 DIPs tall
+   (`ComboBox.maxListHeight`), then it scrolls. Not "dropdown": the glossary retires the word.
+9. **No `isOpen`/`onOpenChanged` on ComboBox yet:** nothing needs to open one from code; adding them breaks nothing.
+10. **Look: a field, not a button.** Surface background, a 1-DIP border, Button's corner radius and height, a
+    chevron at the right drawn by the element (Core has no icon package), an accent border when focused or open.
+    It stretches by default.
+11. **Semantics:** a new role `ComboBox`, expanded or collapsed, its value the selected item's name, Expand and
+    Collapse actions; the open list is the `List` in its own layer.
+12. **A selected key that leaves the source** follows ListBox (4b, decision 11).
+13. **Gallery:** three on the Controls page: text items, the swatches (a view per item), 10,000 items.
+14. **Tests:** unit tests for opening and closing, both keyboards, commit and cancel, controlled and not, focus
+    coming back, the same elements realized for 100 and 10,000 items; screenshots closed and open in both themes
+    and the phone pass at 390 DIPs.
+15. **GLOSSARY:** no new term (its list is "its flyout"; the closed part is "the box" in prose).
+
+Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18.
+
+**As built (2026-11-18):**
+- `Elements/Controls/ComboBox.fs`, after RadioButton. The element manages its own content as TabControl does: in
+  measure it works out the box's view (the selected item's, through `viewSelector`, or the placeholder as dim
+  text), patches or realizes it, and sets its own `flyout`: a Flyout holding a ScrollViewer (`maxHeight` from
+  `maxListHeight`) and a ListBox with the same source and selectors, in None mode, showing the selected key.
+  `ListBox.onItemInvoked` is the pick: it selects and closes.
+- **The flyout is controlled by the ComboBox:** `ComboBoxOpenProps.isOpen` (in `Props.fs`, so `States.isOpen` can
+  read it) is given to `Flyout.isOpen`, and `Flyout.onOpenChanged` sets it. So every way a flyout opens or closes
+  (the box's click, Space and Enter, Escape, a press elsewhere, the anchor scrolling away) goes through one place,
+  and `ComboBox.isOpen`/`onOpenChanged` (decision 9) would be two short settings later.
+- **Opening on the selected item** (decision 7): on opening, the list's scroller is asked for the selected index
+  (no animation) before the flyout's first layout, so the item is realized and the host's "focus the first Tab
+  stop" lands on it (ListBox makes the selected item its Tab stop). Tested with item 500 of 1,000.
+- **Keys:** the box's own (`Element.keyDown`) are the closed ones: Alt+↓ and F4 open; ↑/↓, Home and End pick
+  through a key store kept for the source (one pass over the keys when the source changes, as ItemsView does, then
+  each press is a lookup). Space and Enter are the box's click. The open list's keys are ListBox's, in the flyout's
+  layer; Tab there is handled by the list's `onKeyDown` (close, nothing changed).
+- **The list is as wide as the box, not "at least"** (decision 8 amended while building): an ItemsView takes all
+  the width it's offered, which for a flyout is the window's, so the first picture showed a list across the
+  window. The Flyout is given the box's width. Longer items wrap or clip as the item's view decides.
+- **Look** (theme): `Palette.surface`, the border taking `Palette.accent` on `States.focused` and the new
+  `States.isOpen`, hover and press tints, the chevron and the placeholder in `Palette.textDim`
+  (`ComboBox.chevron`, `ComboBox.placeholderForeground`). The box's copy of the item isn't hit-testable, so a
+  button inside a view item doesn't take the click that opens the list.
+- **Semantics:** `Role.ComboBox`, named by its content (the selected item's text, or the placeholder), `expanded`
+  read from the open flag (`Semantics.expandedFrom`), and the new actions `SemanticAction.Expand` and `Collapse`.
+  **Not as decided:** the selected item is the node's *name*, not a separate value, because nodes have no text
+  value yet; a ComboBox given a `Semantics.label` loses the item from its node. To settle with AccessKit.
+- **Gallery:** a ComboBox section at the end of the Controls page: sizes (controlled, with the line under it
+  following), the swatches (a view per item), 10,000 items, and a disabled one, in WrapPanels so they stack on a
+  phone.
+- **Tests:** 13 unit tests (`ComboBoxTests`): picking by click, closing by the box and by a press elsewhere, focus
+  on the selected item of 1,000, the open keyboard, Escape and Tab, the closed keyboard, Alt+↓ and F4, controlled,
+  a key leaving the source (own and controlled), the list's width and height and the same elements for 100 and
+  10,000 items, a view item, semantics with Expand and Collapse, disabled. 2 new screenshots: `combobox@1x` and
+  `combobox-light@1x` (one open by keyboard, a hovered one, the placeholder, a view item, a disabled one). 3
+  references changed, each looked at: `inspector-pick@1x` and `inspector-images@1x` gained the "open" chip in
+  STATES; `gallery-phone-controls@3x` has a shorter scrollbar thumb (the page is longer). The phone picture doesn't
+  reach the ComboBox section (it's below the fold): not covered by a picture at 390 DIPs. Unit: 1,081 passed plus
+  6 timing skipped. Rendering: 90. Timing: 6.
 
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 

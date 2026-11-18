@@ -4,7 +4,7 @@ A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.m
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Status** (2026-11-17): milestones 0–7b done; M8 (core controls) under way: scrolling and virtualized lists, Grid,
-DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton. Apps are F# view
+DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox. Apps are F# view
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
@@ -1169,6 +1169,28 @@ ScrollViewer.create [
   selected key that leaves the source is dropped (and reported) when the list keeps its own selection; a
   controlled list leaves the app's keys alone. Style the items with `ListBoxItem.style [ States.isSelected ] [ ... ]`
   (`ListBoxItem.indicator` is the bar at the left of a selected item).
+
+- **ComboBox**: a box showing one item picked from a list it opens in its flyout. The list is a ListBox, so
+  `source`, `keySelector` and `viewSelector` mean the same and 10,000 items cost what a screenful does. The
+  selection is one key: `ComboBox.selected (ValueSome key)` (controlled) or its own; `ValueNone` shows the
+  `placeholder`. A click, Space, Enter, Alt+↓ or F4 opens the list: there the arrows move through the items, Enter
+  or a click picks one and closes it, and Escape, Tab or a press elsewhere closes it with nothing changed. While
+  it's closed, ↑/↓ and Home/End pick the next item straight away.
+
+```fsharp
+ComboBox.create [
+    ComboBox.source model.Countries
+    ComboBox.keySelector (fun (c: Country) -> c.Code)
+    ComboBox.viewSelector (fun (c: Country) -> c.Name)             // or a view: it shows in the list and in the box
+    ComboBox.selected (ValueSome model.Country)                    // left out: it keeps its own
+    ComboBox.placeholder "Pick a country"
+    ComboBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Country, string>) -> dispatch (Pick e.Key))
+]
+```
+
+  The list is as wide as the box and at most `ComboBox.maxListHeight` tall (320 DIPs), then it scrolls. Style the
+  box with `ComboBox.style [ States.isOpen ] [ ... ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
+  its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. Typing into it waits for TextBox.
 
 Own values belong to the element: in an ItemsView, whose rows are recycled, give the value (controlled), or a row
 scrolled in may show the own value of the item it was made for before.

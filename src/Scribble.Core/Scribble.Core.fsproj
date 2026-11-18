@@ -51,6 +51,7 @@
     <Compile Include="Elements/Controls/TabControl.fs" />
     <Compile Include="Elements/Controls/ListBox.fs" />
     <Compile Include="Elements/Controls/RadioButton.fs" />
+    <Compile Include="Elements/Controls/ComboBox.fs" />
     <Compile Include="Themes/Theme.fs" />
     <Compile Include="Hosting/Component.fs" />
     <Compile Include="Hosting/Layer.fs" />

@@ -206,6 +206,7 @@ module internal SemanticBuilder =
         | Role.Switch
         | Role.RadioButton
         | Role.Tab
+        | Role.ComboBox
         | Role.ListItem -> true
         | _ -> false
 

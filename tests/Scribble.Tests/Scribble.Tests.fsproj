@@ -39,6 +39,7 @@
     <Compile Include="ControlsTests.fs" />
     <Compile Include="ListBoxTests.fs" />
     <Compile Include="RadioButtonTests.fs" />
+    <Compile Include="ComboBoxTests.fs" />
     <Compile Include="SemanticsTests.fs" />
     <Compile Include="PngTests.fs" />
     <Compile Include="ImageAtlasTests.fs" />

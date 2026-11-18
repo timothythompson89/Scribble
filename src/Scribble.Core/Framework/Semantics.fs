@@ -17,6 +17,8 @@ type Role =
     /// Options of which one is chosen.
     | RadioGroup
     | Slider
+    /// A box showing the item chosen from a list it opens (expanded while the list shows).
+    | ComboBox
     | Tab
     | TabList
     | TabPanel
@@ -40,6 +42,7 @@ type Role =
         | RadioButton -> "RadioButton"
         | RadioGroup -> "RadioGroup"
         | Slider -> "Slider"
+        | ComboBox -> "ComboBox"
         | Tab -> "Tab"
         | TabList -> "TabList"
         | TabPanel -> "TabPanel"
@@ -102,6 +105,9 @@ type SemanticAction =
     /// A scroll area moves on by a page.
     | ScrollForward
     | ScrollBackward
+    /// Something that opens (a ComboBox's list) shows what it holds.
+    | Expand
+    | Collapse
 
     override a.ToString() =
         match a with
@@ -112,6 +118,8 @@ type SemanticAction =
         | ScrollIntoView -> "ScrollIntoView"
         | ScrollForward -> "ScrollForward"
         | ScrollBackward -> "ScrollBackward"
+        | Expand -> "Expand"
+        | Collapse -> "Collapse"
 
 /// Semantics values as text, written out (records' and options' generated ToString use %A,
 /// which NativeAOT can't run): for the inspector and node descriptions.
@@ -241,6 +249,9 @@ type Semantics =
         Setting.create SemanticsProps.multiSelectable (Read([| prop :> Prop |], fun e -> isMulti (e.Get prop)))
     /// Expanded or collapsed (something that opens).
     static member isExpanded<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create SemanticsProps.expanded (Fixed(ValueSome value))
+    /// Read from a property of the element's own (a ComboBox's open list).
+    static member internal expandedFrom<'k when 'k :> Layoutable>(prop: Prop<bool>) : Setting<'k> =
+        Setting.create SemanticsProps.expanded (Read([| prop |], fun e -> ValueSome(e.Get prop)))
     /// A value in a range (a slider of the app's own).
     static member range<'k when 'k :> Layoutable>(value: float, minimum: float, maximum: float, step: float) : Setting<'k> =
         Setting.create SemanticsProps.range (Fixed(ValueSome { Value = value; Minimum = minimum; Maximum = maximum; Step = step }))

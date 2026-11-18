@@ -109,6 +109,24 @@ module internal ThemeLooks =
               Style.on States.pressed [ ListBoxItem.overlay Palette.pressTint ]
               Style.on States.disabled [ ListBoxItem.overlay Color.Transparent; ListBoxItem.opacity 0.5 ]
           ]
+          // A field (M8 step 4c, decision 10): the surface colour and a line that takes the accent while it has focus
+          // or its list is open.
+          ComboBox.style [] [
+              ComboBox.background Palette.surface
+              ComboBox.borderBrush Palette.border
+              ComboBox.cornerRadius Palette.cornerRadius
+              ComboBox.foreground Palette.text
+              ComboBox.chevron Palette.textDim
+              ComboBox.placeholderForeground Palette.textDim
+              Style.transition BorderProps.overlay tintTime
+              Style.transition BorderProps.borderBrush tintTime
+              Style.on States.hover [ ComboBox.overlay Palette.hoverTint ]
+              Style.on States.pressed [ ComboBox.overlay Palette.pressTint ]
+              Style.on States.focused [ ComboBox.borderBrush Palette.accent ]
+              Style.on States.isOpen [ ComboBox.borderBrush Palette.accent ]
+              Style.on States.disabled [ ComboBox.overlay Color.Transparent; ComboBox.opacity 0.5 ]
+          ]
+          TextBlock.style [ Style.inside ComboBox.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
           // A disabled Button fades as a whole: its text doesn't fade twice.
           TextBlock.style [ Style.inside Button.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
