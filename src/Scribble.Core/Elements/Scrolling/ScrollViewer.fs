@@ -70,7 +70,7 @@ type internal ScrollState() =
     member s.MaxY = max 0.0 (s.ExtentH - s.ViewH)
 
 module ScrollViewerProps =
-    let content = Prop.child "Content"
+    let content = Prop.content "Content"
     /// The scrollbar thumb's color (the theme sets it).
     let thumb = Prop.define "Thumb" (Color.White.WithAlpha 0.3f) Affects.Render
     /// The faint track under a thumb while the pointer is on it (the theme sets it).

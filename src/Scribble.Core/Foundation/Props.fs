@@ -19,8 +19,8 @@ type Affects =
 
 type internal PropKind =
     | Value = 0
-    /// Holds `Element voption`: one child.
-    | Child = 1
+    /// Holds `View voption`: one view, realized as the element's one child (`content`).
+    | Content = 1
     /// Holds `Element list`: any number of children.
     | Children = 2
     /// Holds a component's input (its function and props): a change runs the component.
@@ -224,7 +224,7 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     /// Changing it can change which styles match the element (and everything inside it).
     member val internal Restyles = false with get, set
     /// Its tree hears when an element's own value changes or an element with one joins (`IElementRoot.Watch`): a
-    /// flyout's `isFlyoutOpen`.
+    /// flyout (`flyout`).
     member val internal Watched = false with get, set
     /// A style's selector tests its value (`Style.prop`, `Style.where`, `States.ofProp`): a change
     /// of the element's own value matches it again.

@@ -84,7 +84,7 @@ let ``a horizontal stack skips hidden children and their spacing`` () =
 
 [<Fact>]
 let ``a border adds padding and border thickness around its child`` () =
-    let _, b = run (Border.create (topLeft @ [ Border.child (box 40.0 20.0 []); Border.padding (10.0, 5.0); Border.borderThickness 2.0 ])) 200.0 200.0
+    let _, b = run (Border.create (topLeft @ [ Border.content (box 40.0 20.0 []); Border.padding (10.0, 5.0); Border.borderThickness 2.0 ])) 200.0 200.0
     Assert.Equal(Size.Create(64.0, 34.0), b.DesiredSize)
     Assert.Equal(rect (12.0, 7.0, 40.0, 20.0), (child b [ 0 ]).Bounds)
 
@@ -153,7 +153,7 @@ let ``changes ask the tree for a frame, unchanged values don't`` () =
 
 [<Fact>]
 let ``hit testing finds the topmost element under a point`` () =
-    let view = Border.create [ Border.name "border"; Border.child (box 20.0 20.0 (topLeft @ [ Box.name "inner" ])); Border.padding 10.0 ]
+    let view = Border.create [ Border.name "border"; Border.content (box 20.0 20.0 (topLeft @ [ Box.name "inner" ])); Border.padding 10.0 ]
     let t, _ = run view 100.0 100.0
     Assert.Equal("inner", (t.HitTest(15.0, 15.0)).Value.Name)
     Assert.Equal("border", (t.HitTest(50.0, 50.0)).Value.Name)
@@ -361,7 +361,7 @@ let ``VisibleBounds is empty under a hidden ancestor`` () =
     let view =
         StackPanel.create [
             StackPanel.children [
-                Border.create [ Border.isVisible false; Border.child (Border.create [ Border.name "inside"; Border.height 20.0 ]) ]
+                Border.create [ Border.isVisible false; Border.content (Border.create [ Border.name "inside"; Border.height 20.0 ]) ]
             ]
         ]
     let _, root = run view 200.0 100.0

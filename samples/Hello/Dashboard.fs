@@ -182,7 +182,7 @@ let card (index: int) (progress: float) (hovered: bool) (onHover: int option -> 
         Border.borderBrush (if hovered then accent else cardBorder)
         Border.shadow (cardShadow hovered)
         Border.clipToBounds true
-        Border.child (
+        Border.content (
             Layers.create [
                 // Keep the content in place when the border gets thicker: the border is drawn over it.
                 Layers.margin (-thickness)
@@ -194,7 +194,7 @@ let card (index: int) (progress: float) (hovered: bool) (onHover: int option -> 
                             Border.height 36.0
                             Border.cornerRadius 18.0
                             Border.background (accent.WithAlpha 0.25f)
-                            Border.child (
+                            Border.content (
                                 TextBlock.create [
                                     TextBlock.text avatar
                                     TextBlock.fontSize 18.0
@@ -267,7 +267,7 @@ let private topBar (toolbar: View option) =
     Border.create [
         Border.name "top bar"
         Border.background topBarFill
-        Border.child (
+        Border.content (
             SplitRow.create [
                 SplitRow.endMargin (0.0, 0.0, 16.0, 0.0)
                 SplitRow.wrapMargin (24.0, 0.0, 16.0, 16.0)

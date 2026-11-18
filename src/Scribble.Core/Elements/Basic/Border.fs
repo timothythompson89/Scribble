@@ -26,7 +26,7 @@ module BorderProps =
     /// press: the theme lightens on hover and darkens on press this way, so the look works whatever
     /// the background color is (a class color like `.primary` keeps its state looks).
     let overlay = Prop.define "Overlay" Color.Transparent Affects.Render
-    let child = Prop.child "Child"
+    let content = Prop.content "Content"
 
 /// Draws a background, border and optional shadow around one child, with padding inside the border.
 [<AbstractClass>]
@@ -59,7 +59,8 @@ type Border =
     /// `Button.style [ States.hover ] [ Button.overlay (Color.White.WithAlpha 0.15f) ]`.
     static member overlay<'k when 'k :> Border>(value: Color) : Setting<'k> = Setting.create BorderProps.overlay value
     static member overlay<'k when 'k :> Border>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.overlay themeValue
-    static member child<'k when 'k :> Border>(value: View) : Setting<'k> = Setting.create BorderProps.child (ValueSome value)
+    /// What it shows (one view; Button, Flyout and other Borders inherit it).
+    static member content<'k when 'k :> Border>(value: View) : Setting<'k> = Setting.create BorderProps.content (ValueSome value)
 
 module Border =
     let internal inset (ctx: MeasureContext) =

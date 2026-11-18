@@ -62,7 +62,7 @@ SEMANTICS section), and M8 step 3b part (a): the Counter sample became the Galle
 part (b), the PNG decoder (`Scribble.Imaging`); part (c), images on the GPU (`DrawList.DrawImage`, image atlas pages,
 mip levels); part (d), the `Image` value, its process-wide cache and pool, decoding off the UI thread, `ImageView`,
 and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`; part (f), `Cursor.fromImage` and the
-inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`flyoutContent` and its settings,
+inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`Button.flyout menu` or `Button.flyout [ Flyout settings ]`, styled as if inside its element,
 each in its own layer, light dismiss, placement) and tooltips.
 
 Next: the rest of M8 step 4 (4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
@@ -140,7 +140,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Scrolling:** ScrollViewer (bars, thumb drag, wheel, keys, touch with fling) and ItemsView (virtualized lists
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
-- **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, FlyoutPresenter, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
+- **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
   TabControl (controls are controlled when the view gives their value, else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order, focus-visible.
@@ -148,7 +148,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   style over theme; transitions; dark and light themes with theme values (`Palette.surface`); app values that any
   view can read; visual states that apps can define and tools can force.
 - **Layers:** the app's view and more (dialogs, toasts, the inspector) over it, each with its own tree and focus.
-  Flyouts (`flyoutContent`: content anchored to an element, light dismiss, flip and clamp) and tooltips each show
+  Flyouts (`flyout content` or `flyout [ ... ]`: content anchored to an element, light dismiss, flip and clamp) and tooltips each show
   in a layer of their own. Section "M8 step 4".
 - **Errors:** app code (handlers, views, components, render functions, items) is guarded; with `App.onError` an
   error is reported and only what failed is left out; without it the app ends.
@@ -207,6 +207,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 | macOS, Linux, mobile | After M10 | Everything goes through `IPlatform`/`IWindow` |
 | Responsive layout | A round of its own (the Gallery wants a sidebar on wide windows, tabs on narrow ones) | The TabControl's header row scrolls sideways; views can't read the window size yet |
 | Scroll only the nearest viewer | When an app nests a list in a scrolling page and wants the page to stay put (the browser's `scrollIntoView({ container: "nearest" })`; DESIGN.md, "Scrolling to an item ...", Tim, 2026-11-17) | `BringRectIntoView` already treats the nearest viewer apart from the ones around it; the scroller's requests carry their options |
+| Content and flyouts from styles | When something needs it: control templates, or the theme giving controls default content (DESIGN.md, "M8 step 4", round 1e) | Views are descriptions, so a style's view can serve many elements (the instance sharing that trips WPF and Avalonia can't happen); one Flyout settings list already serves several elements |
 | Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
 
 ---
@@ -2855,6 +2856,138 @@ the Gallery's toasts and dialog still listen to F# events because a view can't p
   - flyout content taller than the window is cut to the window, and scrolls only if it's in a ScrollViewer;
   - transforms on the anchor are ignored, as in `PositionInTree`;
   - keyboard-focus tooltips.
+
+**Round 1b: the flyout becomes a value (Tim, 2026-11-17).** Tim asked whether `Button.flyout (Flyout.create [...])`
+would be better. It changes decisions 3, 5 and 10. The flat settings were chosen in round 1 and built in 4a; what
+tipped it now is what comes next:
+- menus (`MenuFlyout`), context menus (`contextFlyout`) and ComboBox's list all want a flyout as one value that can be
+  passed around;
+- seven settings on every element's autocomplete were noise;
+- one flyout's own look wasn't reachable (only `FlyoutPresenter.style`, for all of them).
+
+FuncUI on Avalonia uses the same shape. Tim: yes to all.
+1. **`Layoutable.flyout (Flyout.create [ ... ])`** replaces `flyoutContent`, `flyoutPlacement` and
+   `flyoutAlignment`. **Flyout is the themed box itself:** it inherits Border and replaces FlyoutPresenter, so one
+   flyout can say `Flyout.padding 0.0`, and `Flyout.style` restyles them all.
+2. **On the Flyout:** `Flyout.placement`, `Flyout.alignment`, `Flyout.isOpen`, `Flyout.onOpenChanged`,
+   `Flyout.lightDismiss` and `Flyout.matchAnchorWidth`. A reused Flyout value stays controlled the same way wherever
+   it's put. Without `Flyout.isOpen`, the element with the flyout keeps its own open state and its click toggles it.
+3. **`Flyout.content view`** is what it shows.
+5. **One word everywhere: `content`** (Tim, the same day). Border's `child` becomes `content`, which Button, Flyout
+   and every other Border inherit (the separate `Button.content` is gone, so no element accepts two words for one
+   property). It already matched `ScrollViewer.content` and `TabItem.content`. Considered: WPF's split (`child` on
+   plain containers, `content` on controls), rejected because Button then took both words. A panel's several views
+   stay `children`. Element authors' `Prop.child` becomes `Prop.content` too (Tim: "I don't understand Prop.child
+   staying"); "child" is kept only for the element tree itself (parent and child elements, `ctx.Children`).
+4. **Tooltips stay flat:** `tooltip "text"` and `tooltipView view`. A `Tooltip.create` can come if tooltips need
+   their own settings.
+
+**As built (round 1b, 2026-11-17):**
+- `FlyoutProps.flyout` holds the Flyout view on the element; it's watched, so the host hears a new one. The host reads
+  `isOpen`, `onOpenChanged` from the view's own settings (`Flyouts.valueIn`), since the Flyout element exists only
+  while it's open; an uncontrolled flyout's state is a local on its element.
+- The Flyout view itself is the layer's one child: `FlyoutRoot` reads placement, alignment and `matchAnchorWidth` from
+  it (so a change re-places an open flyout), and light dismiss is read from the Flyout element (styles count).
+  `FlyoutTarget` keeps only the anchor's rect and the gap.
+- The flyout screenshot is pixel-identical to 4a's. Three new tests: one flyout's own look, placement changed while
+  open, one Flyout value on two buttons. The phone Layers picture changed only for the Pinned section's longer note;
+  that flyout now shows its own look (accent line, 12-DIP corners and padding).
+- `content` everywhere: `BorderProps.content` (the inspector shows "Content"), `Prop.content` and `PropKind.Content`, every sample, test and doc. The Layers
+  page now defines its flyouts as values (`actionsMenu`, `sideFlyout`, `pinnedSettings`) and its buttons attach them;
+  the page is a component, keeping whether the Actions menu is open. Pictures unchanged.
+
+**Round 1c: `flyout` takes content or settings, and a flyout is styled inside its element (Tim, 2026-11-17).** Tim
+wasn't sure about `Button.flyout (Flyout.create [...])`. Considered:
+- a second setting, `flyoutSettings`: rejected. It's two settings that only work together, there's no single value
+  to reuse, and every flyout slot would need a pair;
+- one setting that takes any view and wraps it unless it's a Flyout: works, but it's a little magic.
+
+Tim proposed overloads, and they infer cleanly (checked: a list in a `let`, an `if`, inherited Border settings). His
+real aim was styling specific elements' flyouts, which a flyout's separate tree didn't allow in any syntax. Tim: yes
+to both.
+1. **`flyout content` or `flyout [ Flyout settings ]`:** `Button.flyout menu` for most flyouts, and
+   `Button.flyout [ Flyout.placement Placement.Right; Flyout.content menu ]` when it needs settings. The settings list
+   is the value to keep and reuse. `Flyout.create` becomes internal: given as content, a Flyout would sit inside
+   another. `Flyout.style` stays.
+2. **A flyout is styled as if inside its element.** This is how WPF and Avalonia treat a popup's owner. Its tree
+   belongs to the element:
+   - `Style.parent` and `Style.inside` look past the flyout to the element;
+   - `styles` on the element or anything around it apply;
+   - a `theme` around the element is the flyout's theme.
+
+   So `Button.styles [ Flyout.style ... ]`, `Flyout.style [ Style.parent Button.Type [ Style.cls "toolbar" ] ]` and
+   `Flyout.style [ Style.inside ComboBox.Type [] ]` all work. Inherited values (text colour, font) cross only
+   through the theme: a flyout from a Button with white text doesn't get white text. When the element or something
+   around it restyles (a class, the pointer over it, `styles` or `theme` changing) while the flyout is open, the
+   flyout restyles. Tooltips are styled the same way.
+
+**As built (round 1c, 2026-11-17):**
+- `flyout` is an extension on Layoutable in `Elements/Basic/Flyout.fs` (module `FlyoutSettings`, auto-opened), so the
+  list overload can name `Flyout`; `Button.flyout` finds it through inheritance. The content form wraps the view in a
+  Flyout.
+- `ElementTree.Owner` (and `IElementRoot.Owner`): the host sets it on flyout and tooltip trees. `Element.StyleParent`
+  is the parent, except that the owner stands in for the tree's root. Selector matching, `StyleEngine.scopesAbove`,
+  `themeStyles` and `NearestTheme` use it. `FromAbove` takes a root's base values from the owner's theme, not the
+  owner's values.
+- `ElementTree.RestyleHandler` hears every restyle request. The host's `restyleOwned` restyles an open flyout's tree
+  when the request is for its element or something containing it.
+- 5 new tests:
+  - the element's `styles` reach its flyout and no other;
+  - `Style.parent` with a class, and `Style.inside` by name;
+  - a theme around the element, without the element's text colour;
+  - a class added while open;
+  - a tooltip styled through its element.
+
+  All 5 fail with the owner links off, and the open-flyout one fails with the hook off.
+- Gallery: the Layers page's placement panel has a `styles` giving its four flyouts square corners. The phone
+  picture changed only for that section's longer note.
+
+**Round 1d: no FlyoutRoot (Tim, 2026-11-17).** Tim asked why FlyoutRoot was needed. It placed the Flyout: placing
+needs the Flyout's measured size and the window's, and only a parent arranges an element. It was also never hit
+itself. Its costs:
+- a line of noise in the inspector;
+- the one special case in round 1c's `StyleParent`, which skipped the tree's root.
+
+Decision: **a tree can place its root.** The Flyout (or the TooltipPresenter) is the layer's root. The tree measures
+it against the window, as any root, and arranges it where a placement function says. Presses outside it already
+fall through a layer that isn't modal. Tim: yes.
+
+**As built (round 1d, 2026-11-17):**
+- `ElementTree.Place: (Element -> Size -> Rect) voption`, internal until a layer outside Core needs it (dialogs,
+  toasts). It's given the measured root and the window size; ValueNone fills the window as before.
+- `FlyoutPlacement.flyout` reads the root Flyout's `placement`, `alignment` and `matchAnchorWidth`; the host
+  closes over the anchor's current rect. Tooltips place their presenter below the pointer the same way.
+- Removed: `FlyoutRoot`, `FlyoutRootProps`, `FlyoutTarget`. `StyleParent` is now the parent, else the tree's owner.
+  `lightDismissOf` reads the root.
+- Re-placing when the anchor moves needs nothing extra: the tree lays out its root every frame, and a moving anchor
+  brings one. A test confirmed this; an explicit `InvalidateArrange` was redundant and left out.
+- `Element.passThrough` stays for element authors (an overlay that lets the pointer through), though nothing in Core
+  uses it now.
+- Pictures are pixel-identical, flyout and tooltip screenshot included. A test checks the Flyout has no parent.
+
+**Round 1e: content and flyouts from styles, an open item (Tim, 2026-11-17).** Tim asked whether the new syntax lets
+a style set content. It doesn't: styles can't set `content` or `children` on any element (`Rule.check` refuses
+non-value properties), and `flyout`, `isOpen` and `onOpenChanged` are marked not stylable.
+
+I first called style-set content a bad idea. That was wrong. WPF and Avalonia both allow a style to set `Content`
+(and WPF a `ContextMenu`). Their catch is that a setter's value is one instance: a control given that way can have
+only one parent, so the second element fails ("already the logical child of another element"). The workarounds are
+`x:Shared="False"`, `ContentTemplate`, or Avalonia's `<Template>` in a setter. Scribble's views are descriptions,
+and each element builds its own elements from one, so that catch can't happen here.
+
+The real reason is how Scribble applies styles. Children come from the view, and styles set values on elements that
+already exist. Allowing it means:
+- building children from the resolved content (after styles), not only from the view;
+- comparing old and new content and rebuilding what differs when a style starts or stops setting it (a class, a
+  state), during the style pass;
+- styling the new children before layout (as ItemsView does with `RunStylesWithin`);
+- for `flyout`: the host hearing styled changes (it hears only the view's today), and `isOpen` and `onOpenChanged`
+  refused in styles (a styled flyout is uncontrolled).
+
+Decision (Tim): **open item, not now.** It's a moderate change to Element, and it fits the model well. It waits for
+a use that a view function can't serve as well: control templates, or the theme giving controls default content.
+Until then, "these buttons get this menu" is a function or a shared settings list in the view. Listed under
+"Deferred work".
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

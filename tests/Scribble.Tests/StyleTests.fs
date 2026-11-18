@@ -122,7 +122,7 @@ let ``inside and parent match on ancestors`` () =
                     TextBlock.create [ TextBlock.name "top" ]
                     Border.create [
                         Border.classes [ card ]
-                        Border.child (Border.create [ Border.child (TextBlock.create [ TextBlock.name "deep" ]) ])
+                        Border.content (Border.create [ Border.content (TextBlock.create [ TextBlock.name "deep" ]) ])
                     ]
                 ]
             ]
@@ -160,9 +160,9 @@ let ``disabled follows isEnabled on an ancestor`` () =
 let ``a style that changes size re-lays out`` () =
     let big = "big"
     let t = tree [ Border.style [ Style.cls big ] [ Border.padding 20.0 ] ]
-    let root = show t (Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.child (Border.create [ Border.width 10.0; Border.height 10.0 ]) ])
+    let root = show t (Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.content (Border.create [ Border.width 10.0; Border.height 10.0 ]) ])
     Assert.Equal(10.0, root.Bounds.Width)
-    show t (Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.classes [ big ]; Border.child (Border.create [ Border.width 10.0; Border.height 10.0 ]) ]) |> ignore
+    show t (Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.classes [ big ]; Border.content (Border.create [ Border.width 10.0; Border.height 10.0 ]) ]) |> ignore
     Assert.Equal(50.0, root.Bounds.Width)
 
 [<Fact>]
@@ -173,7 +173,7 @@ let ``a styles setting covers its element and what's inside, not its siblings`` 
         show t (
             StackPanel.create [
                 StackPanel.children [
-                    Border.create [ Border.name "scoped"; Border.styles local; Border.child (TextBlock.create [ TextBlock.name "inner" ]) ]
+                    Border.create [ Border.name "scoped"; Border.styles local; Border.content (TextBlock.create [ TextBlock.name "inner" ]) ]
                     Border.create [ Border.name "sibling" ]
                 ]
             ]
@@ -198,7 +198,7 @@ let ``inline blocks in a view work without any styles elsewhere`` () =
 
 [<Fact>]
 let ``styles can't set children, classes or names`` () =
-    Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Border.child (Border.create []) ] |> ignore) |> ignore
+    Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Border.content (Border.create []) ] |> ignore) |> ignore
     Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Border.classes [ card ] ] |> ignore) |> ignore
     Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Border.name "x" ] |> ignore) |> ignore
 
@@ -212,7 +212,7 @@ let ``Values says which style set a value`` () =
     Assert.Equal(ValueSource.Style, v.Source)
     Assert.Equal("Button.primary:hover", v.Selector)
     let t2 = tree [ TextBlock.style [ Style.parent Border.Type [ Style.cls card ] ] [ TextBlock.fontSize 9.0 ] ]
-    let r2 = show t2 (Border.create [ Border.classes [ card ]; Border.child (TextBlock.create []) ])
+    let r2 = show t2 (Border.create [ Border.classes [ card ]; Border.content (TextBlock.create []) ])
     let size = r2.Children[0].Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, TextProps.fontSize))
     Assert.Equal("Border.card > TextBlock", size.Selector)
 
@@ -271,7 +271,7 @@ let ``where tests with a function`` () =
 [<Fact>]
 let ``a property on an ancestor re-matches what's inside`` () =
     let t = tree [ TextBlock.style [ Style.inside Border.Type [ Style.prop isChecked true ] ] [ TextBlock.foreground red ] ]
-    let view c = Border.create [ checkedOn c; Border.child (StackPanel.create [ StackPanel.children [ TextBlock.create [ TextBlock.name "label" ] ] ]) ]
+    let view c = Border.create [ checkedOn c; Border.content (StackPanel.create [ StackPanel.children [ TextBlock.create [ TextBlock.name "label" ] ] ]) ]
     let root = show t (view false)
     let label = find "label" root
     Assert.Equal(Color.Black, label.Get TextProps.foreground)

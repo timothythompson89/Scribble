@@ -567,30 +567,46 @@ App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (
 - **At run time:** `host.AddLayer [ ... ]` returns the `Layer` (`Update view`, `Focused`, `MoveFocus`), and
   `host.RemoveLayer layer` takes it away (its components stop). Dialog and Toast come with M8 step 4d.
 
-**Flyouts** (M8 step 4a): any element can have one: content shown in its own layer next to it, from wherever the
-view declares it.
+**Flyouts** (M8 step 4a): any element can have one. A flyout is content shown in its own layer next to the
+element, from wherever the view declares it. Give `flyout` the content alone, or the Flyout's settings when it needs
+some:
 
 ```fsharp
+Button.create [ Button.text "Copy…"; Button.flyout menu ]
+
 Button.create [
     Button.text "Actions"
-    Button.flyoutContent (StackPanel.create [ StackPanel.children [ menuItem "Copy"; menuItem "Delete" ] ])
-    Button.flyoutPlacement Placement.Below         // Above, Left, Right; flips when it doesn't fit
-    Button.flyoutAlignment FlyoutAlignment.Start   // Center, End, along the button
+    Button.flyout [
+        Flyout.placement Placement.Below         // Above, Left, Right; flips when it doesn't fit
+        Flyout.alignment FlyoutAlignment.Start   // Center, End, along the button
+        Flyout.content menu
+    ]
 ]
 ```
 
-- **Opening:** the element's click opens and closes it (for a Button, Enter and Space too). Give `isFlyoutOpen`
-  to control it from the view; `onFlyoutOpenChanged` hears every open and close (controlled, a request).
+The settings list is a value like any other: keep one in a `let` and give it to several elements.
+
+- **Opening:** the element's click opens and closes it (for a Button, Enter and Space too). Give `Flyout.isOpen`
+  to control it from the view; `Flyout.onOpenChanged` hears every open and close (when controlled, a request).
 - **Closing:** Escape, or a press outside the content and the element, closes it, and that press does nothing else.
-  `flyoutLightDismiss false` keeps it open until the element is clicked again (or the view says). It also closes
+  `Flyout.lightDismiss false` keeps it open until the element is clicked again (or the view says). It also closes
   when its element scrolls out of view or goes away.
 - **Focus:** moves into the content when it opens and back when it closes.
 - **Placement:** 4 DIPs from the element, flipped and kept inside the window, following the element as it moves.
-  `flyoutMatchAnchorWidth true` makes it at least as wide.
+  `Flyout.matchAnchorWidth true` makes it at least as wide.
 - **Stacking:** each open flyout is a layer of its own, stacked in opening order (a flyout from a flyout shows
   above it), above the app's layers and below the inspector.
-- **Look:** the content sits in a `FlyoutPresenter` (the theme's surface, a line, rounded corners, a floating
-  shadow): restyle it with `FlyoutPresenter.style [] [ ... ]`.
+- **Look:** the Flyout is also the box its content sits in, a Border the theme gives the surface colour, a line,
+  rounded corners and a floating shadow. One flyout takes Border's settings (`Flyout.padding 0.0`,
+  `Flyout.cornerRadius 12.0`); `Flyout.style [] [ ... ]` restyles them all.
+- **Styled as if inside its element:** styles reach a flyout through its element, so you can style particular
+  elements' flyouts. Inherited text values (colour, font) come only from the theme, not from the element.
+  ```fsharp
+  Button.styles [ Flyout.style [] [ Flyout.padding 0.0 ] ]                         // this button's flyout
+  Flyout.style [ Style.parent Button.Type [ Style.cls "toolbar" ] ] [ ... ]        // toolbar buttons' flyouts
+  Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]                           // every ComboBox's list
+  ```
+  A `theme` around the element is the flyout's theme too. Tooltips are styled the same way.
 
 **Tooltips:** `Button.tooltip "Save (Ctrl+S)"` (any element), or `tooltipView view` for any content.
 - **Showing:** after the mouse rests on the element for 500 ms. Moving straight on to another element with one
@@ -739,7 +755,7 @@ let styles = [
 ]
 
 App.run [ App.styles styles; ... ]                                   // the whole app
-Border.create [ Border.styles cardStyles; Border.child (...) ]       // an element and what's inside it
+Border.create [ Border.styles cardStyles; Border.content (...) ]       // an element and what's inside it
 Button.create [ Button.classes [ "primary"; if wide then "wide" ]; Button.text "Save" ]
 Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inline, for this element alone
 ```
@@ -782,7 +798,7 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
 ```fsharp
 let theme = Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.cornerRadius 8.0 ]   // Theme.dark [] is the default
 App.run [ App.theme theme; ... ]
-Border.create [ Border.theme otherTheme; Border.child (...) ]       // a different theme for what's inside
+Border.create [ Border.theme otherTheme; Border.content (...) ]       // a different theme for what's inside
 Button.style [ Style.cls "primary" ] [ Button.background Palette.accent ]  // a theme value (below)
 ```
 
@@ -949,7 +965,7 @@ only shares when its own length is known. A header, a content area that fills, a
 StackPanel.create [
     StackPanel.children [
         header
-        Border.create [ Border.height "*"; Border.child content ]
+        Border.create [ Border.height "*"; Border.content content ]
         footer
     ]
 ]
@@ -1043,7 +1059,7 @@ Switch.create [ Switch.text "Notifications"; Switch.onCheckedChanged (fun on -> 
 ```
 
 - **CheckBox**: `isIndeterminate true` shows a dash ("some selected"; display only, a click reports `true`).
-  CheckBox and Switch take `text` or `child` as their label; a click anywhere on either flips them. Space and
+  CheckBox and Switch take `text` or `content` as their label; a click anywhere on either flips them. Space and
   Enter work when focused.
 - **Slider**: `minimum` 0, `maximum` 100, `step` 1 (`0.0` for continuous); `onValueChanged` on every change,
   `onValueCommitted` when the user lets go (a drag ends, a key step lands). ←/↓ and →/↑ step (1% when

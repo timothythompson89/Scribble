@@ -33,7 +33,7 @@ let private tile (name: string) (filled: bool) (isMatch: bool) (pick: string -> 
         Border.borderBrush Palette.accent
         Border.on States.hover [ Border.background Palette.surface ]
         Border.onClick (fun _ -> pick name)
-        Border.child (
+        Border.content (
             StackPanel.create [
                 StackPanel.spacing 8.0
                 StackPanel.children [
@@ -89,7 +89,7 @@ let private searchField (query: string) (found: bool) (onKey: KeyEventArgs -> un
         Border.borderBrush (if query <> "" && not found then Palette.danger else Palette.border)
         Border.on States.focused [ Border.borderBrush Palette.accent ]
         Border.onKeyDown onKey
-        Border.child (
+        Border.content (
             TextBlock.create [
                 TextBlock.text (if query = "" then "Search icons…" else query)
                 TextBlock.foreground (if query = "" then Palette.textDim else Palette.text)

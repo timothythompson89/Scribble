@@ -16,7 +16,7 @@ let private field (placeholder: string) (settings: Setting<Border> list) =
         yield Border.borderThickness 1.0
         yield Border.cornerRadius 4.0
         yield Border.padding (8.0, 5.0)
-        yield Border.child (TextBlock.create [ TextBlock.text placeholder; TextBlock.foreground Palette.textDim; TextBlock.textTrimming CharacterEllipsis ])
+        yield Border.content (TextBlock.create [ TextBlock.text placeholder; TextBlock.foreground Palette.textDim; TextBlock.textTrimming CharacterEllipsis ])
         yield! settings
     ]
 
@@ -64,7 +64,7 @@ let private shell =
         Border.borderThickness 1.0
         Border.cornerRadius 6.0
         Border.clipToBounds true
-        Border.child (
+        Border.content (
             DockPanel.create [
                 DockPanel.name "shell"
                 DockPanel.children [
@@ -154,7 +154,7 @@ let private canvasDemo =
                         boxes.Set(boxes.Current |> List.map (fun x' -> if x'.Id = id then { x' with X = x; Y = y } else x'))
                     | _ -> ())
                 Border.onPointerUp (fun _ -> drag.Value <- ValueNone)
-                Border.child (
+                Border.content (
                     TextBlock.create [
                         TextBlock.text (b.Label + "\nz " + string b.Z)
                         TextBlock.foreground Color.White
@@ -169,7 +169,7 @@ let private canvasDemo =
             Border.background Palette.surface
             Border.cornerRadius 6.0
             Border.clipToBounds true
-            Border.child (Canvas.create [ Canvas.name "canvas"; Canvas.children [ for b in boxes.Current -> view b ] ])
+            Border.content (Canvas.create [ Canvas.name "canvas"; Canvas.children [ for b in boxes.Current -> view b ] ])
         ])
 
 /// A chip; `settings` add to these (setting one of them again would warn in Debug builds).
@@ -179,7 +179,7 @@ let private chipWith (thickness: float) (text: string) (settings: Setting<Border
         yield Border.cornerRadius 12.0
         yield Border.borderThickness thickness
         yield Border.borderBrush line
-        yield Border.child (TextBlock.create [ TextBlock.text text; TextBlock.fontSize 12.0 ])
+        yield Border.content (TextBlock.create [ TextBlock.text text; TextBlock.fontSize 12.0 ])
         yield! settings
     ]
 

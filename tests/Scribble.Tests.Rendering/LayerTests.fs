@@ -30,7 +30,7 @@ let private appView =
                                     Border.height 28.0
                                     Border.padding (8.0, 0.0)
                                     Border.background (if i % 2 = 0 then Color.Hex 0x24243A else Color.Hex 0x2E2E48)
-                                    Border.child (
+                                    Border.content (
                                         TextBlock.create [
                                             TextBlock.text $"Row {i}"
                                             TextBlock.foreground Color.White
@@ -55,7 +55,7 @@ let private toast =
         Border.cornerRadius 8.0
         Border.background (Color.Hex 0x3D59A1)
         Border.shadow { Blur = 12.0; OffsetX = 0.0; OffsetY = 4.0; Spread = 0.0; Color = Color.Black.WithAlpha 0.5f }
-        Border.child (TextBlock.create [ TextBlock.text "Saved"; TextBlock.foreground Color.White ])
+        Border.content (TextBlock.create [ TextBlock.text "Saved"; TextBlock.foreground Color.White ])
     ]
 
 type LayerTests(fixture: TextFixture) =

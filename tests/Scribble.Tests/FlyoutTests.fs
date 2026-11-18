@@ -49,12 +49,12 @@ let private menu (log: List<string>) =
         ]
     ]
 
-/// The app: a background that logs clicks, with an anchor button (100×40) at (x, y).
-let private appWith (log: List<string>) (x: float) (y: float) (anchorSettings: Setting<Button> list) =
+/// The app: a background that logs clicks, with an anchor button (100×40) at (x, y) whose flyout shows the menu.
+let private appShowing (content: View) (log: List<string>) (x: float) (y: float) (anchorSettings: Setting<Button> list) (flyoutSettings: Setting<Flyout> list) =
     Border.create [
         Border.name "background"
         Border.onClick (fun _ -> log.Add "app")
-        Border.child (
+        Border.content (
             Canvas.create [
                 Canvas.children [
                     Button.create (
@@ -63,13 +63,16 @@ let private appWith (log: List<string>) (x: float) (y: float) (anchorSettings: S
                           Button.height 40.0
                           Canvas.left x
                           Canvas.top y
-                          Button.flyoutContent (menu log) ]
+                          Button.flyout ([ Flyout.content content ] @ flyoutSettings) ]
                         @ anchorSettings
                     )
                 ]
             ]
         )
     ]
+
+let private appWithBoth log x y anchorSettings flyoutSettings = appShowing (menu log) log x y anchorSettings flyoutSettings
+let private appWith log x y (flyoutSettings: Setting<Flyout> list) = appWithBoth log x y [] flyoutSettings
 
 let private flyoutLayers (host: ElementHost) = host.Layers |> Seq.filter (fun l -> l.Name.StartsWith "Flyout") |> Seq.length
 
@@ -144,13 +147,13 @@ let ``a flyout that doesn't fit below shows above, and stays inside the window``
 let ``placement, alignment and matching the anchor's width`` () =
     let log = List<string>()
     let w, host =
-        start (appWith log 100.0 100.0 [ Button.flyoutPlacement Placement.Right; Button.flyoutAlignment FlyoutAlignment.Center ])
+        start (appWith log 100.0 100.0 [ Flyout.placement Placement.Right; Flyout.alignment FlyoutAlignment.Center ])
     click w 150.0 120.0
     settle w
     let presenter = rectOf (named host "menu").Parent.Value
     Assert.Equal(204.0, presenter.X)
     Assert.Equal(System.Math.Round(120.0 - presenter.Height / 2.0), presenter.Y)
-    let w2, host2 = start (appWith log 100.0 100.0 [ Button.flyoutMatchAnchorWidth true; Button.width 200.0 ])
+    let w2, host2 = start (appWithBoth log 100.0 100.0 [ Button.width 200.0 ] [ Flyout.matchAnchorWidth true ])
     click w2 150.0 120.0
     settle w2
     Assert.Equal(200.0, (rectOf (named host2 "menu").Parent.Value).Width)
@@ -158,7 +161,7 @@ let ``placement, alignment and matching the anchor's width`` () =
 [<Fact>]
 let ``a pinned flyout stays open on presses outside, which reach the app`` () =
     let log = List<string>()
-    let w, host = start (appWith log 20.0 20.0 [ Button.flyoutLightDismiss false ])
+    let w, host = start (appWith log 20.0 20.0 [ Flyout.lightDismiss false ])
     click w 50.0 30.0
     settle w
     click w 350.0 250.0
@@ -173,7 +176,7 @@ let ``a pinned flyout stays open on presses outside, which reach the app`` () =
 [<Fact>]
 let ``a controlled flyout shows what the view says and only reports clicks and dismissals`` () =
     let log = List<string>()
-    let view isOpen = appWith log 20.0 20.0 [ Button.isFlyoutOpen isOpen; Button.onFlyoutOpenChanged (fun v -> log.Add $"open {v}") ]
+    let view isOpen = appWith log 20.0 20.0 [ Flyout.isOpen isOpen; Flyout.onOpenChanged (fun v -> log.Add $"open {v}") ]
     let w, host = start (view true)
     Assert.Equal(1, flyoutLayers host)
     click w 350.0 250.0
@@ -191,7 +194,7 @@ let ``a controlled flyout shows what the view says and only reports clicks and d
 [<Fact>]
 let ``an uncontrolled flyout reports opening and closing`` () =
     let log = List<string>()
-    let w, host = start (appWith log 20.0 20.0 [ Button.onFlyoutOpenChanged (fun v -> log.Add $"open {v}") ])
+    let w, host = start (appWith log 20.0 20.0 [ Flyout.onOpenChanged (fun v -> log.Add $"open {v}") ])
     click w 50.0 30.0
     settle w
     click w 350.0 250.0
@@ -223,7 +226,7 @@ let ``the flyout closes when its anchor scrolls out of view`` () =
             ScrollViewer.content (
                 StackPanel.create [
                     StackPanel.children [
-                        Button.create [ Button.name "anchor"; Button.height 40.0; Button.flyoutContent (menu log) ]
+                        Button.create [ Button.name "anchor"; Button.height 40.0; Button.flyout (menu log) ]
                         Border.create [ Border.height 1000.0 ]
                     ]
                 ]
@@ -251,11 +254,11 @@ let ``a flyout inside a flyout opens above it; a press in the first closes only 
             StackPanel.name "outer"
             StackPanel.width 120.0
             StackPanel.children [
-                Button.create [ Button.name "sub"; Button.height 30.0; Button.flyoutPlacement Placement.Right; Button.flyoutContent inner ]
+                Button.create [ Button.name "sub"; Button.height 30.0; Button.flyout [ Flyout.placement Placement.Right; Flyout.content inner ] ]
                 Button.create [ Button.name "other"; Button.height 30.0; Button.onClick (fun _ -> log.Add "other") ]
             ]
         ]
-    let w, host = start (appWith log 20.0 20.0 [ Button.flyoutContent outer ])
+    let w, host = start (appShowing outer log 20.0 20.0 [] [])
     click w 50.0 30.0
     settle w
     let sub = rectOf (named host "sub")
@@ -285,8 +288,60 @@ let ``the flyout's content takes the theme's flyout look`` () =
     click w 50.0 30.0
     settle w
     let presenter = (named host "menu").Parent.Value
-    Assert.Equal("FlyoutPresenter", presenter.Type.Name)
+    Assert.Equal("Flyout", presenter.Type.Name)
+    // The Flyout is its layer's root: nothing between them.
+    Assert.True(presenter.Parent.IsNone)
     Assert.Equal(host.WindowTheme.Get Palette.surface, presenter.Get BorderProps.background)
+
+[<Fact>]
+let ``one flyout's own settings win over the theme's look`` () =
+    let log = List<string>()
+    let w, host = start (appWith log 20.0 20.0 [ Flyout.padding 0.0; Flyout.background (Color.Hex 0x102030) ])
+    click w 50.0 30.0
+    settle w
+    let flyout = (named host "menu").Parent.Value
+    Assert.Equal(Thickness.Uniform 0.0, flyout.Get BorderProps.padding)
+    Assert.Equal(Color.Hex 0x102030, flyout.Get BorderProps.background)
+    // The 1-DIP line stays: 20 + 4 below the anchor's bottom (60), then the line.
+    Assert.Equal(65.0, (named host "menu").PositionInTree.Y)
+
+[<Fact>]
+let ``changing the placement of an open flyout places it again`` () =
+    let log = List<string>()
+    let w, host = start (appWith log 100.0 100.0 [])
+    click w 150.0 120.0
+    settle w
+    Assert.Equal(144.0, (rectOf (named host "menu").Parent.Value).Y)
+    host.Update(appWith log 100.0 100.0 [ Flyout.placement Placement.Right ])
+    settle w
+    let r = rectOf (named host "menu").Parent.Value
+    Assert.Equal((204.0, 100.0), (r.X, r.Y))
+    Assert.Equal(1, flyoutLayers host)
+
+[<Fact>]
+let ``one Flyout settings list on two buttons: each opens its own`` () =
+    let log = List<string>()
+    let shared: Setting<Flyout> list = [ Flyout.content (TextBlock.create [ TextBlock.name "shared"; TextBlock.text "Shared" ]) ]
+    let view =
+        Canvas.create [
+            Canvas.children [
+                Button.create [ Button.name "one"; Button.width 100.0; Button.height 40.0; Canvas.left 20.0; Canvas.top 20.0; Button.flyout shared ]
+                Button.create [ Button.name "two"; Button.width 100.0; Button.height 40.0; Canvas.left 200.0; Canvas.top 20.0; Button.flyout shared ]
+            ]
+        ]
+    let w, host = start view
+    click w 250.0 30.0
+    settle w
+    Assert.Equal(1, flyoutLayers host)
+    Assert.Equal(200.0, (rectOf (named host "shared").Parent.Value).X)
+    // A press on the first button closes the second's flyout (light dismiss) and goes no further.
+    click w 50.0 30.0
+    settle w
+    Assert.Equal(0, flyoutLayers host)
+    click w 50.0 30.0
+    settle w
+    Assert.Equal(20.0, (rectOf (named host "shared").Parent.Value).X)
+    ignore log
 
 // --- Tooltips --------------------------------------------------------------------------------------
 
@@ -323,7 +378,7 @@ let ``a tooltip shows after the pointer rests half a second, below the pointer``
     w.Time.AdvanceMs 100.0
     settle w
     Assert.Equal(Some "Save", tipText host)
-    let presenter = (host.Layers |> Seq.find (fun l -> l.Name = "Tooltip")).Tree.Root.Value.Children[0]
+    let presenter = (host.Layers |> Seq.find (fun l -> l.Name = "Tooltip")).Tree.Root.Value
     Assert.Equal("TooltipPresenter", presenter.Type.Name)
     Assert.Equal(52.0, presenter.PositionInTree.X)
     Assert.Equal(46.0, presenter.PositionInTree.Y)
@@ -400,3 +455,83 @@ let ``a tooltip view shows any view`` () =
     w.Time.AdvanceMs 500.0
     settle w
     Assert.Equal(Some "Custom", tipText host)
+
+// --- A flyout is styled as if inside its element (round 1c) ----------------------------------------------------------
+
+/// Two buttons at (20, 20) and (200, 20), each with a flyout showing a TextBlock named after it.
+let private twoAnchors (containerSettings: Setting<Canvas> list) (one: Setting<Button> list) (two: Setting<Button> list) =
+    let anchor name x (settings: Setting<Button> list) =
+        Button.create (
+            [ Button.name name; Button.width 100.0; Button.height 40.0; Canvas.left x; Canvas.top 20.0
+              Button.flyout (TextBlock.create [ TextBlock.name (name + "-text"); TextBlock.text name ]) ]
+            @ settings)
+    Canvas.create (containerSettings @ [ Canvas.children [ anchor "one" 20.0 one; anchor "two" 200.0 two ] ])
+
+/// Opens the flyout of the button at x and gives the Flyout element around `textName`.
+let private openAt (w: FakeWindow) (host: ElementHost) x textName =
+    click w x 30.0
+    settle w
+    (named host textName).Parent.Value
+
+let private closeAll (w: FakeWindow) =
+    key w Key.Escape
+    settle w
+
+[<Fact>]
+let ``a style in the element's styles reaches its flyout and no other`` () =
+    let w, host = start (twoAnchors [] [ Button.styles [ Flyout.style [] [ Flyout.padding 0.0 ] ] ] [])
+    Assert.Equal(Thickness.Uniform 0.0, (openAt w host 50.0 "one-text").Get BorderProps.padding)
+    closeAll w
+    Assert.Equal(Thickness.Uniform 4.0, (openAt w host 250.0 "two-text").Get BorderProps.padding)
+
+[<Fact>]
+let ``selectors pick flyouts by their element and what it's inside`` () =
+    let styles =
+        [ Flyout.style [ Style.parent Button.Type [ Style.cls "toolbar" ] ] [ Flyout.padding 0.0 ]
+          Flyout.style [ Style.inside Canvas.Type [ Style.name "tools" ] ] [ Flyout.cornerRadius 9.0 ] ]
+    let w, host = start (twoAnchors [ Canvas.name "tools"; Canvas.styles styles ] [ Button.classes [ "toolbar" ] ] [])
+    let one = openAt w host 50.0 "one-text"
+    Assert.Equal(Thickness.Uniform 0.0, one.Get BorderProps.padding)
+    Assert.Equal(CornerRadius.Uniform 9.0, one.Get BorderProps.cornerRadius)
+    closeAll w
+    let two = openAt w host 250.0 "two-text"
+    Assert.Equal(Thickness.Uniform 4.0, two.Get BorderProps.padding)
+    Assert.Equal(CornerRadius.Uniform 9.0, two.Get BorderProps.cornerRadius)
+
+[<Fact>]
+let ``a theme around the element is its flyout's, but the element's own text colour is not`` () =
+    let light = Theme.light []
+    let red = Color.Hex 0xff0000
+    let view = Border.create [ Border.theme light; Border.content (twoAnchors [] [ Setting.create InheritedProps.foreground red ] []) ]
+    let w, host = start view
+    let flyout = openAt w host 50.0 "one-text"
+    Assert.Equal(light.Get Palette.surface, flyout.Get BorderProps.background)
+    Assert.NotEqual(host.WindowTheme.Get Palette.surface, light.Get Palette.surface)
+    let text = named host "one-text"
+    Assert.Equal(light.Get Palette.text, text.Get InheritedProps.foreground)
+
+[<Fact>]
+let ``a class given to the element while its flyout is open restyles the flyout`` () =
+    let styles = [ Flyout.style [ Style.parent Button.Type [ Style.cls "toolbar" ] ] [ Flyout.padding 0.0 ] ]
+    let w, host = start (twoAnchors [ Canvas.styles styles ] [] [])
+    let flyout = openAt w host 50.0 "one-text"
+    Assert.Equal(Thickness.Uniform 4.0, flyout.Get BorderProps.padding)
+    host.Update(twoAnchors [ Canvas.styles styles ] [ Button.classes [ "toolbar" ] ] [])
+    settle w
+    Assert.Equal(Thickness.Uniform 0.0, flyout.Get BorderProps.padding)
+
+[<Fact>]
+let ``a tooltip is styled as if inside its element too`` () =
+    let view =
+        Canvas.create [
+            Canvas.styles [ TooltipPresenter.style [] [ TooltipPresenter.padding 0.0 ] ]
+            Canvas.children [
+                Button.create [ Button.name "b"; Button.width 100.0; Button.height 40.0; Canvas.left 20.0; Canvas.top 20.0; Button.tooltip "Tip" ]
+            ]
+        ]
+    let w, host = start view
+    move w 50.0 30.0
+    w.Time.AdvanceMs 500.0
+    settle w
+    let tip = host.Layers |> Seq.find (fun l -> l.Name = "Tooltip")
+    Assert.Equal(Thickness.Uniform 0.0, tip.Tree.Root.Value.Get BorderProps.padding)

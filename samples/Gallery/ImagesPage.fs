@@ -28,7 +28,7 @@ let private boxed (label: string) (w: float) (h: float) (settings: Setting<Image
                 Border.background subtle
                 Border.borderBrush line
                 Border.borderThickness 1.0
-                Border.child (ImageView.create settings)
+                Border.content (ImageView.create settings)
             ]
             TextBlock.create [ TextBlock.text label; TextBlock.fontSize 12.0; TextBlock.foreground Palette.textDim ]
         ]
@@ -89,7 +89,7 @@ let private hoverBox (label: string) (cursor: Cursor) =
         Border.borderThickness 1.0
         Border.cornerRadius 6.0
         Border.cursor cursor
-        Border.child (
+        Border.content (
             TextBlock.create [
                 TextBlock.text label
                 TextBlock.fontSize 12.0

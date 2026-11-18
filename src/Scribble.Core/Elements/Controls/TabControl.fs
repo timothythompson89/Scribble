@@ -10,7 +10,7 @@ module TabItemProps =
     /// Header content instead of text (an icon and text). A plain value, so the page doesn't realize it.
     let headerView: Prop<View voption> = Prop.define "HeaderView" ValueNone Affects.Nothing
     /// The page.
-    let content = Prop.child "Content"
+    let content = Prop.content "Content"
     /// Keep the page (hidden, with its state) after leaving it; false lets it go.
     let keepAlive = Prop.define "KeepAlive" true Affects.Nothing
 

@@ -94,12 +94,12 @@ module internal ThemeLooks =
           ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb; ScrollViewer.track Palette.scrollTrack ]
           Separator.style [] [ Separator.color Palette.border ] 
           // Flyouts and tooltips float: the surface colour, a line, the theme's corners, a wide shadow.
-          FlyoutPresenter.style [] [
-              FlyoutPresenter.background Palette.surface
-              FlyoutPresenter.borderBrush Palette.border
-              FlyoutPresenter.borderThickness 1.0
-              FlyoutPresenter.cornerRadius Palette.cornerRadius
-              FlyoutPresenter.padding 4.0
+          Flyout.style [] [
+              Flyout.background Palette.surface
+              Flyout.borderBrush Palette.border
+              Flyout.borderThickness 1.0
+              Flyout.cornerRadius Palette.cornerRadius
+              Flyout.padding 4.0
               Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
           ]
           TooltipPresenter.style [] [

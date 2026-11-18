@@ -86,6 +86,14 @@ type ElementTree(text: TextSystem) =
     member val internal FocusHandler: Element -> unit = ignore with get, set
     /// Hears elements whose watched properties changed (`IElementRoot.Watch`): the host's flyouts.
     member val internal WatchHandler: Element -> unit = ignore with get, set
+    /// Hears every restyle request (before the tree decides it needs one): the host restyles flyouts whose element
+    /// is or is inside the element asking.
+    member val internal RestyleHandler: Element -> unit = ignore with get, set
+    /// The element this tree belongs to (a flyout's or tooltip's): styled as if inside it.
+    member val internal Owner: Element voption = ValueNone with get, set
+    /// Where the root goes, from the root (measured: its `DesiredSize`, its settings) and the window's size: a flyout's
+    /// or tooltip's tree places its root beside the element it belongs to. ValueNone: the root fills the window.
+    member val internal Place: (Element -> Size -> Rect) voption = ValueNone with get, set
 
     /// Re-runs components whose state changed, parents before children (a parent that re-runs a
     /// child with new props takes care of it). Part of UpdateLayout.
@@ -227,7 +235,9 @@ type ElementTree(text: TextSystem) =
                 while passes = 0 || (passes < 6 && not (r.IsMeasureValid && r.IsArrangeValid)) do
                     passes <- passes + 1
                     r.Measure size
-                    r.Arrange(Rect.Create(0.0, 0.0, size.Width, size.Height))
+                    match this.Place with
+                    | ValueSome place -> r.Arrange(place r size)
+                    | ValueNone -> r.Arrange(Rect.Create(0.0, 0.0, size.Width, size.Height))
             with e ->
                 layoutFailed <- true
                 (this :> IElementRoot).ReportError e
@@ -287,8 +297,10 @@ type ElementTree(text: TextSystem) =
         member this.Watch(element) =
             this.WatchHandler(element :?> Element)
             onInvalidated ()
+        member this.Owner = (match this.Owner with ValueSome o -> box o | ValueNone -> null)
         member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)
         member this.RequestRestyle(element, deep, stateChange) =
+            this.RestyleHandler(element :?> Element)
             if stylesInUse then
                 let e = element :?> Element
                 if e.MarkRestyle(deep || (stateChange && ancestorStates)) then

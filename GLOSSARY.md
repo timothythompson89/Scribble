@@ -127,7 +127,7 @@ One element tree in a window's ordered stack (app, popups, modal, inspector), wi
 _Avoid_: popup, portal, overlay
 
 **Flyout**:
-Content shown in its own layer, anchored to an element (`flyoutContent`); it closes when you press elsewhere or press Escape.
+Content shown in its own layer, anchored to an element (`Button.flyout menu`); it closes when you press elsewhere or press Escape. The Flyout is also the box its content sits in, and is styled as if inside its element.
 _Avoid_: popup, dropdown (for the mechanism; a ComboBox's list is its flyout)
 
 **Tooltip**:

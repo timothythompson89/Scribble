@@ -142,7 +142,7 @@ let ``many ImageViews showing one picture decode it once`` () =
 let ``an element lets go of a picture it no longer shows, and of all of them when it leaves its tree`` () =
     let a = Image.fromPixels (unique "a", 2, 2, solid 2 2 (1uy, 2uy, 3uy, 255uy)) []
     let b = Image.fromPixels (unique "b", 2, 2, solid 2 2 (4uy, 5uy, 6uy, 255uy)) []
-    let view (i: Image) = Border.create [ Border.child (ImageView.create [ ImageView.image i ]) ]
+    let view (i: Image) = Border.create [ Border.content (ImageView.create [ ImageView.image i ]) ]
     let s = Scene(view a)
     s.Render() |> ignore
     let imageView = s.Root.Children[0]

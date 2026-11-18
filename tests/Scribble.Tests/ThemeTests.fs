@@ -103,7 +103,7 @@ let ``an element's theme applies to what's inside it`` () =
                     Button.create [ Button.name "outside" ]
                     Border.create [
                         Border.theme inner
-                        Border.child (
+                        Border.content (
                             StackPanel.create [
                                 StackPanel.children [ Button.create [ Button.name "inside" ]; TextBlock.create [ TextBlock.name "text" ] ]
                             ]
@@ -126,7 +126,7 @@ let ``text color, font size and font are inherited: own value, then ancestors, t
                 Border.create [
                     Border.foreground color
                     Border.fontSize 20.0
-                    Border.child (
+                    Border.content (
                         StackPanel.create [
                             StackPanel.children [
                                 TextBlock.create [ TextBlock.name "inner" ]
@@ -156,7 +156,7 @@ let ``an inherited font size changes the text's measured size`` () =
     let view (size: float) =
         Border.create [
             Border.fontSize size
-            Border.child (TextBlock.create [ TextBlock.name "t"; TextBlock.text "Hello"; TextBlock.verticalAlignment VerticalAlignment.Top ])
+            Border.content (TextBlock.create [ TextBlock.name "t"; TextBlock.text "Hello"; TextBlock.verticalAlignment VerticalAlignment.Top ])
         ]
     let root = show t (view 14.0)
     let small = (find "t" root).Bounds.Height
@@ -251,7 +251,7 @@ let private nested () =
         show t (
             Border.create [
                 Border.name "panel"
-                Border.child (
+                Border.content (
                     StackPanel.create [
                         StackPanel.children [
                             Button.create [ Button.name "button"; Button.content (TextBlock.create [ TextBlock.name "label"; TextBlock.text "Hi" ]) ]

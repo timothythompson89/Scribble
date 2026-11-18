@@ -64,8 +64,8 @@ let ``each built-in element type gives its node`` () =
                     IconView.create []
                     IconView.create [ Semantics.label "Star" ]
                     Separator.create []
-                    Border.create [ Semantics.role Role.Group; Semantics.label "Card"; Border.child (TextBlock.create [ TextBlock.text "Inside" ]) ]
-                    Border.create [ Border.child (TextBlock.create [ TextBlock.text "Plain border" ]) ]
+                    Border.create [ Semantics.role Role.Group; Semantics.label "Card"; Border.content (TextBlock.create [ TextBlock.text "Inside" ]) ]
+                    Border.create [ Border.content (TextBlock.create [ TextBlock.text "Plain border" ]) ]
                 ]
             ]
         )
@@ -121,8 +121,8 @@ let ``hidden elements and Semantics hidden leave their whole subtree out`` () =
         showView (
             StackPanel.create [
                 StackPanel.children [
-                    Border.create [ Border.isVisible false; Border.child (Button.create [ Button.text "Gone" ]) ]
-                    Border.create [ Semantics.hidden true; Border.child (Button.create [ Button.text "Decor" ]) ]
+                    Border.create [ Border.isVisible false; Border.content (Button.create [ Button.text "Gone" ]) ]
+                    Border.create [ Semantics.hidden true; Border.content (Button.create [ Button.text "Decor" ]) ]
                     Button.create [ Button.text "Kept" ]
                 ]
             ]

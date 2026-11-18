@@ -49,9 +49,6 @@ type internal OpenFlyout(anchor: Element, anchorLayer: Layer, layer: Layer, retu
     /// What the layer shows was made from these (a change rebuilds the view).
     member val Content: View voption = ValueNone with get, set
     member val Rect = Rect.Create(0.0, 0.0, 0.0, 0.0) with get, set
-    member val Placement = Placement.Below with get, set
-    member val Alignment = FlyoutAlignment.Start with get, set
-    member val MatchWidth = false with get, set
     member val Shown = false with get, set
     /// Focus moves into it after its first layout.
     member val FocusPending = true with get, set
@@ -115,9 +112,19 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// Pointers whose press closed a flyout: their release goes nowhere either.
     let swallowed = HashSet<int>()
 
+    /// A flyout is styled as if inside its element: when that element (or something around it) restyles, so does the
+    /// flyout (a class added, the pointer over it, `styles` or `theme` changed above it).
+    let restyleOwned (e: Element) =
+        for f in openFlyouts do
+            if obj.ReferenceEquals(e, f.Anchor) || e.Contains f.Anchor then
+                match f.Layer.Tree.Root with
+                | ValueSome r -> (f.Layer.Tree :> IElementRoot).RequestRestyle(box r, true, false)
+                | ValueNone -> ()
+
     let add (layer: Layer) =
         let tree = layer.Tree
         tree.WatchHandler <- fun e -> watched.Add(struct (e, layer))
+        tree.RestyleHandler <- restyleOwned
         tree.Scale <- window.Scale
         tree.Dispatcher <- options.Dispatcher
         tree.AppValues <- sharedValues
@@ -222,9 +229,15 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     let flyoutOf (anchor: Element) = openFlyouts |> Seq.tryFind (fun f -> obj.ReferenceEquals(f.Anchor, anchor))
     let flyoutIn (layer: Layer) = openFlyouts |> Seq.tryFind (fun f -> same f.Layer layer)
 
+    /// Whether presses elsewhere and Escape close it: the Flyout's own setting (styles included).
+    let lightDismissOf (f: OpenFlyout) =
+        match f.Layer.Tree.Root with
+        | ValueSome root -> root.Get FlyoutProps.lightDismiss
+        | _ -> true
+
     let flyoutView (f: OpenFlyout) (content: View) =
-        let target = FlyoutTarget(f.Rect, f.Placement, f.Alignment, f.MatchWidth, flyoutGap)
-        FlyoutRoot.create target (FlyoutPresenter.create [ Border.child content; if not f.Shown then Layoutable.isVisible false ])
+        // Hidden while its anchor doesn't show (it closes after the frame).
+        if f.Shown then content else content.With(LayoutProps.isVisible, box false)
 
     /// Asks the anchor to close its flyout (an uncontrolled one closes; a controlled one's view decides). During a
     /// frame, after it, so what the handler changes asks for the next frame.
@@ -262,7 +275,11 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                               Layer.order flyoutOrder
                               Layer.appStyles anchorLayer.UsesAppStyles ],
                             window.SetCursor)
+                    layer.Tree.Owner <- ValueSome anchor
                     let f = OpenFlyout(anchor, anchorLayer, layer, anchorLayer.Focused)
+                    // The Flyout is the layer's root, placed beside the anchor where it is now (the tree lays out its root every
+                    // frame, and the anchor moving brings one).
+                    layer.Tree.Place <- ValueSome(fun root window -> FlyoutPlacement.flyout f.Rect flyoutGap root window)
                     f.Ring <- anchorLayer.Input.KeyboardMode
                     openFlyouts.Add f
                     addLayer layer
@@ -274,7 +291,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// and asks to close when the anchor no longer shows (scrolled out, hidden); closes when it went away.
     let refreshFlyout (f: OpenFlyout) =
         let a = f.Anchor
-        match (if a.Root.IsSome then a.Get FlyoutProps.content else ValueNone) with
+        match (if a.Root.IsSome then a.Get FlyoutProps.flyout else ValueNone) with
         | ValueNone -> closeFlyout f
         | ValueSome content ->
             let p = a.PositionInTree
@@ -282,19 +299,12 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             let rect = Rect.Create(p.X, p.Y, b.Width, b.Height)
             let visible = a.VisibleBounds
             let shown = visible.Width > 0.0 && visible.Height > 0.0
-            let placement = a.Get FlyoutProps.placement
-            let alignment = a.Get FlyoutProps.alignment
-            let matchWidth = a.Get FlyoutProps.matchAnchorWidth
             let changed =
                 f.Content.IsNone || not (obj.ReferenceEquals(f.Content.Value, content)) || f.Rect <> rect || f.Shown <> shown
-                || f.Placement <> placement || f.Alignment <> alignment || f.MatchWidth <> matchWidth
             if changed then
                 f.Content <- ValueSome content
                 f.Rect <- rect
                 f.Shown <- shown
-                f.Placement <- placement
-                f.Alignment <- alignment
-                f.MatchWidth <- matchWidth
                 f.Layer.Update(flyoutView f content)
                 if not shown then dismiss f
 
@@ -310,7 +320,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 let v = f.Anchor.VisibleBounds
                 let onAnchor = p.X >= v.X && p.X < v.X + v.Width && p.Y >= v.Y && p.Y < v.Y + v.Height
                 if onAnchor || f.Layer.Tree.HitTest(p.X, p.Y).IsSome then stop <- true
-                elif f.Anchor.Get FlyoutProps.lightDismiss then
+                elif lightDismissOf f then
                     dismiss f
                     dismissed <- true
                 i <- i - 1
@@ -320,7 +330,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     let dismissTopFlyout () =
         if (keyboardLayer ()).Order > flyoutOrder then false
         else
-            match openFlyouts |> Seq.tryFindBack (fun f -> f.Anchor.Get FlyoutProps.lightDismiss) with
+            match openFlyouts |> Seq.tryFindBack (fun f -> lightDismissOf f) with
             | Some f ->
                 dismiss f
                 true
@@ -372,12 +382,18 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         let ownerLayer = layers |> Seq.tryFind (fun l -> l.Tree.Root.IsSome && obj.ReferenceEquals(l.Tree.Root.Value, top))
         let usesAppStyles = ownerLayer |> Option.map _.UsesAppStyles |> Option.defaultValue true
         let layer = Layer.Create(text, [ Layer.name "Tooltip"; Layer.order System.Int32.MaxValue; Layer.appStyles usesAppStyles ], window.SetCursor)
+        layer.Tree.Owner <- ValueSome owner
         addLayer layer
         match ownerLayer with
         | Some l when not usesAppStyles -> layer.Tree.Theme <- l.Tree.Theme
         | _ -> ()
-        let target = FlyoutTarget(Rect.Create(p.X, p.Y, 0.0, tipCursorHeight), Placement.Below, FlyoutAlignment.Start, false, 0.0)
-        layer.Update(FlyoutRoot.create target (TooltipPresenter.create [ TooltipPresenter.child content ]))
+        // Below the pointer, kept inside the window.
+        let below = Rect.Create(p.X, p.Y, 0.0, tipCursorHeight)
+        layer.Tree.Place <-
+            ValueSome(fun root window ->
+                let w, h = min root.DesiredSize.Width window.Width, min root.DesiredSize.Height window.Height
+                FlyoutPlacement.place below Placement.Below FlyoutAlignment.Start 0.0 w h window.Width window.Height)
+        layer.Update(TooltipPresenter.create [ TooltipPresenter.content content ])
         tipLayer <- ValueSome layer
 
     /// The mouse moved to `p` (no button down): the tooltip under it waits, shows, stays or goes.

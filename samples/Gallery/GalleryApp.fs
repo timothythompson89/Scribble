@@ -67,7 +67,7 @@ let gallery =
                     DockPanel.dock Dock.Top
                     Border.horizontalAlignment HorizontalAlignment.Right
                     Border.margin (24.0, 12.0, 24.0, 0.0)
-                    Border.child (themeSwitch ())
+                    Border.content (themeSwitch ())
                 ]
                 TabControl.create [
                     TabControl.margin (10.0, 0.0, 10.0, 0.0)

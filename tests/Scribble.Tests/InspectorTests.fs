@@ -45,7 +45,7 @@ let private start (log: List<string>) =
                 Border.create [
                     Border.name "background"
                     Border.onClick (fun _ -> log.Add "app")
-                    Border.child (
+                    Border.content (
                         Button.create [
                             Button.name "appButton"
                             Button.width 100.0
@@ -930,7 +930,7 @@ let private nested (depth: int) =
     let platform, device = new FakePlatform(), new FakeDevice()
     let rec chain d =
         if d = 0 then Border.create [ Border.name "innermost"; Border.width 100.0; Border.height 20.0 ]
-        else Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.verticalAlignment VerticalAlignment.Top; Border.child (chain (d - 1)) ]
+        else Border.create [ Border.horizontalAlignment HorizontalAlignment.Left; Border.verticalAlignment VerticalAlignment.Top; Border.content (chain (d - 1)) ]
     let app = App.start (platform, device, new Scribble.Tests.TestShaping.FixedShaper(), [ App.view (chain depth); Inspector.enable [] ])
     let w = platform.Window.Value
     let host = app :?> ElementHost

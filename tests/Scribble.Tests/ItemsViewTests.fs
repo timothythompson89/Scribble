@@ -319,7 +319,7 @@ let ``rows are styled before they're measured, in the layout that realizes them`
     // A class style adds 10 of padding all round: every row is 20 + 2 × 10 high.
     let styles = [ Border.style [ Style.cls "row" ] [ Border.padding 10.0 ] ]
     let row (i: int) =
-        Border.create [ Border.name (string i); Border.classes [ "row" ]; Border.child (Border.create [ Border.height 20.0 ]) ]
+        Border.create [ Border.name (string i); Border.classes [ "row" ]; Border.content (Border.create [ Border.height 20.0 ]) ]
     let t, scroller, _, iv = styledList styles ValueNone 1_000 row
     for step in 1 .. 60 do
         // Steps of 37 (not a multiple of the row height): rows come in recycled and new.
@@ -332,7 +332,7 @@ let ``rows are styled before they're measured, in the layout that realizes them`
 [<Fact>]
 let ``a themed Button in a row that just scrolled in has its theme look in its first frame`` () =
     let row (i: int) =
-        Border.create [ Border.name (string i); Border.child (Button.create [ Button.name ("button " + string i); Button.text "Reply" ]) ]
+        Border.create [ Border.name (string i); Border.content (Button.create [ Button.name ("button " + string i); Button.text "Reply" ]) ]
     let t, scroller, reference, iv = styledList [] (ValueSome(Theme.dark [])) 1_000 row
     let themed = reference.Get BorderProps.background
     Assert.NotEqual(BorderProps.background.Default, themed)
@@ -441,7 +441,7 @@ let private buildSideways (source: int array) (width: int -> float) (layout: Ite
                         Border.create [
                             Border.name (string i)
                             Border.height 20.0
-                            Border.child (Border.create [ Border.width (width i); Border.horizontalAlignment HorizontalAlignment.Left ])
+                            Border.content (Border.create [ Border.width (width i); Border.horizontalAlignment HorizontalAlignment.Left ])
                         ])
                     ItemsView.layout layout
                     ItemsView.scroller scroller

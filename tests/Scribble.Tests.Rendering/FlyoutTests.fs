@@ -1,4 +1,4 @@
-/// M8 step 4a on the GPU: an open flyout (the theme's FlyoutPresenter: surface, line, corners, floating shadow) and a
+/// M8 step 4a on the GPU: an open flyout (the theme's Flyout look: surface, line, corners, floating shadow) and a
 /// tooltip, each in its own layer over the app.
 module Scribble.Tests.Rendering.FlyoutTests
 
@@ -46,7 +46,7 @@ let private menuItem (text: string) =
         Button.borderThickness 0.0
         Setting.create BorderProps.shadow ValueNone
         Button.padding (10.0, 6.0)
-        Button.child (TextBlock.create [ TextBlock.text text; TextBlock.horizontalAlignment HorizontalAlignment.Left ])
+        Button.content (TextBlock.create [ TextBlock.text text; TextBlock.horizontalAlignment HorizontalAlignment.Left ])
     ]
 
 let private appView =
@@ -59,7 +59,7 @@ let private appView =
             Button.create [
                 Button.name "actions"
                 Button.text "Actions"
-                Button.flyoutContent (
+                Button.flyout (
                     StackPanel.create [
                         StackPanel.width 160.0
                         StackPanel.children [

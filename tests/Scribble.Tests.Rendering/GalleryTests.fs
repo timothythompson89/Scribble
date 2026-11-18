@@ -53,7 +53,7 @@ type GalleryTests(fixture: TextFixture) =
     [<Fact>]
     member _.``the styles page, card hovered``() =
         let tree = ElementTree(fixture.Text)
-        tree.Update(Border.create [ Border.margin 24.0; Border.child (StylesPage.demo ()) ])
+        tree.Update(Border.create [ Border.margin 24.0; Border.content (StylesPage.demo ()) ])
         let size = Size.Create(520.0, 360.0)
         tree.UpdateLayout size
         tree.RunAfterFrame()
@@ -94,7 +94,7 @@ type GalleryTests(fixture: TextFixture) =
     [<Fact>]
     member _.``the styles page, light``() =
         let tree = ElementTree(fixture.Text)
-        tree.Update(Border.create [ Border.theme Common.lightTheme; Border.padding 24.0; Border.child (StylesPage.demo ()) ])
+        tree.Update(Border.create [ Border.theme Common.lightTheme; Border.padding 24.0; Border.content (StylesPage.demo ()) ])
         tree.UpdateLayout(Size.Create(520.0, 360.0))
         let pixels: PixelSize = { Width = 520; Height = 360 }
         let image =

@@ -36,7 +36,7 @@ let ``a theme value reads the nearest theme, else its default`` () =
                 Border.create [ Border.name "plain"; Border.background Palette.surface; Border.borderBrush cardLine ]
                 Border.create [
                     Border.theme light
-                    Border.child (Border.create [ Border.name "inner"; Border.background Palette.surface; Border.borderBrush cardLine ])
+                    Border.content (Border.create [ Border.name "inner"; Border.background Palette.surface; Border.borderBrush cardLine ])
                 ]
             ]
         ]
@@ -55,7 +55,7 @@ let ``a theme value reads the nearest theme, else its default`` () =
 let ``styles written with theme values follow a theme switch`` () =
     let t = ElementTree(textSystem ())
     t.Styles <- [ Border.style [ Style.cls "card" ] [ Border.background Palette.surface ] ]
-    let view (theme: Theme) = Border.create [ Border.theme theme; Border.child (Border.create [ Border.name "card"; Border.classes [ "card" ] ]) ]
+    let view (theme: Theme) = Border.create [ Border.theme theme; Border.content (Border.create [ Border.name "card"; Border.classes [ "card" ] ]) ]
     let root = show t (view (Theme.dark []))
     Assert.Equal((Theme.dark []).Get Palette.surface, (find "card" root).Get BorderProps.background)
     let light = Theme.light []
@@ -71,7 +71,7 @@ let ``inherited text resolves where it's set, and font size theme values re-meas
             Border.theme theme
             Border.foreground Palette.accent
             Border.fontSize Palette.fontSize
-            Border.child (TextBlock.create [ TextBlock.name "t"; TextBlock.text "Hi"; TextBlock.verticalAlignment VerticalAlignment.Top ])
+            Border.content (TextBlock.create [ TextBlock.name "t"; TextBlock.text "Hi"; TextBlock.verticalAlignment VerticalAlignment.Top ])
         ]
     let root = show t (view (Theme.dark []))
     Assert.Equal(Palette.accent.Default, (find "t" root).Get InheritedProps.foreground)
@@ -99,7 +99,7 @@ let ``switching themes doesn't fade, though the property has a transition`` () =
     let t = ElementTree(textSystem ())
     t.Styles <- [ Border.style [] [ Style.transition BorderProps.background (ms 100.0) ] ]
     t.Time <- TimeSpan.Zero
-    let view (theme: Theme) = Border.create [ Border.theme theme; Border.child (Border.create [ Border.name "b"; Border.background Palette.surface ]) ]
+    let view (theme: Theme) = Border.create [ Border.theme theme; Border.content (Border.create [ Border.name "b"; Border.background Palette.surface ]) ]
     let root = show t (view (Theme.dark []))
     (find "b" root).Get BorderProps.background |> ignore
     let light = Theme.light []
@@ -126,10 +126,10 @@ let ``the remembered nearest theme follows changes above it and new elements`` (
     let view (outer: Theme voption) (inner: Theme voption) (extra: bool) =
         Border.create [
             yield! outer |> ValueOption.map Border.theme |> ValueOption.toList
-            Border.child (
+            Border.content (
                 StackPanel.create [
                     StackPanel.children [
-                        Border.create [ yield! inner |> ValueOption.map Border.theme |> ValueOption.toList; Border.child (leaf "a") ]
+                        Border.create [ yield! inner |> ValueOption.map Border.theme |> ValueOption.toList; Border.content (leaf "a") ]
                         if extra then leaf "b"
                     ]
                 ]

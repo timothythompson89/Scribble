@@ -86,7 +86,7 @@ type ScrollStressTests(fixture: TextFixture) =
                                 Border.padding 8.0
                                 Border.borderThickness 1.0
                                 Border.borderBrush (Color.Hex 0x34345A)
-                                Border.child (TextBlock.create [ TextBlock.text (string id + ". " + text); TextBlock.textWrapping Scribble.Text.Wrap ])
+                                Border.content (TextBlock.create [ TextBlock.text (string id + ". " + text); TextBlock.textWrapping Scribble.Text.Wrap ])
                             ])
                         ItemsView.scroller scroller
                     ])

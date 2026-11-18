@@ -24,7 +24,7 @@ type Button =
     /// A text label, centered (shorthand for a TextBlock child; its color comes from the Button's
     /// `foreground`).
     static member text<'k when 'k :> Button>(value: string) : Setting<'k> =
-        Setting.create BorderProps.child (
+        Setting.create BorderProps.content (
             ValueSome(
                 TextBlock.create [
                     TextBlock.text value
@@ -33,9 +33,6 @@ type Button =
                 ]
             )
         )
-
-    /// Any content.
-    static member content<'k when 'k :> Button>(value: View) : Setting<'k> = Setting.create BorderProps.child (ValueSome value)
 
     /// An icon before the text or content (or on its own), in the button's text color; the two sit
     /// together in the middle: `Button.icon addIcon; Button.text "Add"`.

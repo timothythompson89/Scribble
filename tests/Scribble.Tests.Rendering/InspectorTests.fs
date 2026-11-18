@@ -107,7 +107,7 @@ type InspectorTests(fixture: TextFixture) =
         host.Update(
             Border.create [
                 Border.padding 40.0
-                Border.child (
+                Border.content (
                     ImageView.create [
                         ImageView.image image
                         ImageView.horizontalAlignment HorizontalAlignment.Left

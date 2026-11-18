@@ -62,7 +62,7 @@ let demo =
                 Border.classes [ "chip" ]
                 isSelected (picked.Current.Contains name)
                 Border.onClick (fun _ -> picked.Update(fun s -> if s.Contains name then s.Remove name else s.Add name))
-                Border.child (TextBlock.create [ TextBlock.text name ])
+                Border.content (TextBlock.create [ TextBlock.text name ])
             ]
         StackPanel.create [
             StackPanel.styles (if compact.Current then compactStyles else normalStyles)
@@ -94,7 +94,7 @@ let demo =
                 ]
                 Border.create [
                     Border.classes [ "card" ]
-                    Border.child (
+                    Border.content (
                         StackPanel.create [
                             StackPanel.spacing 4.0
                             StackPanel.children [
@@ -110,7 +110,7 @@ let demo =
                     Border.minHeight 40.0
                     Border.cornerRadius 6.0
                     Border.on States.hover [ Border.background hover ]
-                    Border.child (
+                    Border.content (
                         TextBlock.create [
                             TextBlock.text "Hover me: Border.on States.hover [ ... ], a style right in the view"
                             TextBlock.foreground Palette.textDim

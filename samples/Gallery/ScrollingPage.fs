@@ -69,7 +69,7 @@ let private messages =
                                 Border.create [
                                     Border.padding (10.0, 6.0)
                                     Border.background (if m.Id % 2 = 0 then Palette.surface else rowAlt)
-                                    Border.child (TextBlock.create [ TextBlock.text (messageText m.Id + (if m.Added then " (added)" else "")); TextBlock.textWrapping Wrap ])
+                                    Border.content (TextBlock.create [ TextBlock.text (messageText m.Id + (if m.Added then " (added)" else "")); TextBlock.textWrapping Wrap ])
                                 ])
                             ItemsView.scroller scroller
                         ]

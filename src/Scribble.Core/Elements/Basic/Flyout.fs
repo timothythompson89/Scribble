@@ -3,19 +3,6 @@ namespace Scribble.Core
 open System
 open Scribble.Rendering
 
-/// Where a flyout (or a tooltip) goes: the rect it's anchored to, in window coordinates, and how it's placed beside it
-/// (DESIGN.md, "M8 step 4", round 1, 7). The host gives a new one when the anchor moves.
-[<Sealed>]
-type internal FlyoutTarget(rect: Rect, placement: Placement, alignment: FlyoutAlignment, matchWidth: bool, gap: float) =
-    member _.Rect = rect
-    member _.Placement = placement
-    member _.Alignment = alignment
-    member _.MatchWidth = matchWidth
-    member _.Gap = gap
-
-module internal FlyoutRootProps =
-    let target = Prop<FlyoutTarget voption>("Target", ValueNone, Affects.Arrange, PropKind.Value)
-
 /// Where a flyout of size `w` × `h` goes beside `anchor` in a `width` × `height` window: on the side asked for, or the
 /// opposite one when only that fits (or has more room), lined up as asked, then pushed inside the window.
 module internal FlyoutPlacement =
@@ -45,44 +32,61 @@ module internal FlyoutPlacement =
         let clamp (v: float) (size: float) (limit: float) = Math.Max(0.0, Math.Min(v, limit - size))
         Rect.Create(Math.Round(clamp x w width), Math.Round(clamp y h height), w, h)
 
-/// The root of a flyout's (or a tooltip's) layer: fills the window but is never hit itself, and places its one child
-/// beside its target, at most the window's size.
-module internal FlyoutRoot =
-    let private arrange (ctx: ArrangeContext) (size: Size) =
-        match ctx.Get FlyoutRootProps.target with
-        | ValueSome target ->
-            for child in ctx.Children do
-                let desired = child.DesiredSize
-                let anchor = target.Rect
-                let w0 = if target.MatchWidth then max desired.Width anchor.Width else desired.Width
-                let w = min w0 size.Width
-                let h = min desired.Height size.Height
-                ctx.Arrange(child, FlyoutPlacement.place anchor target.Placement target.Alignment target.Gap w h size.Width size.Height)
-        | ValueNone -> ()
+    /// Where a flyout's tree puts its root (the Flyout, measured) beside `anchor` in a window of `window` size: its own
+    /// placement, alignment and width rule, at most the window's size (`ElementTree.Place`).
+    let flyout (anchor: Rect) (gap: float) (root: Element) (window: Size) =
+        let desired = root.DesiredSize
+        let w0 = if root.Get FlyoutProps.matchAnchorWidth then max desired.Width anchor.Width else desired.Width
+        let w = min w0 window.Width
+        let h = min desired.Height window.Height
+        place anchor (root.Get FlyoutProps.placement) (root.Get FlyoutProps.alignment) gap w h window.Width window.Height
 
-    let Type =
-        Element.define "FlyoutRoot" [
-            Element.measure (fun ctx available ->
-                for child in ctx.Children do
-                    ctx.Measure(child, available) |> ignore
-                Size.Create((if Double.IsFinite available.Width then available.Width else 0.0), (if Double.IsFinite available.Height then available.Height else 0.0)))
-            Element.arrange arrange
-            Element.passThrough
-        ]
-
-    let create (target: FlyoutTarget) (child: View) =
-        View.Create(Type, [ Setting.create FlyoutRootProps.target (ValueSome target); Setting.create PanelProps.children [ child ] ])
-
-/// What a flyout's content sits in: the theme gives it the surface colour, a border, rounded corners, padding and a
-/// floating shadow (`FlyoutPresenter.style` restyles it).
+/// Content shown in its own layer next to an element, given to it with `flyout` (DESIGN.md, "M8 step 4", rounds 1,
+/// 1b and 1c): its content alone, or the Flyout's settings:
+/// ```
+/// Button.flyout menu
+/// Button.flyout [ Flyout.placement Placement.Right; Flyout.content menu ]
+/// ```
+/// The Flyout is also the box its content sits in: a Border the theme gives the surface colour, a line, rounded
+/// corners, padding and a floating shadow (`Flyout.padding 0.0` on one; `Flyout.style` for all). It's styled as if
+/// inside its element: `Button.styles [ Flyout.style ... ]`, `Style.parent Button.Type [ ... ]` and a `theme` around
+/// the element reach it.
 [<AbstractClass>]
-type FlyoutPresenter =
+type Flyout =
     inherit Border
 
-module FlyoutPresenter =
-    let Type = Element.extend Border.Type "FlyoutPresenter" []
-    let create (settings: Setting<FlyoutPresenter> list) = View.Create(Type, settings)
-    let style parts (settings: Setting<FlyoutPresenter> list) = Style.forType Type parts settings
+    /// Which side of the element it shows on (default Below; flipped when it doesn't fit).
+    static member placement<'k when 'k :> Flyout>(value: Placement) : Setting<'k> = Setting.create FlyoutProps.placement value
+    /// Where it lines up along that side (default Start).
+    static member alignment<'k when 'k :> Flyout>(value: FlyoutAlignment) : Setting<'k> = Setting.create FlyoutProps.alignment value
+    /// Makes it controlled: it shows exactly this; clicks and dismissals only call `onOpenChanged`. Without it, the
+    /// element it belongs to keeps its own open state, and its click opens and closes it.
+    static member isOpen<'k when 'k :> Flyout>(value: bool) : Setting<'k> = Setting.create FlyoutProps.isOpen (ValueSome value)
+    /// It opened or closed (or, controlled, asks to): a click, Escape, a press elsewhere.
+    static member onOpenChanged<'k when 'k :> Flyout>(handler: bool -> unit) : Setting<'k> =
+        Setting.create FlyoutProps.onOpenChanged (ValueSome handler)
+    /// False: Escape and presses elsewhere don't close it; only the view or a click on its element does.
+    static member lightDismiss<'k when 'k :> Flyout>(value: bool) : Setting<'k> = Setting.create FlyoutProps.lightDismiss value
+    /// True: at least as wide as its element (a ComboBox's list).
+    static member matchAnchorWidth<'k when 'k :> Flyout>(value: bool) : Setting<'k> = Setting.create FlyoutProps.matchAnchorWidth value
+
+module Flyout =
+    let Type = Element.extend Border.Type "Flyout" []
+    /// Internal: apps give `flyout` the settings list (a Flyout given as content would sit inside another).
+    let internal create (settings: Setting<Flyout> list) = View.Create(Type, settings)
+    let style parts (settings: Setting<Flyout> list) = Style.forType Type parts settings
+
+/// `flyout` on every element (here, after Flyout: its settings list form needs the type).
+[<AutoOpen>]
+module FlyoutSettings =
+    type Layoutable with
+        /// Its flyout, showing `content` in its own layer next to the element; Escape or a press elsewhere closes it, and
+        /// the element's click opens and closes it. For placement, look or control, give the Flyout's settings instead.
+        static member flyout<'k when 'k :> Layoutable>(content: View) : Setting<'k> =
+            Setting.create FlyoutProps.flyout (ValueSome(Flyout.create [ Setting.create BorderProps.content (ValueSome content) ]))
+        /// Its flyout, from the Flyout's settings: `Button.flyout [ Flyout.placement Placement.Right; Flyout.content menu ]`.
+        static member flyout<'k when 'k :> Layoutable>(settings: Setting<Flyout> list) : Setting<'k> =
+            Setting.create FlyoutProps.flyout (ValueSome(Flyout.create settings))
 
 /// What a tooltip's text or view sits in (`TooltipPresenter.style` restyles it).
 [<AbstractClass>]

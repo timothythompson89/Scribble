@@ -68,7 +68,7 @@ let ``extend starts from the base type, define from a plain container`` () =
 
 [<Fact>]
 let ``element defaults can't hold children`` () =
-    Assert.Throws<ArgumentException>(fun () -> Element.defaults [ Border.child (TextBlock.create []) ] |> ignore) |> ignore
+    Assert.Throws<ArgumentException>(fun () -> Element.defaults [ Border.content (TextBlock.create []) ] |> ignore) |> ignore
 
 [<Fact>]
 let ``a different element type is rebuilt`` () =
@@ -128,9 +128,9 @@ let ``items takes keys from the collection`` () =
 [<Fact>]
 let ``a single child is patched in place`` () =
     let t = tree ()
-    t.Update(Border.create [ Border.child (TextBlock.create [ TextBlock.text "a" ]) ])
+    t.Update(Border.create [ Border.content (TextBlock.create [ TextBlock.text "a" ]) ])
     let text = child t.Root.Value [ 0 ]
-    t.Update(Border.create [ Border.child (TextBlock.create [ TextBlock.text "b" ]) ])
+    t.Update(Border.create [ Border.content (TextBlock.create [ TextBlock.text "b" ]) ])
     same text (child t.Root.Value [ 0 ])
     Assert.Equal("b", text.Get TextProps.text)
     t.Update(Border.create [])

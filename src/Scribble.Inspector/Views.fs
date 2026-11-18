@@ -101,7 +101,7 @@ module internal Views =
                 Border.padding (Thickness.Create(6.0, 0.0, 6.0, 0.0))
                 Border.background (Color.Hex 0x26263A)
                 Border.onPointerDown (fun _ -> state.ToggleLayer l)
-                Border.child (
+                Border.content (
                     StackPanel.create [
                         StackPanel.orientation Horizontal
                         StackPanel.spacing 6.0
@@ -137,7 +137,7 @@ module internal Views =
                     if hasChildren && a.LocalPosition.X < left + 14.0 then state.ToggleExpanded e else state.ClickRow e)
                 Border.onPointerEnter (fun _ -> state.HoverRow e)
                 Border.onPointerLeave (fun _ -> state.LeaveRow e)
-                Border.child (
+                Border.content (
                     StackPanel.create [
                         StackPanel.orientation Horizontal
                         StackPanel.spacing 4.0
@@ -145,7 +145,7 @@ module internal Views =
                             Border.create [
                                 if isSelected then Border.name Names.SelectedLabel
                                 Border.padding (Thickness.Create(inset, 0.0, 0.0, 0.0))
-                                Border.child (
+                                Border.content (
                                     StackPanel.create [
                                         StackPanel.orientation Horizontal
                                         StackPanel.spacing 4.0
@@ -180,7 +180,7 @@ module internal Views =
             Button.verticalAlignment VerticalAlignment.Center
             Button.onClick (fun _ -> onClick ())
             if isActive then Button.background (Color.Hex 0x3D59A1)
-            Button.child (
+            Button.content (
                 TextBlock.create [
                     TextBlock.text label
                     TextBlock.fontSize 12.0
@@ -203,7 +203,7 @@ module internal Views =
         Border.create (
             [ Border.width "1*"
               Border.padding (Thickness.Create(12.0, 0.0, 4.0, 0.0))
-              Border.child (
+              Border.content (
                   TextBlock.create [
                       if hint.Length > 0 then
                           TextBlock.text hint
@@ -330,7 +330,7 @@ module internal Views =
             [ Border.height 7.0
               Border.cursor Cursor.ResizeUpDown
               Border.background Color.Transparent
-              Border.child (Border.create [ Border.height 1.0; Border.background (Color.Hex 0x3A3A55); Border.verticalAlignment VerticalAlignment.Center ]) ]
+              Border.content (Border.create [ Border.height 1.0; Border.background (Color.Hex 0x3A3A55); Border.verticalAlignment VerticalAlignment.Center ]) ]
             @ dragHandlers state DragKind.Split
         )
 
@@ -415,7 +415,7 @@ module internal Views =
             CheckBox.background Color.Transparent
             CheckBox.borderBrush (Color.Hex 0x8A8AA0)
             CheckBox.on States.isChecked [ CheckBox.background (Color.Hex 0x3D59A1); CheckBox.borderBrush (Color.Hex 0x3D59A1) ]
-            CheckBox.child (
+            CheckBox.content (
                 TextBlock.create [
                     TextBlock.text label
                     TextBlock.fontSize 12.0
@@ -477,7 +477,7 @@ module internal Views =
             Border.cursor Cursor.Hand
             Border.on States.hover [ Border.overlay (Color.White.WithAlpha 0.08f) ]
             Border.onClick (fun _ -> onClick ())
-            Border.child (
+            Border.content (
                 // One cell: the name, and over it a line through its middle when forced off.
                 Grid.create [
                     Grid.children [
@@ -777,7 +777,7 @@ module internal Views =
             let state = props.State
             follow ctx state
             if props.IsPoppedOut then
-                Border.create [ Semantics.hidden true; Border.background panelBackground; Border.child (content state true false) ]
+                Border.create [ Semantics.hidden true; Border.background panelBackground; Border.content (content state true false) ]
             else
                 let looks =
                     [ Semantics.hidden true
@@ -815,7 +815,7 @@ module internal Views =
                             edge state (docked && state.Side = DockSide.Left)
                         ]
                     ]
-                Border.create (looks @ placement @ [ Border.child body ]))
+                Border.create (looks @ placement @ [ Border.content body ]))
 
     /// The highlight, over everything but the panel. In pick mode it also takes the pointer, so
     /// the app doesn't see it.
@@ -833,5 +833,5 @@ module internal Views =
                 Border.onPointerDown (fun a ->
                     state.PickSelect a.Position
                     a.Handle())
-                Border.child (Highlight.create [ Highlight.target target; Highlight.outlineOnly state.TargetIsSelection ])
+                Border.content (Highlight.create [ Highlight.target target; Highlight.outlineOnly state.TargetIsSelection ])
             ])

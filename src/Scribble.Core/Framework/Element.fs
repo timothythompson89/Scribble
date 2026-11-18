@@ -43,6 +43,9 @@ type IElementRoot =
     /// An element (an `Element`) changed a watched property (`Prop.Watched`), or joined the tree with one: the host
     /// opens or closes its flyout at the next frame.
     abstract Watch: element: obj -> unit
+    /// The element (an `Element`) this tree belongs to, or null: a flyout's or tooltip's tree belongs to its element, and
+    /// is styled as if inside it (DESIGN.md, "M8 step 4", round 1c).
+    abstract Owner: obj
 
 [<AutoOpen>]
 module internal StyleMarks =
@@ -324,6 +327,8 @@ and View internal (elementType: ElementType, settings: struct (Prop * obj)[]) =
 
     /// The same view with a key (used by `items`).
     member internal _.WithKey(k: obj) = View(elementType, Array.append settings [| struct (LayoutProps.key :> Prop, box (ValueSome k)) |])
+    /// The same view with one more setting (it wins over an earlier one of the same property).
+    member internal _.With(prop: Prop, value: obj) = View(elementType, Array.append settings [| struct (prop, value) |])
 
     /// A view of an element type with settings. Element authors call this from their `create`.
     static member Create<'k>(elementType: ElementType, settings: Setting<'k> list) : View =
@@ -353,7 +358,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     // `static let mutable` here would be shared across threads (see CLAUDE.md).
     /// A component's input (set by its view) and its rendered content (the view it returned).
     static let componentInput = Prop<obj>("Component", obj (), Affects.Nothing, PropKind.Component)
-    static let componentContent = Prop<View voption>("Content", ValueNone, Affects.Measure, PropKind.Child)
+    static let componentContent = Prop<View voption>("Content", ValueNone, Affects.Measure, PropKind.Content)
 
     // Property values: a small list of (property, value), searched linearly.
     let mutable keys: Prop[] = Array.zeroCreate 4
@@ -464,7 +469,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     static let viewsOf (kind: PropKind) (value: obj) : View[] =
         match kind, value with
-        | PropKind.Child, (:? (View voption) as v) -> (match v with ValueSome x -> [| x |] | ValueNone -> [||])
+        | PropKind.Content, (:? (View voption) as v) -> (match v with ValueSome x -> [| x |] | ValueNone -> [||])
         | PropKind.Children, (:? (View list) as l) -> List.toArray l
         | _ -> [||]
 
@@ -558,6 +563,23 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     /// The tree this element belongs to, if any.
     member _.Root: IElementRoot voption = root
+
+    /// The element its tree belongs to (a flyout's or tooltip's element), if any.
+    member internal _.TreeOwner: Element voption =
+        match root with
+        | ValueSome r ->
+            match r.Owner with
+            | :? Element as o -> ValueSome o
+            | _ -> ValueNone
+        | ValueNone -> ValueNone
+
+    /// Its parent for styling: its parent, else (the root of a tree that belongs to an element: a flyout) that element.
+    /// Selectors (`Style.parent`, `Style.inside`), `styles` scopes and the nearest
+    /// theme look up through it; inherited values cross only through the theme.
+    member internal this.StyleParent: Element voption =
+        match parent with
+        | ValueNone -> this.TreeOwner
+        | p -> p
 
     /// Sets the tree for this element and everything below it. A subtree that joins a tree is
     /// queued for style matching.
@@ -999,9 +1021,10 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                     match parent with
                     | ValueSome p -> p.NearestTheme
                     | ValueNone ->
-                        match root with
-                        | ValueSome r -> r.Theme
-                        | ValueNone -> ValueNone
+                        match this.TreeOwner, root with
+                        | ValueSome o, _ -> o.NearestTheme
+                        | ValueNone, ValueSome r -> r.Theme
+                        | ValueNone, ValueNone -> ValueNone
             nearestTheme <- found
             nearestThemeEpoch <- epoch
             found
@@ -1051,12 +1074,18 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             match parent with
             | ValueSome p -> p.Resolved prop
             | ValueNone ->
-                match root with
-                | ValueSome r when r.Theme.IsSome ->
-                    match r.Theme.Value.TryBase prop with
+                // A tree that belongs to an element takes base values from that element's theme, not its values.
+                let theme =
+                    match this.TreeOwner, root with
+                    | ValueSome o, _ -> o.NearestTheme
+                    | ValueNone, ValueSome r -> r.Theme
+                    | ValueNone, ValueNone -> ValueNone
+                match theme with
+                | ValueSome t ->
+                    match t.TryBase prop with
                     | ValueSome v -> v
                     | ValueNone -> prop.DefaultBoxed
-                | _ -> prop.DefaultBoxed
+                | ValueNone -> prop.DefaultBoxed
 
     /// An inherited property's value here: own, else a style's, else the type's default, else from above.
     member internal this.Resolved(prop: Prop) : obj =
@@ -1709,12 +1738,12 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     override _.ToString() = elementType.Name
 
-/// Properties that hold child elements.
+/// Properties that hold views shown inside the element (its child elements).
 [<AutoOpen>]
 module PropChildren =
     type Prop with
-        /// Holds one child (a view; the element keeps the realized child).
-        static member child(name: string) = Prop<View voption>(name, ValueNone, Affects.Measure, PropKind.Child)
+        /// Holds one view, its content (the element keeps it realized as its one child): `Prop.content "Content"`.
+        static member content(name: string) = Prop<View voption>(name, ValueNone, Affects.Measure, PropKind.Content)
         /// Holds a list of children (views; the element keeps the realized children).
         static member children(name: string) = Prop<View list>(name, [], Affects.Measure, PropKind.Children)
 

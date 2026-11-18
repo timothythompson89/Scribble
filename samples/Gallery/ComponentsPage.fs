@@ -84,7 +84,7 @@ let counter =
                     Border.verticalAlignment VerticalAlignment.Center
                     Border.cornerRadius 4.0
                     Border.background track
-                    Border.child (
+                    Border.content (
                         Border.create [
                             Border.width (barWidth * filled)
                             Border.horizontalAlignment HorizontalAlignment.Left

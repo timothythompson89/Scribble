@@ -33,7 +33,7 @@ let private appView (log: List<string>) =
     Border.create [
         Border.name "background"
         Border.onClick (fun _ -> log.Add "app")
-        Border.child (
+        Border.content (
             Button.create [
                 Button.name "appButton"
                 Button.width 100.0
@@ -54,7 +54,7 @@ let private panel (name: string) (log: List<string>) =
         Border.horizontalAlignment HorizontalAlignment.Right
         Border.verticalAlignment VerticalAlignment.Bottom
         Border.background (Color.Hex 0x333333)
-        Border.child (
+        Border.content (
             Button.create [
                 Button.name (name + "Button")
                 Button.width 100.0
@@ -195,7 +195,7 @@ let private settle (w: FakeWindow) =
 let private scroller (outerWheel: List<float>) =
     Border.create [
         Border.onWheel (fun e -> outerWheel.Add e.DeltaY)
-        Border.child (
+        Border.content (
             ScrollViewer.create [
                 ScrollViewer.name "scroller"
                 ScrollViewer.width 200.0
@@ -374,11 +374,11 @@ let ``the mouse never pans, and neither does a touch whose press a handler took`
 let ``a modal layer showing nothing blocks nothing`` () =
     let log = List<string>()
     let w, host = start [ App.view (appView log) ]
-    let dialog = host.AddLayer [ Layer.modal true; Layer.view (Border.create [ Border.isVisible false; Border.child (panel "dialog" log) ]) ]
+    let dialog = host.AddLayer [ Layer.modal true; Layer.view (Border.create [ Border.isVisible false; Border.content (panel "dialog" log) ]) ]
     w.DeliverFrame() |> ignore
     click w 200.0 150.0
     Assert.Equal<string list>([ "app" ], List.ofSeq log)
-    dialog.Update(Border.create [ Border.isVisible true; Border.child (panel "dialog" log) ])
+    dialog.Update(Border.create [ Border.isVisible true; Border.content (panel "dialog" log) ])
     w.DeliverFrame() |> ignore
     click w 200.0 150.0 // now it blocks
     Assert.Equal<string list>([ "app" ], List.ofSeq log)

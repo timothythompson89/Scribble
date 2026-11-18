@@ -36,7 +36,7 @@ let private row (m: Message) =
     Border.create [
         Border.padding (10.0, 6.0)
         Border.background (if m.Id % 2 = 0 then Palette.surface else rowAlt)
-        Border.child (TextBlock.create [ TextBlock.text m.Text; TextBlock.textWrapping Wrap ])
+        Border.content (TextBlock.create [ TextBlock.text m.Text; TextBlock.textWrapping Wrap ])
     ]
 
 /// The same row with a Button (theme styles, hover/pressed states) at the end.
@@ -44,7 +44,7 @@ let private rowWithButton (m: Message) =
     Border.create [
         Border.padding (10.0, 6.0)
         Border.background (if m.Id % 2 = 0 then Palette.surface else rowAlt)
-        Border.child (
+        Border.content (
             DockPanel.create [
                 DockPanel.children [
                     Button.create [ DockPanel.dock Dock.Right; Button.text "Reply" ]

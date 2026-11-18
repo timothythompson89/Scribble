@@ -208,15 +208,15 @@ module internal Selector =
         && match s.Ancestor with
            | ValueNone -> true
            | ValueSome(struct (Relation.Parent, a)) ->
-               match e.Parent with
+               match e.StyleParent with
                | ValueSome p -> matches a p
                | ValueNone -> false
            | ValueSome(struct (Relation.Inside, a)) ->
-               let mutable p = e.Parent
+               let mutable p = e.StyleParent
                let mutable found = false
                while not found && p.IsSome do
                    found <- matches a p.Value
-                   p <- p.Value.Parent
+                   p <- p.Value.StyleParent
                found
 
     /// True when an ancestor part tests a state: a state change must then re-match the subtree.
@@ -444,11 +444,11 @@ module internal StyleEngine =
     /// The `styles` lists of the element's ancestors, outermost first.
     let scopesAbove (e: Element) =
         let mutable scopes = []
-        let mutable p = e.Parent
+        let mutable p = e.StyleParent
         while p.IsSome do
             let s = p.Value.Get StyleProps.styles
             if not s.IsEmpty then scopes <- s :: scopes
-            p <- p.Value.Parent
+            p <- p.Value.StyleParent
         scopes
 
     /// The styles of the theme that applies to `e`: the nearest `theme` setting (on it or above),
@@ -463,7 +463,7 @@ module internal StyleEngine =
                 | :? Theme as th -> found <- ValueSome th
                 | _ -> ()
             | _ -> ()
-            p <- p.Value.Parent
+            p <- p.Value.StyleParent
         match found, treeTheme with
         | ValueSome t, _
         | ValueNone, ValueSome t -> t.Styles

@@ -73,7 +73,7 @@ let ``pointer down tunnels from the root, then bubbles from the target`` () =
             Border.padding 50.0
             Border.onPreviewPointerDown (fun _ -> log.Add "preview outer")
             Border.onPointerDown (fun _ -> log.Add "outer")
-            Border.child (
+            Border.content (
                 Border.create [
                     Border.name "inner"
                     Border.onPreviewPointerDown (fun _ -> log.Add "preview inner")
@@ -96,7 +96,7 @@ let ``handling stops the route`` () =
     let view =
         Border.create [
             Border.onPointerDown (fun _ -> log.Add "outer")
-            Border.child (Border.create [ Border.onPointerDown (fun e -> log.Add "inner"; e.Handle()) ])
+            Border.content (Border.create [ Border.onPointerDown (fun e -> log.Add "inner"; e.Handle()) ])
         ]
     let w, _, _ = show view
     press w 10 10
@@ -111,7 +111,7 @@ let ``a press handled in Preview is taken: no click, and the taker gets the move
             Border.name "outer"
             Border.onPreviewPointerDown (fun e -> e.Handle())
             Border.onPointerMove (fun _ -> moves.Add "outer")
-            Border.child (
+            Border.content (
                 Border.create [
                     Border.width 100.0
                     Border.height 100.0
@@ -190,13 +190,13 @@ let ``disabled elements and everything inside them get no input`` () =
         Border.create [
             Border.name "outer"
             Border.onPointerDown (fun _ -> log.Add "outer down")
-            Border.child (
+            Border.content (
                 Border.create [
                     Border.name "disabled"
                     Border.isEnabled false
                     Border.onPointerEnter (fun _ -> log.Add "disabled enter")
                     Border.onClick (fun _ -> log.Add "disabled click")
-                    Border.child (Border.create [ Border.name "inside"; Border.onPointerDown (fun _ -> log.Add "inside down") ])
+                    Border.content (Border.create [ Border.name "inside"; Border.onPointerDown (fun _ -> log.Add "inside down") ])
                 ])
         ]
     let w, _, el = show view
@@ -216,7 +216,7 @@ let ``buttons show a hand, and the cursor goes back when the pointer leaves`` ()
             StackPanel.children [
                 // Only generic settings: this used to be ambiguous with Border.create (now a module function).
                 Button.create [ Button.name "button"; Button.width 100.0; Button.height 40.0 ]
-                Border.create [ Border.name "text"; Border.height 40.0; Border.cursor Cursor.Text; Border.child (Border.create []) ]
+                Border.create [ Border.name "text"; Border.height 40.0; Border.cursor Cursor.Text; Border.content (Border.create []) ]
             ]
         ]
     let w, _, _ = show view
@@ -235,7 +235,7 @@ let ``the wheel tunnels and bubbles too`` () =
         Border.create [
             Border.onPreviewWheel (fun _ -> log.Add "preview outer")
             Border.onWheel (fun e -> log.Add $"outer {e.DeltaY}")
-            Border.child (Border.create [ Border.onWheel (fun _ -> log.Add "inner") ])
+            Border.content (Border.create [ Border.onWheel (fun _ -> log.Add "inner") ])
         ]
     let w, _, _ = show view
     w.Send(PointerWheel({ X = 10.0; Y = 10.0 }, 0.0, -1.0, Modifiers.Control))
@@ -401,7 +401,7 @@ let ``Shift+wheel scrolls a sideways ItemsView sideways`` () =
                     ItemsView.source [| 0..999 |]
                     ItemsView.key id
                     ItemsView.layout (ItemsLayout.fixedStack 20.0)
-                    ItemsView.view (fun (i: int) -> Border.create [ Border.height 20.0; Border.child (Border.create [ Border.width 900.0 ]) ])
+                    ItemsView.view (fun (i: int) -> Border.create [ Border.height 20.0; Border.content (Border.create [ Border.width 900.0 ]) ])
                 ])
         ]
     let w, host, find = show view
