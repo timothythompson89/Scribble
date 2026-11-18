@@ -419,6 +419,7 @@ module LayoutProps =
     let onKeyUp = keyHandler "OnKeyUp"
     let onPreviewKeyDown = keyHandler "OnPreviewKeyDown"
     let onPreviewKeyUp = keyHandler "OnPreviewKeyUp"
+    let onTextInput = Prop<(TextInputEventArgs -> unit) voption>("OnTextInput", ValueNone, Affects.Nothing, PropKind.Value)
 
     do
         for p in [ margin :> Prop; width; height; minWidth; minHeight; maxWidth; maxHeight; horizontalAlignment; verticalAlignment; isVisible; clipToBounds; zIndex ] do

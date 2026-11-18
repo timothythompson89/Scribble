@@ -19,6 +19,8 @@ type Role =
     | Slider
     /// A box showing the item chosen from a list it opens (expanded while the list shows).
     | ComboBox
+    /// A box to type text in, named by its label or its placeholder.
+    | TextBox
     | Tab
     | TabList
     | TabPanel
@@ -47,6 +49,7 @@ type Role =
         | RadioGroup -> "RadioGroup"
         | Slider -> "Slider"
         | ComboBox -> "ComboBox"
+        | TextBox -> "TextBox"
         | Tab -> "Tab"
         | TabList -> "TabList"
         | TabPanel -> "TabPanel"

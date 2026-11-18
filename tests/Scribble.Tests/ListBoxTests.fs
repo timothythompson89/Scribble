@@ -215,6 +215,23 @@ let ``a double-click or Enter invokes; None mode invokes on a click and never se
     Assert.Equal<int list>([ 5; 6 ], List.ofSeq n.Invoked)
 
 [<Fact>]
+let ``two slow clicks in an idle window don't invoke`` () =
+    // No frame is drawn between the clicks (nothing changes while the pointer rests): the second click is timed
+    // by the platform's clock at the click, not by the last frame, which was drawn just after the first.
+    let c = Changes()
+    let w, host = show (list 20 c.Settings)
+    click w (container host 2)
+    while w.DeliverFrame() do ()
+    w.Time.AdvanceMs 2000.0
+    click w (container host 2)
+    Assert.Empty c.Invoked
+    Assert.Equal<int list>([ 2 ], selectedKeys host)
+    // Soon after: a double-click with the second.
+    w.Time.AdvanceMs 100.0
+    click w (container host 2)
+    Assert.Equal<int list>([ 2 ], List.ofSeq c.Invoked)
+
+[<Fact>]
 let ``the selection follows keys through sorting and removal`` () =
     let reports = List<int list>()
     let source = ref (people 10)

@@ -1,5 +1,5 @@
 /// The Controls page (M8 step 3a): CheckBox (with a "select all" that shows a dash), Switch, ToggleButton,
-/// Slider and ComboBox (M8 step 4c), each controlled by the page's state next to one that keeps its own value.
+/// Slider, ComboBox (M8 step 4c) and TextBox (M9 step 9a), each controlled by the page's state next to one that keeps its own value.
 module Scribble.Samples.Gallery.ControlsPage
 
 open Scribble.Rendering
@@ -58,6 +58,8 @@ let private controls =
         let volume = ctx.useState 40.0
         let committed = ctx.useState 40.0
         let size = ctx.useState "Medium"
+        let name = ctx.useState "Ada"
+        let submitted = ctx.useState ""
         let some = picked.Current
         StackPanel.create [
             StackPanel.spacing 22.0
@@ -149,6 +151,42 @@ let private controls =
                                 ComboBox.placeholder "One of 10,000"
                             ]
                             ComboBox.create [ ComboBox.width 220.0; ComboBox.source sizes; ComboBox.selected (ValueSome "Large"); ComboBox.isEnabled false ]
+                        ]
+                    ])
+                section "TextBox" "Click and type. ←/→ move (Ctrl by word), Shift selects, Ctrl+A selects all; a double-click selects a word, a triple-click everything; Tab into one selects its text." (
+                    column [
+                        wrap [
+                            // Controlled: the line below follows every key.
+                            TextBox.create [
+                                TextBox.width 220.0
+                                TextBox.text name.Current
+                                TextBox.placeholder "Your name"
+                                TextBox.onTextChanged name.Set
+                            ]
+                            // It keeps its own text; Enter submits it.
+                            TextBox.create [
+                                TextBox.width 220.0
+                                TextBox.placeholder "Type, then press Enter"
+                                TextBox.onSubmitted submitted.Set
+                            ]
+                        ]
+                        TextBlock.create [
+                            TextBlock.text (
+                                (if name.Current = "" then "Hello." else "Hello, " + name.Current + ".")
+                                + (if submitted.Current = "" then "" else "  Submitted: " + submitted.Current))
+                        ]
+                        wrap [
+                            TextBox.create [ TextBox.width 220.0; TextBox.placeholder "Password"; TextBox.isPassword true ]
+                            TextBox.create [ TextBox.width 220.0; TextBox.placeholder "Up to 8 characters"; TextBox.maxLength 8 ]
+                        ]
+                        wrap [
+                            TextBox.create [
+                                TextBox.width 220.0
+                                TextBox.text "Read-only: select, not change"
+                                TextBox.isReadOnly true
+                                Semantics.label "Read-only"
+                            ]
+                            TextBox.create [ TextBox.width 220.0; TextBox.text "Disabled"; TextBox.isEnabled false; Semantics.label "Disabled" ]
                         ]
                     ])
             ]

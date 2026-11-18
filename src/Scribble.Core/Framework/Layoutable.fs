@@ -132,6 +132,10 @@ type Layoutable =
     /// it stops built-in behavior too (Tab moving focus, Enter/Space clicking, App.onKey).
     static member onKeyDown<'k when 'k :> Layoutable>(handler: KeyEventArgs -> unit) : Setting<'k> =
         Setting.create LayoutProps.onKeyDown (ValueSome handler)
+    /// Text was typed while this element (or something inside it) has focus: `e.Text`. Bubbles. A TextBox uses it;
+    /// keys that type nothing (arrows, Enter, shortcuts) come as `onKeyDown` only.
+    static member onTextInput<'k when 'k :> Layoutable>(handler: TextInputEventArgs -> unit) : Setting<'k> =
+        Setting.create LayoutProps.onTextInput (ValueSome handler)
     /// A key came up while this element (or something inside it) has focus. Bubbles.
     static member onKeyUp<'k when 'k :> Layoutable>(handler: KeyEventArgs -> unit) : Setting<'k> =
         Setting.create LayoutProps.onKeyUp (ValueSome handler)

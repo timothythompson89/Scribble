@@ -8,17 +8,9 @@ open Scribble.Text
 open Scribble.Core
 open Scribble.Samples.Gallery.Common
 
-/// A stand-in text field (TextBox comes with M9).
-let private field (placeholder: string) (settings: Setting<Border> list) =
-    Border.create [
-        yield Border.background Palette.surface
-        yield Border.borderBrush Palette.border
-        yield Border.borderThickness 1.0
-        yield Border.cornerRadius 4.0
-        yield Border.padding (8.0, 5.0)
-        yield Border.content (TextBlock.create [ TextBlock.text placeholder; TextBlock.foreground Palette.textDim; TextBlock.textTrimming CharacterEllipsis ])
-        yield! settings
-    ]
+/// A text field of the form, named by its placeholder.
+let private field (placeholder: string) (settings: Setting<TextBox> list) =
+    TextBox.create [ yield TextBox.placeholder placeholder; yield! settings ]
 
 let private label (text: string) (row: int) =
     TextBlock.create [ TextBlock.text text; Grid.row row; TextBlock.verticalAlignment VerticalAlignment.Center ]
@@ -44,7 +36,7 @@ let private form =
             field "ada@example.com" [ Grid.cell (1, 1) ]
             Button.create [ Button.text "Verify"; Grid.cell (1, 2) ]
             label "Notes" 2
-            field "Spans the field and button columns" [ Grid.cell (2, 1); Grid.columnSpan 2; Border.height 56.0 ]
+            field "Spans the field and button columns" [ Grid.cell (2, 1); Grid.columnSpan 2 ]
             StackPanel.create [
                 Grid.cell (3, 1)
                 Grid.columnSpan 2

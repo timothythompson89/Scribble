@@ -133,6 +133,12 @@ type ElementType =
       /// The type's own key behavior (a ScrollViewer's arrow keys): runs as a key bubbles from the
       /// focused element, after each element's own handler, if nothing handled it yet.
       KeyDown: (InputContext -> KeyEventArgs -> unit) voption
+      /// The type's own use of typed text (a TextBox): runs as the text bubbles from the focused element, after each
+      /// element's own `onTextInput`, if nothing handled it yet.
+      TextInput: (InputContext -> TextInputEventArgs -> unit) voption
+      /// The element got keyboard focus (true) or lost it (false); the second value says Tab brought it (not a
+      /// press or code), which is when a TextBox selects all its text.
+      FocusChanged: (InputContext -> bool -> bool -> unit) voption
       /// The type's own click behavior (a ToggleButton toggling): runs after the element's own
       /// `onClick`. An element whose type has one is clickable without an `onClick` setting.
       Click: (InputContext -> ClickEventArgs -> unit) voption
@@ -159,6 +165,8 @@ type ElementType =
           PointerMove = ValueNone
           PointerUp = ValueNone
           KeyDown = ValueNone
+          TextInput = ValueNone
+          FocusChanged = ValueNone
           Click = ValueNone
           ClipChildren = ValueNone
           Scrolling = ValueNone
@@ -1851,6 +1859,14 @@ module Element =
     /// The type's own key behavior: keys nothing handled bubble from the focused element up, and
     /// reach this after each element's own `onKeyDown`. Call `e.Handle()` when it used the key.
     let keyDown (f: InputContext -> KeyEventArgs -> unit) = ElementPart(fun t -> { t with KeyDown = ValueSome f })
+
+    /// The type's own use of typed text (a TextBox): text nothing handled bubbles from the focused element up, and
+    /// reaches this after each element's own `onTextInput`. Call `e.Handle()` when it used the text.
+    let textInput (f: InputContext -> TextInputEventArgs -> unit) = ElementPart(fun t -> { t with TextInput = ValueSome f })
+
+    /// The type's own reaction to getting keyboard focus (`f ctx true byTab`) and losing it (`f ctx false false`):
+    /// `byTab` is true when Tab or Shift+Tab brought the focus, false for a press or `element.Focus()`.
+    let focusChanged (f: InputContext -> bool -> bool -> unit) = ElementPart(fun t -> { t with FocusChanged = ValueSome f })
 
     /// The type's own click behavior (a ToggleButton toggling): runs on a click (press and release
     /// over the element, Enter, or Space), after the element's own `onClick`. Elements of the type

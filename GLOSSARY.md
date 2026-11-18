@@ -185,6 +185,14 @@ _Avoid_: notification, snackbar, alert (for the message)
 The controller an app shows toasts with (`toaster.Show "Saved"`), from anywhere.
 _Avoid_: notification service, toast manager
 
+**Caret**:
+The line in a TextBox where typed text goes; it stands between two characters as a reader sees them.
+_Avoid_: cursor (that is the pointer's look), insertion point
+
+**Text selection**:
+The run of text between the anchor (where selecting started) and the caret; typing replaces it.
+_Avoid_: highlight, range
+
 **Host**:
 What runs a window's layers: input, frames and the window's theme (`ElementHost`).
 _Avoid_: window (for the host), root

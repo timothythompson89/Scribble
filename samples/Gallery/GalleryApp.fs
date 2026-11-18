@@ -102,6 +102,8 @@ let gallery =
 let app: AppSetting<unit> list =
     [ App.title (appTitle + " – " + titleOf 0)
       App.size (720.0, 560.0)
+      // Emoji typed into a TextBox come from Twemoji: Inter has none, and drew its "missing" box.
+      App.fonts [ Scribble.Text.Emoji.Twemoji() ]
       App.theme darkTheme
       App.view (gallery ())
       // The Images page renders the Gallery itself into a picture (ViewImage).

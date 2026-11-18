@@ -130,6 +130,19 @@ module internal ThemeLooks =
               Style.on States.isOpen [ ComboBox.borderBrush Palette.accent ]
               Style.on States.disabled [ ComboBox.overlay Color.Transparent; ComboBox.opacity 0.5 ]
           ]
+          // A field to type in (M9 step 9a, decision 17): a ComboBox's look without the hover and press tints; the
+          // selection is the accent, tinted.
+          TextBox.style [] [
+              TextBox.background Palette.surface
+              TextBox.borderBrush Palette.border
+              TextBox.cornerRadius Palette.cornerRadius
+              TextBox.foreground Palette.text
+              TextBox.placeholderForeground Palette.textDim
+              Setting.fromThemeWith TextBoxProps.selection Palette.accent ThemeConvert.textSelectionTint
+              Style.transition BorderProps.borderBrush tintTime
+              Style.on States.focused [ TextBox.borderBrush Palette.accent ]
+              Style.on States.disabled [ TextBox.opacity 0.5 ]
+          ]
           TextBlock.style [ Style.inside ComboBox.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
           // A disabled Button fades as a whole: its text doesn't fade twice.

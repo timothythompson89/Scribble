@@ -240,6 +240,52 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
           LineHeight = lineHeight
           Lines = parts.Length }
 
+    /// Where a caret can stand in one line of text (no '\n'), at `size` DIPs: `stops[i]` is the x of the place
+    /// before the character at index `i` (a UTF-16 index), and `stops[line.Length]` the end. A caret stands only
+    /// between grapheme clusters (what a reader sees as one character: an emoji, a letter with its accents), so
+    /// an index inside one has its cluster's start. Positions come from the shaped glyphs, so kerning and
+    /// fallback fonts are counted. Where the shaper joined several characters into one glyph (a ligature such as
+    /// "fi"), its width is split evenly between them. Left to right only.
+    member _.CaretStops(line: string, font: Font, size: float) : float[] =
+        let n = line.Length
+        // The advance at each index the shaper started a cluster at, and which indices those are.
+        let advance = Array.zeroCreate<float> (n + 1)
+        let startsCluster = Array.zeroCreate<bool> (n + 1)
+        for run in shapeLine font line do
+            let scale = size / float run.Font.Face.UnitsPerEm
+            for g in run.Glyphs do
+                if g.Cluster < n then
+                    advance[g.Cluster] <- advance[g.Cluster] + float g.XAdvance * scale
+                    startsCluster[g.Cluster] <- true
+        let stops = Array.zeroCreate<float> (n + 1)
+        let mutable x = 0.0
+        let mutable i = 0
+        while i < n do
+            // The graphemes up to the next one the shaper started a cluster at share this one's width.
+            let groupStart = i
+            let mutable count = 0
+            let mutable width = 0.0
+            let mutable j = i
+            let mutable go = true
+            while go && j < n do
+                let length = StringInfo.GetNextTextElementLength(line, j)
+                for k in j .. j + length - 1 do
+                    width <- width + advance[k]
+                count <- count + 1
+                j <- j + length
+                go <- j < n && not startsCluster[j]
+            let each = width / float count
+            let mutable k = groupStart
+            while k < j do
+                let length = StringInfo.GetNextTextElementLength(line, k)
+                for inside in k .. k + length - 1 do
+                    stops[inside] <- x
+                x <- x + each
+                k <- k + length
+            i <- j
+        stops[n] <- x
+        stops
+
     /// Fonts' line breaking rules; replaceable (for example with a full UAX #14 implementation).
     member val LineBreaker = LineBreaking.simple with get, set
 

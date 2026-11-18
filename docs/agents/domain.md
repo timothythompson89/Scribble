@@ -26,7 +26,8 @@ with its date and who decided it; a term that settles goes into `GLOSSARY.md`. S
 ├── CLAUDE.md          ← the working summary
 ├── docs/
 │   ├── DESIGN.md      ← every decision, dated
-│   └── CHECKLIST.md   ← what Tim should try next
+│   ├── CHECKLIST.md   ← what Tim should try next, on the desktop
+│   └── CHECKLIST-BROWSER.md   ← browser checks, collected for a later pass
 └── src/
 ```
 

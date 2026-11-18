@@ -50,6 +50,13 @@ type WheelEventArgs internal (position: Point, deltaX: float, deltaY: float, mod
     inherit InputEventArgs(position, modifiers)
     member _.DeltaX = deltaX
     member _.DeltaY = deltaY
+/// Text typed while an element has focus (after the key that made it). Goes to the focused element and bubbles.
+/// A key going down or up. Goes to the focused element (the root when nothing has focus).
+[<Sealed>]
+type TextInputEventArgs internal (text: string) =
+    inherit RoutedEventArgs(Modifiers.None)
+    /// What was typed: usually one character, more for a paste by the keyboard or an input method.
+    member _.Text = text
 
 /// A key going down or up. Goes to the focused element (the root when nothing has focus).
 [<Sealed>]

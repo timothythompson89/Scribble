@@ -760,6 +760,16 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// Handles a window event. Returns true for a key that an element (or built-in behavior such
     /// as Tab or a focused button's Enter) handled; the app's own key handling skips those.
     member this.HandleEvent(event: PlatformEvent) : bool =
+        // What input handlers read as the time is the time of the input, not of the last frame (which may be long
+        // ago in an idle window): a double-click is two presses close together on this clock.
+        match event with
+        | PointerPressed _
+        | KeyDown _
+        | TextInput _ ->
+            let time = now () - started
+            for l in layers do
+                l.Tree.Time <- time
+        | _ -> ()
         match event with
         | Frame ->
             inFrame <- true
@@ -867,6 +877,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 if not taken then taken <- preview key mods
             taken || (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat) || (key = Key.Escape && dismissTopFlyout ())
         | KeyUp(key, mods) -> (keyboardLayer ()).Input.KeyUp(key, mods)
+        | TextInput text -> (keyboardLayer ()).Input.TextInput text
         | FocusChanged active ->
             windowActive <- active
             (keyboardLayer ()).Input.WindowFocusChanged active

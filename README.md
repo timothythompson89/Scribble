@@ -4,7 +4,7 @@ A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.m
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Status** (2026-11-17): milestones 0–7b done; M8 (core controls) under way: scrolling and virtualized lists, Grid,
-DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox, Modal, dialogs, toasts. Apps are F# view
+DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox, TextBox (one line so far), Modal, dialogs, toasts. Apps are F# view
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
@@ -1365,7 +1365,28 @@ ComboBox.create [
 
   The list is as wide as the box and at most `ComboBox.maxListHeight` tall (320 DIPs), then it scrolls. Style the
   box with `ComboBox.style [ States.isOpen ] [ ... ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
-  its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. Typing into it waits for TextBox.
+  its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. An editable ComboBox comes after M9.
+
+- **TextBox**: one line of text to type in (multi-line, the clipboard, undo and input methods are M9's next
+  steps). With `TextBox.text` it is controlled: it shows exactly that and tells `onTextChanged` what the user
+  typed; the view may answer with other text (a filter), and the caret is kept inside it. Without, it keeps its
+  own text. ←/→ move by character (what a reader sees as one: an emoji is never split) and by word with Ctrl,
+  Home/End, Shift with any of them selects, Ctrl+A, Backspace/Delete (a word with Ctrl). A double-click selects
+  a word, a triple-click everything; tabbing into it selects its text. Text wider than the box scrolls with the
+  caret. The caret blinks and stops after ten seconds without input, so an idle window draws nothing.
+
+```fsharp
+TextBox.create [
+    TextBox.text model.Name                                   // left out: it keeps its own text
+    TextBox.onTextChanged (fun text -> dispatch (SetName text))
+    TextBox.placeholder "Your name"                           // also its name for screen readers
+    TextBox.onSubmitted (fun _ -> dispatch Save)              // Enter; without it Enter goes on (a dialog's default)
+    TextBox.maxLength 40                                      // also isReadOnly, isPassword
+]
+```
+
+  Style it with `TextBox.style [ States.focused ] [ ... ]` (`TextBox.selection`, `TextBox.placeholderForeground`).
+  Any element can hear typed text with `onTextInput` (it bubbles from the focused element like keys).
 
 Own values belong to the element: in an ItemsView, whose rows are recycled, give the value (controlled), or a row
 scrolled in may show the own value of the item it was made for before.

@@ -40,6 +40,7 @@
     <Compile Include="ListBoxTests.fs" />
     <Compile Include="RadioButtonTests.fs" />
     <Compile Include="ComboBoxTests.fs" />
+    <Compile Include="TextBoxTests.fs" />
     <Compile Include="ModalTests.fs" />
     <Compile Include="ToastTests.fs" />
     <Compile Include="DialogsTests.fs" />

@@ -1,5 +1,5 @@
 /// Every Material Symbol (`Scribble.Icons.Material`) in a scrolling grid: an ItemsView, so only the
-/// tiles on screen exist (about 70 of 4,304). An Outlined/Filled switch, a search field that
+/// tiles on screen exist (about 70 of 4,304). An Outlined/Filled switch, a search field (a TextBox) that
 /// scrolls to the first match, and a click on a tile shows the F# to write for that icon.
 module Scribble.Samples.IconGallery
 
@@ -76,25 +76,20 @@ let firstMatch (query: string) =
         | Some n -> Some n
         | None -> all |> Array.tryFind (fun n -> n.Contains(query, StringComparison.Ordinal))
 
-/// A field that takes typed keys (a stand-in until M9's TextBox): click it (or Tab to it) and type.
-let private searchField (query: string) (found: bool) (onKey: KeyEventArgs -> unit) =
-    Border.create [
-        Border.name "search"
-        Border.focusable true
-        Border.width 220.0
-        Border.padding (10.0, 6.0)
-        Border.cornerRadius 6.0
-        Border.background Palette.surface
-        Border.borderThickness 1.0
-        Border.borderBrush (if query <> "" && not found then Palette.danger else Palette.border)
-        Border.on States.focused [ Border.borderBrush Palette.accent ]
-        Border.onKeyDown onKey
-        Border.content (
-            TextBlock.create [
-                TextBlock.text (if query = "" then "Search icons…" else query)
-                TextBlock.foreground (if query = "" then Palette.textDim else Palette.text)
-            ]
-        )
+/// The search field: a controlled TextBox. Its border turns red while nothing matches; Escape clears it.
+let private searchField (query: string) (found: bool) (onChanged: string -> unit) =
+    TextBox.create [
+        yield TextBox.name "search"
+        yield TextBox.width 220.0
+        yield TextBox.text query
+        yield TextBox.placeholder "Search icons…"
+        yield TextBox.onTextChanged onChanged
+        yield TextBox.onKeyDown (fun e ->
+            if e.Key = Key.Escape && query <> "" then
+                e.Handle()
+                onChanged "")
+        if query <> "" && not found then
+            yield TextBox.borderBrush Palette.danger
     ]
 
 let gallery =
@@ -104,21 +99,14 @@ let gallery =
         let query = ctx.useState ""
         let scroller = ctx.useScroller ()
         let found = firstMatch query.Current
-        let onKey (e: KeyEventArgs) =
-            let next =
-                match e.Key with
-                | Key.Char c when c = '_' || Char.IsLetterOrDigit c -> Some(query.Current + string c)
-                | Key.Backspace when query.Current <> "" -> Some(query.Current.Substring(0, query.Current.Length - 1))
-                | Key.Escape when query.Current <> "" -> Some ""
-                | _ -> None
-            match next with
-            | Some q ->
-                e.Handle()
-                query.Set q
-                // An action: scroll to the first match (it applies at the next layout).
-                match firstMatch q with
-                | Some name -> scroller.ScrollTo(name, ScrollAlign.Start)
-                | None -> ()
+        // Icon names are lower case with underscores: what is typed is shown that way (the view answers the
+        // TextBox with other text than was typed).
+        let onSearch (text: string) =
+            let q = text.ToLowerInvariant().Replace(' ', '_')
+            query.Set q
+            // An action: scroll to the first match (it applies at the next layout).
+            match firstMatch q with
+            | Some name -> scroller.ScrollTo(name, ScrollAlign.Start)
             | None -> ()
         // Only the tiles on screen are made: the ItemsView calls `view` for those.
         let grid =
@@ -149,7 +137,7 @@ let gallery =
                             StackPanel.orientation Horizontal
                             StackPanel.spacing 8.0
                             StackPanel.children [
-                                searchField query.Current found.IsSome onKey
+                                searchField query.Current found.IsSome onSearch
                                 switchButton "Outlined" (not filled.Current) (fun () -> filled.Set false)
                                 switchButton "Filled" filled.Current (fun () -> filled.Set true)
                             ]

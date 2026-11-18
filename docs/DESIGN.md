@@ -24,6 +24,7 @@ questions", as paragraphs starting with the name given here.
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
 | M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" (4a flyouts, 4b ListBox and RadioButton, 4c ComboBox, 4d Modal, dialogs and toasts) |
+| M9 | TextBox (planned, in five steps) | Section "M9: TextBox" |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
@@ -52,29 +53,27 @@ development platform.
 
 ## Status
 
-Done and verified by Tim on Windows and in the browser: M0 to M7b (window and GPU, browser, draw list, text,
-elements and layout, views and the differ, input, components, async, layers, the inspector, styles, themes, app
-values, icons, the Material package, image cursors) and M8 step 1 (ScrollViewer completed, ItemsView). M7c
-(custom title bars) was skipped.
+Done and verified by Tim on Windows and in the browser (every checklist item, the last pass 2026-11-18): M0 to M8.
+- **M0 to M7b:** window and GPU, browser, draw list, text, elements and layout, views and the differ, input,
+  components, async, layers, the inspector, styles, themes, app values, icons, the Material package, image
+  cursors. M7c (custom title bars) was skipped.
+- **M8, core controls:** ScrollViewer completed and ItemsView with the scroll anchor (steps 1, 1b); Grid,
+  DockPanel (with `Dock.Fill`), Canvas, WrapPanel, Separator, zIndex, dashed borders (2); ToggleButton, CheckBox,
+  Switch, Slider, TabControl, and the inspector's tree on ItemsView with sideways scrolling (3a, 3a+, 3a++);
+  images: the PNG decoder (`Scribble.Imaging`), images on the GPU, the `Image` value with its cache, `ImageView`,
+  files and URLs, image cursors, and the Counter sample becoming the Gallery (3b); flyouts and tooltips (4a);
+  ListBox, RadioGroup and RadioButton, with Tab order as view order (4b); ComboBox (4c); Modal, dialogs
+  (`ctx.useConfirm`, `useAsk`, `useInform`, `useDialog`, `useDialogs`; `Cmd.inform`, `confirm`, `ask`) and each
+  window's own toasts (`ctx.useToaster`, `Cmd.toast`, `Toasts.placement`), with `App.onError` getting the app's
+  context (4d).
+- **Alongside M8:** the project review's steps 1 to 5 (the platform clock, errors to `App.onError`, exact
+  pictures, small Core fixes, the inspector split, these docs); the semantics stage (roles, names, states and
+  actions for every element type; the inspector's SEMANTICS section); rendering to an image and saving it
+  (`ViewImage.render`, `Capture`, `Image.toPng`, `Files.save`); SDL3 as the desktop platform (Win32 is gone).
 
-Built, waiting for Tim's checking pass (`docs/CHECKLIST.md`): M8 steps 1b (the scroll anchor), 2 (Grid,
-DockPanel, Canvas, WrapPanel, Separator, zIndex, dashed borders), 3a (ToggleButton, CheckBox, Switch, Slider,
-TabControl), 3a+ and 3a++ (the inspector tree on ItemsView, sideways scrolling), and the project review's steps
-1–5 (the platform clock, errors to `App.onError`, exact pictures, small Core fixes, the inspector split, these
-docs), and the semantics stage (roles, names, states and actions for every element type; the inspector's
-SEMANTICS section), and M8 step 3b part (a): the Counter sample became the Gallery, plus a new one-file Counter;
-part (b), the PNG decoder (`Scribble.Imaging`); part (c), images on the GPU (`DrawList.DrawImage`, image atlas pages,
-mip levels); part (d), the `Image` value, its process-wide cache and pool, decoding off the UI thread, `ImageView`,
-and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`; part (f), `Cursor.fromImage` and the
-inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`Button.flyout menu` or `Button.flyout [ Flyout settings ]`, styled as if inside its element,
-each in its own layer, light dismiss, placement) and tooltips. Rendering to an image and saving it (2026-11-18): `ViewImage.render`,
-`Capture`, `Image.toPng`, `Files.save`, the PNG encoder and async readback on desktop and browser. M8 step 4b (2026-11-18): `ItemsView.keySelector` and `viewSelector`, `ListBox` (selection by key in None, Single or Multiple mode, keyboard, invoking) with `ListBoxItem`, `RadioGroup` and `RadioButton`, and the Gallery's Lists page.
+Built and waiting for Tim's pass: **M9 step 9a, the single-line TextBox** (section "9a: the single-line TextBox").
 
-Tim tried M8 step 4b on the desktop and passed it (2026-11-18), with Tab order as view order and `Dock.Fill`. Tim passed M8 step 4c too (2026-11-18, the whole checklist, the browser pass included): `ComboBox` (a box showing one item picked from a ListBox in its flyout; `source`, `keySelector`, `viewSelector`, `selected`, `placeholder`; both keyboards) and the Controls page's ComboBox section.
-
-M8 step 4d (2026-11-18), built and waiting for Tim: `Modal` (an element in the view whose box shows over a scrim in its own modal layer; `isOpen`, `onOpenChanged`, `title`; it was `Dialog` until round 5), each window's own toasts (`ctx.useToaster`, `Cmd.toast`, `app.Toaster`) and dialogs (declared with `ctx.useConfirm`, `useAsk`, `useInform`, their answers as settings, and `ctx.useDialog` for content of your own; `Confirm.severity`; task forms on `ctx.useDialogs`; `Cmd.inform`, `confirm`, `ask`); `App.onError` gets the app's context. The Gallery's Layers page uses them. That completes M8 step 4.
-
-Next: Tim tries M8 step 4d (section "4d: Dialog and Toast"). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: M9 steps 9b to 9e (clipboard and undo, multi-line, IME and the phone keyboard, typeahead and labels). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -150,7 +149,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, Modal, dialogs, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line; M9 step 9a), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -420,7 +419,7 @@ M5 step 1 (pointer) delivered 2026-11-15: platform events carry modifiers and re
 - [ ] **M7 — Styles.** Theme record, then selectors and cascading styles.
 - ~~**M7c — Custom title bars**~~ **Skipped (Tim, 2026-11-16)** after planning it: the plan (our own caption buttons reported to Windows as its own, so snap layouts work) and the alternatives (recoloring the system title bar with `DWMWA_CAPTION_COLOR`; extending the frame so Windows draws its own caption buttons over our content, untested over a wgpu swap chain; the Windows App SDK title bar API, ruled out as a borrowed runtime) were weighed and the feature dropped. The popped-out inspector keeps the system title bar. Original entry, for if it comes back: (added 2026-11-16, Tim; was to come right after M7 step 2b, before M7b). Windows whose title bar is drawn by the app, so the popped-out inspector looks exactly like the docked panel (its header as the title bar, × pops it back in, no maximize). Win32 first: a window option (`titleBar Custom`, default `System`) that removes the system caption but keeps DWM's frame, shadow and Windows 11 corners (`WM_NCCALCSIZE`, `DwmExtendFrameIntoClientArea`), with an inset while maximized; hit testing (`WM_NCHITTEST`) answered from the element tree through a setting that marks regions (`windowPart Caption/Minimize/Maximize/Close`), so dragging, double-click to maximize, Aero snap, Win+arrows, the system menu (Alt+Space, right-click on the caption) and Windows 11's snap-layout flyout on the maximize button keep working; resize edges; DPI changes across monitors. The browser is unaffected (no windows); macOS (content under the traffic lights) and Linux/Wayland (client-side decorations) come with those backends. Names, the exact settings and how the inspector's header doubles as a caption are decided when it's planned. Watch the known black-edge flash when resizing on NVIDIA.
 - [ ] **M7b — Icons.** SVG path icons drawn through the glyph rasterizer and atlas; an opt-in Material Symbols package (typed names, "star-filled-rotate90" strings, your own path data), modeled on the CustomAvaloniaControls MaterialIcon design. After styles, so icons can inherit the text color. Open: element and name casing, pluggable icon sets, .svg file import. Also custom cursors (agreed 2026-11-15): a `Cursor.Image` case (bitmap + hotspot, e.g. made from an icon) that the OS shows as a hardware cursor (Win32 `CreateIconIndirect`, re-made per scale on `ScaleChanged`; browser `cursor: url(data:…) x y` / `image-set`). Not drawn in our frame: that lags a frame or two, forces a frame on every mouse move, stops at the window edge and ignores the user's cursor settings. Things that follow the pointer (drag ghosts) are drawn in-frame, with drag and drop.
-- [ ] **M8 — Core controls.** Grid, DockPanel, Canvas (added 2026-11-16, Tim: children placed with `Canvas.left/top/right/bottom` settings that only the Canvas reads, like WPF's attached `Canvas.Left`; left and right together stretch; replaces the Hello dashboard's `at` margin+alignment helper; names and whether margin still applies decided when M8 is planned), ScrollViewer (the rest: horizontal, draggable thumb, keyboard, touch), CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, the "show this in a layer" element (Popup/portal; also ComboBox's drop-down), TabControl (API, controlled or internal selection, lazy pages, keep-alive policy and arrow keys to be decided; after M7 so the selected tab has a proper look).
+- [x] **M8 — Core controls.** Grid, DockPanel, Canvas (added 2026-11-16, Tim: children placed with `Canvas.left/top/right/bottom` settings that only the Canvas reads, like WPF's attached `Canvas.Left`; left and right together stretch; replaces the Hello dashboard's `at` margin+alignment helper; names and whether margin still applies decided when M8 is planned), ScrollViewer (the rest: horizontal, draggable thumb, keyboard, touch), CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, the "show this in a layer" element (Popup/portal; also ComboBox's drop-down), TabControl (API, controlled or internal selection, lazy pages, keep-alive policy and arrow keys to be decided; after M7 so the selected tab has a proper look).
   - **Dashed lines in the renderer** (added 2026-11-16, Tim): a dash pattern on the border shape in `shapes.wgsl` (dash, gap, an offset that can animate for "marching ants"), computed per pixel along the outline, so dashes follow rounded corners and a border stays one instance in the one draw call; exposed as a dash option on `DrawList.StrokeRect` and a `Border` setting (CSS `border-style: dashed`/`dotted`; name decided when M8 is planned). For drop targets, selection boxes, dotted focus rings. Chosen over a DrawList helper that draws each dash as a rectangle (square corners only, hundreds of instances on long edges). The inspector's selection outline (now corner marks, which need no dashes) could use it if it ever goes back to a full outline.
 - [ ] **M9 — TextBox.** Multi-line layout, caret, selection, clipboard, undo.
 - [ ] **M10 — Hot reload.** Dev host with view-only swap.
@@ -3769,6 +3768,9 @@ the shortcut hooks each declare one dialog. It stays for what they can't do neat
 the next depends on the last answer (and for keeping the object to call from a task). The Layers page has "In
 sequence": `dialogs.Ask`, then `dialogs.Confirm` only when the answer was Discard. Tested (`DialogsTests`).
 Unit: 1,147.
+
+**4d passed by Tim, 2026-11-18** ("this step seems to be a pass"), after rounds 1 to 7 and the changes that
+followed his looks at the Gallery.
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 
 Found driving the Gallery's Lists page with a real keyboard: Tab went from the Reverse order button to the swatches
@@ -3819,6 +3821,111 @@ had to be written last, so the swatches (docked `Bottom`) came before the list i
   passed plus 6 timing skipped. Rendering: 88, every reference unchanged, so the rewritten pages draw the same
   pixels. Driven in the desktop Gallery: Tab from the radio group reaches Reverse order, the list, then the
   swatches.
+
+## M9: TextBox (planned 2026-11-18)
+
+Facts at the start. `TextLayout` holds each line's text and width and nothing that maps a character index to an x
+position or a point to an index; shaping does give each glyph's cluster (the character it belongs to). Both
+platforms send `TextInput` and Core drops it (`onTextInput` was deferred to here). The platform contract has no
+clipboard (SDL has one; the browser's is asynchronous and asks permission). No composition: SDL's text input is on
+for every window, with no editing events and no candidate-window position. A phone's browser shows its keyboard only
+for a focused DOM input, and there is none. Parked for M9: typeahead in ListBox and ComboBox, a text value on
+semantic nodes, "labelled by another element", and two stand-in fields (the Icons search, the Layout page's form).
+
+**Round 1 (Tim: yes to all, 2026-11-18).**
+1. **Five steps, each with its own round and Tim's pass:** **9a** a single-line TextBox (caret, selection by
+   mouse and keyboard, editing keys, sideways scrolling, placeholder, controlled or own value; the stand-ins
+   replaced); **9b** clipboard and undo/redo; **9c** multi-line (wrapping, Enter, up/down and page keys,
+   scrolling); **9d** IME composition on the desktop and in the browser, and the on-screen keyboard on a phone;
+   **9e** what waited for M9 (typeahead, the semantic role and text value, labels).
+2. **One element, `TextBox`,** for single and multi-line (`TextBox.multiline true`); no TextArea. The editing is
+   the same; layout and a few keys differ.
+3. **Plain text only:** no rich text, per-range styling, spell check or input masks. The caret is left-to-right
+   only; bidi stays in "later".
+4. **The caret moves by grapheme cluster** (what a reader sees as one character), so an emoji or an accented
+   letter is never split. Positions in the API are string indices. .NET's text elements; fine under NativeAOT.
+5. **`TextBox.text` and `onTextChanged`** (decision 8 of M8's round 5: controlled when the view gives it). The
+   element keeps the caret and selection; if the view answers with other text than was typed (a filter), the caret
+   is clamped into it.
+6. **The editing engine is a module with no UI in it:** a buffer, a selection, the edit operations and the undo
+   history, plain data in and out, so it is tested by properties (any edits, then as many undos, give the
+   original text).
+7. **The caret blinks, and stops after 10 seconds without input** (one frame per half second while it blinks;
+   solid after, so an idle window with a focused TextBox draws nothing: the power rule).
+8. **Clipboard in the platform contract, as asynchronous calls** (the browser can only answer that way).
+9. **IME and the phone keyboard are in M9** (step 9d, after editing works). Tim's PC had no IME to test with
+   (platform round); Windows can add a Japanese or Chinese keyboard in Settings, else that part is checked by
+   tests only.
+10. **`TextBox.isPassword true` is in 9a; an editable ComboBox is not in M9** (a control of its own once TextBox
+    is settled).
+
+Status: **agreed (Tim, 2026-11-18: "yes to all").**
+
+### 9a: the single-line TextBox (planned 2026-11-18)
+
+**Round 2 (Tim: yes to all, 2026-11-18).**
+11. **Caret positions come from the text system:** for a line of text, the x of every place a caret can stand,
+    from the shaped glyphs (so kerning and emoji are right). Inside a ligature the width is split evenly between
+    its characters; exact ligature carets (HarfBuzz) later.
+12. **Typed text is a routed event:** `onTextInput` on every element and an element-type hook, routed from the
+    focused element like keys (promised in M5).
+13. **Keys** (Windows conventions; macOS's with the macOS platform): Left/Right by character, with Ctrl by word;
+    Home/End; Shift with any of them extends the selection; Ctrl+A; Backspace/Delete a character, a word with
+    Ctrl, or the selection; Enter calls `TextBox.onSubmitted`; Escape and Tab are left alone (a dialog still
+    closes, focus still moves).
+14. **Mouse:** a click places the caret, a drag selects, Shift+click extends, a double-click selects a word, a
+    triple-click all; the text cursor over the box. Touch: a tap places the caret; selection handles wait for 9d.
+15. **Tabbing into a TextBox selects all its text; clicking into it doesn't** (Windows: "Tab, type" replaces a
+    field's value).
+16. **Text wider than the box scrolls sideways** to keep the caret in view, clipped, no scrollbar.
+17. **Look:** a field like ComboBox (surface, a thin border that takes the accent while focused, its padding and
+    height); a dim placeholder; the selection an accent tint behind the text; the caret one DIP wide in the text
+    colour, on whole pixels.
+18. **Settings:** `text`, `onTextChanged`, `placeholder`, `onSubmitted`, `isReadOnly` (selectable, not editable),
+    `maxLength`, `isPassword` (bullets). No controlled selection or caret yet.
+19. **Semantics now:** a new role `TextBox`, named by its label or placeholder (a focusable control with no role
+    would fail "every sample control has a name"). Its text value waits for 9e.
+20. **The engine has no undo in 9a but is shaped for it:** every change goes through one function that returns
+    the new state, which 9b records.
+21. **Gallery and tests:** a TextBox section on the Controls page (controlled with an echo, its own value, a
+    password, read-only, disabled, a `maxLength`); the Icons search and the Layout page's form on real TextBoxes;
+    unit tests for the engine's properties, every key and mouse gesture, caret positions, the blink stopping after
+    10 seconds with no frames after, controlled text; screenshots of the states in both themes.
+
+Status: **agreed (Tim, 2026-11-18: "yes to all").**
+
+**As built (2026-11-18; waiting for Tim's pass).**
+- **The engine** is `TextEdit` (`Foundation/TextEditing.fs`): an `EditState` (text, anchor, caret) and functions
+  from one state to the next (`insert`, `backspace`, `delete`, the word forms, `move`, `moveTo`, `selectAll`,
+  `selectWordAt`, `withText`). A word is a run of one kind (letters and digits, or punctuation); Ctrl+→ stops at
+  the start of each. Typed text is cleaned for one line (a line break or tab becomes a space, other control
+  characters go). `maxLength` counts grapheme clusters, so an emoji is one.
+- **The TextBox** (`Elements/Controls/TextBox.fs`) extends Border and has no children: it draws its own text,
+  selection and caret, clipped to the padding box. Every change goes through one `apply` (decision 20).
+- **Controlled text and frames.** What is typed shows at once; at the next frame (views are applied before it
+  draws) the box shows what the `text` setting says, so a view that answers with other text wins and one that
+  doesn't follow puts the old text back. Keys that arrive between two frames all land: input only takes the
+  setting's value when the view has changed it since the last look.
+- **New for element authors:** `Element.textInput` and `Layoutable.onTextInput` (decision 12);
+  `Element.focusChanged (fun ctx isFocused byTab -> ...)`, which is how the box knows Tab brought the focus.
+- **Input sees the input's time:** the host sets each tree's time when a press, a key or text arrives, not only
+  at a frame. In an idle window the last frame may be long ago, and two slow clicks would have counted as a
+  double-click (a ListBox's too).
+- **The blink** is twenty half-second timers on the platform's clock (`Dispatcher.PostAfter`) after the last
+  input, each asking for one frame; the last leaves the caret on. Losing focus stops it. A tree without a
+  dispatcher has a caret that stays on.
+- **Not in the round, chosen while building:** ↑ and ↓ go to the start and the end (so they don't scroll the page
+  behind the box); keys that type are marked handled (Space would have scrolled a ScrollViewer around the box);
+  a password is one word (Ctrl+arrows and a double-click don't show where its words are); a drag on from a
+  double-click selects whole words; out of focus the selection is hidden and the text shows its start; a touch
+  places the caret without taking the press, so a finger can still scroll the page; a read-only box shows no
+  caret; the selection's tint is stronger than a list item's (`ThemeConvert.textSelectionTint`, half the
+  accent); it asks for 160 DIPs of text width when nothing stretches it.
+- **Left as is:** a drag past the box's edge scrolls only while the pointer moves (no timer); the Layout page's
+  Notes field is one line until 9c; Shift+Delete and the other clipboard keys do nothing until 9b.
+- **Tests:** 34 unit tests (the engine's rules on 200 random sequences of 120 edits; every key and gesture;
+  controlled text; the blink ending with no frames after); two screenshots (`textbox@1x`, `textbox-light@1x`).
+  Totals: 1,181 unit (+6 timing), 97 rendering, 6 timing.
 
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 

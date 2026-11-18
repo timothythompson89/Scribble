@@ -72,3 +72,5 @@ module internal ThemeConvert =
     let halfCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v / 2.0))
     /// A colour theme value as a selection's tint (a selected list item's background).
     let selectionTint: obj -> obj = fun v -> box ((unbox<Scribble.Rendering.Color> v).WithAlpha 0.3f)
+    /// A colour theme value behind selected text (stronger than a list item's tint: thin letters sit on it).
+    let textSelectionTint: obj -> obj = fun v -> box ((unbox<Scribble.Rendering.Color> v).WithAlpha 0.5f)

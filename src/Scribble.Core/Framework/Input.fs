@@ -289,13 +289,29 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
 
     let showRing () = keyboardMode && windowActive
 
+    /// Tab is moving the focus (MoveFocus): what a type's FocusChanged hears as "by Tab".
+    let mutable tabbing = false
+
+    let focusHook (e: Element) (isFocused: bool) =
+        match e.Type.FocusChanged with
+        | ValueSome f ->
+            try
+                f (InputContext e) isFocused (isFocused && tabbing)
+            with ex ->
+                e.ReportError ex
+        | ValueNone -> ()
+
     let setFocus (next: Element voption) =
         match focused, next with
         | ValueSome a, ValueSome b when obj.ReferenceEquals(a, b) -> a.SetFocusState(true, showRing ())
         | _ ->
             releaseSpace ()
-            focused |> ValueOption.iter (fun e -> e.SetFocusState(false, false))
+            let previous = focused
+            previous |> ValueOption.iter (fun e -> e.SetFocusState(false, false))
             focused <- next
+            next |> ValueOption.iter (fun e -> e.SetFocusState(true, showRing ()))
+            previous |> ValueOption.iter (fun e -> focusHook e false)
+            next |> ValueOption.iter (fun e -> focusHook e true)
             next |> ValueOption.iter (fun e -> e.SetFocusState(true, showRing ()))
 
     /// Focusable elements in view order (parents before children, children in order), skipping
@@ -494,7 +510,11 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
                 | FocusDirection.Previous, -1 -> order.Count - 1
                 | FocusDirection.Next, i -> (i + 1) % order.Count
                 | FocusDirection.Previous, i -> (i - 1 + order.Count) % order.Count
-            setFocus (ValueSome order[next])
+            tabbing <- true
+            try
+                setFocus (ValueSome order[next])
+            finally
+                tabbing <- false
             // Into view through every scroller around it.
             order[next].BringIntoView()
 
@@ -529,6 +549,13 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
                     e.SetKeyPressed true
                 true
             | _ -> false
+
+    /// Routes typed text from the focused element up (the root when nothing has focus). True if something used it.
+    member _.TextInput(text: string) : bool =
+        let target = match currentFocus () with ValueSome e -> ValueSome e | ValueNone -> tree.Root
+        let args = TextInputEventArgs text
+        routedWith (routeOf target) ValueNone LayoutProps.onTextInput _.TextInput args |> ignore
+        args.IsHandled
 
     /// Routes a key up the same way; Space coming up clicks the element it went down on.
     member _.KeyUp(key: Key, modifiers: Modifiers) : bool =
