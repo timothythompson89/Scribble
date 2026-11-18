@@ -219,6 +219,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 | Hot reload | M10 | Pure views, keyed state, no static caches keyed on user types |
 | Bidi and complex scripts | Later | Shaping through HarfBuzz; layout works on runs |
 | IME | With TextBox polish | Text input events can carry composition |
+| Several windows per app | With the multi-window design (section "4d: Dialog and Toast", "Several windows per app") | Toasts and dialogs are per host and the hooks find their window through the tree; open: commands, `Toasts.placement` and `App.onError` go through app values or the one app context, and nothing blocks every window |
 | macOS, Linux, mobile | After M10 | Everything goes through `IPlatform`/`IWindow` |
 | Responsive layout | A round of its own (the Gallery wants a sidebar on wide windows, tabs on narrow ones) | The TabControl's header row scrolls sideways; views can't read the window size yet |
 | Scroll only the nearest viewer | When an app nests a list in a scrolling page and wants the page to stay put (the browser's `scrollIntoView({ container: "nearest" })`; DESIGN.md, "Scrolling to an item ...", Tim, 2026-11-17) | `BringRectIntoView` already treats the nearest viewer apart from the ones around it; the scroller's requests carry their options |
@@ -3743,6 +3744,25 @@ subscribes to the value once its toasts exist and shows the stack again when it 
 section has a ComboBox of eight places. Tests: each place, the mirror at the top (order, the line, the exit's
 direction), the value changing while a toast shows (the same element, moved), a narrow window. Unit: 1,146 passed
 plus 6 timing skipped. Rendering: 95. `gallery-phone-layers@3x` changed (the ComboBox).
+
+**Several windows per app: where toasts and dialogs stand (noted 2026-11-18, nothing built).** An app is one
+window today (`App.run`; the inspector's pop-out is the only second host). What is ready and what isn't:
+- **Ready:** each host owns its `Toaster` and `Dialogs` (made on first use; neither can be constructed by an app).
+  The hooks (`useToaster`, `useConfirm`, `useAsk`, `useInform`, `useDialog`, `useDialogs`) find them through the
+  tree their component is in, so a component shows its toast or dialog in its own window, also from inside that
+  window's flyouts and modals. A `Modal` shows in the window whose view holds it. `host.Toaster` and
+  `host.Dialogs` serve code that holds a host.
+- **Gap 1, commands:** `Cmd.toast`, `toastWith`, `confirm`, `ask` and `inform` find their window through the app
+  values their program runs with (`AppValues.Services`), as `Cmd.scrollTo` finds named scrollers. If an app's
+  windows share one set of app values (wanted for the theme), a command can't tell which window it came from.
+  Commands need a per-window way in.
+- **Gap 2, placement:** `Toasts.placement` is an app value, so with shared values every window's toasts move
+  together. That may be right (one preference for the app) or not (a tool window wanting its own); to decide
+  with the multi-window design. Not flagged when the app value was recommended.
+- **Gap 3, `App.onError`:** its handler gets the app's context, and `app.Toaster` is the app's one window. An
+  error from another window needs to say which window it came from.
+- **Undecided:** a dialog that blocks every window ("unsaved changes" on quitting). Dialogs and modals are modal
+  to their own window only.
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 
 Found driving the Gallery's Lists page with a real keyboard: Tab went from the Reverse order button to the swatches
