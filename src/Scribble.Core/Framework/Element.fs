@@ -419,6 +419,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     let mutable componentState: ComponentState voption = ValueNone
     /// The pictures it holds (DESIGN.md, "M8 step 3b", (d) 3); null while none.
     let mutable heldImages: ResizeArray<ImageHold> = null
+    /// Drawn since it was last hidden: hiding it then lets go of the pictures in it (once, not every frame).
+    let mutable shownSinceHidden = false
 
     let find (id: int) =
         let mutable i = 0
@@ -1500,6 +1502,12 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                     h.Touched <- false
             if heldImages.Count = 0 then heldImages <- null
 
+    /// Lets go of every picture held in this element and everything inside it (it was hidden).
+    member private this.LetGoOfImagesBelow() =
+        this.LetGoOfImages true
+        for child in children do
+            child.LetGoOfImagesBelow()
+
     /// How many pictures it holds (tests).
     member internal _.HeldImageCount = if isNull heldImages then 0 else heldImages.Count
 
@@ -1646,9 +1654,14 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             with e ->
                 list.RollBack mark
                 this.ReportError e
+        elif not lv.IsVisible && shownSinceHidden then
+            // Hidden: the pictures in it are let go (the cache's pool usually still has them when it shows again).
+            shownSinceHidden <- false
+            this.LetGoOfImagesBelow()
 
     /// Draws the element and its children (Render has checked it can show).
     member private this.RenderShown(list: DrawList) =
+            shownSinceHidden <- true
             let scale = this.Get LayoutProps.scale
             list.PushTranslate(bounds.X, bounds.Y)
             let opacity = this.Get LayoutProps.opacity

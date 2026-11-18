@@ -23,7 +23,7 @@ questions", as paragraphs starting with the name given here.
 | M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
-| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "M8 step 4: layers and selection controls" |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
@@ -2686,6 +2686,61 @@ the page title), `LayoutTabTests.fs` became `LayoutPageTests.fs` (`layout-page@1
 fake window didn't draw after `Resized` (real platforms do), so tests that resized laid the app out at 400 × 300
 until something else asked for a frame; `FakeWindow.Send (Resized _)` now asks for one. 435 unit tests (+5 timing
 skipped), 61 rendering tests (one phone page fewer), all pictures looked at.
+
+## Review of the image pipeline (M8 step 3b), 2026-11-17
+
+Tim asked whether the image work needed more tests and a review for edge cases. I read the decoder, the
+decoded image, the atlas, the cache and downloads, and the element side again. Then I wrote tests that go past
+single cases (`ImageRobustnessTests.fs`):
+- hostile headers;
+- chunks dropped, repeated, swapped, inserted or given wrong lengths;
+- many random byte changes behind valid CRCs, with allocation budgets as well as "fails cleanly";
+- the shelf packer over 20,000 random steps;
+- the atlas over 400 random frames;
+- the cache on 8 threads holding and letting go while pictures decode;
+- downloads finishing, failing and being cancelled on 6 threads.
+
+They found three bugs. Tim: "yes, fix all three".
+
+1. **The decoder allocated for the size the header claims.**
+   - **Found:** a 1 KB file claiming 20,000 × 20,000 allocated 1.6 GB before failing. A file under 1 MB that
+     really inflates to 140 million pixels decoded in full, because there was no limit below .NET's array size.
+   - **Fixed in three ways:**
+     - Image data that can't fill the claimed size fails first: deflate packs at most about 1,032 to 1, and the
+       check allows 1,040.
+     - The inflate buffer starts at 32 times the compressed size (at least 64 KB, at most the claimed size) and
+       doubles as data actually arrives.
+     - Pictures over **100 million pixels** (`Pixels.maxDecodePixels`: 400 MB decoded, a 100-megapixel camera)
+       fail as "too big to decode". `readInfo` still reads their size.
+   - Failing now costs about what the file holds.
+2. **A download function whose task faulted kept its download place forever,** and its picture stayed loading.
+   `ImageHttp.Get` catches everything itself, so it couldn't happen yet; another download path would have hit it.
+   Fixed: `ImageCache.Fetch` treats a throw like a returned error.
+3. **A hidden element kept its pictures.** Pictures were let go only while drawing, and hidden elements aren't
+   drawn.
+   - **Fixed:** the first time a drawn element is found hidden, it and everything inside it let go (once: a flag,
+     not a walk every frame). Showing it again usually finds the picture in the cache's 32 MB pool.
+   - Elements merely scrolled out of view keep theirs (they come back soon, and the ItemsView recycles them anyway).
+
+**What held up:**
+- **Decoder:** no exception other than `ImageFormatException`.
+- **Packer:** regions never overlapped and stayed inside the page, and every one came back.
+- **Atlas:** every upload was inside its page, and every page was given back.
+- **Cache:** the holder counts came back to 0, the pool stayed under its limit, and a released picture was never
+  handed out.
+- **Downloads:** every download place came back.
+
+**Left as they are (minor):**
+- A custom host without a dispatcher never re-lays out an element whose picture finishes loading.
+- `Image.fromPixels` premultiplies on the UI thread.
+- In the browser, a response with no length header is read whole before the 64 MB check.
+- In single-threaded WebAssembly a big decode blocks the UI (by design, (d)).
+
+**Results:**
+- **Unit tests:** 868 passed, 6 timing tests skipped (11 new).
+- **Rendering tests:** 76 passed.
+- **Timing tests:** 6 passed.
+- **NativeAOT Gallery publish:** only the FSharp.Core warnings already excepted.
 
 ## M8 step 4: layers and selection controls (planned 2026-11-17)
 

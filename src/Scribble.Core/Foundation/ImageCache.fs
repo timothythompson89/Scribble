@@ -200,7 +200,17 @@ type internal ImageCache(poolLimit: int64) =
             let cts = entry.Cancellation
             let timeout = ImageHttp.Timeout
             cts.CancelAfter timeout
-            let! result = (entry.Fetcher entry.Url cts.Token).ConfigureAwait(false)
+            // A download function that throws, or whose task faults, fails the picture like an error it returns: its
+            // place must come back whatever happens.
+            let! result =
+                task {
+                    try
+                        let! r = (entry.Fetcher entry.Url cts.Token).ConfigureAwait(false)
+                        return r
+                    with e ->
+                        return Error e
+                }
+                |> fun t -> t.ConfigureAwait(false)
             let dropped =
                 lock sync (fun () ->
                     downloading <- downloading - 1

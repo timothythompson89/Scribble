@@ -24,8 +24,9 @@ module internal Pixels =
     /// A straight colour channel times alpha, rounded to nearest.
     let premultiply (c: int) (a: int) = (c * a + 127) / 255
 
-    /// The largest pixel count a decoded image may have (its RGBA array must fit in one .NET array).
-    let maxPixels = int64 Array.MaxLength / 4L
+    /// The largest picture a decoder decodes: 100 million pixels (400 MB decoded; a 100-megapixel camera's photo). A
+    /// small file can claim, and even hold, far more (zlib packs 1,000 to 1): this keeps one from taking all memory.
+    let maxDecodePixels = 100_000_000L
 
     /// The next mip level: half the size (rounded up), each pixel the rounded average of the 2 × 2 block above it;
     /// at an odd edge the last row or column counts twice. Premultiplied, so averaging is right.

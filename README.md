@@ -926,7 +926,7 @@ let potion = Cursor.fromImage potionImage [ Cursor.size 32.0; Cursor.scaling Ima
   ignore larger cursors; larger ones shrink, with a debug warning). Pointing at its centre unless `Cursor.hotspot`.
 - Resampled on the CPU for each window scale, so every platform shows the same pixels; `Cursor.scaling` picks smooth
   (default) or pixelated enlarging.
-- The element using it holds the image while it's in the tree, so it's usually decoded before the pointer arrives.
+- The element using it holds the image while it's in the tree and not hidden, so it's usually decoded before the pointer arrives.
   Until it's ready the arrow shows, then the cursor changes (no frame drawn); a picture that fails is reported once
   to `App.onError`. `Cursor.fill` and `outline` are for icons only.
 - Not yet: following the Windows cursor-size setting; cursors from bitmaps (with Image, M8).

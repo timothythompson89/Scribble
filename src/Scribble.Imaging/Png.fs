@@ -307,14 +307,28 @@ let private inflate (data: byte[]) (idat: ResizeArray<Chunk>) (size: int) : byte
     for c in idat do
         Buffer.BlockCopy(data, c.Start, compressed, at, c.Length)
         at <- at + c.Length
-    let result = GC.AllocateUninitializedArray<byte> size // filled below, or an error
-    let read =
-        try
-            use z = new ZLibStream(new MemoryStream(compressed), CompressionMode.Decompress)
-            z.ReadAtLeast(Span<byte>(result), size, false)
-        with
-        | :? InvalidDataException as e -> fail ("the image data is corrupt (" + e.Message + ")")
-        | :? IOException as e -> fail ("the image data is corrupt (" + e.Message + ")") // ZLibException
+    // Deflate packs at most about 1,032 to 1: data that can't fill the size the header claims fails before anything
+    // is allocated for it.
+    if int64 size > total * 1040L + 1024L then fail "the image data ends early"
+    // The buffer grows as data actually inflates, so a file that claims more than it holds costs what it holds.
+    let mutable result = GC.AllocateUninitializedArray<byte>(int (min (int64 size) (max 65536L (total * 32L))))
+    let mutable read = 0
+    try
+        use z = new ZLibStream(new MemoryStream(compressed), CompressionMode.Decompress)
+        let mutable reading = true
+        while reading do
+            if read = result.Length then
+                if read = size then reading <- false
+                else
+                    let bigger = GC.AllocateUninitializedArray<byte>(int (min (int64 size) (int64 result.Length * 2L)))
+                    Buffer.BlockCopy(result, 0, bigger, 0, read)
+                    result <- bigger
+            if reading then
+                let n = z.Read(Span<byte>(result, read, result.Length - read))
+                if n = 0 then reading <- false else read <- read + n
+    with
+    | :? InvalidDataException as e -> fail ("the image data is corrupt (" + e.Message + ")")
+    | :? IOException as e -> fail ("the image data is corrupt (" + e.Message + ")") // ZLibException
     if read < size then fail "the image data ends early"
     result
 
@@ -357,7 +371,7 @@ let private colours (h: Header) (data: byte[]) (plte: Chunk voption) (trns: Chun
 /// Decodes a PNG file to premultiplied RGBA. Throws `ImageFormatException` when it can't.
 let decode (data: byte[]) : DecodedImage =
     let h = readHeader data
-    if int64 h.Width * int64 h.Height > Pixels.maxPixels then
+    if int64 h.Width * int64 h.Height > Pixels.maxDecodePixels then
         fail ("too big to decode, " + string h.Width + " × " + string h.Height)
     let mutable plte = ValueNone
     let mutable trns = ValueNone

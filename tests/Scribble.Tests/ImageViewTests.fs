@@ -295,3 +295,17 @@ let ``the Gallery's Images page finds its embedded pictures and draws every one`
     Assert.Empty s.Errors
     // 4 stretch modes, 3 directions, smooth and pixelated, two avatars, the pattern.
     Assert.Equal(12, list.Images.Count)
+
+/// Finding 3 (review of M8 step 3b): pictures were let go only while drawing, so a hidden element kept its own.
+[<Fact>]
+let ``an ImageView that is hidden lets go of its picture`` () =
+    let image = Image.fromPixels (unique "hidden", 4, 4, solid 4 4 (255uy, 0uy, 0uy, 255uy)) []
+    let view visible = StackPanel.create [ StackPanel.children [ ImageView.create [ ImageView.image image; ImageView.isVisible visible ] ] ]
+    let scene = Scene(view true)
+    scene.Render() |> ignore
+    let imageView = scene.Root.Children[0]
+    Assert.Equal(1, imageView.HeldImageCount)
+    scene.Update(view false)
+    scene.Render() |> ignore
+    scene.Render() |> ignore
+    Assert.Equal(0, imageView.HeldImageCount)
