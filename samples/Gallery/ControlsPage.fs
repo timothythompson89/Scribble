@@ -60,6 +60,7 @@ let private controls =
         let size = ctx.useState "Medium"
         let name = ctx.useState "Ada"
         let submitted = ctx.useState ""
+        let notes = ctx.useState "Scribble draws this box itself: the text, the selection and the caret.\nThis is a second paragraph."
         let clipboard = ctx.useClipboard ()
         let greeting = if name.Current = "" then "Hello." else "Hello, " + name.Current + "."
         let some = picked.Current
@@ -197,6 +198,34 @@ let private controls =
                                 Semantics.label "Read-only"
                             ]
                             TextBox.create [ TextBox.width 220.0; TextBox.text "Disabled"; TextBox.isEnabled false; Semantics.label "Disabled" ]
+                        ]
+                    ])
+                section "TextBox, several lines" "It wraps at its width and grows from three lines to six, then scrolls. Enter makes a new line; ↑/↓, PageUp/PageDown and Home/End move by lines; a triple-click selects a paragraph. The second takes Tab as a character." (
+                    column [
+                        // Controlled: the count below follows every key.
+                        TextBox.create [
+                            TextBox.multiline true
+                            TextBox.maxLines 6
+                            TextBox.maxWidth 452.0
+                            TextBox.horizontalAlignment HorizontalAlignment.Left
+                            TextBox.text notes.Current
+                            TextBox.placeholder "Notes: as many lines as you like"
+                            TextBox.onTextChanged notes.Set
+                        ]
+                        TextBlock.create [
+                            TextBlock.text (
+                                string (notes.Current.Split('\n').Length)
+                                + (if notes.Current.Contains '\n' then " paragraphs, " else " paragraph, ")
+                                + string (System.Globalization.StringInfo(notes.Current).LengthInTextElements)
+                                + " characters")
+                        ]
+                        TextBox.create [
+                            TextBox.multiline true
+                            TextBox.acceptsTab true
+                            TextBox.maxLines 6
+                            TextBox.maxWidth 452.0
+                            TextBox.horizontalAlignment HorizontalAlignment.Left
+                            TextBox.placeholder "Tab types a tab here; Shift+Tab moves on"
                         ]
                     ])
             ]

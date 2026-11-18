@@ -193,6 +193,14 @@ _Avoid_: cursor (that is the pointer's look), insertion point
 The run of text between the anchor (where selecting started) and the caret; typing replaces it.
 _Avoid_: highlight, range
 
+**Paragraph** (in a TextBox):
+The text between two line breaks; it may wrap into several lines.
+_Avoid_: logical line, hard line
+
+**Line** (in a TextBox):
+One row of text as drawn; a paragraph that wraps is several.
+_Avoid_: visual line, row
+
 **Undo step**:
 What one undo takes back in a TextBox: a run of typing, a run of deleting, or one cut, paste or replaced selection.
 _Avoid_: undo unit, transaction

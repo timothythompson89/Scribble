@@ -150,6 +150,12 @@ let start (settings: AppSetting<'Msg> list) =
     let app = App.start (platform, device, new FixedShaper(), settings)
     platform.Window.Value, device, app
 
+/// As `start`, giving the platform (its clipboard) and the device (what was drawn) too.
+let startAll (settings: AppSetting<'Msg> list) =
+    let platform, device = new FakePlatform(), new FakeDevice()
+    let app = App.start (platform, device, new FixedShaper(), settings)
+    platform, platform.Window.Value, device, app
+
 /// As `start`, giving the platform too (its clipboard).
 let startOn (settings: AppSetting<'Msg> list) =
     let platform, device = new FakePlatform(), new FakeDevice()

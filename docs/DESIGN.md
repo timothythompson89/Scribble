@@ -73,9 +73,10 @@ Done and verified by Tim on Windows and in the browser (every checklist item, th
 
 Done in M9 so far: **step 9a, the single-line TextBox** (section "9a: the single-line TextBox"; checked by Tim on
 the desktop, 2026-11-18; its browser checks wait in `docs/CHECKLIST-BROWSER.md`). Also done:
-**step 9b, clipboard and undo** (section "9b: clipboard and undo"; checked by Tim, 2026-11-18).
+**step 9b, clipboard and undo** (section "9b: clipboard and undo"; checked by Tim, 2026-11-18). And **step 9c,
+the multi-line TextBox** (section "9c: the multi-line TextBox"; checked by Tim, 2026-11-18).
 
-Next: M9 steps 9c to 9e (multi-line, IME and the phone keyboard, typeahead and labels). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: M9 steps 9d and 9e (IME and the phone keyboard, typeahead and labels). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -151,7 +152,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line, with clipboard and undo; M9 steps 9a and 9b), Modal, dialogs, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard and undo; M9 steps 9a to 9c), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -4004,6 +4005,99 @@ no permission question).**
   sequences of 60 edits; every key and edge rule; a clipboard that answers late; controlled text; the claimed
   keys; the hook. One reference regenerated (`gallery-phone-controls@3x`: the page is longer, so its scrollbar
   is shorter). Totals: 1,201 unit (+6 timing), 97 rendering, 6 timing.
+
+### 9c: the multi-line TextBox (planned 2026-11-18)
+
+Facts at the start. The text system wraps (`TextSystem.Layout`, what TextBlock uses), but a laid-out line holds only
+its text and width: not where in the string it came from, and without the spaces at a wrap. Caret places exist for
+one line at a time (`CaretStops`). The TextBox draws itself and has no children, so it can't sit in a ScrollViewer:
+scrolling up and down is its own, as sideways scrolling is. 9a left a drag past the edge scrolling only while the
+pointer moves.
+
+**Round 4 (Tim, 2026-11-18: "for 39, can we add .acceptsTab? yes for everything else").**
+34. **Multi-line always wraps:** `TextBox.multiline true` wraps at the box's width, with no sideways scrolling. A
+    no-wrap mode (for code) waits until something needs it.
+35. **Height:** the box asks for the height of its text, never less than `TextBox.minLines` (default 3) and never
+    more than `TextBox.maxLines` (default: no limit). A height from the layout wins. Text that doesn't fit scrolls.
+36. **Scrolling is the box's own:** it scrolls to keep the caret in view; the wheel scrolls it while there is more
+    to see and passes to the page at either end; a scrollbar like ScrollViewer's shows while the text overflows and
+    can be dragged.
+37. **A drag past the edge keeps scrolling** on a timer while the button is held outside the box (frames only for
+    as long as that lasts), in single-line boxes too.
+38. **Enter makes a new line; Ctrl+Enter submits:** in a multi-line box Enter and Shift+Enter insert a line break
+    and `onSubmitted` moves to Ctrl+Enter. A dialog's default button doesn't fire on Enter while such a box has
+    focus.
+39. **Tab moves focus unless `TextBox.acceptsTab true`** (Tim's addition): by default no tab characters are typed
+    and a pasted tab becomes a space; with `acceptsTab` Tab types one and pasted tabs are kept. Pasted line breaks
+    are kept in a multi-line box; the text always uses `\n` (a pasted `\r\n` becomes one).
+40. **Moving by line:** ↑/↓ a line at a time, keeping the horizontal position they started from across short
+    lines; ↑ on the first line goes to the start, ↓ on the last to the end; Home/End to the ends of the line as
+    drawn, Ctrl+Home/End to the ends of the text; PageUp/PageDown by the box's height; Shift with any of them
+    selects.
+41. **The caret at a wrap:** the position where a long line wraps is both the end of one line and the start of the
+    next. End shows the caret at the line's end; otherwise it shows at the start of the next line.
+42. **Mouse:** a click goes to the nearest caret place on the line under it (below the last line: the end of the
+    text); a drag selects across lines; a triple-click selects the paragraph in a multi-line box.
+43. **Layout lines know where they came from:** each line of a text layout gains its start and end in the string,
+    and spaces at a wrap stay on their line (hanging past the edge, undrawn). TextBlock uses the same code, so a
+    TextBox wraps where a TextBlock would; TextBlock's pictures don't change.
+44. **Size it is built for:** a text area, not a code editor. Only visible lines are drawn and an edit re-shapes
+    only the paragraph it is in. Tests: the same drawing work for 100 and 10,000 lines; a timing test for typing
+    into a 10,000-line text.
+45. **Smaller rules:** a typed line break starts a new undo step; `maxLength` counts a line break as one
+    character; the placeholder wraps; `isPassword` with `multiline` stays single-line and warns once in Debug.
+46. **Single-line boxes don't change:** the same keys, look and pixels; their screenshots pass untouched.
+47. **Gallery and tests:** the Layout page's Notes field becomes multi-line; the Controls page gets a multi-line
+    box growing from 3 to 6 lines with a line and character count. Unit tests for every key and gesture, wrap
+    positions matching TextBlock's, the caret at a wrap, growing and scrolling, the drag timer stopping,
+    controlled text, undo across lines. Screenshots: a wrapped box with a selection across lines and one scrolled,
+    in both themes.
+
+Status: **agreed (Tim, 2026-11-18).**
+
+**As built (2026-11-18; checked by Tim on the desktop the same day).**
+- **Layout lines** (`TextLine`, decision 43) have `Start` and `End`: indices into the text that was laid out, the
+  spaces at a wrap inside the line and the line break outside it. `Text` is still what is drawn, so TextBlock's
+  pictures are unchanged. **A tab** is drawn as nothing, four spaces wide (no tab stops), wherever text is shaped.
+- **The engine:** `TextEdit.cleanFor multiline tabs` and `insertInto` (the one-line `clean` and `insert` are
+  those with both off); a line break is a kind of its own for words, so Ctrl+←/→ stop at a line's end and a
+  double-click never selects across lines; `paragraphStart`, `paragraphEnd`, `selectParagraphAt`.
+- **Lines in the TextBox** (`TextLines`, `MultiLine` in `TextBox.fs`): the text split into paragraphs, each laid
+  out by `TextSystem.Layout` (so it wraps as a TextBlock does), with where each starts in the text and among the
+  lines. After an edit the paragraphs unchanged at the start and the end are kept and only those between are laid
+  out: one for a typed character. Caret places are measured per line when first needed. Drawing walks only the
+  lines that show.
+- **Height** (decision 35): the measure wraps at the width the box was last drawn with (before its first frame,
+  the width it is offered). When a resize makes the drawn width wrap to another number of lines, the draw asks for
+  one more measure, so the height follows a frame later. `TextBoxProps.text` now affects measure.
+- **Scrolling** (decision 36): the box's own offset. The caret's line is brought into view when the caret moves or
+  the text changes, not on every frame, so the wheel and the scrollbar can leave the caret out of view. The
+  scrollbar uses ScrollViewer's thumb sizes and the theme's `Palette.scrollThumb`; a press beside the thumb
+  pages. Less than a DIP of overflow (layout rounding) is not overflow.
+- **The drag timer** (decision 37): while the button is held past the edge the text scrolls along (above or below
+  several lines, left or right of one), every 50 ms the selection is taken to the pointer's place again, which
+  scrolls. Nothing is drawn once nothing more can be selected.
+- **Not in the round, chosen while building:**
+  - Tabbing into a multi-line box keeps its caret and selection (selecting all would let one key wipe the notes);
+    one line still selects all.
+  - With `acceptsTab`, Shift+Tab still moves the focus back, so the keyboard can always leave. `acceptsTab` works
+    in one-line boxes too.
+  - A read-only multi-line box doesn't take Enter: it goes on to a dialog's default button.
+  - The wheel scrolls at once, not eased as ScrollViewer's notches are.
+  - A selected line break shows as a little width after its line.
+  - Out of focus a multi-line box stays where it was scrolled; one line still shows its start.
+  - PageUp and PageDown keep one line in view, and like ↑/↓ go to the text's start or end from its first or last
+    line.
+- **Gallery:** the Layout page's Notes is multi-line (2 to 4 lines); the Controls page has "TextBox, several
+  lines": a controlled box (3 to 6 lines) with a paragraph and character count, and one with `acceptsTab`.
+- **Tests:** 21 new unit tests (`TextBoxLinesTests.fs`) and one timing test: typing a character into 10,000 lines
+  and drawing its frame took 0.26 ms (Release, Tim's machine). Two new screenshots (`textbox-lines@1x`,
+  `textbox-lines-light@1x`); `textbox@1x` and `textbox-light@1x` passed untouched (decision 46). Regenerated after
+  looking: `layout-page@1x`, `layout-grid-overlay@1x`, `gallery-phone-layout@3x` (the Notes field is higher) and
+  `gallery-phone-controls@3x` (a longer page: its scrollbar). Totals: 1,222 unit (+7 timing), 99 rendering,
+  7 timing.
+- **Left as is:** no sideways scrolling or no-wrap mode in a multi-line box; no tab stops; the placeholder is laid
+  out on every frame it shows (shaping is cached).
 
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 

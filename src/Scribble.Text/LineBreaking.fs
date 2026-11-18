@@ -50,9 +50,16 @@ module LineBreaking =
 /// One laid-out line.
 [<Struct>]
 type TextLine =
-    { Text: string
+    { /// What is drawn: the line without the spaces at its end.
+      Text: string
       /// Width in DIPs, not counting trailing spaces.
-      Width: float }
+      Width: float
+      /// Where the line starts in the text that was laid out (a UTF-16 index).
+      Start: int
+      /// The index after the line's last character, the spaces at a wrap included (they hang past the edge,
+      /// undrawn) and the line break not: the next line of the same paragraph starts here. For a line that was
+      /// trimmed with "…", the untrimmed line's end.
+      End: int }
 
 /// Text broken into lines for a given width, ready to draw.
 type TextLayout =

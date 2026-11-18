@@ -114,9 +114,10 @@ type ScrollViewer =
 
 module ScrollViewer =
     /// DIPs per wheel notch and arrow key (about three lines of text).
-    let private step = 48.0
-    let private thinBar = 4.0
-    let private inset = 2.0
+    // Internal: a multi-line TextBox scrolls and draws its bar the same way (DESIGN.md, "9c", decision 36).
+    let internal step = 48.0
+    let internal thinBar = 4.0
+    let internal inset = 2.0
     let private minThumb = 20.0
     let private wheelTime = TimeSpan.FromMilliseconds 100.0
     let private scrollTime = TimeSpan.FromMilliseconds 200.0
@@ -171,7 +172,7 @@ module ScrollViewer =
 
     /// A thumb's place along its track: (track start, track length, thumb start, thumb length), or
     /// none when the content fits.
-    let private thumbSpan (trackLength: float) (extent: float) (viewport: float) (offset: float) =
+    let internal thumbSpan (trackLength: float) (extent: float) (viewport: float) (offset: float) =
         if extent > viewport && viewport > 0.0 && trackLength > 0.0 then
             let length = min trackLength (max minThumb (trackLength * viewport / extent))
             let travel = if extent - viewport > 0.0 then offset / (extent - viewport) else 0.0

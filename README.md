@@ -1367,7 +1367,7 @@ ComboBox.create [
   box with `ComboBox.style [ States.isOpen ] [ ... ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
   its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. An editable ComboBox comes after M9.
 
-- **TextBox**: one line of text to type in (multi-line and input methods are M9's next steps). Ctrl+C, Ctrl+X
+- **TextBox**: text to type in, one line or several (input methods are M9's next step). Ctrl+C, Ctrl+X
   and Ctrl+V copy, cut and paste (also Ctrl+Insert, Shift+Delete, Shift+Insert; a password is never copied, a
   read-only box only copies); Ctrl+Z undoes and Ctrl+Y or Ctrl+Shift+Z redoes, a run of typing at a time, with
   the selection put back (up to 100 steps; an undo goes through `onTextChanged` like any edit). With `TextBox.text` it is controlled: it shows exactly that and tells `onTextChanged` what the user
@@ -1384,6 +1384,25 @@ TextBox.create [
     TextBox.placeholder "Your name"                           // also its name for screen readers
     TextBox.onSubmitted (fun _ -> dispatch Save)              // Enter; without it Enter goes on (a dialog's default)
     TextBox.maxLength 40                                      // also isReadOnly, isPassword
+]
+```
+
+  `TextBox.multiline true` makes it several lines: the text wraps at the box's width (where a TextBlock would)
+  and Enter makes a new line (the text uses `\n`); `onSubmitted` moves to Ctrl+Enter. ↑/↓ and PageUp/PageDown
+  move by lines, Home/End go to the ends of the line as drawn, Ctrl+Home/End to the ends of the text, and a
+  triple-click selects the paragraph. The box asks to be as high as its text, between `minLines` (3) and
+  `maxLines` (no limit); a height from the layout wins, and text that doesn't fit scrolls (wheel, keys, its own
+  scrollbar, or a drag held past the edge). Tab moves the focus unless `TextBox.acceptsTab true`, which types a
+  tab (Shift+Tab still leaves). Only the lines that show are drawn and an edit lays out only its own paragraph:
+  typing into 10,000 lines takes about a quarter of a millisecond.
+
+```fsharp
+TextBox.create [
+    TextBox.multiline true
+    TextBox.minLines 2                                        // default 3
+    TextBox.maxLines 6                                        // then it scrolls
+    TextBox.text model.Notes
+    TextBox.onTextChanged (fun text -> dispatch (SetNotes text))
 ]
 ```
 

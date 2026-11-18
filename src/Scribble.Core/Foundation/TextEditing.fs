@@ -69,11 +69,13 @@ module TextEdit =
             n <- n + 1
         n
 
-    /// 0: white space; 1: letters, digits and '_'; 2: anything else (punctuation, symbols, emoji). A word is a run
-    /// of one kind that isn't white space.
+    /// 0: white space; 1: letters, digits and '_'; 2: anything else (punctuation, symbols, emoji); 3: a line
+    /// break. A word is a run of one kind that isn't white space; a line break is never part of a run of spaces,
+    /// so a word move stops at the end of a line and a double-click never selects across lines.
     let private kindAt (text: string) (index: int) =
         let rune = Rune.GetRuneAt(text, index)
-        if Rune.IsWhiteSpace rune then 0
+        if text[index] = '\n' then 3
+        elif Rune.IsWhiteSpace rune then 0
         elif Rune.IsLetterOrDigit rune || rune.Value = int '_' then 1
         else
             match Rune.GetUnicodeCategory rune with
@@ -165,26 +167,48 @@ module TextEdit =
         let struct (first, last) = wordAt s.Text index
         { s with Anchor = first; Caret = last }
 
-    /// What may be typed or pasted into one line: no control characters; a line break or tab becomes a space.
-    let clean (text: string) =
+    /// The start of the paragraph `index` is in: after the line break before it, or 0.
+    let paragraphStart (text: string) (index: int) =
+        let index = max 0 (min text.Length index)
+        if index = 0 then 0 else text.LastIndexOf('\n', index - 1) + 1
+
+    /// The end of the paragraph `index` is in: its line break's index, or the text's end.
+    let paragraphEnd (text: string) (index: int) =
+        let index = max 0 (min text.Length index)
+        match text.IndexOf('\n', index) with
+        | -1 -> text.Length
+        | i -> i
+
+    /// Selects the paragraph at `index` (without its line break): a triple-click in a multi-line box.
+    let selectParagraphAt (index: int) (s: EditState) =
+        { s with Anchor = paragraphStart s.Text index; Caret = paragraphEnd s.Text index }
+
+    /// What may be typed or pasted: no control characters. A line break (`\r\n`, `\r` or `\n`) is kept as `\n` with
+    /// `multiline`, else it becomes a space; a tab is kept with `tabs`, else it becomes a space.
+    let cleanFor (multiline: bool) (tabs: bool) (text: string) =
         if isNull text then ""
         else
             let mutable needed = false
             for c in text do
-                if Char.IsControl c then needed <- true
+                if Char.IsControl c && not ((c = '\n' && multiline) || (c = '\t' && tabs)) then needed <- true
             if not needed then text
             else
                 let sb = StringBuilder(text.Length)
+                let lineBreak = if multiline then '\n' else ' '
                 let mutable i = 0
                 while i < text.Length do
                     let c = text[i]
                     if c = '\r' && i + 1 < text.Length && text[i + 1] = '\n' then
-                        sb.Append ' ' |> ignore
+                        sb.Append lineBreak |> ignore
                         i <- i + 1
-                    elif c = '\n' || c = '\r' || c = '\t' then sb.Append ' ' |> ignore
+                    elif c = '\n' || c = '\r' then sb.Append lineBreak |> ignore
+                    elif c = '\t' then sb.Append(if tabs then '\t' else ' ') |> ignore
                     elif not (Char.IsControl c) then sb.Append c |> ignore
                     i <- i + 1
                 sb.ToString()
+
+    /// What may be typed or pasted into one line: no control characters; a line break or tab becomes a space.
+    let clean (text: string) = cleanFor false false text
 
     /// The first `count` grapheme clusters of `text`.
     let private firstGraphemes (text: string) (count: int) =
@@ -200,10 +224,11 @@ module TextEdit =
         if not s.HasSelection then s
         else { Text = s.Text.Remove(s.Start, s.End - s.Start); Anchor = s.Start; Caret = s.Start }
 
-    /// Types or pastes `text` over the selection, cleaned for one line; the caret ends after it. `maxLength`
-    /// (0: no limit) is the most grapheme clusters the text may have: what doesn't fit is left out.
-    let insert (text: string) (maxLength: int) (s: EditState) =
-        let text = clean text
+    /// Types or pastes `text` over the selection, cleaned as `cleanFor multiline tabs` does; the caret ends after
+    /// it. `maxLength` (0: no limit) is the most grapheme clusters the text may have (a line break is one): what
+    /// doesn't fit is left out.
+    let insertInto (multiline: bool) (tabs: bool) (text: string) (maxLength: int) (s: EditState) =
+        let text = cleanFor multiline tabs text
         let cleared = deleteSelection s
         let text =
             if maxLength <= 0 then text
@@ -217,6 +242,9 @@ module TextEdit =
             let after = cleared.Caret + text.Length
             let caret = if stopAtOrBefore joined after = after then after else nextStop joined after
             { Text = joined; Anchor = caret; Caret = caret }
+
+    /// Types or pastes `text` into one line (a line break or tab becomes a space).
+    let insert (text: string) (maxLength: int) (s: EditState) = insertInto false false text maxLength s
 
     let private removeRange (first: int) (last: int) (s: EditState) =
         if last <= first then s else { Text = s.Text.Remove(first, last - first); Anchor = first; Caret = first }

@@ -35,8 +35,15 @@ let private form =
             label "Email" 1
             field "ada@example.com" [ Grid.cell (1, 1) ]
             Button.create [ Button.text "Verify"; Grid.cell (1, 2) ]
-            label "Notes" 2
-            field "Spans the field and button columns" [ Grid.cell (2, 1); Grid.columnSpan 2 ]
+            TextBlock.create [ TextBlock.text "Notes"; Grid.row 2; TextBlock.margin (0.0, 8.0, 0.0, 0.0) ]
+            // Several lines: it wraps at the two columns' width and grows from two lines to four, then scrolls.
+            field "Spans the field and button columns" [
+                Grid.cell (2, 1)
+                Grid.columnSpan 2
+                TextBox.multiline true
+                TextBox.minLines 2
+                TextBox.maxLines 4
+            ]
             StackPanel.create [
                 Grid.cell (3, 1)
                 Grid.columnSpan 2

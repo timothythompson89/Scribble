@@ -107,7 +107,20 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
             let mutable i = 0
             let flush (until: int) =
                 if until > runStart then
-                    let glyphs = shaper.Shape(runFont, line.Substring(runStart, until - runStart))
+                    let part = line.Substring(runStart, until - runStart)
+                    let glyphs = shaper.Shape(runFont, part)
+                    // A tab is drawn as nothing, four spaces wide (fonts have no glyph for it; no tab stops).
+                    let glyphs =
+                        if part.Contains '\t' then
+                            let space = shaper.Shape(runFont, " ")
+                            if space.Length = 0 then glyphs
+                            else
+                                glyphs
+                                |> Array.map (fun g ->
+                                    if g.Cluster >= 0 && g.Cluster < part.Length && part[g.Cluster] = '\t' then
+                                        { space[0] with Cluster = g.Cluster; XAdvance = space[0].XAdvance * 4 }
+                                    else g)
+                        else glyphs
                     result.Add { Font = runFont; Glyphs = glyphs |> Array.map (fun g -> { g with Cluster = g.Cluster + runStart }) }
             while i < line.Length do
                 let length = StringInfo.GetNextTextElementLength(line, i)
@@ -320,8 +333,9 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
                 i <- i + length
             list
 
-        /// A line from clusters [first, last), with trailing whitespace excluded from its width.
-        let makeLine (paragraph: string) (cs: ResizeArray<struct (int * int * float)>) (first: int) (last: int) =
+        /// A line from clusters [first, last) of a paragraph that starts at `offset` in the text, with trailing
+        /// whitespace excluded from its width and from what is drawn.
+        let makeLineAt (offset: int) (paragraph: string) (cs: ResizeArray<struct (int * int * float)>) (first: int) (last: int) =
             let mutable visibleEnd = last
             while visibleEnd > first && (let struct (s, _, _) = cs[visibleEnd - 1] in LineBreaking.isWhitespace paragraph[s]) do
                 visibleEnd <- visibleEnd - 1
@@ -329,16 +343,20 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
             for k in first .. visibleEnd - 1 do
                 let struct (_, _, w) = cs[k]
                 width <- width + w
+            let indexOf (k: int) = if k < cs.Count then (let struct (s, _, _) = cs[k] in s) else paragraph.Length
             if first >= last then
-                { Text = ""; Width = 0.0 }
+                { Text = ""; Width = 0.0; Start = offset + indexOf first; End = offset + indexOf first }
             else
                 let struct (start, _, _) = cs[first]
                 let struct (lastStart, lastLength, _) = cs[visibleEnd - 1 |> max first]
                 let finish = if visibleEnd > first then lastStart + lastLength else start
-                { Text = paragraph.Substring(start, finish - start); Width = width }
+                { Text = paragraph.Substring(start, finish - start); Width = width; Start = offset + start; End = offset + indexOf last }
 
         let wraps = wrapping = Wrap && not (Double.IsInfinity maxWidth)
+        let mutable offset = 0
         for paragraph in text.Split '\n' do
+            let makeLine = makeLineAt offset
+            offset <- offset + paragraph.Length + 1
             let a = advances paragraph
             let cs = clusters paragraph a
             if not wraps || cs.Count = 0 then
@@ -393,9 +411,9 @@ type TextSystem internal (atlas: GlyphAtlas, colorAtlas: GlyphAtlas, shaper: ISh
                             count <- count + 1
                         else
                             fits <- false
-                    let kept = makeLine line.Text cs 0 count
+                    let kept = makeLineAt 0 line.Text cs 0 count
                     truncated <- true
-                    { Text = kept.Text + ellipsis; Width = kept.Width + ellipsisWidth }
+                    { line with Text = kept.Text + ellipsis; Width = kept.Width + ellipsisWidth }
             for i in 0 .. result.Count - 1 do
                 let isLast = i = result.Count - 1
                 result[i] <- trim result[i] (isLast && truncated)
