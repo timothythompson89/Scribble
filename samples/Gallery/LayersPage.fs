@@ -164,6 +164,35 @@ let view =
                 Inform.text "Sign in again to carry on."
                 Inform.onClosed (fun () -> answer.Set "Was informed")
             ]
+        // A sequence of questions, each depending on the last answer: the window's Dialogs, whose calls give the
+        // answer back as a task. (The hooks above declare one dialog each; this is for asking one after another.)
+        let dialogs = ctx.useDialogs ()
+        let closeDraft () =
+            task {
+                let! choice =
+                    dialogs.Ask [
+                        Ask.title "Close the draft?"
+                        Ask.text "It has unsaved changes."
+                        Ask.option ("save", "Save")
+                        Ask.option ("discard", "Discard")
+                        Ask.option ("stay", "Cancel")
+                    ]
+                match choice with
+                | ValueSome "save" -> answer.Set "Saved, then closed"
+                | ValueSome "discard" ->
+                    // Only asked when the first answer was Discard.
+                    let! sure =
+                        dialogs.Confirm [
+                            Confirm.title "Discard the changes?"
+                            Confirm.text "They can't be brought back."
+                            Confirm.accept "Discard"
+                            Confirm.cancel "Keep"
+                            Confirm.severity Severity.Critical
+                        ]
+                    answer.Set(if sure then "Discarded, then closed" else "Kept the draft open")
+                | _ -> answer.Set "Stayed in the draft"
+            }
+            |> ignore
         page "Layers" "Content above the app, each in a layer of its own: toasts that never take the keyboard, modals and dialogs that take everything until they close, flyouts and tooltips." [
             section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds (a warning 8) and waits while the pointer is on it; a critical one stays until closed. The same toast again is counted, not stacked; what waits shows as \"+N more\" with Close all. The box chooses where they stack. The app keeps working everywhere but on a toast." (
                 WrapPanel.create [
@@ -205,7 +234,7 @@ let view =
                         ]
                     ]
                 ])
-            section "Modal and dialogs" "The window dims; nothing below reacts to the pointer, the wheel or the keyboard, and Tab stays inside. The first is a Modal, written in the view with content of its own; the others are dialogs, declared with hooks (ctx.useConfirm, useAsk, useInform, and useDialog for content of your own), each saying what its answers do." (
+            section "Modal and dialogs" "The window dims; nothing below reacts to the pointer, the wheel or the keyboard, and Tab stays inside. The first is a Modal, written in the view with content of its own; the others are dialogs, declared with hooks (ctx.useConfirm, useAsk, useInform, and useDialog for content of your own), each saying what its answers do. \"In sequence\" asks one after another through ctx.useDialogs, whose calls give back the answer." (
                 StackPanel.create [
                     StackPanel.spacing 8.0
                     StackPanel.children [
@@ -220,6 +249,7 @@ let view =
                                 Button.create [ Button.text "Three choices"; Button.onClick (fun _ -> askUnsaved ()) ]
                                 Button.create [ Button.text "Inform"; Button.onClick (fun _ -> sessionExpired ()) ]
                                 Button.create [ Button.text "Custom"; Button.onClick (fun _ -> counting ()) ]
+                                Button.create [ Button.text "In sequence"; Button.onClick (fun _ -> closeDraft ()) ]
                             ]
                         ]
                         TextBlock.create [ TextBlock.text answer.Current; TextBlock.foreground Palette.textDim ]

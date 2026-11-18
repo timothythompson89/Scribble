@@ -371,6 +371,48 @@ let ``in a tree no host runs, a dialog's task is cancelled and the hooks' functi
     confirm ()
     Assert.True((dialogs.Confirm [ Confirm.title "Anyone?" ]).IsCanceled)
 
+[<Fact>]
+let ``useDialogs asks one question after another, the second depending on the first answer`` () =
+    let log = List<string>()
+    let view =
+        Component.define "Closer" (fun ctx () ->
+            let dialogs = ctx.useDialogs ()
+            Button.create [
+                Button.name "close"
+                Button.text "Close"
+                Button.horizontalAlignment HorizontalAlignment.Left
+                Button.verticalAlignment VerticalAlignment.Top
+                Button.onClick (fun _ ->
+                    task {
+                        let! choice = dialogs.Ask [ Ask.title "Close the draft?"; Ask.option (Save, "Save"); Ask.option (Discard, "Discard") ]
+                        match choice with
+                        | ValueSome Discard ->
+                            let! sure = dialogs.Confirm [ Confirm.title "Discard the changes?"; Confirm.accept "Discard"; Confirm.cancel "Keep" ]
+                            log.Add(if sure then "discarded" else "kept")
+                        | ValueSome _ -> log.Add "saved"
+                        | ValueNone -> log.Add "stayed"
+                    }
+                    |> ignore)
+            ]) ()
+    let w, host = startWith [ App.view view ]
+    // Save: one question.
+    clickOn w host (named host "close")
+    clickOn w host (button host "Save")
+    Assert.False(isOpen host)
+    // Discard: the second question follows, and its answer decides.
+    clickOn w host (named host "close")
+    clickOn w host (button host "Discard")
+    Assert.Equal("Discard the changes? Keep Discard", texts host)
+    clickOn w host (button host "Keep")
+    clickOn w host (named host "close")
+    clickOn w host (button host "Discard")
+    clickOn w host (button host "Discard")
+    // Escape at the first: no second question.
+    clickOn w host (named host "close")
+    key w host Key.Escape
+    Assert.False(isOpen host)
+    Assert.Equal<string list>([ "saved"; "kept"; "discarded"; "stayed" ], List.ofSeq log)
+
 // --- useDialog: content of the app's own ---------------------------------------------------------
 
 /// A component with a counter and a dialog of its own that shows the count, adds to it and closes itself.

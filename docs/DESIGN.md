@@ -3763,6 +3763,12 @@ window today (`App.run`; the inspector's pop-out is the only second host). What 
   error from another window needs to say which window it came from.
 - **Undecided:** a dialog that blocks every window ("unsaved changes" on quitting). Dialogs and modals are modal
   to their own window only.
+
+**`ctx.useDialogs` kept public, with an example (Tim, 2026-11-18).** After round 4 nothing in the Gallery used it:
+the shortcut hooks each declare one dialog. It stays for what they can't do neatly, a sequence of questions where
+the next depends on the last answer (and for keeping the object to call from a task). The Layers page has "In
+sequence": `dialogs.Ask`, then `dialogs.Confirm` only when the answer was Discard. Tested (`DialogsTests`).
+Unit: 1,147.
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 
 Found driving the Gallery's Lists page with a real keyboard: Tab went from the Reverse order button to the swatches
