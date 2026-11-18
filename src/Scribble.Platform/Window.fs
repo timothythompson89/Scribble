@@ -96,3 +96,12 @@ type IPlatform =
     /// browser downloads it under that name. True when it was saved, false when the person cancelled (always true
     /// in the browser, which can't tell). Call on the UI thread; the task may finish on another thread.
     abstract SaveFile: owner: IWindow voption * suggestedName: string * bytes: byte[] -> System.Threading.Tasks.Task<bool>
+
+    /// Puts `text` on the system clipboard (DESIGN.md, "9b: clipboard and undo", decision 22). Call on the UI thread;
+    /// in the browser, while handling a key or a press (it refuses otherwise). A failure is not reported.
+    abstract SetClipboardText: text: string -> unit
+
+    /// The clipboard's text ("" when it has none, or when the browser refuses). The desktop answers at once (a
+    /// finished task); the browser later: from its paste event after Ctrl+V or Shift+Insert, else by asking the
+    /// person for permission. Call on the UI thread; the task may finish on another thread.
+    abstract GetClipboardText: unit -> System.Threading.Tasks.Task<string>

@@ -275,6 +275,17 @@ extern nativeint SDL_GetMouseFocus()
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern void SDL_ShowSaveFileDialog(nativeint callback, nativeint userdata, nativeint window, SDL_DialogFileFilter* filters, int nfilters, nativeint defaultLocation)
 
+/// SDL_clipboard.h. The text is UTF-8.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_SetClipboardText(byte* text)
+
+/// The clipboard's text, or an empty string: ours to free with SDL_free.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern nativeint SDL_GetClipboardText()
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void SDL_free(nativeint memory)
+
 // ---------------------------------------------------------------------------------------------
 // Strings: UTF-8, NUL-terminated, pinned for the call.
 // ---------------------------------------------------------------------------------------------

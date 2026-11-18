@@ -20,7 +20,8 @@ const Kind = {
   TextInput: 8,       // a = index into takeTexts()
   Focus: 9,           // a = 1 focused / 0 blurred
   PointerExited: 10,  // a = pointer kind, b = pointer id
-  PointerCanceled: 11 // a = pointer kind, b = pointer id
+  PointerCanceled: 11, // a = pointer kind, b = pointer id
+  ClipboardText: 12   // a = the read's id, b = index of the text in takeTexts() (-1: refused)
 };
 
 let events = [];
@@ -117,6 +118,57 @@ const claimed = new Set();
 
 export function claimKey(id) {
   claimed.add(id);
+}
+
+// The clipboard (DESIGN.md, "9b: clipboard and undo", decisions 22 and 23). Writing works while a key or a press
+// is being handled. Reading through navigator.clipboard asks the person for permission, so after Ctrl+V or
+// Shift+Insert the text is taken from the browser's own paste event, which needs none.
+const never = -1e9;
+let pasteKeyAt = never;   // when a paste key went down whose paste event hasn't come yet
+let pasteWaiting = [];    // reads waiting for that event
+let pasted = null;        // { text, at }: a paste event no read has taken yet
+
+function answerClipboard(id, text) {
+  texts.push(text);
+  push(Kind.ClipboardText, id, texts.length - 1);
+}
+
+function readSystemClipboard(id) {
+  const refused = () => push(Kind.ClipboardText, id, -1);
+  try {
+    navigator.clipboard.readText().then((text) => answerClipboard(id, text), refused);
+  } catch {
+    refused(); // no clipboard API (an insecure page)
+  }
+}
+
+export function readClipboard(id) {
+  const now = performance.now();
+  if (pasted && now - pasted.at < 1000) {
+    const text = pasted.text;
+    pasted = null;
+    answerClipboard(id, text);
+  } else if (now - pasteKeyAt < 1000) {
+    pasteWaiting.push(id);
+    // No paste event came (the browser sent none for this key): ask the other way.
+    setTimeout(() => {
+      const i = pasteWaiting.indexOf(id);
+      if (i >= 0) {
+        pasteWaiting.splice(i, 1);
+        readSystemClipboard(id);
+      }
+    }, 500);
+  } else {
+    readSystemClipboard(id);
+  }
+}
+
+export function writeClipboard(text) {
+  try {
+    navigator.clipboard.writeText(text).catch(() => {});
+  } catch {
+    // no clipboard API (an insecure page)
+  }
 }
 
 // Scribble.Platform.Cursor, in declaration order.
@@ -292,6 +344,20 @@ export function createCanvas(id) {
     // Keep Space, arrows and Tab for the app instead of scrolling the page.
     if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key)) e.preventDefault();
     if (claimed.has(modifiers(e) + "|" + e.key.toLowerCase())) e.preventDefault();
+    // A paste key: the browser's paste event follows (it is not prevented), and answers the read.
+    const key = e.key.toLowerCase();
+    if ((key === "v" && (e.ctrlKey || e.metaKey) && !e.altKey) || (key === "insert" && e.shiftKey && !e.ctrlKey)) {
+      pasteKeyAt = performance.now();
+    }
+  });
+  window.addEventListener("paste", (e) => {
+    const text = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
+    e.preventDefault();
+    pasteKeyAt = never;
+    const waiting = pasteWaiting;
+    pasteWaiting = [];
+    if (waiting.length === 0) pasted = { text, at: performance.now() };
+    for (const id of waiting) answerClipboard(id, text);
   });
   window.addEventListener("keyup", (e) => {
     texts.push(e.key);

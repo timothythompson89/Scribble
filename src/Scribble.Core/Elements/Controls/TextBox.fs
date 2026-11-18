@@ -1,6 +1,7 @@
 namespace Scribble.Core
 
 open System
+open System.Threading.Tasks
 open Scribble.Accessibility
 open Scribble.Rendering
 open Scribble.Text
@@ -33,6 +34,13 @@ type internal TextBoxState() =
     member val BlinkTicks = 0 with get, set
     /// Counts restarts: a timer from an earlier one does nothing.
     member val BlinkGeneration = 0 with get, set
+    /// What can be undone and redone.
+    member val History = TextHistory.empty with get, set
+    /// A controlled box told its view of new text and the view hasn't had its turn: 1 after an edit, 2 after an
+    /// undo or a redo; 0 otherwise.
+    member val Pending = 0 with get, set
+    /// The browser has been told which keys are this box's (once is enough).
+    member val Claimed = false with get, set
 
 module TextBoxProps =
     /// The text. Given by the view: controlled; otherwise the control's own value.
@@ -42,7 +50,7 @@ module TextBoxProps =
     /// Shown, dim, while the text is empty.
     let placeholder = Prop.define "Placeholder" "" Affects.Render
     let placeholderForeground = Prop.define "PlaceholderForeground" (Color.Hex 0x9A9AB0) Affects.Render
-    /// The text can be selected (and, in 9b, copied) but not changed.
+    /// The text can be selected and copied but not changed.
     let isReadOnly = Prop.define "IsReadOnly" false Affects.Render
     /// The most grapheme clusters the user can enter; 0: no limit.
     let maxLength = Prop.define "MaxLength" 0 Affects.Nothing
@@ -66,8 +74,10 @@ module TextBoxProps =
 /// its own text. The caret and the selection are its own either way.
 ///
 /// Keys: ←/→ by character and with Ctrl by word, Home/End (and ↑/↓), Shift with any of them to select, Ctrl+A,
-/// Backspace/Delete (a word with Ctrl, or the selection), Enter for `onSubmitted`. Escape and Tab are left to
-/// whatever is around it. Mouse: a click places the caret, a drag selects, Shift+click extends, a double-click
+/// Backspace/Delete (a word with Ctrl, or the selection), Enter for `onSubmitted`. Ctrl+C, Ctrl+X and Ctrl+V copy,
+/// cut and paste (also Ctrl+Insert, Shift+Delete, Shift+Insert); Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes (a
+/// run of typing is one step; up to 100 steps). A password is never copied. Escape and Tab are left to whatever is
+/// around it. Mouse: a click places the caret, a drag selects, Shift+click extends, a double-click
 /// selects a word and a triple-click everything. Tabbing into it selects all its text. Text wider than the box
 /// scrolls sideways with the caret. The caret moves by what a reader sees as one character (an emoji is never
 /// split); it blinks, and stops after ten seconds without input.
@@ -86,12 +96,13 @@ type TextBox =
     static member placeholderForeground<'k when 'k :> TextBox>(value: Color) : Setting<'k> = Setting.create TextBoxProps.placeholderForeground value
     static member placeholderForeground<'k when 'k :> TextBox>(themeValue: ThemeValue<Color>) : Setting<'k> =
         Setting.fromTheme TextBoxProps.placeholderForeground themeValue
-    /// True: the text can be selected but not changed (it still takes focus). Default: false.
+    /// True: the text can be selected and copied but not changed (it still takes focus). Default: false.
     static member isReadOnly<'k when 'k :> TextBox>(value: bool) : Setting<'k> = Setting.create TextBoxProps.isReadOnly value
     /// The most characters the user can enter, counted as a reader sees them (an emoji is one); what doesn't fit
     /// is left out. 0 (default): no limit. Text the view gives is never cut.
     static member maxLength<'k when 'k :> TextBox>(value: int) : Setting<'k> = Setting.create TextBoxProps.maxLength (max 0 value)
-    /// True: a bullet shows for each character, and the text counts as one word. Default: false.
+    /// True: a bullet shows for each character, the text counts as one word, and it can't be copied or cut.
+    /// Default: false.
     static member isPassword<'k when 'k :> TextBox>(value: bool) : Setting<'k> = Setting.create TextBoxProps.isPassword value
     /// The colour behind selected text (the theme's accent, tinted).
     static member selection<'k when 'k :> TextBox>(value: Color) : Setting<'k> = Setting.create TextBoxProps.selection value
@@ -125,20 +136,28 @@ module TextBox =
     /// The text with its selection (for tests and, later, a controlled selection).
     let internal editOf (e: Element) = (stateOf e).Edit
 
+    /// The view gave other text than the box shows. As its answer to an edit (a filter, or a view that didn't
+    /// follow), the edit's undo step ends in what the view says; for any other reason (a Clear button, loaded
+    /// data, a changed undo) nothing from before can be undone (DESIGN.md, "9b", decision 31).
+    let private viewChanged (s: TextBoxState) (text: string) =
+        s.Edit <- TextEdit.withText text s.Edit
+        s.History <- if s.Pending = 1 then TextHistory.amend s.Edit s.History else TextHistory.empty
+
     /// Before input is handled: text the view has given since the last look replaces what is here (the caret
     /// stays, kept inside it). What the user typed since stays until the view has had its turn (see `settle`).
     let private adopt (e: Element) (s: TextBoxState) =
         let text = e.Get TextBoxProps.text
         if not (String.Equals(text, s.Seen, StringComparison.Ordinal)) then
             s.Seen <- text
-            if not (String.Equals(text, s.Edit.Text, StringComparison.Ordinal)) then s.Edit <- TextEdit.withText text s.Edit
+            if not (String.Equals(text, s.Edit.Text, StringComparison.Ordinal)) then viewChanged s text
 
     /// At a frame (views have been applied by then): it shows the `text` setting's value, whatever was typed. A
     /// controlled TextBox whose view didn't follow goes back to what the view says.
     let private settle (e: Element) (s: TextBoxState) =
         let text = e.Get TextBoxProps.text
         s.Seen <- text
-        if not (String.Equals(text, s.Edit.Text, StringComparison.Ordinal)) then s.Edit <- TextEdit.withText text s.Edit
+        if not (String.Equals(text, s.Edit.Text, StringComparison.Ordinal)) then viewChanged s text
+        s.Pending <- 0
 
     /// What is drawn and where each caret place is, measured once per text, font and size.
     let private measureStops (e: Element) (s: TextBoxState) =
@@ -219,17 +238,41 @@ module TextBox =
         s.BlinkTicks <- blinkTicks
         if e.IsFocused then blinkLater e s s.BlinkGeneration
 
-    /// Every change to the text or the selection comes through here (9b records them for undo): the new state
-    /// shows, the caret starts blinking again, and `onTextChanged` hears of new text.
-    let private apply (e: Element) (s: TextBoxState) (next: EditState) =
+    /// Every change to the text or the selection comes through here: the new state shows, the caret starts
+    /// blinking again, new text is recorded for undo as a step of `kind` (none: an undo or a redo, which moved the
+    /// history itself) and `onTextChanged` hears of it. A change of the caret or the selection alone ends the
+    /// undo step being typed.
+    let private applyWith (e: Element) (s: TextBoxState) (kind: EditKind voption) (next: EditState) =
         let before = s.Edit
         s.Edit <- next
         restartBlink e s
         e.InvalidateVisual()
         if not (String.Equals(next.Text, before.Text, StringComparison.Ordinal)) then
-            ControlValue.change e TextBoxProps.text next.Text (e.Get TextBoxProps.onTextChanged)
+            match kind with
+            | ValueSome kind ->
+                // Replacing or removing a selection is always a step of its own.
+                let kind = if before.HasSelection then EditKind.Single else kind
+                s.History <- TextHistory.record kind e.Time before next s.History
+            | ValueNone -> ()
             // Its own text: the setting now holds it. Controlled: the view answers before the next frame.
-            if not (ControlValue.isControlled e TextBoxProps.text) then s.Seen <- next.Text
+            if ControlValue.isControlled e TextBoxProps.text then s.Pending <- (if kind.IsSome then 1 else 2)
+            else s.Seen <- next.Text
+            ControlValue.change e TextBoxProps.text next.Text (e.Get TextBoxProps.onTextChanged)
+        else s.History <- TextHistory.close s.History
+
+    /// A move of the caret or the selection.
+    let private apply (e: Element) (s: TextBoxState) (next: EditState) = applyWith e s ValueNone next
+
+    /// An edit: `kind` says which edits it joins into one undo step.
+    let private applyEdit (e: Element) (s: TextBoxState) (kind: EditKind) (next: EditState) = applyWith e s (ValueSome kind) next
+
+    /// Pastes `text` over the selection (a step of its own), if the box can still take it.
+    let private paste (e: Element) (text: string) =
+        if e.Root.IsSome && e.IsFocused && not (e.Get TextBoxProps.isReadOnly) then
+            let s = stateOf e
+            adopt e s
+            let next = TextEdit.insert text (e.Get TextBoxProps.maxLength) s.Edit
+            if next <> s.Edit then applyEdit e s EditKind.Single next
 
     let private pointerDown (ctx: InputContext) (args: PointerEventArgs) =
         let e = ctx.Element
@@ -308,7 +351,43 @@ module TextBox =
                 args.Handle()
                 if not readOnly then
                     let next = f edit
-                    if next <> edit then apply e s next else restartBlink e s
+                    if next <> edit then applyEdit e s EditKind.Deleting next else restartBlink e s
+            let password = e.Get TextBoxProps.isPassword
+            // A password never leaves the box (DESIGN.md, "9b", decision 26).
+            let copy () =
+                args.Handle()
+                if edit.HasSelection && not password then ctx.Clipboard.SetText edit.SelectedText
+            let cut () =
+                args.Handle()
+                if edit.HasSelection && not password && not readOnly then
+                    ctx.Clipboard.SetText edit.SelectedText
+                    applyEdit e s EditKind.Single (TextEdit.deleteSelection edit)
+            let pasteNow () =
+                args.Handle()
+                if not readOnly then
+                    // The desktop answers at once; the browser after its paste event.
+                    let reading = ctx.Clipboard.GetText()
+                    if reading.IsCompletedSuccessfully then paste e reading.Result
+                    else
+                        reading.ContinueWith(
+                            (fun (t: Task<string>) ->
+                                try
+                                    if t.IsCompletedSuccessfully then paste e t.Result
+                                with error ->
+                                    match e.Root with
+                                    | ValueSome root -> root.ReportError error
+                                    | ValueNone -> ()),
+                            TaskContinuationOptions.ExecuteSynchronously
+                        )
+                        |> ignore
+            let step (take: EditHistory -> struct (EditState * EditHistory) voption) =
+                args.Handle()
+                if not readOnly then
+                    match take s.History with
+                    | ValueSome(struct (state, history)) ->
+                        s.History <- history
+                        applyWith e s ValueNone (TextEdit.normalize state)
+                    | ValueNone -> restartBlink e s
             match args.Key with
             | Key.Left -> go (TextEdit.move (if byWord then CaretMove.WordLeft elif ctrl then CaretMove.Start else CaretMove.Left) shift edit)
             | Key.Right -> go (TextEdit.move (if byWord then CaretMove.WordRight elif ctrl then CaretMove.End else CaretMove.Right) shift edit)
@@ -317,6 +396,15 @@ module TextBox =
             | Key.End
             | Key.Down -> go (TextEdit.move CaretMove.End shift edit)
             | Key.Char 'a' when ctrl && not shift -> go (TextEdit.selectAll edit)
+            | Key.Char 'c' when ctrl && not shift -> copy ()
+            | Key.Insert when ctrl && not shift -> copy ()
+            | Key.Char 'x' when ctrl && not shift -> cut ()
+            | Key.Delete when shift && not ctrl -> cut ()
+            | Key.Char 'v' when ctrl && not shift -> pasteNow ()
+            | Key.Insert when shift && not ctrl -> pasteNow ()
+            | Key.Char 'z' when ctrl && not shift -> step TextHistory.undo
+            | Key.Char 'y' when ctrl && not shift -> step TextHistory.redo
+            | Key.Char 'z' when ctrl && shift -> step TextHistory.redo
             | Key.Backspace -> change (if byWord then TextEdit.backspaceWord elif ctrl then (fun s -> TextEdit.backspace (TextEdit.moveTo 0 true s)) else TextEdit.backspace)
             | Key.Delete when not shift ->
                 change (if byWord then TextEdit.deleteWord elif ctrl then (fun s -> TextEdit.delete (TextEdit.moveTo s.Text.Length true s)) else TextEdit.delete)
@@ -339,7 +427,7 @@ module TextBox =
             let s = stateOf e
             adopt e s
             let next = TextEdit.insert args.Text (e.Get TextBoxProps.maxLength) s.Edit
-            if next <> s.Edit then apply e s next else restartBlink e s
+            if next <> s.Edit then applyEdit e s EditKind.Typing next else restartBlink e s
 
     let private focusChanged (ctx: InputContext) (isFocused: bool) (byTab: bool) =
         let e = ctx.Element
@@ -348,7 +436,18 @@ module TextBox =
             adopt e s
             // Tab, then typing, replaces a field's value (DESIGN.md, "9a", decision 15).
             if byTab then s.Edit <- TextEdit.selectAll s.Edit
+            s.History <- TextHistory.close s.History
             restartBlink e s
+            // In the browser these keys are the box's, not the browser's (DESIGN.md, "9b", decision 32). Ctrl+V is
+            // left to it: its paste event is where the text comes from.
+            if not s.Claimed then
+                s.Claimed <- true
+                match RenderServices.TryCurrent with
+                | ValueSome { Window = ValueSome window } ->
+                    for key in [ 'z'; 'y'; 'c'; 'x' ] do
+                        window.ClaimKey(Key.Char key, Modifiers.Control)
+                    window.ClaimKey(Key.Char 'z', Modifiers.Control ||| Modifiers.Shift)
+                | _ -> ()
         else
             s.Dragging <- false
             s.BlinkGeneration <- s.BlinkGeneration + 1

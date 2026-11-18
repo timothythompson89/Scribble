@@ -71,9 +71,11 @@ Done and verified by Tim on Windows and in the browser (every checklist item, th
   actions for every element type; the inspector's SEMANTICS section); rendering to an image and saving it
   (`ViewImage.render`, `Capture`, `Image.toPng`, `Files.save`); SDL3 as the desktop platform (Win32 is gone).
 
-Built and waiting for Tim's pass: **M9 step 9a, the single-line TextBox** (section "9a: the single-line TextBox").
+Done in M9 so far: **step 9a, the single-line TextBox** (section "9a: the single-line TextBox"; checked by Tim on
+the desktop, 2026-11-18; its browser checks wait in `docs/CHECKLIST-BROWSER.md`). Also done:
+**step 9b, clipboard and undo** (section "9b: clipboard and undo"; checked by Tim, 2026-11-18).
 
-Next: M9 steps 9b to 9e (clipboard and undo, multi-line, IME and the phone keyboard, typeahead and labels). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: M9 steps 9c to 9e (multi-line, IME and the phone keyboard, typeahead and labels). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -149,7 +151,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line; M9 step 9a), Modal, dialogs, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line, with clipboard and undo; M9 steps 9a and 9b), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -3894,7 +3896,7 @@ Status: **agreed (Tim, 2026-11-18: "yes to all").**
 
 Status: **agreed (Tim, 2026-11-18: "yes to all").**
 
-**As built (2026-11-18; waiting for Tim's pass).**
+**As built (2026-11-18; checked by Tim on the desktop the same day: "9a is all good").**
 - **The engine** is `TextEdit` (`Foundation/TextEditing.fs`): an `EditState` (text, anchor, caret) and functions
   from one state to the next (`insert`, `backspace`, `delete`, the word forms, `move`, `moveTo`, `selectAll`,
   `selectWordAt`, `withText`). A word is a run of one kind (letters and digits, or punctuation); Ctrl+→ stops at
@@ -3926,6 +3928,82 @@ Status: **agreed (Tim, 2026-11-18: "yes to all").**
 - **Tests:** 34 unit tests (the engine's rules on 200 random sequences of 120 edits; every key and gesture;
   controlled text; the blink ending with no frames after); two screenshots (`textbox@1x`, `textbox-light@1x`).
   Totals: 1,181 unit (+6 timing), 97 rendering, 6 timing.
+
+### 9b: clipboard and undo (planned 2026-11-18)
+
+Facts at the start. Nothing in the code mentions a clipboard: not `IPlatform`, not the SDL bindings, not the
+browser platform's JavaScript. SDL's clipboard is a synchronous call. The browser writes text freely during a key
+press; reading through its API asks the person for permission, but its own `paste` event hands the text over with no
+prompt. Every edit already goes through one `apply` (decision 20).
+
+**Round 3 (Tim: yes to all, 2026-11-18).**
+22. **The platform contract:** `IPlatform.SetClipboardText(text)` and `GetClipboardText() : Task<string>`. Text
+    only. The desktop answers at once; the tests' fake holds a string.
+23. **Paste in the browser comes from the browser's own paste event:** on Ctrl+V the browser fires `paste` and the
+    pending read is answered from it (no permission prompt; works where the reading API is restricted). The
+    permission-asking API is only for a read with no key press behind it.
+24. **An API for apps:** a hook, `ctx.useClipboard()`, giving `SetText` and `GetText`; element authors get the same
+    through their input context.
+25. **Keys** (Windows conventions): Ctrl+C, Ctrl+X, Ctrl+V and the old forms Ctrl+Insert, Shift+Delete,
+    Shift+Insert; Ctrl+Z undoes; Ctrl+Y and Ctrl+Shift+Z redo.
+26. **At the edges:** Copy or Cut with no selection does nothing (the clipboard keeps what it had). Paste replaces
+    the selection; line breaks and tabs become spaces (one line until 9c); `maxLength` keeps what fits. A read-only
+    box copies but doesn't cut, paste or undo. A password box pastes but doesn't copy or cut.
+27. **No right-click menu in 9b:** it comes with a Menu control; touch selection in 9d.
+28. **One undo step:** a run of typing, or a run of Backspaces or Deletes. A new step starts when the caret is
+    moved, when the kind of edit changes, or after a one-second pause (the platform's clock). A cut, a paste and
+    typing over a selection are each a step of their own.
+29. **Undo puts the selection back too:** each step restores the text, caret and selection from before it; redo
+    those from after.
+30. **The history belongs to the box:** up to 100 steps, kept in the element, gone with it. A new edit after an undo
+    drops the redo steps.
+31. **Undo and controlled text:** an undo goes to the app through `onTextChanged` like any edit. When the view
+    answers an edit with other text (a filter), the history records what the view answered. When the view sets text
+    for another reason (a Clear button, loaded data), the history is cleared.
+32. **The browser's own shortcuts:** the TextBox claims Ctrl+Z, Ctrl+Y, Ctrl+C and Ctrl+X while it has focus;
+    Ctrl+V is left to the browser so its paste event fires.
+33. **Gallery and tests:** a "Copy" button beside the Hello line (the hook); engine properties (any edits, then as
+    many undos, give the original text and selection; as many redos give the result back); unit tests for every
+    key and edge rule, step grouping on the fake clock, the limit, controlled text, the hook. No screenshots:
+    nothing new is drawn.
+
+Status: **agreed (Tim, 2026-11-18: "Yes to all").**
+
+**As built (2026-11-18; checked by Tim on the desktop the same day, and copy and paste in the browser on localhost:
+no permission question).**
+- **The contract:** `IPlatform.SetClipboardText` and `GetClipboardText` (decision 22). SDL: `SDL_SetClipboardText`
+  and `SDL_GetClipboardText` (freed with `SDL_free`), a finished task. The fake platform holds a string and can
+  answer late, as the browser does.
+- **The browser** (`scribble-platform.js`): a write is `navigator.clipboard.writeText`. A read after a paste key
+  (Ctrl+V, Shift+Insert, within a second) waits for the page's `paste` event and is answered from it, whichever
+  comes first; with no event in half a second, or with no paste key, it is `navigator.clipboard.readText`, which
+  asks. The answer comes back as an event record (kind 12) like every other, so nothing new is marshalled. A page
+  without the clipboard API (plain http that isn't localhost) copies nothing, and a read with no paste key gives
+  ""; a paste key still pastes, since the paste event needs no API.
+- **For apps and element authors:** `Clipboard` (`Foundation/Clipboard.fs`) with `SetText` and `GetText`, from
+  `ctx.useClipboard ()` in a component and `ctx.Clipboard` in an element type's input handlers. It finds the
+  platform through the thread's app (`RenderServices`, as `Files.save` does); a read that isn't finished at once
+  finishes on the UI thread. Without a running app it does nothing.
+- **The history** is `TextHistory` (`Foundation/TextEditing.fs`), beside `TextEdit` and as free of UI: steps of
+  the state before and after, a kind (`Typing`, `Deleting`, `Single`) and the time of the last edit. An edit joins
+  the newest step when it has the same joining kind, starts in exactly the state that step ended in, comes within
+  a second of it, and no caret move came between. `amend` is decision 31's filter answer.
+- **In the TextBox** every edit still goes through one function (`applyWith`), which now records it; a move of the
+  caret or selection closes the step being typed, and so does focus coming back. A paste that answers late lands
+  only if the box still has focus and can take it.
+- **Controlled text:** the box remembers that it told its view of an edit. Other text from the view while that is
+  pending is the answer (the step ends in it; the old text back removes the step); other text at any other time,
+  or as the answer to an undo, clears the history.
+- **Claimed keys** (decision 32): the box claims Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+C and Ctrl+X the first time
+  it takes focus, and they stay claimed (`ClaimKey` has no way back; on a canvas page the browser has nothing of
+  its own to undo or copy).
+- **Not in the round, chosen while building:** a paste of nothing (an empty clipboard, or only control
+  characters) changes nothing and keeps the selection; Ctrl+Backspace and Ctrl+Delete join a run of deleting.
+- **Gallery:** a "Copy" button beside the Hello line on the Controls page (`ctx.useClipboard`).
+- **Tests:** 18 new unit tests (`TextBoxClipboardTests.fs`): the history's rules and its property on 200 random
+  sequences of 60 edits; every key and edge rule; a clipboard that answers late; controlled text; the claimed
+  keys; the hook. One reference regenerated (`gallery-phone-controls@3x`: the page is longer, so its scrollbar
+  is shorter). Totals: 1,201 unit (+6 timing), 97 rendering, 6 timing.
 
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 

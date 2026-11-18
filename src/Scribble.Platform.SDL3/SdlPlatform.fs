@@ -274,6 +274,18 @@ type SdlPlatform() =
         member _.CreateWindow(options, onEvent) = createWindow options onEvent
         member _.Run() = run ()
         member _.SaveFile(owner, suggestedName, bytes) = saveFile owner suggestedName bytes
+
+        member _.SetClipboardText(text) =
+            withUtf8 (if isNull text then "" else text) (fun p -> SDL_SetClipboardText p |> ignore)
+
+        member _.GetClipboardText() =
+            let p = SDL_GetClipboardText()
+            if p = 0n then Task.FromResult ""
+            else
+                let text = Marshal.PtrToStringUTF8 p
+                SDL_free p
+                Task.FromResult(if isNull text then "" else text)
+
         member _.SetWakeHandler(handler) = wakeHandler <- handler
         member _.Elapsed = clock.Elapsed
 

@@ -324,6 +324,8 @@ type private ManyWindows() =
         member this.After(delay, action) = this.Time.After(delay, action)
         member _.Run() = ()
         member _.SaveFile(_, _, _) = Threading.Tasks.Task.FromResult false
+        member _.SetClipboardText _ = ()
+        member _.GetClipboardText() = Threading.Tasks.Task.FromResult ""
         member _.Dispose() = ()
 
 [<Fact>]

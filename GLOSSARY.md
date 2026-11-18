@@ -193,6 +193,10 @@ _Avoid_: cursor (that is the pointer's look), insertion point
 The run of text between the anchor (where selecting started) and the caret; typing replaces it.
 _Avoid_: highlight, range
 
+**Undo step**:
+What one undo takes back in a TextBox: a run of typing, a run of deleting, or one cut, paste or replaced selection.
+_Avoid_: undo unit, transaction
+
 **Host**:
 What runs a window's layers: input, frames and the window's theme (`ElementHost`).
 _Avoid_: window (for the host), root

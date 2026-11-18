@@ -82,6 +82,16 @@ type FakePlatform() =
     /// What `SaveFile` was given (name and bytes), and what it answers (true: saved).
     member val Saved = ResizeArray<string * byte[]>() with get
     member val SaveAnswer = true with get, set
+    /// The system clipboard's text.
+    member val Clipboard = "" with get, set
+    /// True: a read answers later, as the browser does (a test finishes it with `FinishClipboardReads`).
+    member val ClipboardIsSlow = false with get, set
+    member val ClipboardReads = ResizeArray<Threading.Tasks.TaskCompletionSource<string>>() with get
+    member this.FinishClipboardReads() =
+        let reads = List.ofSeq this.ClipboardReads
+        this.ClipboardReads.Clear()
+        for r in reads do
+            r.SetResult this.Clipboard
     interface IPlatform with
         member _.Name = "fake"
         member _.SupportsMultipleWindows = false
@@ -93,6 +103,13 @@ type FakePlatform() =
         member this.SaveFile(_, name, bytes) =
             this.Saved.Add((name, bytes))
             Threading.Tasks.Task.FromResult this.SaveAnswer
+        member this.SetClipboardText text = this.Clipboard <- text
+        member this.GetClipboardText() =
+            if this.ClipboardIsSlow then
+                let read = Threading.Tasks.TaskCompletionSource<string>()
+                this.ClipboardReads.Add read
+                read.Task
+            else Threading.Tasks.Task.FromResult this.Clipboard
         member this.SetWakeHandler handler = this.WakeHandler <- handler
         member _.Wake() = Threading.Interlocked.Increment(&wakes) |> ignore
         member this.Elapsed = this.Time.Now
@@ -132,6 +149,12 @@ let start (settings: AppSetting<'Msg> list) =
     let platform, device = new FakePlatform(), new FakeDevice()
     let app = App.start (platform, device, new FixedShaper(), settings)
     platform.Window.Value, device, app
+
+/// As `start`, giving the platform too (its clipboard).
+let startOn (settings: AppSetting<'Msg> list) =
+    let platform, device = new FakePlatform(), new FakeDevice()
+    let app = App.start (platform, device, new FixedShaper(), settings)
+    platform, platform.Window.Value, app
 
 type Msg =
     | Increment

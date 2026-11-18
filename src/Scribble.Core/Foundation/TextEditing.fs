@@ -236,3 +236,80 @@ module TextEdit =
     /// Ctrl+Delete: the selection, else on to the start of the next word.
     let deleteWord (s: EditState) =
         if s.HasSelection then deleteSelection s else removeRange s.Caret (nextWord s.Text s.Caret) s
+
+/// What kind of change an undo step is: runs of one kind join into one step (DESIGN.md, "9b", decision 28).
+[<RequireQualifiedAccess>]
+type EditKind =
+    /// Typed text with no selection to replace.
+    | Typing
+    /// Backspace or Delete (a character or a word) with no selection.
+    | Deleting
+    /// A cut, a paste, or anything that replaced or removed a selection: always a step of its own.
+    | Single
+
+/// One undo step: the state before it and after it (text, caret and selection), and when its last edit was made.
+[<Struct>]
+type EditStep =
+    { Before: EditState
+      After: EditState
+      Kind: EditKind
+      Time: TimeSpan }
+
+/// A TextBox's undo history: the steps that can be undone (the newest first) and those undone that can be redone.
+type EditHistory =
+    { Undo: EditStep list
+      Redo: EditStep list
+      /// The caret was moved since the newest step: the next edit starts a new one.
+      Closed: bool }
+
+/// The undo history's rules, with no UI in them (DESIGN.md, "9b: clipboard and undo", decisions 28 to 31).
+module TextHistory =
+    let empty = { Undo = []; Redo = []; Closed = false }
+
+    /// The most steps kept: the oldest go.
+    let limit = 100
+
+    /// Edits of one kind closer together than this join into one step.
+    let pause = TimeSpan.FromSeconds 1.0
+
+    /// Records an edit that changed `before` into `after` at `time`: it joins the newest step when it is of the
+    /// same joining kind, starts where that step ended, comes within `pause` of it, and the caret hasn't been moved
+    /// between. Anything undone can no longer be redone.
+    let record (kind: EditKind) (time: TimeSpan) (before: EditState) (after: EditState) (history: EditHistory) =
+        match history.Undo with
+        | top :: rest when
+            not history.Closed
+            && kind <> EditKind.Single
+            && top.Kind = kind
+            && top.After = before
+            && time - top.Time <= pause
+            ->
+            { Undo = { top with After = after; Time = time } :: rest; Redo = []; Closed = false }
+        | steps ->
+            let step = { Before = before; After = after; Kind = kind; Time = time }
+            { Undo = step :: (if steps.Length >= limit then List.truncate (limit - 1) steps else steps); Redo = []; Closed = false }
+
+    /// The caret or the selection was moved without an edit: the next edit starts a new step.
+    let close (history: EditHistory) = if history.Closed || history.Undo.IsEmpty then history else { history with Closed = true }
+
+    /// The state before the newest step, and the history with that step moved to those that can be redone; none
+    /// when there is nothing to undo.
+    let undo (history: EditHistory) : struct (EditState * EditHistory) voption =
+        match history.Undo with
+        | step :: rest -> ValueSome(struct (step.Before, { Undo = rest; Redo = step :: history.Redo; Closed = true }))
+        | [] -> ValueNone
+
+    /// The state after the step undone last, and the history with it back among those that can be undone.
+    let redo (history: EditHistory) : struct (EditState * EditHistory) voption =
+        match history.Redo with
+        | step :: rest -> ValueSome(struct (step.After, { Undo = step :: history.Undo; Redo = rest; Closed = true }))
+        | [] -> ValueNone
+
+    /// The view answered the newest edit with other text than was typed (a filter): the step ends in what the view
+    /// showed. When that is the text from before the step (the view refused the edit), the step goes.
+    let amend (shown: EditState) (history: EditHistory) =
+        match history.Undo with
+        | top :: rest ->
+            if String.Equals(shown.Text, top.Before.Text, StringComparison.Ordinal) then { history with Undo = rest }
+            else { history with Undo = { top with After = shown } :: rest }
+        | [] -> history

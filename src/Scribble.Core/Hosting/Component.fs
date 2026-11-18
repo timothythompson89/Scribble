@@ -415,6 +415,16 @@ type ComponentContext internal (instance: ComponentInstance) =
             slot.HasValue <- true
         slot.Value
 
+    /// The system clipboard's text: `let clipboard = ctx.useClipboard ()`, then in a handler
+    /// `clipboard.SetText link` (a Copy button) or `let! text = clipboard.GetText()`. The same clipboard for as
+    /// long as the component lives.
+    member _.useClipboard() : Clipboard =
+        let slot = instance.Slot("useClipboard", fun () -> MemoSlot<unit, Clipboard>())
+        if not slot.HasValue then
+            slot.Value <- Clipboard()
+            slot.HasValue <- true
+        slot.Value
+
     /// The toasts of the window this component is in: `let toaster = ctx.useToaster ()`, then in a handler
     /// `toaster.Show "Saved"`. The same toaster for as long as the component lives; safe to call from a task.
     member _.useToaster() : Toaster =

@@ -60,6 +60,8 @@ let private controls =
         let size = ctx.useState "Medium"
         let name = ctx.useState "Ada"
         let submitted = ctx.useState ""
+        let clipboard = ctx.useClipboard ()
+        let greeting = if name.Current = "" then "Hello." else "Hello, " + name.Current + "."
         let some = picked.Current
         StackPanel.create [
             StackPanel.spacing 22.0
@@ -170,10 +172,18 @@ let private controls =
                                 TextBox.onSubmitted submitted.Set
                             ]
                         ]
-                        TextBlock.create [
-                            TextBlock.text (
-                                (if name.Current = "" then "Hello." else "Hello, " + name.Current + ".")
-                                + (if submitted.Current = "" then "" else "  Submitted: " + submitted.Current))
+                        wrap [
+                            TextBlock.create [
+                                TextBlock.text (greeting + (if submitted.Current = "" then "" else "  Submitted: " + submitted.Current))
+                                TextBlock.verticalAlignment VerticalAlignment.Center
+                            ]
+                            // The clipboard from app code: paste the greeting into a box (Ctrl+V), or anywhere else.
+                            Button.create [
+                                Button.text "Copy"
+                                Button.padding (12.0, 4.0)
+                                Semantics.label "Copy the greeting"
+                                Button.onClick (fun _ -> clipboard.SetText greeting)
+                            ]
                         ]
                         wrap [
                             TextBox.create [ TextBox.width 220.0; TextBox.placeholder "Password"; TextBox.isPassword true ]

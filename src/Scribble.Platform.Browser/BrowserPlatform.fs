@@ -31,6 +31,8 @@ module internal PlatformJs =
     let setImageCursor = JsFunction(ModuleName, "setImageCursor", T.void', [ T.double ])
     let forgetImageCursor = JsFunction(ModuleName, "forgetImageCursor", T.void', [ T.double ])
     let claimKey = JsFunction(ModuleName, "claimKey", T.void', [ T.string ])
+    let readClipboard = JsFunction(ModuleName, "readClipboard", T.void', [ T.double ])
+    let writeClipboard = JsFunction(ModuleName, "writeClipboard", T.void', [ T.string ])
     let createCanvas = JsFunction(ModuleName, "createCanvas", T.doubles, [ T.string ])
     let removeCanvas = JsFunction(ModuleName, "removeCanvas", T.void', [])
 
@@ -261,14 +263,26 @@ type BrowserPlatform private () =
         | 9 -> Some(FocusChanged(r[i + 1] <> 0.0))
         | _ -> None
 
+    /// Clipboard reads the page hasn't answered yet, by id (kind 12 answers one).
+    let clipboardReads = Collections.Generic.Dictionary<int, TaskCompletionSource<string>>()
+    let mutable lastClipboardRead = 0
+
     let onEvents () =
         let records = PlatformJs.call0 PlatformJs.takeEvents |> returnedDoubles
         let texts = PlatformJs.call0 PlatformJs.takeTexts |> returnedStrings
-        match window with
-        | Some w ->
-            for i in 0 .. PlatformJs.RecordSize .. records.Length - PlatformJs.RecordSize do
-                decode records texts i |> Option.iter w.Dispatch
-        | None -> ()
+        for i in 0 .. PlatformJs.RecordSize .. records.Length - PlatformJs.RecordSize do
+            if int records[i] = 12 then
+                let id = int records[i + 1]
+                match clipboardReads.TryGetValue id with
+                | true, read ->
+                    clipboardReads.Remove id |> ignore
+                    // Refused (index -1): no text.
+                    read.TrySetResult(textAt texts records[i + 2] |> ValueOption.defaultValue "") |> ignore
+                | _ -> ()
+            else
+                match window with
+                | Some w -> decode records texts i |> Option.iter w.Dispatch
+                | None -> ()
 
     let onFrame () =
         match window with
@@ -330,6 +344,22 @@ type BrowserPlatform private () =
                 Threading.Tasks.Task.FromResult true
             with e ->
                 Threading.Tasks.Task.FromException<bool> e
+
+        member _.SetClipboardText(text) =
+            try
+                PlatformJs.callString PlatformJs.writeClipboard (if isNull text then "" else text) |> ignore
+            with _ ->
+                ()
+
+        member _.GetClipboardText() =
+            try
+                lastClipboardRead <- lastClipboardRead + 1
+                let read = TaskCompletionSource<string>()
+                clipboardReads[lastClipboardRead] <- read
+                PlatformJs.callDouble PlatformJs.readClipboard (float lastClipboardRead) |> ignore
+                read.Task
+            with _ ->
+                Task.FromResult ""
 
         member _.CreateWindow(options, onEvent) =
             if window.IsSome then

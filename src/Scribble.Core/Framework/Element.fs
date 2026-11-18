@@ -296,6 +296,8 @@ and [<Struct>] InputContext internal (element: Element) =
     member _.Time = element.Time
     /// Scrolls every scroller around the element so all of it shows (the least scroll).
     member _.BringIntoView() = element.BringIntoView()
+    /// The system clipboard's text (as `ctx.useClipboard ()` in a component).
+    member _.Clipboard = Clipboard()
     member internal _.Element = element
 
 /// What a component's input carries (its function and props); equal inputs don't re-run it.

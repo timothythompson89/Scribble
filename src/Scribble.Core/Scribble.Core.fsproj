@@ -17,6 +17,7 @@
     <Compile Include="Foundation/Scroller.fs" />
     <Compile Include="Foundation/AppValue.fs" />
     <Compile Include="Foundation/RenderServices.fs" />
+    <Compile Include="Foundation/Clipboard.fs" />
     <Compile Include="Foundation/Cmd.fs" />
     <Compile Include="Foundation/Animation.fs" />
     <Compile Include="Framework/Element.fs" />

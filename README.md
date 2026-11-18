@@ -266,9 +266,9 @@ The browser version is `samples/Gallery.Browser` (port 5281); the Counter's is `
 The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,
 port 5282) shows all 4,304 Material Symbols in an ItemsView (`ItemsLayout.wrap`: only the tiles on screen exist):
 
-1. Outlined/Filled switches every icon. The search field (click it, then type; Backspace, Escape clears) scrolls
-   to the first icon whose name starts with (else contains) what you typed and outlines it. It's a stand-in that
-   takes keys until M9's TextBox, so it doesn't open a phone's keyboard.
+1. Outlined/Filled switches every icon. The search field (a TextBox; Escape clears it) scrolls to the first icon
+   whose name starts with (else contains) what you typed and outlines it. It doesn't open a phone's keyboard yet
+   (M9 step 9d).
 2. A click on a tile shows the F# to write for it above the grid: `Material.arrowUpward`, with `.filled` when
    filled, ``Material.``class`` `` for keywords, `Material._10k` for a leading digit.
 3. Tiles light up under the pointer, and the pointer becomes that tile's icon (white with a black outline,
@@ -1367,8 +1367,10 @@ ComboBox.create [
   box with `ComboBox.style [ States.isOpen ] [ ... ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
   its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. An editable ComboBox comes after M9.
 
-- **TextBox**: one line of text to type in (multi-line, the clipboard, undo and input methods are M9's next
-  steps). With `TextBox.text` it is controlled: it shows exactly that and tells `onTextChanged` what the user
+- **TextBox**: one line of text to type in (multi-line and input methods are M9's next steps). Ctrl+C, Ctrl+X
+  and Ctrl+V copy, cut and paste (also Ctrl+Insert, Shift+Delete, Shift+Insert; a password is never copied, a
+  read-only box only copies); Ctrl+Z undoes and Ctrl+Y or Ctrl+Shift+Z redoes, a run of typing at a time, with
+  the selection put back (up to 100 steps; an undo goes through `onTextChanged` like any edit). With `TextBox.text` it is controlled: it shows exactly that and tells `onTextChanged` what the user
   typed; the view may answer with other text (a filter), and the caret is kept inside it. Without, it keeps its
   own text. ←/→ move by character (what a reader sees as one: an emoji is never split) and by word with Ctrl,
   Home/End, Shift with any of them selects, Ctrl+A, Backspace/Delete (a word with Ctrl). A double-click selects
@@ -1387,6 +1389,19 @@ TextBox.create [
 
   Style it with `TextBox.style [ States.focused ] [ ... ]` (`TextBox.selection`, `TextBox.placeholderForeground`).
   Any element can hear typed text with `onTextInput` (it bubbles from the focused element like keys).
+
+- **The clipboard** (text) from app code is a hook; an element type's input handlers have it as `ctx.Clipboard`:
+
+```fsharp
+let clipboard = ctx.useClipboard ()                                    // in a component
+
+Button.create [ Button.text "Copy link"; Button.onClick (fun _ -> clipboard.SetText link) ]
+let! text = clipboard.GetText()                                        // "" when there is none
+```
+
+  The desktop answers a read at once. A browser lets a page write only from a key or a click, and asks the person
+  before a read that isn't a paste key (a TextBox's Ctrl+V takes the text from the browser's paste event: no
+  question).
 
 Own values belong to the element: in an ItemsView, whose rows are recycled, give the value (controlled), or a row
 scrolled in may show the own value of the item it was made for before.
