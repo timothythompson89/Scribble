@@ -3,6 +3,7 @@
     <File Path="Directory.Build.props" />
     <File Path="global.json" />
     <File Path="build/WgpuNative.targets" />
+    <File Path="build/Sdl3.targets" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Scribble.Browser/Scribble.Browser.fsproj" />
@@ -12,7 +13,7 @@
     <Project Path="src/Scribble.Inspector/Scribble.Inspector.fsproj" />
     <Project Path="src/Scribble.Icons.Material/Scribble.Icons.Material.fsproj" />
     <Project Path="src/Scribble.Platform/Scribble.Platform.fsproj" />
-    <Project Path="src/Scribble.Platform.Win32/Scribble.Platform.Win32.fsproj" />
+    <Project Path="src/Scribble.Platform.SDL3/Scribble.Platform.SDL3.fsproj" />
     <Project Path="src/Scribble.Rendering/Scribble.Rendering.fsproj" />
     <Project Path="src/Scribble.Rendering.WebGPU/Scribble.Rendering.WebGPU.fsproj" />
     <Project Path="src/Scribble.Text/Scribble.Text.fsproj" />

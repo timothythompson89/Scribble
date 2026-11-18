@@ -26,6 +26,8 @@ questions", as paragraphs starting with the name given here.
 | M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
+| Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
+| Images out | Rendering a view or an element to an image, PNG, saving (planned) | Section "Rendering to an image and saving it" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -34,9 +36,10 @@ A public, open UI framework for F#, written from the GPU up, with a FuncUI-style
 the browser (WebAssembly) today; macOS and Linux come next, then phones, TVs and consoles. Windows is the
 development platform.
 
-- **Low level by intent:** windowing, rendering, layout and text are our own code. Borrowed: WebGPU (wgpu-native on
-  the desktop, the browser's own WebGPU) and HarfBuzz (shaping only). OS APIs (windows, cursors, IME,
-  accessibility) are the platform, not borrowing.
+- **Low level by intent:** rendering, layout, text, styles and controls are our own code. Borrowed: WebGPU
+  (wgpu-native on the desktop, the browser's own WebGPU), HarfBuzz (shaping only), and platform integration: SDL3 for
+  desktop windows, input and cursors (and later phones and consoles), AccessKit for screen readers (planned). The
+  browser's platform is our own code over the DOM. Section "Platform layer: SDL3 and AccessKit", decision 1.
 - **One look everywhere**, not native imitation, and **the same pixels on every platform** (decision 13 of the
   project review): screenshot tests compare exactly, and backends must agree.
 - **F# only** (no C# projects), and every library works under NativeAOT, trimming and WebAssembly AOT.
@@ -65,7 +68,7 @@ and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`; p
 inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`Button.flyout menu` or `Button.flyout [ Flyout settings ]`, styled as if inside its element,
 each in its own layer, light dismiss, placement) and tooltips.
 
-Next: the rest of M8 step 4 (4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: rendering to an image and saving it (section "Rendering to an image and saving it"), then the rest of M8 step 4 (4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -73,7 +76,7 @@ complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game
 | Project | What it is |
 | --- | --- |
 | `Scribble.Platform` | Windows, events, DPI and time as interfaces (`IPlatform`, `IWindow`, `PlatformEvent`); the frame clock and timer queue |
-| `Scribble.Platform.Win32` | Hand-written Win32: per-monitor DPI v2, the draw-on-request loop, live resize, timers |
+| `Scribble.Platform.SDL3` | The desktop platform, on SDL3 (3.4.20, downloaded on first build): windows, input, cursors, the draw-on-request loop, live resize, timers. Replaced the hand-written Win32 platform on 2026-11-18 |
 | `Scribble.Platform.Browser` | The browser: a full-page canvas, JS interop in pure F# |
 | `Scribble.Rendering` | The draw list, colors, geometry, glyph atlases, the image atlas (pages for decoded images, shared by both GPU backends), `shapes.wgsl` |
 | `Scribble.Rendering.WebGPU` | `webgpu.h` bindings and the renderer over wgpu-native (downloaded on first build) |
@@ -3102,6 +3105,310 @@ Decision (Tim): **runtime-only**. Kept from 1g:
 - Unit tests: 878 passed, 6 skipped.
 - Rendering tests: 76, pixels unchanged.
 - Timing tests: 6.
+
+## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
+
+Status: **agreed (Tim, 2026-11-18: "yes to all, do the spike now")**. Decision 11 changes: the spike comes now, before M8 step 4b. The spike is built (as built below); Win32 stays the default until Tim judges it.
+
+Tim asked for opinions on AccessKit and SDL3, then for this round. He would like to **get rid of the Win32
+platform if SDL3 covers what we need**, and noted that SDL3 has console ports under NDA. Both libraries break the
+rule "borrowed: WebGPU and HarfBuzz only" (Part 1, "What Scribble is"), so the first decision is the rule itself.
+
+### What was found (2026-11-18)
+
+**SDL3**
+- **Consoles:** SDL3 runs on Switch (and Switch 2), PS4 and PS5 through separate, NDA-only repositories. They are free
+  under zlib to developers with the console maker's NDA, and commercial games ship on them. Xbox goes through
+  Microsoft's GDK, which is in SDL's public repository. Sources: the SDL wiki's
+  [SupportedPlatforms](https://wiki.libsdl.org/SDL3/SupportedPlatforms), [README-switch](https://wiki.libsdl.org/SDL3/README-switch),
+  [README-ps5](https://wiki.libsdl.org/SDL3/README-ps5/raw) and [README-gdk](https://wiki.libsdl.org/SDL3/README-gdk).
+- **.NET on consoles:** FNA, a C# game framework on SDL, ships on Xbox and Switch **through NativeAOT** from its
+  public branch, with no console-specific code of its own: the platform code is in SDL and NativeAOT. PlayStation is
+  in progress or just working; the sources disagree
+  ([FNA on Consoles](https://fna-xna.github.io/docs/appendix/Appendix-B:-FNA-on-Consoles)). So NativeAOT F# on SDL on a
+  console is a proven path for everything except rendering.
+- **Rendering on consoles is the gap.** wgpu has no console backends. SDL's own GPU API (SDL_GPU) has a
+  "private" shader format for NDA platforms, but which console backends exist isn't public
+  ([SDL_GPU](https://wiki.libsdl.org/SDL3/CategoryGPU)).
+- **Live resize on Windows:** SDL sends `SDL_EVENT_WINDOW_EXPOSED` during the modal size-move loop. Its `data1` is
+  1 for a live-resize expose, and the event can be drawn from an event watcher. With SDL's main callbacks,
+  `SDL_AppIterate` keeps running while Windows moves or resizes the window. Sources:
+  [SDL_events.h](https://skia.googlesource.com/external/github.com/libsdl-org/SDL/+/b3dca03ebf7bee554eb93010ced563f8748a3ad0/include/SDL3/SDL_events.h),
+  [AppFreezeDuringDrag](https://wiki.libsdl.org/SDL3/AppFreezeDuringDrag),
+  [the modal-loop patch](https://discourse.libsdl.org/t/sdl-allow-the-application-to-draw-while-windows-is-in-a-modal-move-resize-loop/47255).
+  Not yet known: how this compares with our own one-frame-per-refresh handling (section "Live resize lag").
+
+**Our own code**
+- **DirectComposition presentation doesn't depend on Win32.** The G-SYNC fix (section "Cursor stutter with
+  G-SYNC") is wgpu's `Dx12SwapchainKind.DxgiFromVisual`, set in `WebGpuDevice.fs` and handed an HWND. SDL3 gives us
+  the HWND (`SDL_PROP_WINDOW_WIN32_HWND_POINTER`), so the fix should carry over unchanged.
+- **The Win32 platform is about 1,000 lines** (`Native.fs`, `Win32Platform.fs`, `Win32Window.fs`). It has:
+  - windows: per-monitor DPI, `AdjustWindowRectExForDpi`, owned tool windows (`WindowOptions.Owner`);
+  - our live-resize pacing: `WM_ENTERSIZEMOVE`, the refresh rate read from the monitor, a size-move timer;
+  - mouse pointers: capture, leave tracking, wheel and horizontal wheel. It has no touch or pen, since it doesn't use
+    `WM_POINTER`;
+  - keys and `WM_CHAR` text, with no IME;
+  - system and image cursors, made per DPI;
+  - `Wake` and `After` through a hidden window's timer.
+- **SDL3 has an equivalent for each:** windows with display scale; `SDL_SetWindowParent` and utility windows for
+  owned windows; pointer capture; mouse, touch and pen events; keyboard and text input with IME and
+  `SDL_SetTextInputArea`; system cursors and `SDL_CreateColorCursor`; `SDL_PushEvent` to wake a waiting loop.
+  It also has hit testing for custom title bars (M7c) and the clipboard. Whether each one behaves as well as ours is
+  what the spike (decision 4) is for.
+- **Tests don't touch the platform:** unit tests use the fake platform, and screenshot tests render offscreen. Both
+  are unaffected.
+
+**AccessKit**
+- AccessKit takes tree updates (ids, roles, names, states, bounds) and calls back with actions. It has adapters for
+  Windows UI Automation, macOS and Linux AT-SPI, a C API (accesskit-c), and an SDL example. It is still at 0.x
+  versions. On Windows it can attach to a window it doesn't own by subclassing it, which suits an SDL window.
+- **Doing it ourselves would be hard:** UI Automation is COM, whose NativeAOT support needs a C#-only source
+  generator; AT-SPI needs D-Bus; macOS needs Objective-C protocols.
+
+### Decisions
+
+1. **The borrowing rule.** Change "Borrowed: WebGPU and HarfBuzz" to also borrow platform integration: **SDL3**
+   (windows, input, text input, cursors, clipboard, app lifecycle) and **AccessKit** (screen readers). Rendering,
+   layout, text, styles and controls stay ours. The reason: windowing on five or more platforms, two of them under
+   NDA, is not where Scribble's value is. FNA, egui and Bevy draw the same line.
+   **Recommendation: yes.**
+
+2. **SDL3 replaces Win32 on Windows, if the spike passes.** One desktop platform (`Scribble.Platform.SDL3`) for
+   Windows, macOS, Linux, and later phones and consoles. If every pass criterion in decision 4 holds, delete
+   `Scribble.Platform.Win32`; git keeps it. Keeping it as a fallback would mean two platforms to keep equal on
+   Windows, and only one of them tested.
+   **Recommendation: yes. Delete Win32 once the spike passes; if a criterion fails, we decide then whether to fix it
+   in SDL, work around it, or keep Win32.**
+
+3. **The browser keeps its own platform.** SDL's browser port is built on Emscripten, which doesn't fit .NET's
+   WebAssembly. `Scribble.Platform.Browser` stays, and screen readers there get our own ARIA bridge.
+   **Recommendation: yes.**
+
+4. **A spike first, on Windows, with written pass criteria.** Build `Scribble.Platform.SDL3` behind `IPlatform` and
+   run the Gallery, Hello and the popped-out inspector on it. Measure each criterion against Win32 on your machine:
+   - **Power rule:** idle draws zero frames (counted) and uses about zero CPU. While something animates, at most one
+     frame per refresh.
+   - **Live resize:** at most one frame per refresh, the content keeps up with the edge, no lag at the start of a
+     drag, and no flicker on the other monitor with a game running.
+   - **G-SYNC:** the cursor is smooth over still content, so DirectComposition still applies.
+   - **DPI:** right size and scale at creation, and when dragged between monitors of different DPI.
+   - **Pointers:** capture while dragging outside the window, leave, the wheel (high-resolution and sideways), and
+     touch and pen, which are new.
+   - **Keyboard:** every `Key`, repeat, Alt and F10 not eaten by the system menu, typed characters including emoji
+     and dead keys, and focus in and out.
+   - **Cursors:** every system cursor, and image cursors sharp at 100, 150 and 200 percent.
+   - **Windows:** the owned inspector window stays above its owner, has no taskbar button, and closes with it.
+     Also the title, and what the frame looks like with the dark theme.
+   - **Shipping:** NativeAOT publish with `SDL3.dll` beside the exe, startup time, and the size added.
+   - **Tests:** all unit, rendering and timing tests unchanged.
+   **Recommendation: yes. You judge the spike on your machine; I report the counts and timings.**
+
+5. **Binding SDL3: our own F# P/Invoke,** only the functions we use, with `DllImport`, blittable signatures, and
+   struct layouts checked against the headers, as with wgpu. Not the C# binding packages: F# only, and less to depend
+   on. **Recommendation: yes.**
+
+6. **Getting SDL3: download official release binaries** on first build into `native/`, at a pinned version (the
+   latest stable 3.x at the time), as `build/WgpuNative.targets` does. Windows x64 and arm64 first, macOS with the Mac
+   build. Linux (distribution package or our own build) is decided with the Linux build.
+   **Recommendation: yes.**
+
+7. **The event loop stays ours.** `IPlatform.Run` waits with `SDL_WaitEventTimeout` until the next `After`
+   deadline. `Wake` pushes a user event, which is thread-safe and wakes the wait. `After` keeps its own queue rather
+   than SDL timer threads. Live resize runs through an event watch on the live-resize expose events, keeping our
+   one-frame-per-refresh pacing. SDL's main-callback style (`SDL_AppIterate`) waits until iOS needs it.
+   **Recommendation: yes.**
+
+8. **IME goes in with M9 TextBox, on SDL** (`SDL_StartTextInput` while a text box has focus,
+   `SDL_SetTextInputArea` for the candidate window). This is a reason to do the spike **before M9**: Win32 then never
+   gets an IME of its own. **Recommendation: yes.**
+
+9. **Consoles: record the path, decide nothing yet.** SDL3 plus NativeAOT covers windows, input and lifecycle there
+   (FNA shows it). Rendering is the open question, with three answers for when a console is in reach:
+   - wgpu gains console backends, which we don't control;
+   - a second renderer on SDL_GPU, whose console backends are private. It would need our WGSL shaders translated and
+     a check that the pixels match;
+   - our own console backend.
+   Console code is under NDA, so it can't live in Scribble's public repository: like FNA and SDL, console support
+   would be private repositories for licensed developers. Gamepad input and focus navigation come with game UI
+   hosts. **Recommendation: record it as above; revisit when you have a devkit.**
+
+10. **AccessKit, after the spike, on the SDL window.** An opt-in project (name to settle: `Scribble.Accessibility`)
+    that turns the semantic tree into AccessKit updates and AccessKit's actions into `node.Perform`, through the
+    dispatcher, since actions arrive on the screen reader's thread. Windows first, tested with Narrator and NVDA.
+    Change notifications (round "The semantics stage") come with it. Doing it after the spike means wiring it to one
+    platform once, not to Win32 and then again to SDL.
+    **Recommendation: yes. The binary comes from accesskit-c releases, pinned, in the same way as SDL3.**
+
+11. **Order:** finish M8 step 4 (4b to 4d), then the SDL3 spike and the switch, then M9 TextBox (with IME), then
+    AccessKit; M10 hot reload as planned. Alternatively, do the spike now, before 4b, if you'd rather know early.
+    **Recommendation: after M8 step 4. The controls don't depend on the platform, and the spike shouldn't sit beside
+    half-built controls.**
+
+### Not decided here
+- **The project name:** `Scribble.Platform.SDL3` versus `Scribble.Platform.Desktop`. I'd name it for what it is.
+- **Single-window platforms:** what `SupportsMultipleWindows` means on phones and consoles. Decided with those
+  platforms.
+- **Whether `Scribble.Desktop` changes:** it picks the platform and the renderer, so it would change only to create
+  the SDL platform.
+
+**As built: the spike (2026-11-18).** `src/Scribble.Platform.SDL3` (about 850 lines: `Native.fs`, `SdlWindow.fs`,
+`SdlPlatform.fs`) implements `IPlatform` and `IWindow` on SDL 3.4.20. `build/Sdl3.targets` downloads the official
+Windows x64 zip into `native/`, as wgpu-native's target does. `App.run` uses it when `SCRIBBLE_PLATFORM=sdl`; Win32
+stays the default until you judge the spike. Rider has "Gallery.Desktop (SDL)" and "Hello.Desktop (SDL)" run
+configurations.
+
+How it works:
+- **SDL's events are handled as they happen,** in an event filter, like a Win32 window procedure, and are dropped
+  from SDL's queue. The queue carries only one event of ours. It wakes the loop for `Wake`, a new earliest timer, or
+  a frame requested from inside the filter.
+- **The loop** pumps SDL, delivers due frames (vsync paces it), and otherwise blocks in `SDL_WaitEventTimeout` until
+  the next timer.
+- **Live resize:** while Windows runs its modal size-move loop, SDL's 10 ms timer sends live-resize expose events
+  (read in SDL's source: `WM_ENTERSIZEMOVE` → `SetTimer` → `SDL_OnWindowLiveResizeUpdate`). On each one we run what
+  our loop would: the wake handler, due timers, due frames. Resizes draw at most once per display refresh, as on
+  Win32. `LiveResize true` comes with the first tick, and `false` when our loop runs again.
+- **Wakes from another thread** push our event from a thread-pool item. SDL holds its event-watch lock while it
+  runs the filter, and this way an image decoder or a task never waits on the UI thread.
+- **Owned windows** use `SDL_SetWindowParent`, which sets the Win32 owner. SDL destroys them with their owner and
+  sends each its DESTROYED event.
+- **Cursors:** image cursors are made per scale from straight-alpha pixels, the 32 most recent kept, as on Win32.
+  SDL's cursor belongs to the app, not the window, so a window shows its cursor while the pointer is over it.
+- **Touch and pen** come through SDL's mouse events, as `Touch` and `Pen` pointer kinds. Multi-touch waits for the
+  phone port.
+- **Text input** is on for every window, which also turns on the IME. M9 turns it on and off with focus.
+- **Hints:** the screensaver allowed (SDL turns it off by default); Alt+Space opens the system menu (SDL blocks it
+  by default).
+- **The surface** is still `Win32Handle` (HWND from SDL's window properties), so D3D12 keeps presenting through
+  DirectComposition.
+
+Measured here (Release NativeAOT Gallery, 3 runs each, 96 DPI monitor):
+- **Window up:** about 0.5 s on both platforms.
+- **CPU over 5 s idle:** 0–16 ms on SDL, 16–63 ms on Win32. Both are at the clock's resolution: idle on both.
+- **Working set:** about 168 MB on SDL, 171 MB on Win32.
+- **Size:** `SDL3.dll` adds 2.8 MB; the exe grew by 72 KB.
+- **Same window:** client 720×560 on both.
+- **Scripted:** a resize by `SetWindowPos` redraws at the new size, and `WM_CLOSE` closes the app.
+- **Tests:** unit (878 + 6 skipped), rendering (76) and timing (6) unchanged. The browser build is unaffected.
+
+Not verified here (your machine, the checklist): every pass criterion that needs real input or hardware. That is
+live resize by dragging, G-SYNC, DPI changes, keyboard and text (a posted key doesn't reach SDL without keyboard
+focus, which a script can't take), touch and pen, image cursors at each scale, and the inspector's popped-out window.
+
+**Keyboard, tested with real input (2026-11-18, Tim focusing the window, keys sent by `SendInput`):**
+- **On SDL, all of these work:**
+  - Tab and Shift+Tab move focus: the theme switch, the tab row, then the buttons, and back.
+  - Space and Enter press a focused button.
+  - The Right arrow on the tab row switches the tab, and the title follows.
+  - F12 opens the inspector.
+  - Ctrl+Shift+C starts pick mode, and Escape stops it.
+  - Alt+Space opens the system menu.
+  - Alt+F4 closes the window.
+- **Alt+F4 straight after closing the system menu with Escape** missed once when scripted (keys a few hundred ms
+  apart), while Win32 closed. With a real keyboard Tim closed the SDL window with Alt+F4 on the first try: a
+  scripting artefact, not a difference.
+- **Alt or F10 alone, then Down or Space** (Tim): neither Win32 nor SDL opens the system menu, so neither goes into menu
+  mode; the next key reaches the app on both. No keyboard difference is left.
+
+**Live resize, dragged by Tim (2026-11-18):** fine on SDL, no lag, with the game running on the other monitor and no
+flicker on the game's monitor.
+**G-SYNC (Tim, 2026-11-18):** the cursor is smooth over still content with the game running: DirectComposition
+presentation carries over to SDL's window, as expected.
+**Idle (Tim, 2026-11-18):** 0% CPU and 0% GPU in Task Manager. Animations are smooth and drop back to 0% when they finish:
+the power rule holds on SDL.
+**Window states (Tim, 2026-11-18):** maximize, snap, minimize and restore all redraw at once, at the right size.
+**Owned window (Tim, 2026-11-18):** the popped-out inspector stays above the Gallery, has no taskbar button,
+minimizes and restores with it, pops back in, and closes with it (`SDL_SetWindowParent`).
+**Also checked by Tim (2026-11-18):** mouse, wheel and cursors good; title and title-bar colour right. His monitors
+share one scale, so a DPI change across monitors wasn't exercised. One difference: SDL opens the window centred on
+the screen, where Win32 let Windows place it (cascaded).
+
+**Verdict and switch (Tim, 2026-11-18: "yes, make SDL the only platform and delete Win32").** Tim checked the rest
+himself:
+- the AOT exe runs on SDL;
+- a held key repeats.
+
+He can't test these on this PC: touch and pen, another keyboard layout, an IME, monitors with different scaling.
+
+As built:
+- `src/Scribble.Platform.Win32` is deleted; git keeps it.
+- `App.run` creates `SdlPlatform`. `SCRIBBLE_PLATFORM` and the "(SDL)" run configurations are gone.
+- Comments in the SDL platform no longer point at Win32 code.
+- **Docs:**
+  - Part 1 ("What Scribble is", Projects, Next), CLAUDE.md and the README describe SDL3 as the desktop platform and
+    the new borrowing rule.
+  - The README also says how to get SDL3 by hand if the download fails.
+- **One thing that isn't SDL's:** the samples are console apps (`OutputType Exe`), so an AOT sample opens a console
+  window too. It did on Win32 as well.
+
+## Rendering to an image and saving it (planned 2026-11-18)
+
+Status: **agreed (Tim, 2026-11-18: round 1 "yes to all, PNG it is", round 2 "yes to all")**. Built before M8 step
+4b.
+
+Tim asked whether we can render to a PNG, then wanted every use: tools and scripts (the README's pictures), an app
+feature ("export this chart"), and the browser. Facts it rests on:
+- `IRenderDevice.RenderOffscreen` draws into a texture and reads the pixels back, on the desktop only. The browser
+  throws: `mapAsync` returns a Promise (the open item "RenderOffscreen must become async").
+- PNG writing lived only in the rendering tests (`Png.encode`, rows unfiltered); `Scribble.Imaging` only decoded.
+- App code can't reach an element; the nearest pattern is `Scroller`, an object the app makes and gives through a
+  setting.
+- SDL3 has a save dialog (`SDL_ShowSaveFileDialog`); the browser saves by starting a download.
+
+Considered: BMP instead of PNG (Tim). It saves about 20 lines of an encoder that already existed, and costs file size
+(no compression: 1.6 MB for a 720×560 picture), transparency (only the V4/V5 header has alpha, and many viewers ignore
+it) and use (GitHub doesn't show it inline). The hard parts (async readback, capturing a live element, saving) don't
+depend on the format.
+
+**Round 1 (Tim: yes to all):**
+1. **`Png.encode` in `Scribble.Imaging`,** beside the decoder, replacing the tests' copy: an adaptive filter per row
+   (the smallest-sum heuristic), `ZLibStream`; a round-trip test through our decoder and WIC.
+2. **A render gives an `Image`** (from pixels, its density the render's scale): shown at once in an `ImageView`, or
+   `Image.toPng` for the file's bytes. No new public pixel type; `Bitmap` stays the renderer's.
+3. **Async everywhere:** every render returns `Task<Image>`, already finished on the desktop.
+   `IRenderDevice.RenderOffscreen` becomes `RenderOffscreenAsync`, which closes the open item and allows browser
+   screenshot tests later.
+4. **`ViewImage.render view [ ViewImage.size (w, h); ViewImage.scale; ViewImage.theme; ViewImage.background ]`:**
+   any view at a size, no window. In an app it uses the app's device and fonts; in a tool, `Scribble.Desktop` makes
+   a device and the HarfBuzz text system on first use. One layout and one frame: components fresh, nothing hovered,
+   scrolled to the start, loading images waited for (with a timeout).
+5. **`Capture`, the Scroller pattern:** `let capture = Capture()`, `Border.capture capture` (on `Layoutable`),
+   `capture.ToImage [ settings ] : Task<Image>`. It draws the element and everything inside it as on screen
+   (component state, hover, scroll), at the window's scale or a given one, without the layers above it. It runs
+   between frames on the UI thread and never asks for a frame of its own (the power rule). A capture not attached to
+   a live element fails its task with a clear message.
+6. **Transparency kept:** colours are un-premultiplied when encoded (PNG stores straight alpha), checked by a round
+   trip. `ViewImage` defaults to the theme's background, as a window does; `Capture` to transparent.
+7. **`IPlatform.SaveFile(suggestedName, bytes) : Task<bool>`:** SDL's save dialog on the desktop, a download in the
+   browser. The Gallery gets an "Export PNG" button. Opening files can come later the same way.
+8. **Now, as one step, before 4b:** encoder, async readback (desktop and browser), `ViewImage`, `Capture`,
+   `SaveFile`, the Gallery's button. Tests: PNG round trips; `ViewImage` pixel-identical to the screenshot
+   references; a capture of a scrolled, hovered element; transparency. Tim tries it, then 4b.
+
+**Round 2 (Tim: yes to all).** Facts: `Image.fromPixels` takes a key, its cache identity; we ask WebGPU for its
+default limits (8192 pixels a side); app code can't reach the platform.
+1. **Each render its own key** (a counter): its pixels live in the Image; the cache keeps a decoded copy only while
+   something shows it (the holding rule).
+2. **`Image.toPng : Image -> Task<byte[]>` for any image:** rendered or from pixels at once; from a file or URL
+   decoded first.
+3. **Loading images in a `ViewImage`:** waited for up to `ViewImage.imageTimeout` (default 10 s); past it, drawn
+   without them and a debug warning (`DebugWarnings.Once`), not a failed task. `ViewImage.waitForImages false` skips
+   the wait.
+4. **Over 8192 pixels a side:** the task fails with a message naming the limit. Tiling waits for a real use.
+5. **A Capture covers the element's own box,** not clipped by what's around it (half scrolled out comes out whole);
+   an ItemsView inside draws only its realized items (as on screen: realizing everything would break "frame work
+   proportional to what's visible"); transforms on ancestors ignored (as `PositionInTree`); a focus ring and hover
+   drawn if showing. The docs say so.
+6. **`Capture.margin`** (default 0) adds room for shadows; the picture is exactly the element unless asked.
+7. **Settings lists:** `capture.ToImage [ Capture.scale; Capture.background; Capture.margin ]` (statics on
+   `Capture`), like `ViewImage.render`.
+8. **`Files.save name bytes : Task<bool>` in Core,** through the running app's platform (set by the host, as the image
+   fetcher is). `false` when the person cancels; always `true` in the browser (a download can't tell). SDL's callback
+   comes on another thread; the task finishes on the UI thread. The dialog's filter comes from the name's extension.
+   `Files.open` can come later beside it.
+9. **Tools start `use _ = DesktopApp.headless ()`** (`Scribble.Desktop`): a device and the HarfBuzz text system,
+   disposed at the end. `ViewImage.render` with neither an app nor headless running fails, saying to call it.
+10. **The Gallery's Images page:** an "Export PNG" button capturing a card with a shadow (with `margin`) and saving
+    it, and a `ViewImage` of a small scene shown in an `ImageView` at 1× and 2×.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

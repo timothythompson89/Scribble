@@ -53,7 +53,7 @@ type Key =
     | Alt
     | Meta
     | CapsLock
-    /// Anything else, by name (the browser's `key` name, or "VK" and the Win32 code in hex).
+    /// Anything else, by name (the browser's `key` name, or SDL's key name on the desktop).
     | Other of name: string
 
 /// A cursor image for one scale: premultiplied BGRA pixels, rows top to bottom, and the hotspot

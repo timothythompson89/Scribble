@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
-    <Description>Win32 backend for Scribble.Platform, written directly against user32/kernel32.</Description>
+    <Description>SDL3 backend for Scribble.Platform: windows, input and cursors through SDL (DESIGN.md, "Platform layer: SDL3 and AccessKit").</Description>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Native.fs" />
-    <Compile Include="Win32Window.fs" />
-    <Compile Include="Win32Platform.fs" />
+    <Compile Include="SdlWindow.fs" />
+    <Compile Include="SdlPlatform.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />

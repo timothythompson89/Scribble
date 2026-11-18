@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Scribble.Serve (AOT)" type="DotNetProject" factoryName=".NET Project">
-    <option name="EXE_PATH" value="$PROJECT_DIR$/tools/Scribble.Serve/bin/Debug/net10.0/Scribble.Serve.exe" />
+    <option name="EXE_PATH" value="$PROJECT_DIR$/tools/Scribble.Serve/bin/Release/net10.0/Scribble.Serve.exe" />
     <option name="PROGRAM_PARAMETERS" value="--aot" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tools/Scribble.Serve" />
     <option name="PASS_PARENT_ENVS" value="1" />

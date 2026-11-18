@@ -156,6 +156,14 @@ _Avoid_: image control, picture box
 How many of an image's pixels make one DIP: 1 by default, 2 for an image made for a 2× screen.
 _Avoid_: DPI, scale (for an image's own density)
 
+**Capture**:
+An object an app gives to an element so it can later ask for an image of that element as it is on screen.
+_Avoid_: screenshot (for one element), snapshot (the tests' reference pictures)
+
+**View image**:
+An image made by laying out and drawing a view on its own, with no window.
+_Avoid_: render target, offscreen bitmap
+
 **Holding an image**:
 An element holds the images it shows, keeping them decoded; it lets one go when it stops showing it or leaves its tree.
 _Avoid_: referencing, owning, loading (for holding)

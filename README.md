@@ -95,6 +95,9 @@ The first build downloads wgpu-native (pinned to `v29.0.1.1`) into `native/` (gi
 `wgpu-windows-x86_64-msvc-release.zip` from the
 [wgpu-native v29.0.1.1 release](https://github.com/gfx-rs/wgpu-native/releases/tag/v29.0.1.1)
 and extract it to `native/wgpu-native-v29.0.1.1/win-x64/`, so that `lib/wgpu_native.dll` sits inside it.
+It also downloads SDL3 (pinned to 3.4.20, the desktop platform) and copies `SDL3.dll` next to the executable. If that
+fails, extract `SDL3-3.4.20-win32-x64.zip` from the
+[SDL 3.4.20 release](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.20) to `native/SDL3-3.4.20/win-x64/`.
 
 Set `SCRIBBLE_GPU_BACKEND` to `d3d12` or `vulkan` to force a backend (default on Windows: Direct3D 12, then
 Vulkan; elsewhere Vulkan or Metal; OpenGL only when nothing else gives an adapter). On Windows, Direct3D 12
@@ -421,8 +424,8 @@ App.onKey (fun key mods -> match key with Key.Space -> Some TogglePause | _ -> N
 ```
 
 - **Keys** are logical and follow the keyboard layout: `Key.Char 's'` (letters always lowercase), `Key.Enter`,
-  `Key.Left`, `Key.F 5`, `Key.Other "..."`; modifiers come separately. The browser uses `e.key`; Win32 maps virtual
-  keys through the active layout.
+  `Key.Left`, `Key.F 5`, `Key.Other "..."`; modifiers come separately. The browser uses `e.key`; the desktop uses SDL's keycodes,
+  which follow the active layout.
 - **Routing:** `onPreviewKeyDown`/`onPreviewKeyUp` run from the root down to the focused element (or the root
   when nothing has focus), then `onKeyDown`/`onKeyUp` from there back up. `e.Handle()` stops the event and also
   the built-in behavior below.
@@ -933,7 +936,7 @@ Border.create [ Border.cursor picker; ... ]
   Settings: `Cursor.size`, `Cursor.hotspot (x, y)` (DIPs from the icon's top-left), `Cursor.fill`,
   `Cursor.outline` (transparent for none), `Cursor.outlineWidth`.
 - Made for the window's scale, and again when the window moves to a screen with another scale. Equal settings make
-  equal cursors, so platforms make each once and keep the 32 used last (Win32 `CreateIconIndirect`; in the browser a PNG in CSS `cursor`,
+  equal cursors, so platforms make each once and keep the 32 used last (SDL color cursors on the desktop; in the browser a PNG in CSS `cursor`,
   sharp through `image-set` where the browser takes it). Phones have no cursor.
 
 **Cursors from images:** `Cursor.fromImage image [ ... ]` works the same way with any `Image` (a resource, bytes,
@@ -1124,7 +1127,7 @@ Border.create [ Semantics.role Role.Switch; Semantics.label "Wi-Fi"; Semantics.i
 | `src/Scribble.Icons.Material` | Opt-in Material Symbols: `Material.home`, `Material.filled`, `Material.icon "name"` (© Google, Apache 2.0) |
 | `src/Scribble.Browser` | `App.run` in the browser: the browser equivalents, plus a default page (`build/page`) |
 | `src/Scribble.Platform` | Window, event, DPI and frame-clock abstractions |
-| `src/Scribble.Platform.Win32` | Win32 backend, hand-written P/Invoke |
+| `src/Scribble.Platform.SDL3` | The desktop platform: windows, input and cursors through SDL3 (our own F# bindings) |
 | `src/Scribble.Rendering` | Backend-neutral rendering interfaces |
 | `src/Scribble.Rendering.WebGPU` | WebGPU backend over `webgpu.h` (wgpu-native) |
 | `src/Scribble.Text` | Font parsing, glyph rasterizer, glyph cache, text drawing, measuring, wrapping and trimming; Inter |

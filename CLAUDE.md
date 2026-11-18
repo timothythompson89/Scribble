@@ -12,8 +12,9 @@ decision. Read Part 1 before planning work; this file is how we work and what bi
   each), wait for agreement, record decisions in `docs/DESIGN.md`, then build.
 - Claude writes the code; Tim tests in **Rider on Windows** (and Chrome/Edge for the browser) and gives feedback.
 - **F# only**: no C# projects.
-- Low level by intent: windowing, rendering, layout and text are our own code. Borrowed: WebGPU (wgpu-native) and
-  HarfBuzz only. OS APIs are the platform, not borrowing; image decoding gets its own round (M8 step 3b).
+- Low level by intent: rendering, layout, text, styles and controls are our own code. Borrowed: WebGPU (wgpu-native),
+  HarfBuzz, SDL3 (desktop windows and input) and, later, AccessKit (screen readers). The browser platform is ours.
+  Image decoding is ours (`Scribble.Imaging`).
 - **Frame work proportional to what's visible, not to what exists**, with tests (same elements realized for 100
   and 10,000 items; scroll to item 9,000 without realizing those between).
 - **Same pixels on every platform** (project review, decision 13): exact screenshot comparison, backends agree.
@@ -55,6 +56,7 @@ dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if
   presenting through a DirectComposition visual. GPU devices in tests are created and disposed one at a time
   (`GpuLifetime.Lock`): in parallel they deadlocked NVIDIA's driver.
 - wgpu-native v29.0.1.1 is downloaded on first build into `native/` (git-ignored) by `build/WgpuNative.targets`.
+  SDL 3.4.20 likewise, by `build/Sdl3.targets` (the desktop platform, `Scribble.Platform.SDL3`; our own bindings).
 - **Performance:** measure Release at steady state (warm up, then best of N; a cold run once read 3.5 ms for
   under 1). Judge "fast enough" on Tim's phone with an AOT publish (`tools/Scribble.Serve -- --aot`).
 

@@ -4,7 +4,7 @@ namespace Scribble.Core
 
 open System
 open Scribble.Platform
-open Scribble.Platform.Win32
+open Scribble.Platform.SDL3
 open Scribble.Rendering
 open Scribble.Rendering.WebGPU
 open Scribble.Text
@@ -21,7 +21,7 @@ module DesktopApp =
                 Console.Error.WriteLine "Scribble runs on Windows for now (macOS and Linux are planned); the browser build runs anywhere."
                 1
             else
-                use platform = new Win32Platform() :> IPlatform
+                use platform = new SdlPlatform() :> IPlatform
                 use device =
                     WebGpuDevice.Create [ WebGpuDevice.backend (WebGpuDevice.BackendFromEnvironment()) ]
                     :> IRenderDevice

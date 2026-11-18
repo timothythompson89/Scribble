@@ -1,0 +1,31 @@
+<Project>
+  <!--
+    Supplies the SDL3 library to any executable project that imports this file (DESIGN.md, "Platform layer: SDL3 and
+    AccessKit"). The version is pinned: the F# bindings in Scribble.Platform.SDL3 are checked against its headers.
+
+    Windows: the official release zip is downloaded once into native/ (git-ignored) and copied to the output folder.
+    Other platforms: decided with the Mac and Linux builds.
+  -->
+  <PropertyGroup>
+    <Sdl3Version>3.4.20</Sdl3Version>
+    <Sdl3Root>$(RepositoryRoot)native/SDL3-$(Sdl3Version)/</Sdl3Root>
+    <Sdl3WinZip>SDL3-$(Sdl3Version)-win32-x64.zip</Sdl3WinZip>
+    <Sdl3WinDir>$(Sdl3Root)win-x64/</Sdl3WinDir>
+  </PropertyGroup>
+
+  <Target Name="ScribbleFetchSdl3"
+          BeforeTargets="ResolveReferences"
+          Condition="$([MSBuild]::IsOSPlatform('Windows')) And !Exists('$(Sdl3WinDir)SDL3.dll')">
+    <Message Importance="high" Text="Scribble: downloading SDL $(Sdl3Version) ..." />
+    <DownloadFile SourceUrl="https://github.com/libsdl-org/SDL/releases/download/release-$(Sdl3Version)/$(Sdl3WinZip)"
+                  DestinationFolder="$(Sdl3Root)" />
+    <Unzip SourceFiles="$(Sdl3Root)$(Sdl3WinZip)" DestinationFolder="$(Sdl3WinDir)" />
+  </Target>
+
+  <Target Name="ScribbleCopySdl3" AfterTargets="ScribbleFetchSdl3" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <None Include="$(Sdl3WinDir)SDL3.dll" Condition="Exists('$(Sdl3WinDir)SDL3.dll')"
+            Link="SDL3.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+</Project>
