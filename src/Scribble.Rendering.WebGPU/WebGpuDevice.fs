@@ -4,6 +4,7 @@ namespace Scribble.Rendering.WebGPU
 
 open System
 open System.Runtime.InteropServices
+open System.Threading.Tasks
 open Microsoft.FSharp.NativeInterop
 open Scribble.Platform
 open Scribble.Rendering
@@ -224,92 +225,96 @@ type WebGpuDevice private (ctx: GpuContext, description: string, surfaceLatency:
         member _.ColorGlyphAtlas = colorAtlas
 
         member _.CreateSurface(window, size) = new WebGpuSurface(ctx, shapes, window, size, surfaceLatency) :> IRenderSurface
+        member _.MaxTextureSize = 8192
 
-        member _.RenderOffscreen(size, scale, draw) =
-            if size.IsEmpty then invalidArg (nameof size) "Offscreen size must be non-zero."
+        member _.RenderOffscreenAsync(size, scale, draw) =
+            let render () =
+                if size.IsEmpty then invalidArg (nameof size) "Offscreen size must be non-zero."
 
-            let width, height = uint32 size.Width, uint32 size.Height
-            let extent = { Width = width; Height = height; DepthOrArrayLayers = 1u }
+                let width, height = uint32 size.Width, uint32 size.Height
+                let extent = { Width = width; Height = height; DepthOrArrayLayers = 1u }
 
-            let mutable textureDescriptor =
-                { NextInChain = 0n
-                  Label = StringView.Null
-                  Usage = TextureUsage.RenderAttachment ||| TextureUsage.CopySrc
-                  Dimension = TextureDimension.D2
-                  Size = extent
-                  Format = TextureFormat.RGBA8Unorm
-                  MipLevelCount = 1u
-                  SampleCount = 1u
-                  ViewFormatCount = 0un
-                  ViewFormats = 0n }
+                let mutable textureDescriptor =
+                    { NextInChain = 0n
+                      Label = StringView.Null
+                      Usage = TextureUsage.RenderAttachment ||| TextureUsage.CopySrc
+                      Dimension = TextureDimension.D2
+                      Size = extent
+                      Format = TextureFormat.RGBA8Unorm
+                      MipLevelCount = 1u
+                      SampleCount = 1u
+                      ViewFormatCount = 0un
+                      ViewFormats = 0n }
 
-            let texture = wgpuDeviceCreateTexture(ctx.Device, &&textureDescriptor)
-            let view = wgpuTextureCreateView(texture, 0n)
+                let texture = wgpuDeviceCreateTexture(ctx.Device, &&textureDescriptor)
+                let view = wgpuTextureCreateView(texture, 0n)
 
-            // Buffer rows must be a multiple of 256 bytes for texture-to-buffer copies.
-            let tightRow = int width * 4
-            let paddedRow = (tightRow + 255) / 256 * 256
-            let bufferSize = uint64 paddedRow * uint64 height
+                // Buffer rows must be a multiple of 256 bytes for texture-to-buffer copies.
+                let tightRow = int width * 4
+                let paddedRow = (tightRow + 255) / 256 * 256
+                let bufferSize = uint64 paddedRow * uint64 height
 
-            let mutable bufferDescriptor =
-                { NextInChain = 0n
-                  Label = StringView.Null
-                  Usage = BufferUsage.MapRead ||| BufferUsage.CopyDst
-                  Size = bufferSize
-                  MappedAtCreation = 0u }
+                let mutable bufferDescriptor =
+                    { NextInChain = 0n
+                      Label = StringView.Null
+                      Usage = BufferUsage.MapRead ||| BufferUsage.CopyDst
+                      Size = bufferSize
+                      MappedAtCreation = 0u }
 
-            let buffer = wgpuDeviceCreateBuffer(ctx.Device, &&bufferDescriptor)
+                let buffer = wgpuDeviceCreateBuffer(ctx.Device, &&bufferDescriptor)
 
-            let copyToBuffer encoder =
-                let mutable source =
-                    { Texture = texture
-                      MipLevel = 0u
-                      Origin = { X = 0u; Y = 0u; Z = 0u }
-                      Aspect = TextureAspect.All }
+                let copyToBuffer encoder =
+                    let mutable source =
+                        { Texture = texture
+                          MipLevel = 0u
+                          Origin = { X = 0u; Y = 0u; Z = 0u }
+                          Aspect = TextureAspect.All }
 
-                let mutable destination =
-                    { Layout =
-                        { Offset = 0UL
-                          BytesPerRow = uint32 paddedRow
-                          RowsPerImage = height }
-                      Buffer = buffer }
+                    let mutable destination =
+                        { Layout =
+                            { Offset = 0UL
+                              BytesPerRow = uint32 paddedRow
+                              RowsPerImage = height }
+                          Buffer = buffer }
 
-                let mutable copySize = extent
-                wgpuCommandEncoderCopyTextureToBuffer(encoder, &&source, &&destination, &&copySize)
+                    let mutable copySize = extent
+                    wgpuCommandEncoderCopyTextureToBuffer(encoder, &&source, &&destination, &&copySize)
 
-            try
-                let frame = new RenderFrame(ctx, shapes, view, TextureFormat.RGBA8Unorm, size, scale, copyToBuffer, ignore)
-                (try draw frame finally (frame :> IDisposable).Dispose())
+                try
+                    let frame = new RenderFrame(ctx, shapes, view, TextureFormat.RGBA8Unorm, size, scale, copyToBuffer, ignore)
+                    (try draw frame finally (frame :> IDisposable).Dispose())
 
-                let mapStatus = ref MapAsyncStatus.CallbackCancelled
-                let mapDone = ref false
-                let onMapped =
-                    BufferMapCallback(fun status _ _ _ ->
-                        mapStatus.Value <- status
-                        mapDone.Value <- true)
+                    let mapStatus = ref MapAsyncStatus.CallbackCancelled
+                    let mapDone = ref false
+                    let onMapped =
+                        BufferMapCallback(fun status _ _ _ ->
+                            mapStatus.Value <- status
+                            mapDone.Value <- true)
 
-                wgpuBufferMapAsync(buffer, MapMode.Read, 0un, unativeint bufferSize, Gpu.callbackInfo onMapped)
-                |> ignore
+                    wgpuBufferMapAsync(buffer, MapMode.Read, 0un, unativeint bufferSize, Gpu.callbackInfo onMapped)
+                    |> ignore
 
-                Gpu.waitUntil ctx.Instance ctx.Device "the readback" (fun () -> mapDone.Value)
-                GC.KeepAlive onMapped
+                    Gpu.waitUntil ctx.Instance ctx.Device "the readback" (fun () -> mapDone.Value)
+                    GC.KeepAlive onMapped
 
-                if mapStatus.Value <> MapAsyncStatus.Success then
-                    raise (InvalidOperationException $"WebGPU: readback failed ({mapStatus.Value}).")
+                    if mapStatus.Value <> MapAsyncStatus.Success then
+                        raise (InvalidOperationException $"WebGPU: readback failed ({mapStatus.Value}).")
 
-                let mapped = wgpuBufferGetConstMappedRange(buffer, 0un, unativeint bufferSize)
-                let pixels = Array.zeroCreate<byte> (tightRow * int height)
-                for y in 0 .. int height - 1 do
-                    Marshal.Copy(mapped + nativeint (y * paddedRow), pixels, y * tightRow, tightRow)
-                wgpuBufferUnmap buffer
+                    let mapped = wgpuBufferGetConstMappedRange(buffer, 0un, unativeint bufferSize)
+                    let pixels = Array.zeroCreate<byte> (tightRow * int height)
+                    for y in 0 .. int height - 1 do
+                        Marshal.Copy(mapped + nativeint (y * paddedRow), pixels, y * tightRow, tightRow)
+                    wgpuBufferUnmap buffer
 
-                { Size = size; Pixels = pixels }
-            finally
-                wgpuBufferDestroy buffer
-                wgpuBufferRelease buffer
-                wgpuTextureViewRelease view
-                wgpuTextureDestroy texture
-                wgpuTextureRelease texture
+                    { Size = size; Pixels = pixels }
+                finally
+                    wgpuBufferDestroy buffer
+                    wgpuBufferRelease buffer
+                    wgpuTextureViewRelease view
+                    wgpuTextureDestroy texture
+                    wgpuTextureRelease texture
+            // Everything above ran here (wgpu waits for the readback), so the task is already finished.
+            try Task.FromResult(render ()) with e -> Task.FromException<Bitmap> e
 
     interface IDisposable with
         member _.Dispose() =

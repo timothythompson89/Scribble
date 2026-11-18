@@ -65,6 +65,9 @@ module internal GpuJs =
     let destroySurface = JsFunction(ModuleName, "destroySurface", T.void', [ T.string ])
     let draw =
         JsFunction(ModuleName, "draw", T.void', [ T.string; T.double; T.double; T.double; T.double; T.bytes; T.double; T.bytes ])
+    let renderOffscreen =
+        JsFunction(ModuleName, "renderOffscreen", T.task, [ T.double; T.double; T.double; T.double; T.double; T.double; T.bytes; T.double; T.bytes ])
+    let takeReadback = JsFunction(ModuleName, "takeReadback", T.byteArray, [])
     let dispose = JsFunction(ModuleName, "dispose", T.void', [])
 
     let withId (f: JsFunction) (id: string) =
@@ -107,6 +110,56 @@ type internal BrowserFrame(elementId: string, size: PixelSize, scale: float, atl
                 args[9].ToJS(MemoryMarshal.AsBytes(Span<int> runWords))
                 GpuJs.draw.Invoke args
 
+/// An offscreen frame (DESIGN.md, "Rendering to an image and saving it", decision 3): as BrowserFrame, drawn into a
+/// texture that JavaScript reads back; disposing it starts that, and `Pixels` finishes when they're here.
+[<Sealed>]
+type internal BrowserOffscreenFrame(size: PixelSize, scale: float, atlas: GlyphAtlas, colorAtlas: GlyphAtlas, images: ImageAtlas) =
+    let mutable clearColor = Color.Transparent
+    let drawList = DrawList(scale)
+    let mutable pixels: Task<Bitmap> = null
+
+    /// The pixels, once the frame was disposed.
+    member _.Pixels = pixels
+
+    interface IFrame with
+        member _.Size = size
+        member _.Scale = scale
+        member _.Clear color = clearColor <- color
+        member _.DrawList = drawList
+
+        member _.Dispose() =
+            if isNull pixels then
+                GpuJs.upload 0 atlas
+                GpuJs.upload 1 colorAtlas
+                let runs = images.Prepare drawList
+                let runWords = Array.zeroCreate<int> (runs.Count * 3)
+                for i in 0 .. runs.Count - 1 do
+                    runWords[i * 3] <- runs[i].First
+                    runWords[i * 3 + 1] <- runs[i].Count
+                    runWords[i * 3 + 2] <- runs[i].Page
+                let args = GpuJs.renderOffscreen.Args()
+                args[2].ToJS(float size.Width)
+                args[3].ToJS(float size.Height)
+                args[4].ToJS(float clearColor.R)
+                args[5].ToJS(float clearColor.G)
+                args[6].ToJS(float clearColor.B)
+                args[7].ToJS(float clearColor.A)
+                args[8].ToJS drawList.InstanceBytes
+                args[9].ToJS(float drawList.Count)
+                args[10].ToJS(MemoryMarshal.AsBytes(Span<int> runWords))
+                GpuJs.renderOffscreen.Invoke args
+                let rendered = returnedTask args
+                pixels <-
+                    task {
+                        do! rendered
+                        let take = GpuJs.takeReadback.Args()
+                        GpuJs.takeReadback.Invoke take
+                        let bytes = returnedBytes take
+                        if isNull bytes || bytes.Length <> size.Width * size.Height * 4 then
+                            raise (InvalidOperationException "WebGPU: the offscreen readback gave no pixels.")
+                        return { Size = size; Pixels = bytes }
+                    }
+
 /// A canvas surface. The canvas's pixel size is owned by the platform (it resizes the canvas);
 /// the browser reallocates the swap chain itself, so Resize only records the size.
 [<Sealed>]
@@ -141,7 +194,7 @@ type BrowserGpuSetting = internal BrowserGpuSetting of (BrowserGpuOptions -> Bro
 /// Unlike the native backend, creation is asynchronous: the browser only answers adapter and
 /// device requests after control returns to its event loop.
 [<Sealed>]
-type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtlas: GlyphAtlas, images: ImageAtlas) =
+type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtlas: GlyphAtlas, images: ImageAtlas, maxTexture: int) =
     let mutable disposed = false
 
     /// Which GPU to prefer on machines with more than one. Default: the browser chooses.
@@ -171,24 +224,31 @@ type BrowserGpuDevice private (description: string, atlas: GlyphAtlas, colorAtla
             GpuJs.description.Invoke description
             let limit = GpuJs.maxTextureSize.Args()
             GpuJs.maxTextureSize.Invoke limit
-            let images = new ImageAtlas(GpuJs.imagePages, int (returnedDouble limit))
-            return new BrowserGpuDevice(returnedString description, atlas, colorAtlas, images)
+            let maxTexture = int (returnedDouble limit)
+            let images = new ImageAtlas(GpuJs.imagePages, maxTexture)
+            return new BrowserGpuDevice(returnedString description, atlas, colorAtlas, images, maxTexture)
         }
 
     interface IRenderDevice with
         member _.Description = description
         member _.GlyphAtlas = atlas
         member _.ColorGlyphAtlas = colorAtlas
+        member _.MaxTextureSize = maxTexture
 
         member _.CreateSurface(window, size) =
             match window with
             | BrowserCanvas elementId -> new BrowserSurface(elementId, size, atlas, colorAtlas, images) :> IRenderSurface
             | other -> raise (PlatformNotSupportedException $"The browser WebGPU backend can't draw into {other}.")
 
-        member _.RenderOffscreen(_, _, _) =
-            // Reading pixels back is asynchronous in the browser (buffer.mapAsync returns a Promise),
-            // so this needs an async variant of RenderOffscreen. Tracked in the design doc.
-            raise (NotSupportedException "Offscreen rendering isn't available in the browser yet.")
+        member _.RenderOffscreenAsync(size, scale, draw) =
+            if size.IsEmpty then Task.FromException<Bitmap>(ArgumentException("Offscreen size must be non-zero.", nameof size))
+            else
+                try
+                    let frame = new BrowserOffscreenFrame(size, scale, atlas, colorAtlas, images)
+                    (try draw (frame :> IFrame) finally (frame :> IDisposable).Dispose())
+                    frame.Pixels
+                with e ->
+                    Task.FromException<Bitmap> e
 
     interface IDisposable with
         member _.Dispose() =

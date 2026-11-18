@@ -1,10 +1,12 @@
 /// The Images page (M8 step 3b (d) and (e)): ImageView's stretch modes and directions, smooth against pixelated, a round
-/// avatar and a 2× picture, an image made from pixels, image cursors, two from URLs (one missing), and a broken one reporting its
-/// error. The embedded pictures are drawn by tools/MakeGalleryImages.fsx and embedded in the Gallery (Images/*.png).
+/// avatar and a 2× picture, an image made from pixels, image cursors, two from URLs (one missing), a broken one reporting its
+/// error, and saving as PNG (a captured card, the Gallery rendered with no window). The embedded pictures are drawn by
+/// tools/MakeGalleryImages.fsx and embedded in the Gallery (Images/*.png).
 module Scribble.Samples.Gallery.ImagesPage
 
 open System
 open Scribble.Text
+open Scribble.Rendering
 open Scribble.Core
 open Scribble.Accessibility
 open Scribble.Samples.Gallery.Common
@@ -107,6 +109,119 @@ let private missingPicture = Image.fromUrl "https://upload.wikimedia.org/wikiped
 
 /// Not a PNG past its first bytes: decoding fails, and the error goes to App.onError (a toast here).
 let private brokenBytes = [| 0x89uy; 0x50uy; 0x4Euy; 0x47uy; 0x0Duy; 0x0Auy; 0x1Auy; 0x0Auy; 0uy; 0uy; 0uy; 13uy |]
+
+// --- Saving as PNG (DESIGN.md, "Rendering to an image and saving it", round 2, decision 10) ---------------------
+
+/// The Gallery as rendered: the window's size at 2×.
+let private renderSize = 720.0, 560.0
+
+/// The part of the page that renders: on a button press only, so the page's own picture doesn't depend on it.
+let private saving =
+    Component.define "Saving" (fun ctx () ->
+        let card = ctx.useCapture ()
+        let whole = ctx.useAppValue wholeGallery
+        let rendered = ctx.useState<Image voption> ValueNone
+        // Errors (no GPU readback, the dialog failing) show as a toast.
+        let run (work: unit -> Threading.Tasks.Task) =
+            task {
+                try
+                    do! work ()
+                with e ->
+                    LayersPage.toast e.Message
+            }
+            |> ignore
+        let save (name: string) (image: Image) =
+            task {
+                let! png = Image.toPng image
+                let! saved = Files.save name png
+                LayersPage.toast (if saved then $"Saved {name} ({png.Length / 1024} KB)" else "Not saved")
+            }
+        let export () =
+            run (fun () ->
+                task {
+                    // The shadow falls outside the card: 16 DIPs of margin keep it; 2× for a sharp picture.
+                    let! image = card.ToImage [ Capture.margin 16.0; Capture.scale 2.0 ]
+                    do! save "card.png" image
+                })
+        let render () =
+            run (fun () ->
+                task {
+                    match whole.Current with
+                    | ValueSome gallery ->
+                        // A fresh Gallery: its first tab, nothing hovered, in the window's theme.
+                        let! image = ViewImage.render (gallery ()) [ ViewImage.size renderSize; ViewImage.scale 2.0 ]
+                        rendered.Set(ValueSome image)
+                    | ValueNone -> LayersPage.toast "Nothing to render: the Gallery sets wholeGallery when it starts."
+                })
+        let w, h = renderSize
+        StackPanel.create [
+            StackPanel.spacing 12.0
+            StackPanel.children [
+                Border.create [
+                    Border.capture card
+                    Border.width 220.0
+                    Border.padding 14.0
+                    Border.horizontalAlignment HorizontalAlignment.Left
+                    Border.cornerRadius 12.0
+                    Border.background Palette.surface
+                    Border.shadow floatShadow
+                    Border.content (
+                        StackPanel.create [
+                            StackPanel.spacing 8.0
+                            StackPanel.children [
+                                TextBlock.create [ TextBlock.text "This card, as a PNG"; TextBlock.fontSize 15.0 ]
+                                ImageView.create [
+                                    ImageView.image potion
+                                    ImageView.width 48.0
+                                    ImageView.height 48.0
+                                    ImageView.stretchDirection StretchDirection.Both
+                                    ImageView.scaling ImageScaling.Pixelated
+                                    ImageView.horizontalAlignment HorizontalAlignment.Left
+                                ]
+                                TextBlock.create [
+                                    TextBlock.text "Captured as it is on screen, shadow and all."
+                                    TextBlock.fontSize 12.0
+                                    TextBlock.foreground Palette.textDim
+                                    TextBlock.textWrapping TextWrapping.Wrap
+                                ]
+                            ]
+                        ]
+                    )
+                ]
+                Button.create [
+                    Button.text "Export PNG"
+                    Button.horizontalAlignment HorizontalAlignment.Left
+                    Button.onClick (fun _ -> export ())
+                ]
+                TextBlock.create [
+                    TextBlock.text "The whole Gallery, drawn again with no window: a fresh copy (its first tab, nothing hovered), not this screen."
+                    TextBlock.fontSize 12.0
+                    TextBlock.foreground Palette.textDim
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.margin (0.0, 8.0, 0.0, 0.0)
+                ]
+                WrapPanel.create [
+                    WrapPanel.spacing 8.0
+                    WrapPanel.children [
+                        Button.create [ Button.text "Render the Gallery"; Button.onClick (fun _ -> render ()) ]
+                        Button.create [
+                            Button.text "Save as PNG"
+                            Button.isEnabled rendered.Current.IsSome
+                            Button.onClick (fun _ -> rendered.Current |> ValueOption.iter (fun i -> run (fun () -> save "gallery.png" i)))
+                        ]
+                    ]
+                ]
+                // A frame there from the start, the picture at half size inside its border, so the page doesn't grow
+                // (at its bottom, a picture added below the buttons would land out of sight). Wrapped to sit left.
+                wrap [
+                    boxed $"{w:F0} × {h:F0} at 2×, shown at half size" (w / 2.0 + 2.0) (h / 2.0 + 2.0) [
+                        match rendered.Current with
+                        | ValueSome image -> ImageView.image image
+                        | ValueNone -> ()
+                    ]
+                ]
+            ]
+        ])
 
 let private images =
     Component.define "Images" (fun ctx () ->
@@ -221,6 +336,8 @@ let private images =
                                 boxed "Nothing drawn" 96.0 96.0 [ ImageView.image (Image.fromBytes ("broken", brokenBytes) []) ]
                         ]
                     ])
+                section "Saving as PNG" "Capture: an element as it is on screen; Files.save: a save dialog on the desktop, a download in the browser. ViewImage: any view drawn on its own, here the whole Gallery." (
+                    saving ())
             ]
         ])
 

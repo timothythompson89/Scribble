@@ -230,3 +230,44 @@ module Image =
         | ValueSome u when u.IsFile -> fromFile u.LocalPath settings
         | ValueSome u -> Image("url:" + u.AbsoluteUri, ImageSource.Url(u.AbsoluteUri, download), 1.0) |> apply settings
         | ValueNone -> Image("url:" + url, ImageSource.Url(url, download), 1.0) |> apply settings
+
+    /// The image as a PNG file's bytes (DESIGN.md, "Rendering to an image and saving it"): a rendered image or one
+    /// from pixels is encoded (transparency kept); one from a PNG file, resource, bytes or URL gives that file's bytes
+    /// as they are (the decoder reads only PNG, so they're already one), read or downloaded off the UI thread. Fails
+    /// as the image would fail to load (a missing file, a download error, not a PNG).
+    let toPng (image: Image) : Task<byte[]> =
+        let checkedPng (bytes: byte[]) =
+            if not (Scribble.Imaging.Png.isPng bytes) then
+                raise (Scribble.Imaging.ImageFormatException("'" + image.Key + "' isn't a PNG file."))
+            bytes
+        match image.Source with
+        | ImageSource.Pixels(w, h, rgba) ->
+            try Task.FromResult(Scribble.Imaging.Png.encode (w, h, rgba)) with e -> Task.FromException<byte[]> e
+        | ImageSource.Bytes bytes -> (try Task.FromResult(checkedPng (Array.copy bytes)) with e -> Task.FromException<byte[]> e)
+        | ImageSource.Resource(assembly, name) ->
+            Task.Run(fun () ->
+                use stream = assembly.GetManifestResourceStream name
+                if isNull stream then raise (FileNotFoundException("No resource named '" + name + "' in " + assembly.GetName().Name + "."))
+                use m = new MemoryStream()
+                stream.CopyTo m
+                checkedPng (m.ToArray()))
+        | ImageSource.File path ->
+            if OperatingSystem.IsBrowser() then
+                Task.FromException<byte[]>(PlatformNotSupportedException("There is no file system in the browser."))
+            else Task.Run(fun () -> checkedPng (File.ReadAllBytes path))
+        | ImageSource.Url(url, fetch) ->
+            task {
+                let resolved =
+                    match Uri.TryCreate(url, UriKind.Absolute) with
+                    | true, u when not (url.StartsWith "/") -> u
+                    | _ ->
+                        match ImageHttp.BaseUrl with
+                        | null -> raise (ArgumentException("'" + url + "' is a relative URL, with no page to resolve it against."))
+                        | b -> Uri(b, url)
+                use cts = new CancellationTokenSource(ImageHttp.Timeout)
+                let! result = fetch resolved cts.Token
+                return
+                    match result with
+                    | Ok bytes -> checkedPng bytes
+                    | Error e -> raise e
+            }

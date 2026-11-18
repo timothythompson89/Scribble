@@ -383,6 +383,16 @@ type ComponentContext internal (instance: ComponentInstance) =
             slot.HasValue <- true
         slot.Value
 
+    /// A capture, to make an image of an element as it is on screen: give it to the element
+    /// (`Border.capture capture`), then ask from handlers (`capture.ToImage []`). The same capture for as long as
+    /// the component lives.
+    member _.useCapture() : Capture =
+        let slot = instance.Slot("useCapture", fun () -> MemoSlot<unit, Capture>())
+        if not slot.HasValue then
+            slot.Value <- Capture()
+            slot.HasValue <- true
+        slot.Value
+
     /// Runs `effect` after the frame that shows the component, the first time and whenever `deps`
     /// change (F# equality; use a tuple for several values, `()` for "once").
     member _.useEffect<'D>(deps: 'D, effect: 'D -> unit) : unit =

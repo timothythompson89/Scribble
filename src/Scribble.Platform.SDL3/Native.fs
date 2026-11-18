@@ -144,6 +144,16 @@ let SDL_SYSTEM_CURSOR_POINTER = 11
 /// B, G, R, A in memory on little-endian machines: our cursor pixels' order.
 let SDL_PIXELFORMAT_ARGB8888 = 0x16362004u
 
+/// typedef void (SDLCALL *SDL_DialogFileCallback)(void *userdata, const char * const *filelist, int filter);
+[<UnmanagedFunctionPointer(CallingConvention.Cdecl)>]
+type DialogFileCallback = delegate of nativeint * nativeint * int -> unit
+
+/// typedef struct SDL_DialogFileFilter { const char *name; const char *pattern; } (SDL_dialog.h)
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type SDL_DialogFileFilter =
+    val mutable Name: nativeint
+    val mutable Pattern: nativeint
+
 /// typedef bool (SDLCALL *SDL_EventFilter)(void *userdata, SDL_Event *event);
 [<UnmanagedFunctionPointer(CallingConvention.Cdecl)>]
 type EventFilter = delegate of nativeint * nativeint -> byte
@@ -259,6 +269,11 @@ extern void SDL_DestroySurface(nativeint surface)
 
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern nativeint SDL_GetMouseFocus()
+
+/// SDL_dialog.h. The filters and default location must stay valid until the callback runs; on Windows the dialog
+/// runs on its own thread and the callback comes from there.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void SDL_ShowSaveFileDialog(nativeint callback, nativeint userdata, nativeint window, SDL_DialogFileFilter* filters, int nfilters, nativeint defaultLocation)
 
 // ---------------------------------------------------------------------------------------------
 // Strings: UTF-8, NUL-terminated, pinned for the call.

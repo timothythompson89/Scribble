@@ -270,6 +270,16 @@ type App =
                 ElementHost.styles config.Styles
             ]
         host.Value <- ValueSome h
+        // What ViewImage, Capture and Files use (DESIGN.md, "Rendering to an image and saving it"): this app's. Kept
+        // for its UI thread (a newer app on the same thread replaces it; a desktop process ends with its app).
+        RenderServices.Use
+            { Device = device
+              Text = text
+              Platform = ValueSome platform
+              Window = ValueSome window
+              Dispatcher = ValueSome dispatcher
+              AppValues = ValueSome values }
+        |> ignore
         for layer in config.Layers do
             h.AddLayer layer |> ignore
         for handler in config.OnStart do

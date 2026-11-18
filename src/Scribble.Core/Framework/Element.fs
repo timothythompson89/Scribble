@@ -612,6 +612,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             child.SetRootInSubtree r
         if before.IsSome && r.IsNone then this.LetGoOfImages true
         if before.IsNone && r.IsSome && this.HasWatchedValue then this.NotifyWatch()
+        if before.IsNone && r.IsSome then this.TellTracked()
         match componentState, before, r with
         | ValueSome c, ValueSome _, ValueNone -> c.Detached()
         | ValueSome c, ValueNone, ValueSome added -> c.Attached added
@@ -623,6 +624,14 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         for i in 0 .. count - 1 do
             if keys[i].Watched then has <- true
         has
+
+    /// Tells its tracked values (`Prop.Tracked`) that it took them: on joining a tree.
+    member private this.TellTracked() =
+        for i in 0 .. count - 1 do
+            if keys[i].Tracked then
+                match values[i] with
+                | :? ITrackedValue as t -> t.Taken(box this)
+                | _ -> ()
 
     /// Tells its tree a watched property changed (the host looks at its flyout at the next frame).
     member internal this.NotifyWatch() =
@@ -1226,6 +1235,10 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         if prop.Restyles || prop.IsStyles || prop.IsTheme then this.RequestRestyle(true, false)
         elif prop.IsStateBlock then this.RequestRestyle(false, false)
         if prop.Watched then this.NotifyWatch()
+        if prop.Tracked && root.IsSome then
+            match this.GetBoxed prop with
+            | :? ITrackedValue as t -> t.Taken(box this)
+            | _ -> ()
 
     /// Removes the element's own value (a setting the view dropped, or Reset).
     member internal this.ClearValue(prop: Prop) =
@@ -1530,6 +1543,15 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                 else
                     h.Touched <- false
             if heldImages.Count = 0 then heldImages <- null
+
+    /// The pictures it holds that are still loading (`ViewImage` waits for them).
+    member internal _.ImagesLoading: ImageEntry list =
+        if isNull heldImages then []
+        else
+            [ for h in heldImages do
+                  match ImageCache.Shared.StateOf h.Entry with
+                  | ImageState.Loading -> h.Entry
+                  | _ -> () ]
 
     /// Lets go of every picture held in this element and everything inside it (it was hidden).
     member private this.LetGoOfImagesBelow() =

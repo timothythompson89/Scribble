@@ -293,8 +293,8 @@ let ``the Gallery's Images page finds its embedded pictures and draws every one`
     let s = Scene(Scribble.Samples.Gallery.ImagesPage.view (), 720.0, 1600.0)
     let list = s.Render()
     Assert.Empty s.Errors
-    // 4 stretch modes, 3 directions, smooth and pixelated, two avatars, the pattern.
-    Assert.Equal(12, list.Images.Count)
+    // 4 stretch modes, 3 directions, smooth and pixelated, two avatars, the pattern; the exported card's potion.
+    Assert.Equal(13, list.Images.Count)
 
 /// Finding 3 (review of M8 step 3b): pictures were let go only while drawing, so a hidden element kept its own.
 [<Fact>]

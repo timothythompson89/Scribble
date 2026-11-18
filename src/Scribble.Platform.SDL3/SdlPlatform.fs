@@ -4,11 +4,42 @@ namespace Scribble.Platform.SDL3
 
 open System
 open System.Collections.Generic
+open System.IO
+open System.Runtime.InteropServices
 open System.Runtime.ExceptionServices
 open System.Threading
+open System.Threading.Tasks
 open Microsoft.FSharp.NativeInterop
 open Scribble.Platform
 open Scribble.Platform.SDL3.Native
+
+/// One save dialog (DESIGN.md, "Rendering to an image and saving it", decision 7): what to write, and the unmanaged
+/// strings and filter SDL reads until its callback runs (freed then). The callback comes from the dialog's thread.
+[<Sealed>]
+type internal SaveRequest(bytes: byte[], extension: string, allocations: nativeint list) =
+    let result = TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
+    member _.Task = result.Task
+
+    /// SDL's answer: null on an error, an empty list when cancelled, else the chosen path first.
+    member _.Finish(fileList: nativeint) =
+        try
+            try
+                if fileList = 0n then
+                    result.TrySetException(InvalidOperationException("The save dialog failed: " + lastError ())) |> ignore
+                else
+                    let first = Marshal.ReadIntPtr fileList
+                    if first = 0n then result.TrySetResult false |> ignore
+                    else
+                        let chosen = Marshal.PtrToStringUTF8 first
+                        // A name typed without an extension gets the suggested one.
+                        let path = if extension <> "" && Path.GetExtension chosen = "" then chosen + "." + extension else chosen
+                        File.WriteAllBytes(path, bytes)
+                        result.TrySetResult true |> ignore
+            with e ->
+                result.TrySetException e |> ignore
+        finally
+            for a in allocations do
+                Marshal.FreeCoTaskMem a
 
 /// The SDL3 windowing backend (DESIGN.md, "Platform layer: SDL3 and AccessKit"): windows, input, cursors and the
 /// event loop, through SDL. Create one per process, on the thread that will be the UI thread.
@@ -195,11 +226,54 @@ type SdlPlatform() =
                         w.DeliverFrame()
                         rethrowPending ()
 
+    /// The save dialog's callback, alive as long as the platform; each dialog's request comes back through its handle.
+    let saveCallback =
+        DialogFileCallback(fun userdata fileList _ ->
+            // Nothing may unwind through SDL: Finish catches everything.
+            let handle = GCHandle.FromIntPtr userdata
+            let request = handle.Target :?> SaveRequest
+            handle.Free()
+            request.Finish fileList)
+    let saveCallbackPtr = Marshal.GetFunctionPointerForDelegate<DialogFileCallback> saveCallback
+
+    let saveFile (owner: IWindow voption) (suggestedName: string) (bytes: byte[]) : Task<bool> =
+        try
+            if isNull bytes then nullArg (nameof bytes)
+            let extension = Path.GetExtension(suggestedName).TrimStart('.')
+            // A bare name starts in Pictures (an image) or Documents, the dialog showing the name; a path where it says.
+            let location =
+                if Path.IsPathRooted suggestedName then suggestedName
+                else
+                    let folder =
+                        match extension.ToLowerInvariant() with
+                        | "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" -> Environment.SpecialFolder.MyPictures
+                        | _ -> Environment.SpecialFolder.MyDocuments
+                    Path.Combine(Environment.GetFolderPath folder, suggestedName)
+            let name = Marshal.StringToCoTaskMemUTF8(if extension = "" then "All files" else extension.ToUpperInvariant() + " file")
+            let pattern = Marshal.StringToCoTaskMemUTF8(if extension = "" then "*" else extension)
+            let start = Marshal.StringToCoTaskMemUTF8 location
+            let filter = Marshal.AllocCoTaskMem(sizeof<SDL_DialogFileFilter>)
+            let mutable f = SDL_DialogFileFilter()
+            f.Name <- name
+            f.Pattern <- pattern
+            NativePtr.write (NativePtr.ofNativeInt<SDL_DialogFileFilter> filter) f
+            let request = SaveRequest(bytes, extension, [ name; pattern; start; filter ])
+            let handle = GCHandle.Alloc request
+            let window =
+                match owner with
+                | ValueSome(:? SdlWindow as w) -> w.Handle
+                | _ -> 0n
+            SDL_ShowSaveFileDialog(saveCallbackPtr, GCHandle.ToIntPtr handle, window, NativePtr.ofNativeInt filter, 1, start)
+            request.Task
+        with e ->
+            Task.FromException<bool> e
+
     interface IPlatform with
         member _.Name = "SDL"
         member _.SupportsMultipleWindows = true
         member _.CreateWindow(options, onEvent) = createWindow options onEvent
         member _.Run() = run ()
+        member _.SaveFile(owner, suggestedName, bytes) = saveFile owner suggestedName bytes
         member _.SetWakeHandler(handler) = wakeHandler <- handler
         member _.Elapsed = clock.Elapsed
 
@@ -221,3 +295,4 @@ type SdlPlatform() =
                 SDL_SetEventFilter(0n, 0n)
                 SDL_Quit()
                 GC.KeepAlive filter
+                GC.KeepAlive saveCallback

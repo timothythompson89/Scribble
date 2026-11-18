@@ -10,7 +10,8 @@
 /// - ScrollingPage.fs: 10,000 messages in an ItemsView, jumped through with a scroller (M8 step 1),
 /// - LayersPage.fs: toasts and a modal dialog (layers, M6),
 /// - StylesPage.fs: classes, state blocks and scoped styles (M7),
-/// - ImagesPage.fs: ImageView: stretching, pixelated, round, 2×, from pixels, a broken image (M8 step 3b),
+/// - ImagesPage.fs: ImageView: stretching, pixelated, round, 2×, from pixels, a broken image (M8 step 3b); saving
+///   as PNG: a captured card, and the Gallery itself rendered with no window,
 /// - GalleryApp.fs (this file): the tabs and the app's settings.
 module Scribble.Samples.GalleryApp
 
@@ -101,6 +102,8 @@ let app: AppSetting<unit> list =
       App.size (720.0, 560.0)
       App.theme darkTheme
       App.view (gallery ())
+      // The Images page renders the Gallery itself into a picture (ViewImage).
+      App.value wholeGallery (ValueSome(fun () -> gallery ()))
       // An error from app code (a broken image on the Images page) shows as a toast instead of ending the app.
       App.onError (fun e ->
           System.Console.WriteLine("Gallery: " + string e)

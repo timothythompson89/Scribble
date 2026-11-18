@@ -70,6 +70,8 @@ type Layoutable =
     static member cursor<'k when 'k :> Layoutable>(value: Cursor) : Setting<'k> = Setting.create LayoutProps.cursor (ValueSome value)
     /// A hint shown near the pointer after it rests on the element for half a second.
     static member tooltip<'k when 'k :> Layoutable>(text: string) : Setting<'k> = Setting.create FlyoutProps.tooltip text
+    /// Lets `capture.ToImage` make an image of this element as it is on screen (a chart to export).
+    static member capture<'k when 'k :> Layoutable>(capture: Capture) : Setting<'k> = Setting.create CaptureProps.capture (box capture)
     /// Like `tooltip`, with any view (it never takes focus or clicks).
     static member tooltipView<'k when 'k :> Layoutable>(value: View) : Setting<'k> = Setting.create FlyoutProps.tooltipView (ValueSome value)
     /// Fades this element and everything inside it (0 to 1). Each shape fades on its own, so where

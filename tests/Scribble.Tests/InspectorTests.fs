@@ -323,6 +323,7 @@ type private ManyWindows() =
         member this.Elapsed = this.Time.Now
         member this.After(delay, action) = this.Time.After(delay, action)
         member _.Run() = ()
+        member _.SaveFile(_, _, _) = Threading.Tasks.Task.FromResult false
         member _.Dispose() = ()
 
 [<Fact>]

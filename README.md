@@ -955,6 +955,32 @@ let potion = Cursor.fromImage potionImage [ Cursor.size 32.0; Cursor.scaling Ima
   to `App.onError`. `Cursor.fill` and `outline` are for icons only.
 - Not yet: following the Windows cursor-size setting; cursors from bitmaps (with Image, M8).
 
+### Rendering to an image and saving it
+
+Any view, or any element on screen, can become an `Image`: shown in an `ImageView` at once, or saved as a PNG.
+
+```fsharp
+// A view on its own, no window (in an app, or in a tool after `use _ = DesktopApp.headless []`).
+let! image = ViewImage.render (chart model) [ ViewImage.size (640.0, 400.0); ViewImage.scale 2.0 ]
+
+// An element as it is on screen: hover, scroll and all.
+let capture = ctx.useCapture ()              // or Capture() kept with your model
+Border.create [ Border.capture capture; ... ]
+let! image = capture.ToImage [ Capture.margin 16.0 ]   // room for its shadow; transparent around it
+
+let! png = Image.toPng image
+let! saved = Files.save "chart.png" png      // a save dialog on the desktop, a download in the browser
+```
+
+- Every render returns a `Task` (the browser reads pixels back asynchronously); on the desktop it's already done.
+- `ViewImage` waits for images still loading (up to `ViewImage.imageTimeout`, 10 s) and uses the app's theme, or
+  `ViewImage.theme`. It sizes to its content when no size is given. Its background is the theme's; a capture's is
+  transparent.
+- A capture covers its element's whole box, even when partly scrolled away; it fails, saying why, if the element
+  isn't showing. Pictures larger than 8192 pixels a side fail with a message.
+- `Files.save` answers false when the person cancels (always true in the browser). The Gallery's Images page has
+  both, under "Saving as PNG".
+
 ### Elements and layout
 
 Widths and heights (and their min/max) take a number of DIPs, a `Length`, or a string:
@@ -1138,7 +1164,7 @@ Border.create [ Semantics.role Role.Switch; Semantics.label "Wi-Fi"; Semantics.i
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
 | `samples/Hello` | The Hello sample (library): `HelloApp.fs` (model, update, app settings) and `Dashboard.fs` (the dashboard as a view function, also used by the rendering tests) |
 | `samples/Counter` | The Counter (library): the README's first example, one file |
-| `samples/Gallery` | The Gallery (library): one file per page (`ComponentsPage.fs`, `LayoutPage.fs`, `ControlsPage.fs`, `ScrollingPage.fs`, `LayersPage.fs`, `StylesPage.fs`), `Common.fs` (page and section layouts, theme values, themes) and `GalleryApp.fs` (the tabs and the app) |
+| `samples/Gallery` | The Gallery (library): one file per page (`ComponentsPage.fs`, `LayoutPage.fs`, `ControlsPage.fs`, `ScrollingPage.fs`, `LayersPage.fs`, `StylesPage.fs`, `ImagesPage.fs`), `Common.fs` (page and section layouts, theme values, themes) and `GalleryApp.fs` (the tabs and the app) |
 | `samples/Icons` | The Material Symbols gallery (library) |
 | `samples/X.Desktop`, `samples/X.Browser` | Each sample's hosts: the same one-line Program.fs, a different SDK and Scribble package |
 | `samples/Samples.Shared` | `Adaptive.fs`: the samples' own `SplitRow` |

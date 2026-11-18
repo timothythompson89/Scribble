@@ -308,4 +308,21 @@ export function removeCanvas() {
   canvas = null;
 }
 
+
+// Saves `bytes` (a .NET MemoryView, copied here) as a download named `name` (DESIGN.md, "Rendering to an image and
+// saving it", decision 7). The browser decides where it goes, or asks.
+export function saveFile(name, bytes) {
+  const blob = new Blob([bytes.slice()], { type: name.toLowerCase().endsWith(".png") ? "image/png" : "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoked once the click has started the download.
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 //# sourceURL=scribble-platform.js

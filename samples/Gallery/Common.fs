@@ -123,3 +123,7 @@ let lightTheme =
         Theme.set floatShadow { Blur = 12.0; OffsetX = 0.0; OffsetY = 4.0; Spread = 0.0; Color = Color.Black.WithAlpha 0.2f }
         Theme.set dialogShadow { Blur = 24.0; OffsetX = 0.0; OffsetY = 8.0; Spread = 0.0; Color = Color.Black.WithAlpha 0.25f }
     ]
+
+/// The whole Gallery as a view, for the Images page to render as a picture. GalleryApp sets it (`App.value`): the
+/// pages are compiled before it, so they can't name it.
+let wholeGallery: AppValue<(unit -> View) voption> = AppValue.define "WholeGallery" ValueNone

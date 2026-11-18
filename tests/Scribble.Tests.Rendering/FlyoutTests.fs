@@ -11,7 +11,7 @@ open Scribble.Core
 open Scribble.Tests.Rendering.TextRenderingTests
 
 /// A window that is never shown: events are sent to the host by hand.
-type private StillWindow(size: PixelSize) =
+type StillWindow(size: PixelSize) =
     interface IWindow with
         member _.ClientSize = size
         member _.Scale = 1.0
@@ -26,18 +26,19 @@ type private StillWindow(size: PixelSize) =
         member _.Dispose() = ()
 
 /// The real device for text and offscreen pictures, with a surface that never draws (the test renders the layers).
-type private OffscreenOnly(device: IRenderDevice) =
+type OffscreenOnly(device: IRenderDevice) =
     interface IRenderDevice with
         member _.Description = device.Description
         member _.GlyphAtlas = device.GlyphAtlas
         member _.ColorGlyphAtlas = device.ColorGlyphAtlas
+        member _.MaxTextureSize = device.MaxTextureSize
         member _.CreateSurface(_, size) =
             { new IRenderSurface with
                 member _.Size = size
                 member _.Resize _ = ()
                 member _.TryBeginFrame _ = None
                 member _.Dispose() = () }
-        member _.RenderOffscreen(size, scale, draw) = device.RenderOffscreen(size, scale, draw)
+        member _.RenderOffscreenAsync(size, scale, draw) = device.RenderOffscreenAsync(size, scale, draw)
         member _.Dispose() = ()
 
 let private menuItem (text: string) =

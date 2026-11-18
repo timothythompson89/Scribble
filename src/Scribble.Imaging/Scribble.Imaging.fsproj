@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
-    <Description>Image decoding for Scribble: bytes in, premultiplied RGBA out. Our own PNG decoder (no GPU, no elements).</Description>
+    <Description>Image decoding and encoding for Scribble: bytes in, premultiplied RGBA out; straight RGBA in, PNG out. Our own PNG decoder and encoder (no GPU, no elements).</Description>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Pixels.fs" />

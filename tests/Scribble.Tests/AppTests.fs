@@ -79,6 +79,9 @@ type FakePlatform() =
     member _.Wakes = Threading.Volatile.Read(&wakes)
     /// What the platform's loop does after a wake: drain the dispatcher (on the test's thread).
     member this.RunWake() = this.WakeHandler()
+    /// What `SaveFile` was given (name and bytes), and what it answers (true: saved).
+    member val Saved = ResizeArray<string * byte[]>() with get
+    member val SaveAnswer = true with get, set
     interface IPlatform with
         member _.Name = "fake"
         member _.SupportsMultipleWindows = false
@@ -87,6 +90,9 @@ type FakePlatform() =
             this.Window <- Some w
             w :> IWindow
         member _.Run() = ()
+        member this.SaveFile(_, name, bytes) =
+            this.Saved.Add((name, bytes))
+            Threading.Tasks.Task.FromResult this.SaveAnswer
         member this.SetWakeHandler handler = this.WakeHandler <- handler
         member _.Wake() = Threading.Interlocked.Increment(&wakes) |> ignore
         member this.Elapsed = this.Time.Now
@@ -102,6 +108,7 @@ type FakeDevice() =
         member _.Description = "fake GPU"
         member _.GlyphAtlas = atlas
         member _.ColorGlyphAtlas = colorAtlas
+        member _.MaxTextureSize = 8192
         member this.CreateSurface(_, size) =
             { new IRenderSurface with
                 member _.Size = size
@@ -118,7 +125,7 @@ type FakeDevice() =
                                 this.Frames <- this.Frames + 1
                                 this.LastShapes <- list.Count }
                 member _.Dispose() = () }
-        member _.RenderOffscreen(_, _, _) = raise (NotSupportedException())
+        member _.RenderOffscreenAsync(_, _, _) = raise (NotSupportedException())
         member _.Dispose() = ()
 
 let start (settings: AppSetting<'Msg> list) =

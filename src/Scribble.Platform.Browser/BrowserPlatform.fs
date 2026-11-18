@@ -20,6 +20,7 @@ module internal PlatformJs =
     let requestFrame = JsFunction(ModuleName, "requestFrame", T.void', [])
     let setTitle = JsFunction(ModuleName, "setTitle", T.void', [ T.string ])
     let setCursor = JsFunction(ModuleName, "setCursor", T.void', [ T.double ])
+    let saveFile = JsFunction(ModuleName, "saveFile", T.void', [ T.string; T.bytes ])
     let makeImageCursor =
         JsFunction(
             ModuleName,
@@ -318,6 +319,17 @@ type BrowserPlatform private () =
     interface IPlatform with
         member _.Name = "Browser"
         member _.SupportsMultipleWindows = false
+
+        member _.SaveFile(_, suggestedName, bytes) =
+            try
+                let args = PlatformJs.saveFile.Args()
+                args[2].ToJS(System.IO.Path.GetFileName suggestedName)
+                args[3].ToJS(Span<byte> bytes)
+                PlatformJs.saveFile.Invoke args
+                // A download can't tell whether the person kept it.
+                Threading.Tasks.Task.FromResult true
+            with e ->
+                Threading.Tasks.Task.FromException<bool> e
 
         member _.CreateWindow(options, onEvent) =
             if window.IsSome then

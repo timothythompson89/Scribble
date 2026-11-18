@@ -1,4 +1,4 @@
-/// Minimal PNG reading and writing for screenshot tests: 8-bit RGBA, no interlacing.
+/// PNG reading for screenshot tests, and writing through Scribble.Imaging's encoder: 8-bit RGBA or RGB, no interlacing.
 /// Decoding understands every filter type, so references edited or re-saved by other tools load too.
 module Scribble.Tests.Rendering.Png
 
@@ -10,44 +10,10 @@ open Scribble.Rendering
 
 let private signature = [| 137uy; 80uy; 78uy; 71uy; 13uy; 10uy; 26uy; 10uy |]
 
-let private crcTable =
-    Array.init 256 (fun n ->
-        let mutable c = uint32 n
-        for _ in 0..7 do
-            c <- if c &&& 1u <> 0u then 0xEDB88320u ^^^ (c >>> 1) else c >>> 1
-        c)
-
-let private crc (bytes: byte[]) =
-    let mutable c = 0xFFFFFFFFu
-    for b in bytes do
-        c <- crcTable[int ((c ^^^ uint32 b) &&& 0xFFu)] ^^^ (c >>> 8)
-    c ^^^ 0xFFFFFFFFu
-
-let private bigEndian (v: uint32) =
-    [| byte (v >>> 24); byte (v >>> 16); byte (v >>> 8); byte v |]
-
-let private writeChunk (out: Stream) (kind: string) (data: byte[]) =
-    out.Write(bigEndian (uint32 data.Length))
-    let body = Array.append (Text.Encoding.ASCII.GetBytes kind) data
-    out.Write body
-    out.Write(bigEndian (crc body))
-
-/// Encodes a bitmap as an RGBA PNG.
+/// Encodes a bitmap as a PNG (the bitmap's bytes as they are: references are opaque, so premultiplied or not is the
+/// same).
 let encode (bitmap: Bitmap) : byte[] =
-    let w, h = bitmap.Size.Width, bitmap.Size.Height
-    use out = new MemoryStream()
-    out.Write signature
-    writeChunk out "IHDR" (Array.concat [ bigEndian (uint32 w); bigEndian (uint32 h); [| 8uy; 6uy; 0uy; 0uy; 0uy |] ])
-    let raw = new MemoryStream()
-    (
-        use z = new ZLibStream(raw, CompressionLevel.Optimal, true)
-        for y in 0 .. h - 1 do
-            z.WriteByte 0uy // filter: none
-            z.Write(bitmap.Pixels, y * w * 4, w * 4)
-    )
-    writeChunk out "IDAT" (raw.ToArray())
-    writeChunk out "IEND" [||]
-    out.ToArray()
+    Scribble.Imaging.Png.encode (bitmap.Size.Width, bitmap.Size.Height, bitmap.Pixels)
 
 let save (path: string) (bitmap: Bitmap) =
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath path)) |> ignore

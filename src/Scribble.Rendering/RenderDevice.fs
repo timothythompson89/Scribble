@@ -1,6 +1,7 @@
 namespace Scribble.Rendering
 
 open System
+open System.Threading.Tasks
 open Scribble.Platform
 
 /// Which GPU to prefer when a machine has more than one.
@@ -41,7 +42,7 @@ type IRenderSurface =
     /// `scale` is the window's scale factor: DIPs in the draw list become scale × pixels.
     abstract TryBeginFrame: scale: float -> IFrame option
 
-/// Pixels read back from an offscreen render: tightly packed RGBA8, top row first.
+/// Pixels read back from an offscreen render: tightly packed RGBA8, premultiplied, top row first.
 type Bitmap =
     { Size: PixelSize
       Pixels: byte[] }
@@ -65,5 +66,11 @@ type IRenderDevice =
 
     abstract CreateSurface: window: NativeSurfaceHandle * size: PixelSize -> IRenderSurface
 
-    /// Renders one frame offscreen and reads the pixels back. Used by screenshot tests.
-    abstract RenderOffscreen: size: PixelSize * scale: float * draw: (IFrame -> unit) -> Bitmap
+    /// The largest texture side it takes, in pixels: an offscreen render can be no bigger (8192 on the desktop,
+    /// which asks WebGPU for its default limits; the browser's device says, some phones 4096).
+    abstract MaxTextureSize: int
+
+    /// Renders one frame offscreen and reads the pixels back (premultiplied, as the frame drew them): screenshot
+    /// tests, `ViewImage` and `Capture`. Asynchronous because the browser reads pixels back asynchronously; on the
+    /// desktop the task is already finished when it returns. Call on the UI thread.
+    abstract RenderOffscreenAsync: size: PixelSize * scale: float * draw: (IFrame -> unit) -> Task<Bitmap>

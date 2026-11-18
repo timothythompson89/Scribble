@@ -202,6 +202,10 @@ type internal ThemeRef(themeValue: ThemeKey, convert: (obj -> obj) voption) =
         | _ -> false
     override _.GetHashCode() = themeValue.Id
 
+/// A value an element tells when it takes it (`Prop.Tracked`): a `Capture` learns its element this way.
+type internal ITrackedValue =
+    abstract Taken: element: obj -> unit
+
 /// A property key: a name, a default value and what changing it affects. Elements store values
 /// for the properties set on them; everything else reads as the default.
 ///
@@ -233,6 +237,9 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     /// Its tree hears when an element's own value changes or an element with one joins (`IElementRoot.Watch`): a
     /// flyout (`flyout`).
     member val internal Watched = false with get, set
+    /// Its value is told which element took it (`ITrackedValue`): when an element's own value changes, or an element
+    /// with one joins a tree. `capture`.
+    member val internal Tracked = false with get, set
     /// A style's selector tests its value (`Style.prop`, `Style.where`, `States.ofProp`): a change
     /// of the element's own value matches it again.
     member val internal TestedByStyles = false with get, set

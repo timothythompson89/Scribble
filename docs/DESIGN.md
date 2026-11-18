@@ -27,7 +27,7 @@ questions", as paragraphs starting with the name given here.
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
-| Images out | Rendering a view or an element to an image, PNG, saving (planned) | Section "Rendering to an image and saving it" |
+| Images out | Rendering a view or an element to an image, PNG, saving (built 2026-11-18) | Section "Rendering to an image and saving it" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -66,9 +66,10 @@ part (b), the PNG decoder (`Scribble.Imaging`); part (c), images on the GPU (`Dr
 mip levels); part (d), the `Image` value, its process-wide cache and pool, decoding off the UI thread, `ImageView`,
 and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`; part (f), `Cursor.fromImage` and the
 inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`Button.flyout menu` or `Button.flyout [ Flyout settings ]`, styled as if inside its element,
-each in its own layer, light dismiss, placement) and tooltips.
+each in its own layer, light dismiss, placement) and tooltips. Rendering to an image and saving it (2026-11-18): `ViewImage.render`,
+`Capture`, `Image.toPng`, `Files.save`, the PNG encoder and async readback on desktop and browser.
 
-Next: rendering to an image and saving it (section "Rendering to an image and saving it"), then the rest of M8 step 4 (4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: Tim tries rendering to an image and saving it (built 2026-11-18, section "Rendering to an image and saving it"), then the rest of M8 step 4 (4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -84,7 +85,7 @@ complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game
 | `Scribble.Text` | TrueType parser, rasterizer, text system, line breaking, wrapping and trimming, icon paths; Inter built in |
 | `Scribble.Text.HarfBuzz`, `.Browser` | Shaping: native HarfBuzz, harfbuzzjs in WebAssembly (identical output) |
 | `Scribble.Text.Emoji` | Opt-in Twemoji colour font (CC-BY 4.0 art: apps that use it must credit it) |
-| `Scribble.Imaging` | Image files to decoded images (premultiplied RGBA with mip levels): our own PNG decoder (zlib from the BCL); no GPU, no elements |
+| `Scribble.Imaging` | Image files to decoded images (premultiplied RGBA with mip levels) and back: our own PNG decoder and encoder (zlib from the BCL); no GPU, no elements |
 | `Scribble.Core` | Views and the differ, elements, layout, input, styles, themes, components, app values, layers, the element types, `App`; folders in compile order: Foundation, Framework, Elements (Basic, Panels, Scrolling, Controls), Themes, Hosting |
 | `Scribble.Desktop`, `Scribble.Browser` | `App.run` for each: one reference brings platform, GPU and shaping |
 | `Scribble.Inspector` | Opt-in devtools-style inspector; files in compile order: InspectorTypes, Format, InspectorState, Highlight, Elements, Views, Inspector (the public type) |
@@ -857,7 +858,7 @@ Open questions:
 Idea for M5 (agreed 2026-11-15, see the M5 decisions): a tactile pressed look for the default Button. It sinks (scales to about 97% around its center), its shadow flattens and it darkens slightly, then springs back over 100–150 ms. Needs the pressed state and a visual-only render transform (M5), and a small "animate this value" helper for the spring-back; the depth and timing become style settings in M7.
 
 - [x] Apps made only of components have no messages, so `App.view (root ())` needs `AppSetting<unit> list`. Perhaps `App.run` overloads or non-generic view-only settings. **Closed** (project review 2026-11-17, decision 7): it stays, and README explains it (needed only for a settings list kept in a value).
-- [ ] `RenderOffscreen` must become async for the browser (readback uses `mapAsync`). Decide before screenshot tests run in the browser.
+- [x] `RenderOffscreen` must become async for the browser (readback uses `mapAsync`). **Closed** (2026-11-18): `RenderOffscreenAsync`, "Rendering to an image and saving it".
 - [x] Browser key codes: `e.key` mapped to the portable `Key` (M5 step 2, 2026-11-15).
 
 ## Serving the browser samples to the local network (2026-11-16)
@@ -3340,9 +3341,9 @@ As built:
 - **One thing that isn't SDL's:** the samples are console apps (`OutputType Exe`), so an AOT sample opens a console
   window too. It did on Win32 as well.
 
-## Rendering to an image and saving it (planned 2026-11-18)
+## Rendering to an image and saving it (built 2026-11-18)
 
-Status: **agreed (Tim, 2026-11-18: round 1 "yes to all, PNG it is", round 2 "yes to all")**. Built before M8 step
+Status: **built** (agreed by Tim, 2026-11-18: round 1 "yes to all, PNG it is", round 2 "yes to all"); waiting for Tim to try it. Before M8 step
 4b.
 
 Tim asked whether we can render to a PNG, then wanted every use: tools and scripts (the README's pictures), an app
@@ -3409,6 +3410,42 @@ default limits (8192 pixels a side); app code can't reach the platform.
    disposed at the end. `ViewImage.render` with neither an app nor headless running fails, saying to call it.
 10. **The Gallery's Images page:** an "Export PNG" button capturing a card with a shadow (with `margin`) and saving
     it, and a `ViewImage` of a small scene shown in an `ImageView` at 1× and 2×.
+
+**As built (2026-11-18).** Everything above, with these differences:
+- `Png.encode (width, height, straightRgba)` writes RGB when every pixel is opaque, else RGBA; the best of the five
+  filters per row, `ZLibStream` at `SmallestSize`. The WIC check runs no WIC: every PngSuite picture, as WIC decoded
+  it into the references, is encoded and read back unchanged. A 256² gradient comes out under 2 KB.
+- `IRenderDevice.RenderOffscreenAsync` returns `Task<Bitmap>` (premultiplied); `IRenderDevice.MaxTextureSize` (8192)
+  gives the limit its message. The browser renders into an `rgba8unorm` texture, `mapAsync`s a padded copy, and
+  .NET takes the bytes in a second call (`takeReadback`). The tests' `device.RenderOffscreen` waits on a finished task.
+- `ViewImage.render` sizes to its content when `ViewImage.size` is left out. In an app it runs on the UI thread and
+  waits for images through `Dispatcher.PostAfter`; headless it blocks the calling thread (a tree is one thread's).
+  The theme is `ViewImage.theme`, else the app's, else the default.
+- `Capture` keeps a weak reference to its element (a tracked property tells it when it's set or joins a tree) and
+  checks it's still showing when asked; `ctx.useCapture ()` keeps one across renders. Settings: `Capture.scale`
+  (default the window's), `Capture.background`, `Capture.margin`.
+- `Image.toPng` encodes pixels; an image from bytes, a resource, a file or a URL whose bytes are already a PNG is
+  returned as it is (a file fails in the browser).
+- `IPlatform.SaveFile(owner, suggestedName, bytes)` takes the owning window (the dialog is modal to it). SDL starts
+  in Pictures for an image extension, else Documents, and adds the extension if the person typed none.
+- The render environment is per UI thread (`RenderServices`): an app's on its own thread, the headless one
+  elsewhere, else the last app started. Parallel tests' apps no longer find each other's.
+- `DesktopApp.headless [ Headless.fonts [...] ]` takes a settings list (the fallback fonts, Twemoji for emoji);
+  `Headless.start device shaper settings` is in Core for other hosts.
+- The Gallery's Images page has "Saving as PNG": a card with a shadow and "Export PNG" (`Capture.margin 16`, 2×);
+  then "Render the Gallery", the whole Gallery as `ViewImage.render (gallery ()) [ size (720, 560); scale 2.0 ]`,
+  shown at half size, with "Save as PNG" (`gallery.png`). It first rendered a small card made only for the purpose,
+  at 1× and 2×, and Tim expected a picture of the Gallery: a view image should show something recognisable
+  (2026-11-18). The page can't name `GalleryApp.gallery` (compiled later), so the app sets an app value,
+  `Common.wholeGallery`. The picture's frame is there from the start, so the page doesn't grow out of sight
+  below the buttons. Rendering happens only on a press, so the page's own screenshot is unaffected
+  (`images-page@1x` is now 720 × 2200 to show the section).
+- Tests: 21 encoder tests, 3 `Files.save` tests (fake platform), 9 image tests on the GPU (view images identical to
+  `counter@1x` and `gallery-light@1x`, own size and scale, transparency through PNG, the size limit, a capture
+  hovered and scrolled against a crop of the full render, margin and scale, a detached capture's message, and
+  "Render the Gallery" clicked in a host with a dispatcher and app values, the picture decoded off the UI thread,
+  filling its frame without the page growing), on D3D12 and Vulkan. Checked in Chrome (before the Gallery
+  render): the view images and an exported 504 × 346 RGBA `card.png`.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
@@ -3553,4 +3590,4 @@ Two steps, each tried by Tim before the next:
   touch drags scroll a ScrollViewer (`Element.pan`); WebGPU compatibility mode is requested when full WebGPU
   isn't offered (OpenGL ES phones), which is why `shapes.wgsl` uses `@interpolate(flat, either)`.
 - Open questions: license (MIT or Apache 2.0) before the first public push; is "Scribble" free on NuGet;
-  `RenderOffscreen` must become async for browser screenshot tests.
+  `RenderOffscreen` must become async for browser screenshot tests (closed 2026-11-18: `RenderOffscreenAsync`).

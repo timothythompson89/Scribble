@@ -1,5 +1,5 @@
-/// Our own PNG decoder (DESIGN.md, "M8 step 3b", decisions 1–4): every static PNG (all colour types and bit
-/// depths, tRNS, Adam7 interlacing), 16-bit channels rounded to 8, alpha premultiplied, sRGB assumed (gAMA, iCCP,
+/// Our own PNG decoder (DESIGN.md, "M8 step 3b", decisions 1–4), and the encoder at the end. The decoder reads
+/// every static PNG (all colour types and bit depths, tRNS, Adam7 interlacing), 16-bit channels rounded to 8, alpha premultiplied, sRGB assumed (gAMA, iCCP,
 /// cHRM, sRGB and sBIT ignored); an APNG shows its default image (IDAT). Compression is the BCL's `ZLibStream`.
 /// Corrupt files throw `ImageFormatException`: a bad CRC on a critical chunk, an unknown critical chunk, bad
 /// header values, a missing palette or image data, image data that ends early. Ancillary chunks with a bad CRC
@@ -422,3 +422,112 @@ let decode (data: byte[]) : DecodedImage =
             else convertRow h k raw row w out dst (dx * 4)
             at <- at + 1 + rowBytes
     DecodedImage(h.Width, h.Height, out)
+
+// --- Encoding (DESIGN.md, "Rendering to an image and saving it", decision 1) ------------------------------
+
+let private writeU32 (out: Stream) (v: uint32) =
+    out.WriteByte(byte (v >>> 24))
+    out.WriteByte(byte (v >>> 16))
+    out.WriteByte(byte (v >>> 8))
+    out.WriteByte(byte v)
+
+let private writeChunk (out: Stream) (kind: string) (body: byte[]) =
+    let chunk = Array.zeroCreate<byte> (4 + body.Length)
+    for i in 0..3 do
+        chunk[i] <- byte kind[i]
+    Array.blit body 0 chunk 4 body.Length
+    writeU32 out (uint32 body.Length)
+    out.Write(chunk, 0, chunk.Length)
+    writeU32 out (Crc32.compute chunk 0 chunk.Length)
+
+let inline private paeth (a: int) (b: int) (c: int) =
+    let p = a + b - c
+    let pa = abs (p - a)
+    let pb = abs (p - b)
+    let pc = abs (p - c)
+    if pa <= pb && pa <= pc then a elif pb <= pc then b else c
+
+/// Filters `cur` (one row of `count` bytes, `step` bytes a pixel) against `up` (the row above, zeros for the first)
+/// with `filter` into `dst` (from 1; `dst[0]` is the filter byte), and returns the row's cost: the sum of its bytes
+/// read as signed, the usual heuristic for which filter compresses best.
+let private filterRow (filter: int) (cur: byte[]) (curAt: int) (up: byte[]) (upAt: int) (count: int) (step: int) (dst: byte[]) =
+    dst[0] <- byte filter
+    let mutable cost = 0
+    for i in 0 .. count - 1 do
+        let x = int cur[curAt + i]
+        let a = if i >= step then int cur[curAt + i - step] else 0
+        let b = int up[upAt + i]
+        let c = if i >= step then int up[upAt + i - step] else 0
+        let v =
+            match filter with
+            | 0 -> x
+            | 1 -> x - a
+            | 2 -> x - b
+            | 3 -> x - ((a + b) >>> 1)
+            | _ -> x - paeth a b c
+        let f = byte v
+        dst[i + 1] <- f
+        cost <- cost + (if f < 128uy then int f else 256 - int f)
+    cost
+
+/// A PNG of straight (not premultiplied) RGBA pixels, `width × height × 4` bytes, row by row from the top: 8 bits a
+/// channel, RGB when every pixel is opaque (a quarter smaller), the filter each row compresses best with (the
+/// smallest sum of its bytes), `ZLibStream` at its smallest.
+let encode (width: int, height: int, rgba: byte[]) : byte[] =
+    if isNull rgba then nullArg (nameof rgba)
+    if width < 1 || height < 1 || int64 width * int64 height * 4L <> int64 rgba.Length then
+        invalidArg (nameof rgba) "Pixels must be width × height × 4 bytes (RGBA), at least 1 × 1."
+    let mutable opaque = true
+    let mutable i = 3
+    while opaque && i < rgba.Length do
+        if rgba[i] <> 255uy then opaque <- false
+        i <- i + 4
+    let step = if opaque then 3 else 4
+    let rowBytes = width * step
+    // The rows in the file's channel order (RGBA copied as is, else RGB taken out of it).
+    let pixels =
+        if not opaque then rgba
+        else
+            let p = GC.AllocateUninitializedArray<byte> (width * height * 3)
+            let mutable s = 0
+            let mutable d = 0
+            while s < rgba.Length do
+                p[d] <- rgba[s]
+                p[d + 1] <- rgba[s + 1]
+                p[d + 2] <- rgba[s + 2]
+                s <- s + 4
+                d <- d + 3
+            p
+    let zeros = Array.zeroCreate<byte> rowBytes
+    let best = Array.zeroCreate<byte> (rowBytes + 1)
+    let trial = Array.zeroCreate<byte> (rowBytes + 1)
+    use compressed = new MemoryStream()
+    (
+        use z = new ZLibStream(compressed, CompressionLevel.SmallestSize, true)
+        for y in 0 .. height - 1 do
+            let at = y * rowBytes
+            let up, upAt = if y = 0 then zeros, 0 else pixels, at - rowBytes
+            let mutable bestCost = filterRow 0 pixels at up upAt rowBytes step best
+            for f in 1..4 do
+                let cost = filterRow f pixels at up upAt rowBytes step trial
+                if cost < bestCost then
+                    bestCost <- cost
+                    Array.blit trial 0 best 0 trial.Length
+            z.Write(best, 0, best.Length)
+    )
+    use out = new MemoryStream()
+    out.Write(signature, 0, signature.Length)
+    let header = Array.zeroCreate<byte> 13
+    let put (at: int) (v: int) =
+        header[at] <- byte (v >>> 24)
+        header[at + 1] <- byte (v >>> 16)
+        header[at + 2] <- byte (v >>> 8)
+        header[at + 3] <- byte v
+    put 0 width
+    put 4 height
+    header[8] <- 8uy // bit depth
+    header[9] <- (if opaque then 2uy else 6uy) // colour type: RGB or RGBA
+    writeChunk out "IHDR" header
+    writeChunk out "IDAT" (compressed.ToArray())
+    writeChunk out "IEND" [||]
+    out.ToArray()

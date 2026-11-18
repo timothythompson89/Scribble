@@ -15,9 +15,11 @@
     <Compile Include="Foundation/Dispatcher.fs" />
     <Compile Include="Foundation/Scroller.fs" />
     <Compile Include="Foundation/AppValue.fs" />
+    <Compile Include="Foundation/RenderServices.fs" />
     <Compile Include="Foundation/Cmd.fs" />
     <Compile Include="Foundation/Animation.fs" />
     <Compile Include="Framework/Element.fs" />
+    <Compile Include="Framework/Capture.fs" />
     <Compile Include="Framework/Flyout.fs" />
     <Compile Include="Framework/Style.fs" />
     <Compile Include="Framework/Layoutable.fs" />
@@ -53,6 +55,8 @@
     <Compile Include="Hosting/ElementHost.fs" />
     <Compile Include="Hosting/SemanticTree.fs" />
     <Compile Include="Hosting/App.fs" />
+    <Compile Include="Hosting/ViewImage.fs" />
+    <Compile Include="Hosting/Files.fs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Tests set element states (pointer over, pressed) directly to draw them. -->

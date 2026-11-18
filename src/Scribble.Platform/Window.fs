@@ -90,3 +90,9 @@ type IPlatform =
     /// Browser: returns immediately; the browser keeps delivering events and frames for as long as
     /// the page is open. Don't dispose anything after it returns.
     abstract Run: unit -> unit
+
+    /// Lets the person save `bytes` as a file (DESIGN.md, "Rendering to an image and saving it", decision 7): the
+    /// desktop shows a save dialog (over `owner`) suggesting `suggestedName`, its type taken from the extension; the
+    /// browser downloads it under that name. True when it was saved, false when the person cancelled (always true
+    /// in the browser, which can't tell). Call on the UI thread; the task may finish on another thread.
+    abstract SaveFile: owner: IWindow voption * suggestedName: string * bytes: byte[] -> System.Threading.Tasks.Task<bool>

@@ -286,3 +286,61 @@ let ``decoding a 1024 square PNG is fast`` () =
     Console.WriteLine($"PNG 1024² decode: {best:F2} ms ({png.Length / 1024} KB)")
     // Measured 24 ms on Tim's machine (2026-11-17): about 8 of it is the BCL's zlib. A guard against regressions.
     Assert.True(best < 40.0, $"decoding took {best:F2} ms")
+
+// --- The encoder (DESIGN.md, "Rendering to an image and saving it", decisions 1 and 6) -----------------------
+
+/// WIC's pixels for a PngSuite file as straight 8-bit RGBA (the encoder's input).
+let private straightReference (name: string) =
+    use z = new ZLibStream(File.OpenRead(Path.Combine(suite, name + ".wic")), CompressionMode.Decompress)
+    use m = new MemoryStream()
+    z.CopyTo m
+    let b = m.ToArray()
+    let w = BitConverter.ToInt32(b, 0)
+    let h = BitConverter.ToInt32(b, 4)
+    let pixels = Array.init (w * h * 4) (fun i -> byte (Pixels.round16 (int (BitConverter.ToUInt16(b, 8 + i * 2)))))
+    w, h, pixels
+
+/// The colour type byte in IHDR.
+let private colourType (png: byte[]) = png[25]
+
+[<Theory; MemberData(nameof validFiles)>]
+let ``every PngSuite picture as WIC saw it encodes and reads back the same`` (name: string) =
+    let w, h, rgba = straightReference name
+    let png = Png.encode (w, h, rgba)
+    let image = ImageDecoder.decode png
+    Assert.Equal((w, h), (image.Width, image.Height))
+    let expected = premultiplied rgba
+    if expected <> image.Pixels then Assert.Fail(name + ": " + firstDifference expected image.Pixels w)
+
+[<Fact>]
+let ``transparency is kept and an opaque picture is written as RGB`` () =
+    let rng = Random 7
+    let w, h = 37, 23
+    let noisy = Array.init (w * h * 4) (fun _ -> byte (rng.Next 256))
+    // Some fully transparent and fully opaque pixels among the partial ones.
+    for p in 0..9 do
+        noisy[p * 4 + 3] <- 0uy
+        noisy[(p + 10) * 4 + 3] <- 255uy
+    let png = Png.encode (w, h, noisy)
+    Assert.Equal(6uy, colourType png)
+    Assert.Equal<byte[]>(premultiplied noisy, (ImageDecoder.decode png).Pixels)
+    let opaque = Array.copy noisy
+    for p in 0 .. w * h - 1 do
+        opaque[p * 4 + 3] <- 255uy
+    let png = Png.encode (w, h, opaque)
+    Assert.Equal(2uy, colourType png)
+    Assert.Equal<byte[]>(opaque, (ImageDecoder.decode png).Pixels)
+
+[<Fact>]
+let ``filtering makes smooth pictures small`` () =
+    // A gradient: unfiltered rows repeat little, each row differs from the one above by the same step.
+    let w, h = 256, 256
+    let rgba = Array.init (w * h * 4) (fun i -> let p = i / 4 in if i % 4 = 3 then 255uy else byte ((p % w + p / w) / 2))
+    let png = Png.encode (w, h, rgba)
+    Assert.Equal<byte[]>(rgba, (ImageDecoder.decode png).Pixels)
+    Assert.True(png.Length < 2000, $"{png.Length} bytes")
+
+[<Fact>]
+let ``the encoder refuses pixels of the wrong size`` () =
+    Assert.Throws<ArgumentException>(fun () -> Png.encode (2, 2, Array.zeroCreate 15) |> ignore) |> ignore
+    Assert.Throws<ArgumentException>(fun () -> Png.encode (0, 0, [||]) |> ignore) |> ignore

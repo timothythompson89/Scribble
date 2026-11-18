@@ -31,3 +31,21 @@ module DesktopApp =
                 (app :?> ElementHost).Dispatcher |> ValueOption.iter _.Install()
                 platform.Run()
                 0
+
+    /// Rendering in a tool or script, with no window (DESIGN.md, "Rendering to an image and saving it", round 2, 9):
+    /// a GPU device and HarfBuzz shaping for `ViewImage.render`, until the result is disposed.
+    /// ```
+    /// use _ = DesktopApp.headless [ Headless.fonts [ Emoji.Twemoji() ] ]
+    /// let image = (ViewImage.render (myView ()) [ ViewImage.scale 2.0 ]).Result
+    /// File.WriteAllBytes("picture.png", (Image.toPng image).Result)
+    /// ```
+    let headless (settings: HeadlessSetting list) : IDisposable =
+        let device =
+            WebGpuDevice.Create [ WebGpuDevice.backend (WebGpuDevice.BackendFromEnvironment()) ] :> IRenderDevice
+        let shaper = new HarfBuzzShaper() :> IShaper
+        let rendering = Headless.start device shaper settings
+        { new IDisposable with
+            member _.Dispose() =
+                rendering.Dispose()
+                shaper.Dispose()
+                device.Dispose() }

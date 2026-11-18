@@ -18,7 +18,7 @@ type ImageViewTests(fixture: TextRenderingTests.TextFixture) =
         let tree = ElementTree(fixture.Text)
         tree.Theme <- ValueSome theme
         tree.Update(Scribble.Samples.Gallery.ImagesPage.view ())
-        let width, height = 720.0, 1560.0
+        let width, height = 720.0, 2200.0
         tree.UpdateLayout(Size.Create(width, height))
         tree.RunAfterFrame()
         let pixels: PixelSize = { Width = int width; Height = int height }

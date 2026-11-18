@@ -60,6 +60,8 @@ module T =
     let strings = JSMarshalerType.Array JSMarshalerType.String
     /// A Span<byte>: JavaScript sees a MemoryView, valid only during the call.
     let bytes = JSMarshalerType.Span JSMarshalerType.Byte
+    /// A byte[]: copied from a Uint8Array (a return value JavaScript keeps).
+    let byteArray = JSMarshalerType.Array JSMarshalerType.Byte
 
 /// Reads a Task returned by a JavaScript function (a Promise on the JS side).
 let returnedTask (args: JSMarshalerArgument[]) : Task =
@@ -86,3 +88,9 @@ let returnedStrings (args: JSMarshalerArgument[]) : string[] =
     let mutable value: string[] = null
     args[1].ToManaged(&value)
     if isNull value then [||] else value
+
+/// A byte[] returned by JavaScript (a Uint8Array), or null.
+let returnedBytes (args: JSMarshalerArgument[]) : byte[] =
+    let mutable value: byte[] = null
+    args[1].ToManaged(&value)
+    value

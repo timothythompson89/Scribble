@@ -31,13 +31,14 @@ type private OffscreenOnly(device: IRenderDevice) =
         member _.Description = device.Description
         member _.GlyphAtlas = device.GlyphAtlas
         member _.ColorGlyphAtlas = device.ColorGlyphAtlas
+        member _.MaxTextureSize = device.MaxTextureSize
         member _.CreateSurface(_, size) =
             { new IRenderSurface with
                 member _.Size = size
                 member _.Resize _ = ()
                 member _.TryBeginFrame _ = None
                 member _.Dispose() = () }
-        member _.RenderOffscreen(size, scale, draw) = device.RenderOffscreen(size, scale, draw)
+        member _.RenderOffscreenAsync(size, scale, draw) = device.RenderOffscreenAsync(size, scale, draw)
         member _.Dispose() = ()
 
 type InspectorTests(fixture: TextFixture) =

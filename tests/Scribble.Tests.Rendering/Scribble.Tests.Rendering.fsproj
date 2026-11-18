@@ -5,6 +5,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Offscreen.fs" />
     <Compile Include="Png.fs" />
     <Compile Include="Snapshot.fs" />
     <Compile Include="Scenes.fs" />
@@ -26,6 +27,7 @@
     <Compile Include="ImageTests.fs" />
     <Compile Include="ImageViewTests.fs" />
     <Compile Include="FlyoutTests.fs" />
+    <Compile Include="ImageOutTests.fs" />
     <Compile Include="BackendTests.fs" />
   </ItemGroup>
   <ItemGroup>

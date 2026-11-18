@@ -10,6 +10,7 @@ let device = null;
 let adapterInfo = "";
 let format = null;
 let pipeline = null;
+let shaderSourceKept = null; // for the offscreen pipeline
 let globals = null;
 let shapes = null;
 let shapesCapacity = 0;
@@ -86,6 +87,7 @@ export async function init(powerPreference, shaderSource, atlasSize, colorAtlasS
   device.addEventListener("uncapturederror", (e) => console.error("[WebGPU]", e.error.message));
   device.lost.then((i) => { if (i.reason !== "destroyed") console.error("[WebGPU] device lost:", i.message); });
 
+  shaderSourceKept = shaderSource;
   const module = device.createShaderModule({ label: "Scribble shapes", code: shaderSource });
   const blend = { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" };
   pipeline = await device.createRenderPipelineAsync({
@@ -144,6 +146,7 @@ export function destroyImagePage(id) {
   if (texture) texture.destroy();
   imagePages.delete(id);
   bindGroups.delete(id);
+  offscreenBindGroups.delete(id);
 }
 
 // Copies a mip level (tightly packed premultiplied RGBA rows) into a page at (x, y).
@@ -180,6 +183,114 @@ export function draw(id, r, g, b, a, shapeBytes, count, runBytes) {
   }
   pass.end();
   device.queue.submit([encoder.finish()]);
+}
+
+
+// --- Offscreen rendering (DESIGN.md, "Rendering to an image and saving it", decision 3) ----------------------
+
+// The pipeline for offscreen targets (rgba8unorm, which the canvas's preferred format may not be) and its bind
+// groups ("auto" layouts don't match across pipelines), made on first use.
+let offscreenPipeline = null;
+const offscreenBindGroups = new Map();
+let offscreenShapesCapacity = 0;
+// The last offscreen render's pixels, until .NET takes them (takeReadback).
+let readback = null;
+
+function offscreenPipelineFor() {
+  if (offscreenShapesCapacity !== shapesCapacity) {
+    offscreenBindGroups.clear();
+    offscreenShapesCapacity = shapesCapacity;
+  }
+  if (!offscreenPipeline) {
+    if (format === "rgba8unorm") {
+      offscreenPipeline = pipeline;
+    } else {
+      const module = device.createShaderModule({ label: "Scribble shapes (offscreen)", code: shaderSourceKept });
+      const blend = { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" };
+      offscreenPipeline = device.createRenderPipeline({
+        label: "Scribble shapes (offscreen)",
+        layout: "auto",
+        vertex: { module, entryPoint: "vs_main" },
+        fragment: { module, entryPoint: "fs_main", targets: [{ format: "rgba8unorm", blend: { color: blend, alpha: blend } }] },
+        primitive: { topology: "triangle-list" },
+      });
+    }
+  }
+  return offscreenPipeline;
+}
+
+function offscreenBindGroupFor(page) {
+  if (offscreenPipeline === pipeline) return bindGroupFor(page);
+  let group = offscreenBindGroups.get(page);
+  if (!group) {
+    const texture = page < 0 ? placeholder : imagePages.get(page);
+    group = device.createBindGroup({
+      layout: offscreenPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: globals } },
+        { binding: 1, resource: { buffer: shapes } },
+        { binding: 2, resource: atlas.createView() },
+        { binding: 3, resource: colorAtlas.createView() },
+        { binding: 4, resource: texture.createView() },
+      ],
+    });
+    offscreenBindGroups.set(page, group);
+  }
+  return group;
+}
+
+// As `draw`, into a width × height rgba8unorm texture, then reads it back (tightly packed rows, premultiplied):
+// resolves when the pixels are ready for takeReadback. The shapes are copied before the first await (the .NET
+// MemoryViews are valid only during this call).
+export async function renderOffscreen(width, height, r, g, b, a, shapeBytes, count, runBytes) {
+  const shapeCopy = count > 0 ? shapeBytes.slice() : null;
+  const runs = new Int32Array(runBytes.slice().buffer);
+  if (count > 0) ensureCapacity(count);
+  const pipe = offscreenPipelineFor();
+  const texture = device.createTexture({
+    label: "Scribble offscreen",
+    size: [width, height],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const paddedRow = Math.ceil((width * 4) / 256) * 256;
+  const buffer = device.createBuffer({ label: "Scribble readback", size: paddedRow * height, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  try {
+    if (count > 0) {
+      device.queue.writeBuffer(globals, 0, new Float32Array([width, height, 0, 0]));
+      device.queue.writeBuffer(shapes, 0, shapeCopy);
+    }
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{ view: texture.createView(), loadOp: "clear", storeOp: "store", clearValue: { r, g, b, a } }],
+    });
+    if (count > 0) {
+      pass.setPipeline(pipe);
+      for (let i = 0; i + 2 < runs.length; i += 3) {
+        pass.setBindGroup(0, offscreenBindGroupFor(runs[i + 2]));
+        pass.draw(6, runs[i + 1], 0, runs[i]);
+      }
+    }
+    pass.end();
+    encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: paddedRow, rowsPerImage: height }, [width, height]);
+    device.queue.submit([encoder.finish()]);
+    await buffer.mapAsync(GPUMapMode.READ);
+    const mapped = new Uint8Array(buffer.getMappedRange());
+    const tight = new Uint8Array(width * 4 * height);
+    for (let y = 0; y < height; y++) tight.set(mapped.subarray(y * paddedRow, y * paddedRow + width * 4), y * width * 4);
+    buffer.unmap();
+    readback = tight;
+  } finally {
+    buffer.destroy();
+    texture.destroy();
+  }
+}
+
+// The pixels of the render that just finished (once).
+export function takeReadback() {
+  const pixels = readback;
+  readback = null;
+  return pixels;
 }
 
 export function dispose() {
