@@ -24,6 +24,7 @@
     <Compile Include="LayerTests.fs" />
     <Compile Include="InspectorTests.fs" />
     <Compile Include="ControlTests.fs" />
+    <Compile Include="ListTests.fs" />
     <Compile Include="ImageTests.fs" />
     <Compile Include="ImageViewTests.fs" />
     <Compile Include="FlyoutTests.fs" />

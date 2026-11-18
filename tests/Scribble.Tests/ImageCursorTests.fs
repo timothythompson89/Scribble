@@ -207,7 +207,7 @@ let ``a picture that fails is reported once, and the arrow shows`` () =
 
 // --- The inspector -------------------------------------------------------------------------------
 
-/// Every visible TextBlock's text in a layer, in tree order.
+/// Every visible TextBlock's text in a layer, in view order.
 let private texts (layer: Layer) =
     let rec collect (e: Element) =
         [ if e.IsVisible then

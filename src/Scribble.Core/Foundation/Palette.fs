@@ -61,3 +61,5 @@ module internal ThemeConvert =
     let uniformCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v))
     /// Half of a number theme value as a uniform corner radius (a CheckBox's box).
     let halfCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v / 2.0))
+    /// A colour theme value as a selection's tint (a selected list item's background).
+    let selectionTint: obj -> obj = fun v -> box ((unbox<Scribble.Rendering.Color> v).WithAlpha 0.3f)

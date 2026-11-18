@@ -47,8 +47,8 @@ let private rowWithButton (m: Message) =
         Border.content (
             DockPanel.create [
                 DockPanel.children [
+                    TextBlock.create [ DockPanel.dock Dock.Fill; TextBlock.text m.Text; TextBlock.textWrapping Wrap ]
                     Button.create [ DockPanel.dock Dock.Right; Button.text "Reply" ]
-                    TextBlock.create [ TextBlock.text m.Text; TextBlock.textWrapping Wrap ]
                 ]
             ])
     ]

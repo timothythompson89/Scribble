@@ -55,13 +55,25 @@ let private show (view: View) settings =
     w, (app :?> ElementHost)
 
 [<Fact>]
-let ``Tab walks focusable elements in tree order and wraps, Shift+Tab goes back`` () =
+let ``Tab walks focusable elements in view order and wraps, Shift+Tab goes back`` () =
     let w, host = show (buttons (List()) []) []
     Assert.Equal("(none)", focusedName host)
     let seen = [ for _ in 1..4 -> tab w; focusedName host ]
     Assert.Equal<string list>([ "one"; "two"; "three"; "one" ], seen)
     shiftTab w
     Assert.Equal("three", focusedName host)
+
+[<Fact>]
+let ``Tab order is view order, not position: a DockPanel's Fill child comes where it's written`` () =
+    let button name (dock: Dock) = Button.create [ Button.name name; Button.text name; DockPanel.dock dock ]
+    let w, host =
+        show (DockPanel.create [ DockPanel.children [ button "top" Dock.Top; button "content" Dock.Fill; button "bottom" Dock.Bottom ] ]) []
+    Assert.Equal<string list>([ "top"; "content"; "bottom"; "top" ], [ for _ in 1..4 -> tab w; focusedName host ])
+    // Written the other way (the last child fills), Tab takes the order written, against the one shown.
+    let w, host =
+        show (DockPanel.create [ DockPanel.children [ button "top" Dock.Top; button "bottom" Dock.Bottom; button "content" Dock.Left ] ]) []
+    Assert.True((find "content" host).PositionInTree.Y < (find "bottom" host).PositionInTree.Y)
+    Assert.Equal<string list>([ "top"; "bottom"; "content" ], [ for _ in 1..3 -> tab w; focusedName host ])
 
 [<Fact>]
 let ``the ring shows after Tab, not after a press, and hides while the window is inactive`` () =

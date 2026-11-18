@@ -185,6 +185,59 @@ let ``a dock panel's natural size adds its strips`` () =
     let _, d = run view 400.0 400.0
     Assert.Equal((0.0, 0.0, 80.0, 60.0), bounds d)
 
+[<Fact>]
+let ``a Fill child gets what's left wherever it's written, and the last child docks`` () =
+    let view =
+        DockPanel.create [
+            DockPanel.children [
+                box 1.0 20.0 [ DockPanel.dock Dock.Top ]
+                box 1.0 1.0 [ DockPanel.dock Dock.Fill ]
+                box 1.0 10.0 [ DockPanel.dock Dock.Bottom ]
+            ]
+        ]
+    let _, d = run view 200.0 100.0
+    Assert.Equal((0.0, 0.0, 200.0, 20.0), bounds d.Children[0])
+    Assert.Equal((0.0, 20.0, 200.0, 70.0), bounds d.Children[1])
+    Assert.Equal((0.0, 90.0, 200.0, 10.0), bounds d.Children[2])
+
+[<Fact>]
+let ``a Fill child in the middle lays out as the same child written last, spacing too`` () =
+    let shell (children: View list) = DockPanel.create [ DockPanel.spacing 5.0; DockPanel.children children ]
+    let top () = box 1.0 20.0 [ DockPanel.dock Dock.Top ]
+    let bottom () = box 1.0 10.0 [ DockPanel.dock Dock.Bottom ]
+    let _, written = run (shell [ top (); box 1.0 1.0 [ DockPanel.dock Dock.Fill ]; bottom () ]) 200.0 100.0
+    let _, last = run (shell [ top (); bottom (); box 1.0 1.0 [] ]) 200.0 100.0
+    Assert.Equal((0.0, 25.0, 200.0, 60.0), bounds written.Children[1])
+    Assert.Equal(bounds last.Children[0], bounds written.Children[0])
+    Assert.Equal(bounds last.Children[1], bounds written.Children[2])
+    Assert.Equal(bounds last.Children[2], bounds written.Children[1])
+
+[<Fact>]
+let ``several Fill children each get what's left`` () =
+    let view =
+        DockPanel.create [
+            DockPanel.children [
+                box 1.0 1.0 [ DockPanel.dock Dock.Fill ]
+                box 30.0 1.0 [ DockPanel.dock Dock.Left ]
+                box 1.0 1.0 [ DockPanel.dock Dock.Fill ]
+            ]
+        ]
+    let _, d = run view 200.0 100.0
+    Assert.Equal((30.0, 0.0, 170.0, 100.0), bounds d.Children[0])
+    Assert.Equal((0.0, 0.0, 30.0, 100.0), bounds d.Children[1])
+    Assert.Equal((30.0, 0.0, 170.0, 100.0), bounds d.Children[2])
+
+[<Fact>]
+let ``a Fill child counts in the natural size after the strips`` () =
+    let view =
+        DockPanel.create [
+            DockPanel.horizontalAlignment HorizontalAlignment.Left
+            DockPanel.verticalAlignment VerticalAlignment.Top
+            DockPanel.children [ box 50.0 10.0 [ DockPanel.dock Dock.Fill ]; box 1.0 20.0 [ DockPanel.dock Dock.Top ]; box 30.0 40.0 [ DockPanel.dock Dock.Left ] ]
+        ]
+    let _, d = run view 400.0 400.0
+    Assert.Equal((0.0, 0.0, 80.0, 60.0), bounds d)
+
 // --- Canvas ----------------------------------------------------------------------------------
 
 [<Fact>]

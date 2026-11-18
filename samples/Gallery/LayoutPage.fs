@@ -81,31 +81,43 @@ let private shell =
                         ]
                     ]
                     Separator.create [ DockPanel.dock Dock.Top ]
-                    TextBlock.create [
-                        DockPanel.dock Dock.Bottom
-                        TextBlock.text "Ready · 3 items"
-                        TextBlock.fontSize 12.0
-                        TextBlock.foreground Palette.textDim
-                        TextBlock.margin (8.0, 4.0)
-                    ]
-                    Separator.create [ DockPanel.dock Dock.Bottom; Separator.lineStyle LineStyle.Dashed ]
-                    StackPanel.create [
-                        DockPanel.dock Dock.Left
-                        StackPanel.width 110.0
-                        StackPanel.margin 8.0
-                        StackPanel.spacing 6.0
-                        StackPanel.children [
-                            for item in [ "Inbox"; "Drafts"; "Archive" ] -> TextBlock.create [ TextBlock.text item ]
+                    // The middle says it fills, so it's written above the status bar, as it shows
+                    // (view order is the order Tab and a screen reader take).
+                    DockPanel.create [
+                        DockPanel.dock Dock.Fill
+                        DockPanel.children [
+                            StackPanel.create [
+                                DockPanel.dock Dock.Left
+                                StackPanel.width 110.0
+                                StackPanel.margin 8.0
+                                StackPanel.spacing 6.0
+                                StackPanel.children [
+                                    for item in [ "Inbox"; "Drafts"; "Archive" ] -> TextBlock.create [ TextBlock.text item ]
+                                ]
+                            ]
+                            Separator.create [ DockPanel.dock Dock.Left; Separator.orientation Vertical ]
+                            TextBlock.create [
+                                TextBlock.text "The last child fills what's left"
+                                TextBlock.foreground Palette.textDim
+                                TextBlock.textWrapping Wrap
+                                TextBlock.horizontalAlignment HorizontalAlignment.Center
+                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                TextBlock.margin 8.0
+                            ]
                         ]
                     ]
-                    Separator.create [ DockPanel.dock Dock.Left; Separator.orientation Vertical ]
-                    TextBlock.create [
-                        TextBlock.text "The last child fills what's left"
-                        TextBlock.foreground Palette.textDim
-                        TextBlock.textWrapping Wrap
-                        TextBlock.horizontalAlignment HorizontalAlignment.Center
-                        TextBlock.verticalAlignment VerticalAlignment.Center
-                        TextBlock.margin 8.0
+                    // Bottom strips stack upwards from the edge, so the line and the status bar share one.
+                    StackPanel.create [
+                        DockPanel.dock Dock.Bottom
+                        StackPanel.children [
+                            Separator.create [ Separator.lineStyle LineStyle.Dashed ]
+                            TextBlock.create [
+                                TextBlock.text "Ready · 3 items"
+                                TextBlock.fontSize 12.0
+                                TextBlock.foreground Palette.textDim
+                                TextBlock.margin (8.0, 4.0)
+                            ]
+                        ]
                     ]
                 ]
             ]

@@ -458,7 +458,7 @@ module ToggleButtonProps =
     /// A CheckBox's tick and dash, a Switch's knob.
     let markColor = Prop<Scribble.Rendering.Color>("MarkColor", Scribble.Rendering.Color.White, Affects.Render, PropKind.Value)
 
-/// A TabControl's header: whether it's the selected tab. Declared here so `States.isSelected` can read it.
+/// Whether a TabControl's header or a ListBox's item is selected. Declared here so `States.isSelected` can read it.
 module TabHeaderProps =
     let isSelected = Prop<bool>("IsSelected", false, Affects.Render, PropKind.Value) |> AppState.mark
 

@@ -84,6 +84,7 @@ type SemanticNode
         isChecked: CheckState voption,
         isSelected: bool voption,
         isExpanded: bool voption,
+        isMultiSelectable: bool,
         range: SemanticRange voption,
         orientation: Orientation voption,
         scroll: SemanticScroll voption,
@@ -103,6 +104,8 @@ type SemanticNode
     member _.IsChecked = isChecked
     member _.IsSelected = isSelected
     member _.IsExpanded = isExpanded
+    /// A list in which more than one item can be selected.
+    member _.IsMultiSelectable = isMultiSelectable
     member _.Range = range
     member _.Orientation = orientation
     /// What a scroll area shows of what it scrolls over.
@@ -141,6 +144,7 @@ type SemanticNode
         match isExpanded with
         | ValueSome e -> sb.Append(if e then " expanded" else " collapsed") |> ignore
         | ValueNone -> ()
+        if isMultiSelectable then sb.Append(" multi-select") |> ignore
         match range with
         | ValueSome r -> sb.Append(" ").Append(n r.Value).Append(" (").Append(n r.Minimum).Append(" to ").Append(n r.Maximum).Append(")") |> ignore
         | ValueNone -> ()
@@ -200,6 +204,7 @@ module internal SemanticBuilder =
         | Role.Button
         | Role.CheckBox
         | Role.Switch
+        | Role.RadioButton
         | Role.Tab
         | Role.ListItem -> true
         | _ -> false
@@ -309,6 +314,7 @@ module internal SemanticBuilder =
                               read computed e SemanticsProps.isChecked,
                               read computed e SemanticsProps.selected,
                               read computed e SemanticsProps.expanded,
+                              read computed e SemanticsProps.multiSelectable,
                               read computed e SemanticsProps.range,
                               read computed e SemanticsProps.orientation,
                               scroll,

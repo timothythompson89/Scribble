@@ -298,7 +298,7 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             focused <- next
             next |> ValueOption.iter (fun e -> e.SetFocusState(true, showRing ()))
 
-    /// Focusable elements in tree order (parents before children, children in order), skipping
+    /// Focusable elements in view order (parents before children, children in order), skipping
     /// hidden and disabled subtrees.
     let focusOrder () =
         let result = ResizeArray<Element>()
@@ -470,14 +470,14 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             keyboardMode <- ring
             setFocus (ValueSome e)
 
-    /// Focuses the first focusable element in tree order (a flyout that opened), with the ring if `ring`.
+    /// Focuses the first focusable element in view order (a flyout that opened), with the ring if `ring`.
     member internal _.FocusFirst(ring: bool) =
         let order = focusOrder ()
         if order.Count > 0 then
             keyboardMode <- ring
             setFocus (ValueSome order[0])
 
-    /// Moves focus to the next or previous focusable element in tree order, wrapping around, and
+    /// Moves focus to the next or previous focusable element in view order, wrapping around, and
     /// shows the focus ring. With nothing focused, Next goes to the first and Previous to the last.
     member _.MoveFocus(direction: FocusDirection) =
         keyboardMode <- true
@@ -502,6 +502,11 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
     /// handler took it: Tab moves focus, Enter clicks, Space presses (clicking on release), Escape
     /// cancels a Space press. Returns true when something handled the key.
     member this.KeyDown(key: Key, modifiers: Modifiers, isRepeat: bool) : bool =
+        // The keyboard is in use (a browser's :focus-visible rule): focus a key moves (a ListBox's arrows, a
+        // RadioGroup's) shows the ring. The element focused now keeps its look; a pointer press puts the ring away.
+        match key with
+        | Key.Shift | Key.Control | Key.Alt | Key.Meta | Key.CapsLock -> ()
+        | _ -> keyboardMode <- true
         let target = match currentFocus () with ValueSome e -> ValueSome e | ValueNone -> tree.Root
         let args = KeyEventArgs(key, modifiers, isRepeat)
         routedWith (routeOf target) (ValueSome LayoutProps.onPreviewKeyDown) LayoutProps.onKeyDown _.KeyDown args |> ignore

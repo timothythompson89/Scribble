@@ -4,7 +4,7 @@ A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.m
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Status** (2026-11-17): milestones 0–7b done; M8 (core controls) under way: scrolling and virtualized lists, Grid,
-DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl. Apps are F# view
+DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton. Apps are F# view
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
@@ -253,6 +253,10 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    ←/→ on a focused tab switch; on a phone the tab row scrolls sideways) and Light/Dark is a Switch. The Controls
    page has CheckBoxes ("All toppings" shows a dash while some are picked), Switches, a ToggleButton and Sliders
    (controlled and own-value side by side, a continuous one, three vertical ones).
+16. Lists (M8 step 4b, not yet checked): a ListBox of 10,000 items; the radio buttons above it pick Single, Multiple
+   or None. Click, Ctrl+click, Shift+click, Ctrl+A; Tab in and use ↑/↓, Home/End, PageUp/PageDown; double-click or
+   Enter invokes (the line above the list says what). "Reverse order" keeps the selection. Below, a list of colour
+   swatches with its own view per item.
 The browser version is `samples/Gallery.Browser` (port 5281); the Counter's is `samples/Counter.Browser` (port 5283).
 
 The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,
@@ -429,8 +433,8 @@ App.onKey (fun key mods -> match key with Key.Space -> Some TogglePause | _ -> N
 - **Routing:** `onPreviewKeyDown`/`onPreviewKeyUp` run from the root down to the focused element (or the root
   when nothing has focus), then `onKeyDown`/`onKeyUp` from there back up. `e.Handle()` stops the event and also
   the built-in behavior below.
-- **Focus:** `focusable` (Buttons are by default). Tab and Shift+Tab move through focusable elements in tree order
-  and wrap; a press focuses the nearest focusable element under the pointer, or clears focus. Disabling, hiding or
+- **Focus:** `focusable` (Buttons are by default). Tab and Shift+Tab move through focusable elements in view order
+  (the order written in the view, not where they end up on screen) and wrap; a press focuses the nearest focusable element under the pointer, or clears focus. Disabling, hiding or
   removing the focused element clears focus.
 - **Focus ring:** element types draw it when `ctx.IsFocusVisible` (`FocusRing.draw ctx list radius`): after Tab,
   not after a press, and not while the window is inactive. `ctx.IsFocused` is true either way.
@@ -1009,7 +1013,7 @@ StackPanel.create [
 ```
 
 Panels: `StackPanel` (a row or column), `WrapPanel` (left to right, wrapping; `WrapPanel.breakAfter true` on a
-child starts a new row), `DockPanel` (strips along the sides, the last child fills), `Canvas` (positions) and
+child starts a new row), `DockPanel` (strips along the sides; a `Dock.Fill` child, else the last, fills), `Canvas` (positions) and
 `Grid` (rows and columns). A child says where it goes with **attached settings**, which only its parent reads:
 
 ```fsharp
@@ -1033,6 +1037,19 @@ also spans. Lines land on whole physical pixels, so cells tile with no gaps. `Do
 `Canvas.left 40.0`, `Layoutable.zIndex 1` (drawn and hit above its siblings; Tab order stays the view's) and
 `Separator.create [ Separator.orientation Vertical; Separator.lineStyle LineStyle.Dashed ]` work the same way.
 Borders can be dashed or dotted: `Border.borderStyle LineStyle.Dashed`, `Border.borderDash (6.0, 3.0)`.
+
+A DockPanel's children take their strips in the order written. The child that says `Dock.Fill` gets what's left,
+wherever it is written, so a shell reads top to bottom, which is also the order Tab and a screen reader take:
+
+```fsharp
+DockPanel.create [
+    DockPanel.children [
+        toolbar [ DockPanel.dock Dock.Top ]
+        content [ DockPanel.dock Dock.Fill ]         // no Fill child: the last child fills (`lastChildFill`)
+        statusBar [ DockPanel.dock Dock.Bottom ]
+    ]
+]
+```
 
 Settings are checked at compile time: `TextBlock.margin` works because every element has a margin, while
 `TextBlock.create [ Border.background … ]` is a type error. Every element has margin, width/height, min/max sizes,
@@ -1111,6 +1128,47 @@ Switch.create [ Switch.text "Notifications"; Switch.onCheckedChanged (fun on -> 
   `TabHeader.style [ States.isSelected ] [ ... ]` (F# reserves the word `checked`). The themes color them from the
   palette; nothing new to set in a theme.
 - An element can be given keyboard focus from code: `element.Focus()`.
+- **RadioGroup and RadioButton**: one option of several. The group holds the choice (`RadioGroup.selected v`,
+  `onSelectedChanged (fun (v: 'T) -> ...)`, controlled or its own); each `RadioButton.value v` names its option.
+  Radios may sit anywhere inside the group (a StackPanel: `orientation`, `spacing`). One Tab stop (the chosen
+  option, else the first); the arrow keys choose the next or previous, wrapping and skipping disabled ones.
+
+```fsharp
+RadioGroup.create [
+    RadioGroup.selected model.Size
+    RadioGroup.onSelectedChanged (fun (s: Size) -> dispatch (SetSize s))
+    RadioGroup.children [
+        RadioButton.create [ RadioButton.value Small; RadioButton.text "Small" ]
+        RadioButton.create [ RadioButton.value Large; RadioButton.text "Large" ]
+    ]
+]
+```
+
+- **ListBox**: a list the user selects from. It's an ItemsView (so 10,000 items cost about what 40 do: put it in
+  a ScrollViewer) that wraps each item's view in a `ListBoxItem`. The selection is **keys** (`keySelector`; the
+  index without one), so it survives inserts, sorting and filtering. `selectionMode`: `Single` (default),
+  `Multiple` (Ctrl+click toggles, Shift+click selects a range, Ctrl+A all, Space toggles, Shift+arrows extend) or
+  `None` (a list of actions: a click invokes). One Tab stop; ↑/↓, Home/End and PageUp/PageDown move through the
+  items, realizing only the one reached. **Invoking** acts on an item: a double-click or Enter (a click in `None`).
+
+```fsharp
+ScrollViewer.create [
+    ScrollViewer.content (
+        ListBox.create [
+            ListBox.source model.People
+            ListBox.keySelector (fun (p: Person) -> p.Id)
+            ListBox.viewSelector (fun (p: Person) -> p.Name)          // or a view
+            ListBox.selected [ model.Current ]                         // left out: it keeps its own
+            ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> dispatch (Pick e.Key))
+            ListBox.onItemInvoked (fun (e: ItemInvokedEventArgs<Person, int>) -> dispatch (Open e.Key))
+        ])
+]
+```
+
+  The change event has `Keys`, `Items`, `Added`, `Removed`, and `Key`/`Item` (the one selected, for Single). A
+  selected key that leaves the source is dropped (and reported) when the list keeps its own selection; a
+  controlled list leaves the app's keys alone. Style the items with `ListBoxItem.style [ States.isSelected ] [ ... ]`
+  (`ListBoxItem.indicator` is the bar at the left of a selected item).
 
 Own values belong to the element: in an ItemsView, whose rows are recycled, give the value (controlled), or a row
 scrolled in may show the own value of the item it was made for before.

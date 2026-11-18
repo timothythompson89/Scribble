@@ -80,7 +80,7 @@ let ``pages not visited aren't built, and hidden ones aren't laid out`` () =
     tree.Update(Scribble.Samples.GalleryApp.gallery ())
     frame tree
     let headers = all (tabControl tree) |> Seq.filter (fun e -> obj.ReferenceEquals(e.Type, TabHeader.Type)) |> Seq.length
-    Assert.Equal(7, headers)
+    Assert.Equal(8, headers)
     Assert.Equal(1, (pages tree).Length)
     let first = (pages tree)[0]
     Assert.True(first.Bounds.Height > 0.0)
@@ -94,7 +94,7 @@ let ``every page opens with its title and a line on what it shows`` () =
     let tree = ElementTree(textSystem ())
     tree.Update(Scribble.Samples.GalleryApp.gallery ())
     frame tree
-    let titles = [ "Components"; "Layout"; "Controls"; "Scrolling"; "Layers"; "Styles"; "Images" ]
+    let titles = [ "Components"; "Layout"; "Controls"; "Scrolling"; "Lists"; "Layers"; "Styles"; "Images" ]
     for title in titles do
         click (tabControl tree) title
         frame tree

@@ -61,6 +61,19 @@ module internal ThemeLooks =
           )
           CheckBox.style [] (labeledLook Palette.onAccent [ Setting.fromThemeWith BorderProps.cornerRadius Palette.cornerRadius ThemeConvert.halfCorners ])
           Switch.style [] (labeledLook Palette.textDim [])
+          // A circle in the control colours; chosen, an accent ring and dot (M8 step 4b, decision 18).
+          RadioButton.style [] [
+              RadioButton.background Palette.control
+              RadioButton.borderBrush Palette.border
+              RadioButton.foreground Palette.text
+              RadioButton.markColor Palette.accent
+              Style.transition BorderProps.overlay tintTime
+              Style.transition BorderProps.borderBrush tintTime
+              Style.on States.isChecked [ RadioButton.borderBrush Palette.accent ]
+              Style.on States.hover [ RadioButton.overlay Palette.hoverTint ]
+              Style.on States.pressed [ RadioButton.overlay Palette.pressTint ]
+              Style.on States.disabled [ RadioButton.overlay Color.Transparent; RadioButton.opacity 0.5 ]
+          ]
           Slider.style [] [
               Slider.track Palette.control
               Slider.fill Palette.accent
@@ -84,12 +97,26 @@ module internal ThemeLooks =
               Style.on States.disabled [ TabHeader.overlay Color.Transparent; TabHeader.opacity 0.5 ]
           ]
           TabControl.style [] [ TabControl.line Palette.border; TabControl.underline Palette.accent ]
+          // List items (M8 step 4b, decision 15): square, transparent; hover and press tint; selected, an accent tint and
+          // the accent bar at the left edge.
+          ListBoxItem.style [] [
+              ListBoxItem.background Color.Transparent
+              ListBoxItem.indicator Palette.accent
+              Style.transition BorderProps.overlay tintTime
+              Style.transition BorderProps.background tintTime
+              Style.on States.isSelected [ Setting.fromThemeWith BorderProps.background Palette.accent ThemeConvert.selectionTint ]
+              Style.on States.hover [ ListBoxItem.overlay Palette.hoverTint ]
+              Style.on States.pressed [ ListBoxItem.overlay Palette.pressTint ]
+              Style.on States.disabled [ ListBoxItem.overlay Color.Transparent; ListBoxItem.opacity 0.5 ]
+          ]
           TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
           // A disabled Button fades as a whole: its text doesn't fade twice.
           TextBlock.style [ Style.inside Button.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside ToggleButton.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside CheckBox.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside Switch.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
+          TextBlock.style [ Style.inside RadioButton.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
+          TextBlock.style [ Style.inside ListBoxItem.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside TabHeader.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb; ScrollViewer.track Palette.scrollTrack ]
           Separator.style [] [ Separator.color Palette.border ] 

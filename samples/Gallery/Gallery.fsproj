@@ -5,6 +5,7 @@
     <Compile Include="LayoutPage.fs" />
     <Compile Include="ControlsPage.fs" />
     <Compile Include="ScrollingPage.fs" />
+    <Compile Include="ListsPage.fs" />
     <Compile Include="LayersPage.fs" />
     <Compile Include="StylesPage.fs" />
     <Compile Include="ImagesPage.fs" />

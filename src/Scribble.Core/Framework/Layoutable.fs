@@ -123,7 +123,7 @@ type Layoutable =
     static member onPreviewWheel<'k when 'k :> Layoutable>(handler: WheelEventArgs -> unit) : Setting<'k> =
         Setting.create LayoutProps.onPreviewWheel (ValueSome handler)
 
-    /// Can take keyboard focus: Tab and Shift+Tab stop here (in tree order), and pressing on it
+    /// Can take keyboard focus: Tab and Shift+Tab stop here (in view order), and pressing on it
     /// focuses it. Buttons are focusable by default.
     static member focusable<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.focusable value
     /// False: a press can focus it but Tab skips it (a ScrollViewer is like that). Default: true.

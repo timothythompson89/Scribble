@@ -8,6 +8,7 @@
 /// - LayoutPage.fs: Grid, DockPanel, Canvas (drag, zIndex), WrapPanel and Separators (M8 step 2),
 /// - ControlsPage.fs: CheckBox, Switch, ToggleButton and Slider (M8 step 3a),
 /// - ScrollingPage.fs: 10,000 messages in an ItemsView, jumped through with a scroller (M8 step 1),
+/// - ListsPage.fs: ListBox in each selection mode (10,000 items), RadioGroup, a view per item (M8 step 4b),
 /// - LayersPage.fs: toasts and a modal dialog (layers, M6),
 /// - StylesPage.fs: classes, state blocks and scoped styles (M7),
 /// - ImagesPage.fs: ImageView: stretching, pixelated, round, 2×, from pixels, a broken image (M8 step 3b); saving
@@ -33,6 +34,7 @@ let private pages =
       "Layout", LayoutPage.view, Scrolls
       "Controls", ControlsPage.view, Scrolls
       "Scrolling", ScrollingPage.view, Fills
+      "Lists", ListsPage.view, Fills
       "Layers", LayersPage.view, Scrolls
       "Styles", StylesPage.view, Scrolls
       "Images", ImagesPage.view, Scrolls ]

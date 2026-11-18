@@ -53,6 +53,7 @@ type PhoneTests(fixture: TextFixture) =
     [<InlineData("Styles")>]
     [<InlineData("Layout")>]
     [<InlineData("Controls")>]
+    [<InlineData("Lists")>]
     member this.``the Gallery on a phone``(tab: string) =
         let tree = ElementTree(fixture.Text, Scale = scale)
         tree.Theme <- ValueSome Common.darkTheme

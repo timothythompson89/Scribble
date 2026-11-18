@@ -59,6 +59,8 @@ module ItemsViewProps =
     let layout = Prop.define "Layout" ItemsLayout.Stack Affects.Measure
     let scroller = Prop.define "Scroller" (ValueNone: Scroller voption) Affects.Measure |> AppState.mark
     let internal state = Prop.local "ItemsState" (null: ItemsState)
+    /// A list's item containers (M8 step 4b): wraps each item's view (key, item, view) in its container.
+    let internal container: Prop<(obj -> obj -> View -> View) voption> = Prop.define "Item container" ValueNone Affects.Measure
 
 /// Shows many items, realizing only the ones the ScrollViewers around it show (plus a little more),
 /// so a list of 10,000 costs about what a list of 40 does. Items are data: `source` (an array, a
@@ -281,11 +283,14 @@ module ItemsView =
             if ItemsProfile.On then ItemsProfile.Attach <- ItemsProfile.Attach + since t0
         // The app's `view` throwing is reported (App.onError) and gives no view: a new item is left
         // out, a realized one keeps its element. Layout goes on for the rest.
+        let container = e.Get ItemsViewProps.container
         let viewOf (item: obj) =
             let t0 = stamp ()
             let v =
                 try
-                    viewFn.Invoke item
+                    match viewFn.Invoke item, container with
+                    | ValueSome v, ValueSome wrap -> ValueSome(wrap key item v)
+                    | v, _ -> v
                 with ex ->
                     e.ReportError ex
                     ValueNone
@@ -666,10 +671,44 @@ module ItemsView =
     /// A style for ItemsViews (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<ItemsView> list) : Style = Style.forType Type parts settings
 
+    // --- For lists built on an ItemsView (ListBox): the items by index and key, the realized ones --------
+
+    /// How many items there are (as of the last layout).
+    let internal count (e: Element) = (stateOf e).Store.Count
+    /// Item `i`'s key and the item.
+    let internal keyAt (e: Element) (i: int) = (stateOf e).Store.KeyAt i
+    let internal itemAt (e: Element) (i: int) = (stateOf e).Source.Item i
+    /// Where the item with `key` is (ValueNone: not in the source).
+    let internal indexOf (e: Element) (key: obj) = (stateOf e).Store.IndexOf key
+    /// The realized items: key and element.
+    let internal realized (e: Element) = [ for KeyValue(k, item) in (stateOf e).Realized -> struct (k, item.Element) ]
+    /// The realized element for `key`, if any.
+    let internal elementFor (e: Element) (key: obj) =
+        match (stateOf e).Realized.TryGetValue key with
+        | true, item -> ValueSome item.Element
+        | _ -> ValueNone
+    /// Scrolls item `i` into view (nearest edge, no animation), realizing it at the next layout.
+    let internal reveal (e: Element) (i: int) =
+        let s = stateOf e
+        (scrollerOf e s).ScrollToIndex(i, ScrollAlign.Nearest, false)
+        e.InvalidateMeasure()
+    /// How many items fit in the viewport (PageUp/PageDown), from the average height; 1 without a viewport.
+    let internal perPage (e: Element) =
+        let s = stateOf e
+        match viewportOf e with
+        | ValueSome v -> max 1 (int (Math.Floor(v.Height / max 1.0 (average s))))
+        | ValueNone -> 10
+    /// Re-wraps the realized items (their containers ask for the selection again).
+    let internal refresh (e: Element) =
+        let s = stateOf e
+        s.Version <- s.Version + 1
+        e.InvalidateMeasure()
+
     /// How many items an ItemsView has realized, and how many it has (for tools: the inspector shows
     /// "realized 40 of 4,304"). ValueNone for other elements.
     let realizedCount (e: Element) : struct (int * int) voption =
-        if obj.ReferenceEquals(e.Type, Type) then
+        // An ItemsView or a type extending it (ListBox): anything that laid out items.
+        if not (isNull (e.Get ItemsViewProps.state)) then
             let s = stateOf e
             ValueSome(struct (s.Realized.Count, s.Store.Count))
         else ValueNone

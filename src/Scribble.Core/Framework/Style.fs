@@ -132,7 +132,7 @@ module States =
     let isChecked = ofProp "checked" ToggleButtonProps.isChecked id
     /// A CheckBox showing its "partly checked" dash.
     let isIndeterminate = ofProp "indeterminate" ToggleButtonProps.isIndeterminate id
-    /// A TabControl's header for the selected tab.
+    /// A TabControl's header for the selected tab, a ListBox's selected item.
     let isSelected = ofProp "selected" TabHeaderProps.isSelected id
 
     /// The built-in states, in the order tools show them.

@@ -335,6 +335,20 @@ let ``a ScrollViewer whose content fits has no node`` () =
         showView (ScrollViewer.create [ ScrollViewer.height 100.0; ScrollViewer.content (Button.create [ Button.text "Small"; Button.height 20.0 ]) ])
     Assert.Equal<string list>([ "Button \"Small\"" ], lines (host.SemanticTree().ToString()))
 
+// --- Reading order -------------------------------------------------------------------------------
+
+[<Fact>]
+let ``nodes are in view order (the order Tab takes), not the order shown`` () =
+    let button (text: string) (dock: Dock) = Button.create [ Button.text text; DockPanel.dock dock ]
+    // The status bar is written before the content and shown below it.
+    let _, host =
+        showView (DockPanel.create [ DockPanel.children [ button "Toolbar" Dock.Top; button "Status" Dock.Bottom; button "Content" Dock.Fill ] ])
+    Assert.Equal<string list>([ "Button \"Toolbar\""; "Button \"Status\""; "Button \"Content\"" ], lines (host.SemanticTree().ToString()))
+    // zIndex changes what's drawn on top, not the order read.
+    let _, host =
+        showView (StackPanel.create [ StackPanel.children [ Button.create [ Button.text "First"; Button.zIndex 2 ]; Button.create [ Button.text "Second" ] ] ])
+    Assert.Equal<string list>([ "Button \"First\""; "Button \"Second\"" ], lines (host.SemanticTree().ToString()))
+
 // --- Layers --------------------------------------------------------------------------------------
 
 [<Fact>]

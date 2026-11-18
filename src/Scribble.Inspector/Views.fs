@@ -547,6 +547,7 @@ module internal Views =
               match node.IsExpanded with
               | ValueSome x -> yield line "expanded" (if x then "yes" else "no") Color.White ""
               | ValueNone -> ()
+              if node.IsMultiSelectable then yield line "multi-select" "yes" Color.White ""
               match node.Range with
               | ValueSome r -> yield line "range" (SemanticText.range r) Color.White ""
               | ValueNone -> ()

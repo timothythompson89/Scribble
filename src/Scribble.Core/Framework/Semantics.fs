@@ -12,6 +12,10 @@ type Role =
     | Button
     | CheckBox
     | Switch
+    /// One of a RadioGroup's options (checked when chosen).
+    | RadioButton
+    /// Options of which one is chosen.
+    | RadioGroup
     | Slider
     | Tab
     | TabList
@@ -33,6 +37,8 @@ type Role =
         | Button -> "Button"
         | CheckBox -> "CheckBox"
         | Switch -> "Switch"
+        | RadioButton -> "RadioButton"
+        | RadioGroup -> "RadioGroup"
         | Slider -> "Slider"
         | Tab -> "Tab"
         | TabList -> "TabList"
@@ -182,6 +188,7 @@ module internal SemanticsProps =
     let isChecked: Prop<SemanticSource<CheckState voption>> = define "checked" (Fixed ValueNone)
     let selected: Prop<SemanticSource<bool voption>> = define "selected" (Fixed ValueNone)
     let expanded: Prop<SemanticSource<bool voption>> = define "expanded" (Fixed ValueNone)
+    let multiSelectable: Prop<SemanticSource<bool>> = define "multiSelectable" (Fixed false)
     let range: Prop<SemanticSource<SemanticRange voption>> = define "range" (Fixed ValueNone)
     let orientation: Prop<SemanticSource<Orientation voption>> = define "orientation" (Fixed ValueNone)
     let position: Prop<SemanticPosition voption> = define "position" ValueNone
@@ -227,6 +234,11 @@ type Semantics =
     static member isSelected<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create SemanticsProps.selected (Fixed(ValueSome value))
     static member selectedFrom<'k when 'k :> Layoutable>(prop: Prop<bool>) : Setting<'k> =
         Setting.create SemanticsProps.selected (Read([| prop |], fun e -> ValueSome(e.Get prop)))
+    /// A list in which more than one item can be selected.
+    static member isMultiSelectable<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create SemanticsProps.multiSelectable (Fixed value)
+    /// Read from a property of the element's own (a ListBox's selection mode).
+    static member internal multiSelectableFrom<'k, 'T when 'k :> Layoutable>(prop: Prop<'T>, isMulti: 'T -> bool) : Setting<'k> =
+        Setting.create SemanticsProps.multiSelectable (Read([| prop :> Prop |], fun e -> isMulti (e.Get prop)))
     /// Expanded or collapsed (something that opens).
     static member isExpanded<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create SemanticsProps.expanded (Fixed(ValueSome value))
     /// A value in a range (a slider of the app's own).

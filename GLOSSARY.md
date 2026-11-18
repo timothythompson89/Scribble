@@ -142,6 +142,18 @@ _Avoid_: activate, execute (for this)
 The elements realized from one root view, with their layout, focus and pending work.
 _Avoid_: visual tree, DOM
 
+**View order**:
+The order elements are written in the view: a parent before its children, children as listed. It is not where they end up on screen.
+_Avoid_: tree order, document order, visual order (for this)
+
+**Tab stop**:
+An element that Tab and Shift+Tab stop on. A control made of several parts is one Tab stop, and the arrow keys move within it.
+_Avoid_: focus stop, tabbable
+
+**Tab order**:
+The order Tab visits a layer's Tab stops: view order, wrapping from the last to the first.
+_Avoid_: focus order, tab index (for the order)
+
 **Layer**:
 One element tree in a window's ordered stack (app, popups, modal, inspector), with its own focus; it lets the pointer through where it has nothing, or blocks everything below.
 _Avoid_: popup, portal, overlay

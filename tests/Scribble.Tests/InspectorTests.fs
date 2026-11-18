@@ -26,7 +26,7 @@ let private settle (w: FakeWindow) =
 let rec private find (name: string) (e: Element) : Element option =
     if e.Name = name then Some e else e.Children |> Seq.tryPick (find name)
 
-/// Every visible TextBlock's text in a layer, in tree order.
+/// Every visible TextBlock's text in a layer, in view order.
 let private texts (layer: Layer) =
     let rec collect (e: Element) =
         [ if e.IsVisible then
