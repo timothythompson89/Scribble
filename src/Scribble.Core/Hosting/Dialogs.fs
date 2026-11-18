@@ -6,25 +6,6 @@ open System.Threading.Tasks
 open Scribble.Rendering
 open Scribble.Text
 
-/// How serious what a confirmation asks about is: the look of its accept button, and which button
-/// has focus when it opens.
-[<RequireQualifiedAccess>]
-type Severity =
-    /// An ordinary question (default): the accept button in the accent colour, with focus.
-    | Informational
-    /// Something to be careful about: the accept button in the warning colour, with focus.
-    | Warning
-    /// Something that can't be undone: the accept button in the danger colour, and focus on cancel,
-    /// so Enter doesn't do it by accident.
-    | Critical
-
-    // Written out: a union's generated ToString uses %A, which NativeAOT can't run.
-    override s.ToString() =
-        match s with
-        | Informational -> "Informational"
-        | Warning -> "Warning"
-        | Critical -> "Critical"
-
 type internal InformOptions = { Title: string; Text: string; Button: string; OnClosed: (unit -> unit) voption }
 
 /// One setting for `dialogs.Inform [ ... ]`.
@@ -139,7 +120,8 @@ type Dialog =
     /// stop (`Button.create [ Dialog.initialFocus true; Button.text "Save" ]`).
     static member initialFocus<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create ModalProps.initialFocus value
     /// A style for every dialog's box (Inform, Confirm, Ask and your own; not Modals written in the view):
-    /// `Dialog.style [] [ Modal.cornerRadius 12.0 ]`. The box is a Modal element, so the settings are Modal's.
+    /// `Dialog.style [] [ Border.cornerRadius 12.0; Border.padding 24.0 ]`. The box is a Border underneath, so its
+    /// look is set with Border's settings.
     static member style (parts: SelectorPart list) (settings: Setting<Modal> list) : Style = Modal.style (Style.cls "dialog" :: parts) settings
 
 /// One dialog waiting or showing: its view, how to give up on it, and (once a window has it)
@@ -424,7 +406,7 @@ module DialogCommands =
         /// Shows a toast saying `text`: `model, Cmd.toast "Saved"`.
         let toast (text: string) : Cmd<'Msg> = Cmd [ fun values _ -> (toaster values).Show text ]
 
-        /// Shows a toast: `Cmd.toastWith [ Toast.kind ToastKind.Error; Toast.text "Couldn't save" ]`.
+        /// Shows a toast: `Cmd.toastWith [ Toast.severity Severity.Critical; Toast.text "Couldn't save" ]`.
         let toastWith (settings: ToastSetting list) : Cmd<'Msg> = Cmd [ fun values _ -> (toaster values).Show settings ]
 
         /// Tells the user something, and sends `msg` once it's closed: `Cmd.inform [ Inform.text "Done." ] Acknowledged`.

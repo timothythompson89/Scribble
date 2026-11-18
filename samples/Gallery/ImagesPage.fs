@@ -128,7 +128,7 @@ let private saving =
                 try
                     do! work ()
                 with e ->
-                    toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]
+                    toaster.Show [ Toast.severity Severity.Critical; Toast.text e.Message ]
             }
             |> ignore
         let save (name: string) (image: Image) =

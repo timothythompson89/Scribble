@@ -498,7 +498,7 @@ let ``a useDialog closes when its component leaves the view`` () =
 
 [<Fact>]
 let ``Dialog.style styles dialogs' boxes and not a Modal written in the view`` () =
-    let styles = [ Dialog.style [] [ Modal.padding 33.0 ] ]
+    let styles = [ Dialog.style [] [ Border.padding 33.0 ] ]
     let view = Modal.create [ Modal.isOpen true; Modal.content (Button.create [ Button.name "inner"; Button.text "Inner" ]) ]
     let w, host = startWith [ App.view view; App.styles styles ]
     let padding (e: Element) = (e.Get BorderProps.padding).Left

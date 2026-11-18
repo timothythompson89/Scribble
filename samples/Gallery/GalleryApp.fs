@@ -109,4 +109,4 @@ let app: AppSetting<unit> list =
       // An error from app code (a broken image on the Images page) shows as a toast instead of ending the app.
       App.onError (fun app e ->
           System.Console.WriteLine("Gallery: " + string e)
-          app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]) ]
+          app.Toaster.Show [ Toast.severity Severity.Critical; Toast.text e.Message ]) ]

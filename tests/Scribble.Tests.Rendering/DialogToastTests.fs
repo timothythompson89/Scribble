@@ -54,7 +54,7 @@ type DialogToastTests(fixture: TextFixture) =
         host.Update view
         host.HandleEvent Frame |> ignore
         toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", ignore) ]
-        toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Couldn't reach the server" ]
+        toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't reach the server" ]
         // What was posted, then past the fades and slides.
         for _ in 1..4 do
             dispatcher.RunPending()

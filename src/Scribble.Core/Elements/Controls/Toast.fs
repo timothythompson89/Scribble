@@ -9,7 +9,7 @@ module internal ToastProps =
     let offset = Prop.define "Offset" 0.0 Affects.Render
 
 /// The box a toast sits in (the Toaster makes them; `ToastPresenter.style [] [ ... ]` restyles them,
-/// `ToastPresenter.style [ Style.cls "error" ] [ ... ]` the errors).
+/// `Toast.style [ Style.cls "critical" ] [ ... ]` the critical ones).
 [<AbstractClass>]
 type ToastPresenter =
     inherit Border

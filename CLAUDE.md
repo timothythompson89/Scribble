@@ -44,7 +44,7 @@ dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through 
 dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if a picture changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-18: 1,134 unit tests plus 6
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-18: 1,135 unit tests plus 6
   timing tests skipped; 94 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and

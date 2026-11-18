@@ -185,7 +185,7 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      thumb, click the track to page; it widens under the pointer. After a click in the list, arrows, PageUp/Down
      and Home/End scroll it.
    - Toasts: "Show a toast" puts one at the bottom right for 4 seconds (it waits while the pointer is on it);
-     "Show an error" stays until its × is clicked; "With an action" has an Undo button. Three show at a time,
+     "Show a warning" is amber and stays 8 seconds; "Show an error" is red and stays until its × is clicked; "With an action" has an Undo button. Three show at a time,
      newest lowest. The app keeps working everywhere except on a toast itself, and a click on a toast never
      moves keyboard focus.
    - Modal and dialogs: "Open a modal" dims the window and shows a box. Nothing below reacts: no hover, no clicks, no wheel,
@@ -701,7 +701,7 @@ Button.onClick (fun _ -> rename ())
   `model, Cmd.confirm [ Confirm.title "Delete?" ] DeleteAnswered`, `Cmd.ask [ ... ] Chose`,
   `Cmd.inform [ ... ] Acknowledged`.
 - **Elsewhere:** `app.Dialogs` on the `AppContext` (`App.onStart`, `App.onError`), `host.Dialogs` on a host.
-- A dialog's box is a Modal element, so the theme and `Modal.style` apply; `Dialog.style [] [ Modal.cornerRadius 12.0 ]`
+- A dialog's box takes the theme's look; `Dialog.style [] [ Border.cornerRadius 12.0; Border.padding 24.0 ]`
   styles dialogs only.
 
 **Toasts** (M8 step 4d): short messages at the window's edge, shown as an action. Every window has its own
@@ -715,17 +715,19 @@ toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> dis
 
 model, Cmd.toast "Saved"                                                          // from an Elmish update
 
-App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])
+App.onError (fun app e -> app.Toaster.Show [ Toast.severity Severity.Critical; Toast.text e.Message ])
 ```
 
 - A toast stays 4 seconds (`Toast.duration`), waits while the pointer is on it, and has a close button. A
-  `ToastKind.Error` stays until closed. Three show at a time, newest lowest; the rest wait their turn.
+  `Toast.severity Severity.Warning` one is in the warning colour and stays 8 seconds; a `Severity.Critical` one is in
+  the danger colour and stays until closed. Three show at a time, newest lowest; the rest wait their turn.
 - They sit at the bottom right, or across the bottom of a window narrower than 480 DIPs, above modals, dialogs and
   flyouts, so an error stays in sight and can be closed while a modal or a dialog is open.
 - They never take the keyboard: a click on one leaves focus where it was, and Tab doesn't reach them. A toast's
   action is pointer-only for now.
 - `Toast.content view` replaces the text (give `Toast.text` too: it is the toast's name for screen readers).
-  `ToastPresenter.style [] [ ... ]` restyles them, `ToastPresenter.style [ Style.cls "error" ] [ ... ]` the errors.
+  `Toast.style [] [ Border.cornerRadius 12.0 ]` restyles them, with Border's settings (`Toast.style [ Style.cls "warning" ] [ ... ]`
+  and `"critical"` by severity).
 - **Which window:** the hook gives the toasts of the window the component is in (also from inside a flyout or a
   dialog of that window); `Cmd.toast` and `Cmd.toastWith [ ... ]` those of the program's window; `app.Toaster`
   those of the app's. `Show` is safe from any thread: keep the toaster and call it from a task. There is no

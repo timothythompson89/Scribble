@@ -161,7 +161,7 @@ module internal ThemeLooks =
               Modal.padding 20.0
               Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.modalShadow
           ]
-          // Toasts (M8 step 4d): the surface colour with a line and a floating shadow; an error in the danger colour.
+          // Toasts (M8 step 4d): the surface colour with a line and a floating shadow; a warning in the warning colour, a critical one in the danger colour.
           ToastPresenter.style [] [
               ToastPresenter.background Palette.surface
               ToastPresenter.borderBrush Palette.border
@@ -171,7 +171,12 @@ module internal ThemeLooks =
               Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
               Style.transition LayoutProps.opacity moveTime
           ]
-          ToastPresenter.style [ Style.cls "error" ] [
+          ToastPresenter.style [ Style.cls "warning" ] [
+              ToastPresenter.background Palette.warning
+              ToastPresenter.borderBrush Palette.warning
+              ToastPresenter.foreground Palette.onAccent
+          ]
+          ToastPresenter.style [ Style.cls "critical" ] [
               ToastPresenter.background Palette.danger
               ToastPresenter.borderBrush Palette.danger
               ToastPresenter.foreground Palette.onAccent

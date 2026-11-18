@@ -94,14 +94,14 @@ let ``Show from another thread reaches the UI thread`` () =
     Assert.Equal<string list>([ "From a task" ], texts host)
 
 [<Fact>]
-let ``an Error stays until its close button is clicked`` () =
+let ``a Critical toast stays until its close button is clicked`` () =
     let w, host = show []
     let toaster = host.Toaster
-    toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Couldn't save" ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't save" ]
     pump w host
     advance w host 60_000.0
     Assert.Equal<string list>([ "Couldn't save" ], texts host)
-    Assert.Contains("error", (toasts host).Head.Get LayoutProps.classes)
+    Assert.Contains("critical", (toasts host).Head.Get LayoutProps.classes)
     clickOn w host (buttons (toasts host).Head |> List.last)
     advance w host 200.0
     Assert.Empty(toasts host)
@@ -111,7 +111,7 @@ let ``a duration of its own`` () =
     let w, host = show []
     let toaster = host.Toaster
     toaster.Show [ Toast.text "Quick"; Toast.duration (TimeSpan.FromSeconds 1.0) ]
-    toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Timed error"; Toast.duration (TimeSpan.FromSeconds 2.0) ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "Timed error"; Toast.duration (TimeSpan.FromSeconds 2.0) ]
     pump w host
     advance w host 1200.0
     Assert.Equal<string list>([ "Timed error" ], texts host)
@@ -174,8 +174,8 @@ let ``a press on a toast doesn't take the keyboard from the app`` () =
     let toaster = host.Toaster
     let one = all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "one")
     one.Focus()
-    toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Still here"; Toast.action ("Retry", ignore) ]
-    toaster.Show [ Toast.kind ToastKind.Error; Toast.text "And me" ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "Still here"; Toast.action ("Retry", ignore) ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "And me" ]
     pump w host
     clickOn w host (buttons (toasts host).Head |> List.last)
     advance w host 200.0
@@ -194,7 +194,7 @@ let ``a press on a toast doesn't take the keyboard from the app`` () =
 let ``in a narrow window toasts go across the bottom; in a wide one, at the bottom right, at most 360 wide`` () =
     let w, host = show []
     let toaster = host.Toaster
-    toaster.Show [ Toast.kind ToastKind.Error; Toast.text "A fairly long message that would like more room than a narrow window has to give it" ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "A fairly long message that would like more room than a narrow window has to give it" ]
     pump w host
     let toast () = (toasts host).Head
     // 400 DIPs wide: narrow.
@@ -214,7 +214,7 @@ let ``only the toasts take the pointer: the app under the rest of their layer st
     let w, _, a = start [ App.view view ]
     let host = a :?> ElementHost
     let toaster = host.Toaster
-    toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Here" ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "Here" ]
     pump w host
     w.Send(PointerPressed(Mouse, 0, { X = 50.0; Y = 50.0 }, MouseButton.Left, Modifiers.None))
     w.Send(PointerReleased(Mouse, 0, { X = 50.0; Y = 50.0 }, MouseButton.Left, Modifiers.None))
@@ -231,7 +231,7 @@ let ``toasts are above dialogs and flyouts, and a toast's node is an Alert named
     pump w host
     let more = host.Layers |> Seq.collect (fun l -> l.Tree.Root |> ValueOption.toArray |> Seq.collect all) |> Seq.find (fun e -> e.Name = "more")
     clickOn w host more
-    toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Offline" ]
+    toaster.Show [ Toast.severity Severity.Critical; Toast.text "Offline" ]
     pump w host
     Assert.Equal<string list>([ "App"; "Modal"; "Flyout of more"; "Toasts" ], host.Layers |> Seq.map _.Name |> List.ofSeq)
     Assert.True(host.SemanticTree().ToString().Contains("Alert \"Offline\""), host.SemanticTree().ToString())
@@ -296,7 +296,7 @@ let ``ctx.useToaster in a tree no host runs shows nothing`` () =
 [<Fact>]
 let ``Cmd.toast and Cmd.toastWith show in the program's window`` () =
     let update (text: string) (model: int) =
-        model + 1, (if text = "error" then Cmd.toastWith [ Toast.kind ToastKind.Error; Toast.text "Failed" ] else Cmd.toast text)
+        model + 1, (if text = "error" then Cmd.toastWith [ Toast.severity Severity.Critical; Toast.text "Failed" ] else Cmd.toast text)
     let view (_: int) (dispatch: string -> unit) =
         StackPanel.create [
             StackPanel.children [
@@ -314,8 +314,28 @@ let ``Cmd.toast and Cmd.toastWith show in the program's window`` () =
 [<Fact>]
 let ``App.onError gets the app's context, so an error can show as a toast in its window`` () =
     let view = Button.create [ Button.name "break"; Button.text "Break"; Button.onClick (fun _ -> failwith "It broke") ]
-    let w, _, a = start [ App.view view; App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]) ]
+    let w, _, a = start [ App.view view; App.onError (fun app e -> app.Toaster.Show [ Toast.severity Severity.Critical; Toast.text e.Message ]) ]
     let host = a :?> ElementHost
     pump w host
     clickOn w host (all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "break"))
     Assert.Equal<string list>([ "It broke" ], texts host)
+
+[<Fact>]
+let ``a Warning toast has its own look and stays eight seconds; Toast.style reaches toasts by severity`` () =
+    let styles = [ Toast.style [ Style.cls "warning" ] [ Border.padding 21.0 ] ]
+    let w, _, a = start [ App.view app; App.styles styles ]
+    let host = a :?> ElementHost
+    pump w host
+    host.Toaster.Show [ Toast.severity Severity.Warning; Toast.text "Low on space" ]
+    host.Toaster.Show "Plain"
+    pump w host
+    let warning, plain = (toasts host)[0], (toasts host)[1]
+    Assert.Contains("warning", warning.Get LayoutProps.classes)
+    Assert.Equal((Theme.dark []).Get Palette.warning, warning.Get BorderProps.background)
+    Assert.Equal(21.0, (warning.Get BorderProps.padding).Left)
+    Assert.NotEqual(21.0, (plain.Get BorderProps.padding).Left)
+    // The plain one goes after four seconds, the warning after eight.
+    advance w host 4500.0
+    Assert.Equal<string list>([ "Low on space" ], texts host)
+    advance w host 4000.0
+    Assert.Empty(toasts host)

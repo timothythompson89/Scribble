@@ -3660,6 +3660,33 @@ Status: **agreed (Tim, 2026-11-18: "yes to all, and add Dialog.style").** Built 
   focus kept; Escape, `closeOnEscape false`, `lightDismiss`; the argument form; waiting its turn; closing when the
   component leaves; `Dialog.style` reaching dialogs and not a Modal in the view. Unit: 1,134 passed plus 6 timing
   skipped (three runs). Rendering: 94. Timing: 6. `gallery-phone-layers@3x` changed (the new button).
+
+**Round 7: toasts keep their shape; `Severity` and `Toast.style` (Tim, 2026-11-18).** Tim asked whether toasts
+should change like the dialogs did. They keep `ctx.useToaster ()` and `Show`: a toast is usually one line whose
+text is only known when it happens, so declaring it with a hook would add ceremony to the common case.
+49. **`Toast.severity Severity.Critical` replaces `Toast.kind ToastKind.Error`,** and `ToastKind` goes: one
+    vocabulary for toasts and confirmations. Toasts gain Warning (the theme's warning colour).
+50. **How long each stays:** Informational 4 seconds, Warning 8, Critical until closed (`Toast.duration` overrides).
+51. **`Toast.style parts settings`,** to match `Dialog.style`: it is `ToastPresenter.style`. A Warning toast has the
+    class `warning`, a Critical one `critical` (was `error`).
+Left alone: `Toast.action`, `Cmd.toast`/`toastWith`, `app.Toaster`; no `useToast` shortcut (it would only save
+typing `.Show`, and a returned function can't offer both the text and the settings form); no `Toast.onClosed`
+until something needs it.
+
+Status: **agreed (Tim, 2026-11-18: "yes to both").** Built 2026-11-18.
+
+**Round 7 as built (2026-11-18):** `Severity` moved to `Hosting/Toaster.fs` (compiled before `Dialogs.fs`), its
+doc comment covering both uses. The theme styles `ToastPresenter` with the `warning` and `critical` classes; the
+toast's own buttons take `onAccent` text on both. The Gallery's Toasts section has "Show a warning". Tests: a
+Warning toast's class, colour and eight seconds, and `Toast.style` reaching toasts by class. Unit: 1,135 passed
+plus 6 timing skipped (two runs). Rendering: 94. Timing: 6. `gallery-phone-layers@3x` changed (the new button).
+
+**Styling them without the element's name (Tim, 2026-11-18).** `Toast.style` and `Dialog.style` take the settings of
+the box underneath (`ToastPresenter`, `Modal`), but nothing has to say so: a box's look is Border's settings, and
+those work on anything derived from Border, so the docs and tests write
+`Toast.style [] [ Border.cornerRadius 12.0 ]` and `Dialog.style [] [ Border.padding 24.0 ]`. Considered:
+`Toast.cornerRadius`/`Dialog.cornerRadius` (making `Toast` and `Dialog` element settings types too would set
+`Dialog.title` and `Dialog.content` against the Modal's settings of the same names). No code changed.
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 
 Found driving the Gallery's Lists page with a real keyboard: Tab went from the Reverse order button to the swatches

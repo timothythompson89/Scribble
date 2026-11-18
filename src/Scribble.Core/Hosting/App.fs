@@ -132,7 +132,7 @@ type App =
     /// components, render functions, effects, commands, work queued to the UI thread, tasks nobody
     /// awaited. What failed is left out (README, "Errors"). Without it, an error ends the app.
     /// The handler gets the app's context, so it can tell the user in the app's own window:
-    /// `App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])`.
+    /// `App.onError (fun app e -> app.Toaster.Show [ Toast.severity Severity.Critical; Toast.text e.Message ])`.
     static member onError<'Msg>(handler: AppContext -> exn -> unit) : AppSetting<'Msg> = AppSetting(fun c -> c.OnError <- ValueSome handler)
 
     /// Styles for the whole app (every layer but those with `Layer.appStyles false`); later ones win

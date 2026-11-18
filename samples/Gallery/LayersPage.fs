@@ -158,15 +158,19 @@ let view =
                 Inform.onClosed (fun () -> answer.Set "Was informed")
             ]
         page "Layers" "Content above the app, each in a layer of its own: toasts that never take the keyboard, modals and dialogs that take everything until they close, flyouts and tooltips." [
-            section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds and waits while the pointer is on it; an error stays until closed. The app keeps working everywhere but on a toast." (
+            section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds (a warning 8) and waits while the pointer is on it; a critical one stays until closed. The app keeps working everywhere but on a toast." (
                 WrapPanel.create [
                     WrapPanel.spacing 8.0
                     WrapPanel.lineSpacing 8.0
                     WrapPanel.children [
                         Button.create [ Button.text "Show a toast"; Button.onClick (fun _ -> toaster.Show("Toast at " + DateTime.Now.ToString "HH:mm:ss")) ]
                         Button.create [
+                            Button.text "Show a warning"
+                            Button.onClick (fun _ -> toaster.Show [ Toast.severity Severity.Warning; Toast.text "The disk is almost full" ])
+                        ]
+                        Button.create [
                             Button.text "Show an error"
-                            Button.onClick (fun _ -> toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Couldn't reach the server" ])
+                            Button.onClick (fun _ -> toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't reach the server" ])
                         ]
                         Button.create [
                             Button.text "With an action"

@@ -6,53 +6,68 @@ open Scribble.Accessibility
 open Scribble.Rendering
 open Scribble.Text
 
-/// What a toast is about: its look, and whether it goes away by itself.
+/// How serious something told or asked is. A toast's look and how long it stays; a confirmation's
+/// accept button and where its focus starts.
 [<RequireQualifiedAccess>]
-type ToastKind =
-    /// Something happened ("Saved"): it goes after a few seconds.
-    | Info
-    /// Something went wrong: it stays until it's closed.
-    | Error
+type Severity =
+    /// Ordinary (default). A toast in the surface colour that goes after 4 seconds; a confirmation's accept
+    /// button in the accent colour, with focus.
+    | Informational
+    /// Something to be careful about. A toast in the warning colour that goes after 8 seconds; a
+    /// confirmation's accept button in the warning colour, with focus.
+    | Warning
+    /// Something that went wrong or can't be undone. A toast in the danger colour that stays until closed;
+    /// a confirmation's accept button in the danger colour, with focus on cancel, so Enter doesn't do it
+    /// by accident.
+    | Critical
 
     // Written out: a union's generated ToString uses %A, which NativeAOT can't run.
-    override k.ToString() =
-        match k with
-        | Info -> "Info"
-        | Error -> "Error"
+    override s.ToString() =
+        match s with
+        | Informational -> "Informational"
+        | Warning -> "Warning"
+        | Critical -> "Critical"
 
 /// What the Toast settings configure.
 type internal ToastOptions =
     { Text: string
-      Kind: ToastKind
+      Severity: Severity
       Duration: TimeSpan voption
       Action: struct (string * (unit -> unit)) voption
       Content: View voption }
 
-/// One setting for a toast: `Toast.text "Saved"`, `Toast.kind ToastKind.Error`.
+/// One setting for a toast: `Toast.text "Saved"`, `Toast.severity Severity.Critical`.
 [<Struct>]
 type ToastSetting = internal ToastSetting of (ToastOptions -> ToastOptions)
 
 /// A toast's settings, for `toaster.Show [ ... ]`:
 ///
 ///     toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> dispatch Undo) ]
-///     toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]
+///     toaster.Show [ Toast.severity Severity.Critical; Toast.text e.Message ]
 [<AbstractClass; Sealed>]
 type Toast =
     /// What it says.
     static member text(value: string) = ToastSetting(fun o -> { o with Text = value })
-    /// Info (default) or Error (the theme's danger colour; it stays until closed).
-    static member kind(value: ToastKind) = ToastSetting(fun o -> { o with Kind = value })
-    /// How long it stays (default: 4 seconds; an Error stays until closed). The time starts again
-    /// when the pointer leaves it.
+    /// Informational (default), Warning (the theme's warning colour) or Critical (the danger colour; it
+    /// stays until closed).
+    static member severity(value: Severity) = ToastSetting(fun o -> { o with Severity = value })
+    /// How long it stays (default: 4 seconds, 8 for a Warning; a Critical one stays until closed). The
+    /// time starts again when the pointer leaves it.
     static member duration(value: TimeSpan) = ToastSetting(fun o -> { o with Duration = ValueSome value })
     /// A button after the text ("Undo"); clicking it closes the toast.
     static member action(label: string, handler: unit -> unit) = ToastSetting(fun o -> { o with Action = ValueSome(struct (label, handler)) })
     /// A view in place of the text (give `text` too: it stays the toast's name for screen readers).
     static member content(view: View) = ToastSetting(fun o -> { o with Content = ValueSome view })
+    /// A style for toasts' boxes: `Toast.style [] [ Border.cornerRadius 12.0 ]` (a toast's box is a Border underneath). A Warning toast has
+    /// the class `warning` and a Critical one `critical`:
+    /// `Toast.style [ Style.cls "critical" ] [ Border.background c ]`.
+    static member style (parts: SelectorPart list) (settings: Setting<ToastPresenter> list) : Style = ToastPresenter.style parts settings
 
 /// What the Toaster's toasts share.
 module internal ToastLooks =
     let defaultDuration = TimeSpan.FromSeconds 4.0
+    /// A Warning stays twice as long.
+    let warningDuration = TimeSpan.FromSeconds 8.0
     let maxShown = 3
     /// How far a toast slides as it comes and goes, in DIPs.
     let slide = 12.0
@@ -80,14 +95,14 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
     member _.Count = items.Count
 
     member private this.View() : View =
-        let quiet (kind: ToastKind) : Setting<Button> list =
+        let quiet (severity: Severity) : Setting<Button> list =
             [ Button.background Color.Transparent
               Button.borderThickness 0.0
               Setting.create BorderProps.shadow ValueNone
               // Toasts never take the keyboard: a press on these moves no focus.
               Button.focusable false
               // The toast's own text colour (a Button would take the theme's).
-              Button.foreground (if kind = ToastKind.Error then Palette.onAccent else Palette.text)
+              Button.foreground (if severity = Severity.Informational then Palette.text else Palette.onAccent)
               Button.verticalAlignment VerticalAlignment.Center ]
         let toast (item: ToastItem) =
             let o = item.Options
@@ -96,7 +111,12 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                 ToastPresenter.key item.Id
                 // Its name for screen readers (not its content: that would read the Close button into it).
                 Semantics.label o.Text
-                ToastPresenter.classes [ if o.Kind = ToastKind.Error then "error" ]
+                ToastPresenter.classes [
+                    match o.Severity with
+                    | Severity.Informational -> ()
+                    | Severity.Warning -> "warning"
+                    | Severity.Critical -> "critical"
+                ]
                 ToastPresenter.opacity (if here then 1.0 else 0.0)
                 Setting.create ToastProps.offset (if here then 0.0 else ToastLooks.slide)
                 ToastPresenter.onPointerEnter (fun _ -> this.Hover(item, true))
@@ -123,7 +143,7 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                                     match o.Action with
                                     | ValueSome(struct (label, handler)) ->
                                         Button.create (
-                                            quiet o.Kind
+                                            quiet o.Severity
                                             @ [ Button.text label
                                                 Button.padding (8.0, 4.0)
                                                 Button.onClick (fun _ ->
@@ -132,7 +152,7 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                                         )
                                     | ValueNone -> ()
                                     Button.create (
-                                        quiet o.Kind
+                                        quiet o.Severity
                                         @ [ Semantics.label "Close"
                                             Button.icon ToastLooks.cross
                                             Button.iconSize 14.0
@@ -154,10 +174,11 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
         item.Generation <- item.Generation + 1
         let generation = item.Generation
         let duration =
-            match item.Options.Duration, item.Options.Kind with
+            match item.Options.Duration, item.Options.Severity with
             | ValueSome d, _ -> ValueSome d
-            | ValueNone, ToastKind.Error -> ValueNone
-            | ValueNone, ToastKind.Info -> ValueSome ToastLooks.defaultDuration
+            | ValueNone, Severity.Critical -> ValueNone
+            | ValueNone, Severity.Warning -> ValueSome ToastLooks.warningDuration
+            | ValueNone, Severity.Informational -> ValueSome ToastLooks.defaultDuration
         match duration with
         | ValueSome d -> dispatcher.PostAfter(d, fun () -> if item.Generation = generation && not item.Hovered then this.Dismiss item)
         | ValueNone -> ()
@@ -208,7 +229,7 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
 ///     toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> dispatch Undo) ]
 ///
 ///     model, Cmd.toast "Saved"                              // from an Elmish update
-///     App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])
+///     App.onError (fun app e -> app.Toaster.Show [ Toast.severity Severity.Critical; Toast.text e.Message ])
 ///
 /// A toast stays 4 seconds (`Toast.duration`), waits while the pointer is over it, and has a close
 /// button; an Error stays until closed. At most three show, the rest wait their turn. They never
@@ -219,9 +240,9 @@ type Toaster internal (ui: unit -> Dispatcher voption, find: unit -> ToastStack 
     /// Shows a toast saying `text`.
     member this.Show(text: string) = this.Show [ Toast.text text ]
 
-    /// Shows a toast: `toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Couldn't save" ]`. Safe from any thread.
+    /// Shows a toast: `toaster.Show [ Toast.severity Severity.Critical; Toast.text "Couldn't save" ]`. Safe from any thread.
     member _.Show(settings: ToastSetting list) =
-        let defaults = { Text = ""; Kind = ToastKind.Info; Duration = ValueNone; Action = ValueNone; Content = ValueNone }
+        let defaults = { Text = ""; Severity = Severity.Informational; Duration = ValueNone; Action = ValueNone; Content = ValueNone }
         let options = settings |> List.fold (fun o (ToastSetting apply) -> apply o) defaults
         let noWindow () =
 #if DEBUG
