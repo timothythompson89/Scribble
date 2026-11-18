@@ -1,4 +1,4 @@
-/// The Layers page: toasts (the Gallery's `toaster`, which also shows the app's errors), dialogs, flyouts and
+/// The Layers page: toasts and dialogs (the window's own, through hooks), a Modal written in the view, flyouts and
 /// tooltips. Each shows in a layer of its own above the app; the page only says what and when.
 module Scribble.Samples.Gallery.LayersPage
 
@@ -11,7 +11,7 @@ open Scribble.Accessibility
 open Scribble.Samples
 open Scribble.Samples.Gallery.Common
 
-/// The dialogs' buttons, at the right.
+/// The modal's buttons, at the right.
 let private buttonRow (buttons: View list) =
     StackPanel.create [
         StackPanel.orientation Horizontal
@@ -21,7 +21,7 @@ let private buttonRow (buttons: View list) =
     ]
 
 /// Some text over a row of buttons.
-let private dialogBody (text: string) (buttons: View list) =
+let private modalBody (text: string) (buttons: View list) =
     StackPanel.create [
         StackPanel.spacing 16.0
         StackPanel.children [
@@ -43,7 +43,7 @@ let private menuItem (text: string) (onClick: unit -> unit) =
     ]
 
 /// The Actions menu: controlled, so choosing an item can close it (the page keeps whether it's open).
-let private actionsMenu (isOpen: State<bool>) : Setting<Flyout> list =
+let private actionsMenu (toaster: Toaster) (isOpen: State<bool>) : Setting<Flyout> list =
     let choose (text: string) () =
         isOpen.Set false
         toaster.Show("Chose " + text)
@@ -95,11 +95,69 @@ let private pinnedSettings =
 /// The page: a component, so it can keep whether the Actions menu is open.
 let view =
     Component.define "LayersPage" (fun ctx () ->
+        // This window's toasts.
+        let toaster = ctx.useToaster ()
         let actionsOpen = ctx.useState false
-        let dialogOpen = ctx.useState false
-        let questionOpen = ctx.useState false
-        let answer = ctx.useState "Not asked yet"
-        page "Layers" "Content above the app, each in a layer of its own: toasts that never take the keyboard, dialogs that take everything until they close, flyouts and tooltips." [
+        let modalOpen = ctx.useState false
+        let answer = ctx.useState "Nothing asked yet"
+        // Dialogs: each is declared here with what its answers do, and opened from a button below.
+        let confirmSend =
+            ctx.useConfirm [
+                Confirm.title "Send the report?"
+                Confirm.text "It goes to everyone on the list."
+                Confirm.accept "Send"
+                Confirm.onAccept (fun () -> answer.Set "Sent the report")
+                Confirm.onCancel (fun () -> answer.Set "Didn't send it")
+            ]
+        let confirmLeave =
+            ctx.useConfirm [
+                Confirm.title "Leave without saving?"
+                Confirm.text "Your changes will be lost."
+                Confirm.accept "Leave"
+                Confirm.cancel "Stay"
+                Confirm.severity Severity.Warning
+                Confirm.onAccept (fun () -> answer.Set "Left without saving")
+                Confirm.onCancel (fun () -> answer.Set "Stayed")
+            ]
+        // With an argument: what's asked depends on what the button passes.
+        let confirmDelete =
+            ctx.useConfirm (fun (what: string) -> [
+                Confirm.title ("Delete " + what + "?")
+                Confirm.text "It can't be brought back. Focus starts on Keep."
+                Confirm.accept "Delete"
+                Confirm.cancel "Keep"
+                Confirm.severity Severity.Critical
+                Confirm.onAccept (fun () -> answer.Set("Deleted " + what))
+                Confirm.onCancel (fun () -> answer.Set("Kept " + what))
+            ])
+        let askUnsaved =
+            ctx.useAsk [
+                Ask.title "Unsaved changes"
+                Ask.text "Save them before closing?"
+                Ask.choice ("Save", fun () -> answer.Set "Saved the changes")
+                Ask.choice ("Discard", fun () -> answer.Set "Discarded the changes")
+                Ask.choice ("Cancel", fun () -> answer.Set "Went back")
+                Ask.onDismiss (fun () -> answer.Set "Escape: no choice")
+            ]
+        // A dialog with content of its own: it follows this component's state while it's open.
+        let taps = ctx.useState 0
+        let counting =
+            ctx.useDialog (fun close -> [
+                Dialog.title "A dialog of your own"
+                Dialog.content (
+                    modalBody ("Tapped " + string taps.Current + " times. The count is the page's state: the dialog follows it while it's open.") [
+                        Button.create [ Button.text "Tap"; Button.onClick (fun _ -> taps.Set(taps.Current + 1)) ]
+                        Button.create [ Button.text "Done"; Dialog.initialFocus true; Button.onClick (fun _ -> close ()) ]
+                    ])
+                Dialog.onClosed (fun () -> answer.Set("Closed the custom dialog at " + string taps.Current))
+            ])
+        let sessionExpired =
+            ctx.useInform [
+                Inform.title "Your session has expired"
+                Inform.text "Sign in again to carry on."
+                Inform.onClosed (fun () -> answer.Set "Was informed")
+            ]
+        page "Layers" "Content above the app, each in a layer of its own: toasts that never take the keyboard, modals and dialogs that take everything until they close, flyouts and tooltips." [
             section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds and waits while the pointer is on it; an error stays until closed. The app keeps working everywhere but on a toast." (
                 WrapPanel.create [
                     WrapPanel.spacing 8.0
@@ -116,7 +174,7 @@ let view =
                         ]
                     ]
                 ])
-            section "Dialog" "The window dims; nothing below reacts to the pointer, the wheel or the keyboard, and Tab stays in the dialog. Escape closes the first; the second must be answered." (
+            section "Modal and dialogs" "The window dims; nothing below reacts to the pointer, the wheel or the keyboard, and Tab stays inside. The first is a Modal, written in the view with content of its own; the others are dialogs, declared with hooks (ctx.useConfirm, useAsk, useInform, and useDialog for content of your own), each saying what its answers do." (
                 StackPanel.create [
                     StackPanel.spacing 8.0
                     StackPanel.children [
@@ -124,41 +182,26 @@ let view =
                             WrapPanel.spacing 8.0
                             WrapPanel.lineSpacing 8.0
                             WrapPanel.children [
-                                Button.create [ Button.text "Open a dialog"; Button.onClick (fun _ -> dialogOpen.Set true) ]
-                                Button.create [ Button.text "Ask a question"; Button.onClick (fun _ -> questionOpen.Set true) ]
+                                Button.create [ Button.text "Open a modal"; Button.onClick (fun _ -> modalOpen.Set true) ]
+                                Button.create [ Button.text "Confirm"; Button.onClick (fun _ -> confirmSend ()) ]
+                                Button.create [ Button.text "Warning"; Button.onClick (fun _ -> confirmLeave ()) ]
+                                Button.create [ Button.text "Critical"; Button.onClick (fun _ -> confirmDelete "the draft") ]
+                                Button.create [ Button.text "Three choices"; Button.onClick (fun _ -> askUnsaved ()) ]
+                                Button.create [ Button.text "Inform"; Button.onClick (fun _ -> sessionExpired ()) ]
+                                Button.create [ Button.text "Custom"; Button.onClick (fun _ -> counting ()) ]
                             ]
                         ]
                         TextBlock.create [ TextBlock.text answer.Current; TextBlock.foreground Palette.textDim ]
-                        // Dialogs stand anywhere in the view and take no space there.
-                        Dialog.create [
-                            Dialog.isOpen dialogOpen.Current
-                            Dialog.onOpenChanged dialogOpen.Set
-                            Dialog.lightDismiss true
-                            Dialog.title "A dialog"
-                            Dialog.content (
-                                dialogBody "Until this closes, the app below can't be clicked, scrolled or reached with Tab. Escape or a click outside closes it; a toast still shows above it." [
-                                    Button.create [ Button.text "Toast"; Button.onClick (fun _ -> toaster.Show "From the dialog") ]
-                                    Button.create [ Button.text "Close"; Button.onClick (fun _ -> dialogOpen.Set false) ]
-                                ])
-                        ]
-                        Dialog.create [
-                            Dialog.isOpen questionOpen.Current
-                            Dialog.closeOnEscape false
-                            Dialog.title "Delete the draft?"
-                            Dialog.content (
-                                dialogBody "This one must be answered: Escape and clicks outside do nothing." [
-                                    Button.create [
-                                        Button.text "Keep"
-                                        Button.onClick (fun _ ->
-                                            answer.Set "Kept the draft"
-                                            questionOpen.Set false)
-                                    ]
-                                    Button.create [
-                                        Button.text "Delete"
-                                        Button.onClick (fun _ ->
-                                            answer.Set "Deleted the draft"
-                                            questionOpen.Set false)
-                                    ]
+                        // A Modal stands anywhere in the view and takes no space there.
+                        Modal.create [
+                            Modal.isOpen modalOpen.Current
+                            Modal.onOpenChanged modalOpen.Set
+                            Modal.lightDismiss true
+                            Modal.title "A modal"
+                            Modal.content (
+                                modalBody "Until this closes, the app below can't be clicked, scrolled or reached with Tab. Escape or a click outside closes it; a toast still shows above it." [
+                                    Button.create [ Button.text "Toast"; Button.onClick (fun _ -> toaster.Show "From the modal") ]
+                                    Button.create [ Button.text "Close"; Button.onClick (fun _ -> modalOpen.Set false) ]
                                 ])
                         ]
                     ]
@@ -167,7 +210,7 @@ let view =
                 Button.create [
                     Button.horizontalAlignment HorizontalAlignment.Left
                     Button.text "Actions"
-                    Button.flyout (actionsMenu actionsOpen)
+                    Button.flyout (actionsMenu toaster actionsOpen)
                 ])
             section "Placement" "Each side, lined up at the start, centre or end; one that doesn't fit flips to the other side and stays in the window (make the window short, or scroll the button to the bottom edge). A style on the panel around them gives their flyouts square corners." (
                 WrapPanel.create [

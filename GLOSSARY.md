@@ -165,12 +165,16 @@ _Avoid_: popup, dropdown (for the mechanism; a ComboBox's list is its flyout)
 **Tooltip**:
 A short hint shown near the pointer after it rests on an element; never focused, never clicked.
 
+**Modal**:
+Content written in the view and shown in its own layer over a scrim, taking all input until it closes; the view says whether it is open. The Modal is also the box its content sits in.
+_Avoid_: dialog (for content written in the view), popup, overlay
+
 **Dialog**:
-Content shown in its own layer over a scrim, taking all input until it closes; the view says whether it is open. The Dialog is also the box its content sits in.
-_Avoid_: modal, popup, message box
+A modal opened as an action instead of written in the view: one that tells or asks (inform, confirm, ask), or content of the app's own.
+_Avoid_: message box, alert, prompt, message dialog
 
 **Scrim**:
-The dimming a dialog lays over everything below it.
+The dimming a modal lays over everything below it.
 _Avoid_: backdrop, overlay, dimmer
 
 **Toast**:

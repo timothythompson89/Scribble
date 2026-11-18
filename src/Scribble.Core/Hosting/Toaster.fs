@@ -70,27 +70,14 @@ type internal ToastItem(id: int, options: ToastOptions) =
     /// Bumped whenever its timer starts again or stops: a timer that sees another number is stale.
     member val Generation = 0 with get, set
 
-/// Shows toasts: short messages at the window's edge that go by themselves (DESIGN.md, "4d: Dialog
-/// and Toast"). Make one, give it to the app, and show toasts from anywhere, on any thread:
-///
-///     let toaster = Toaster()
-///     App.run [ App.toaster toaster; App.onError (fun e -> toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]); ... ]
-///     // in a handler, an update function, a task:
-///     toaster.Show "Saved"
-///
-/// A toast stays 4 seconds (`Toast.duration`), waits while the pointer is over it, and has a close
-/// button; an Error stays until closed. At most three show, the rest wait their turn. They never
-/// take the keyboard. Toasts shown before the app starts show once it has.
+/// One host's toasts: the list, their timers and the view of their layer. The UI thread only.
 [<Sealed>]
-type Toaster() =
-    let gate = obj ()
-    /// Asked for before the app started (any thread; under `gate`).
-    let waiting = Queue<ToastOptions>()
-    let mutable dispatcher: Dispatcher voption = ValueNone
-    let mutable update: View -> unit = ignore
-    // From here on: the UI thread only.
+type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
     let items = List<ToastItem>()
     let mutable nextId = 0
+
+    member _.Dispatcher = dispatcher
+    member _.Count = items.Count
 
     member private this.View() : View =
         let quiet (kind: ToastKind) : Setting<Button> list =
@@ -160,7 +147,7 @@ type Toaster() =
             ]
         View.Create(ToastPanel.Type, [ Setting.create PanelProps.children [ for item in items do if item.Stage > 0 then toast item ] ])
 
-    member private this.Refresh() = update (this.View())
+    member this.Refresh() = update (this.View())
 
     /// Starts (again) the wait after which the toast goes, if it goes by itself.
     member private this.StartTimer(item: ToastItem) =
@@ -171,10 +158,9 @@ type Toaster() =
             | ValueSome d, _ -> ValueSome d
             | ValueNone, ToastKind.Error -> ValueNone
             | ValueNone, ToastKind.Info -> ValueSome ToastLooks.defaultDuration
-        match duration, dispatcher with
-        | ValueSome d, ValueSome dispatcher ->
-            dispatcher.PostAfter(d, fun () -> if item.Generation = generation && not item.Hovered then this.Dismiss item)
-        | _ -> ()
+        match duration with
+        | ValueSome d -> dispatcher.PostAfter(d, fun () -> if item.Generation = generation && not item.Hovered then this.Dismiss item)
+        | ValueNone -> ()
 
     /// Gives waiting toasts the free places: each comes in clear and below its place, then slides up.
     member private this.Promote() =
@@ -184,16 +170,13 @@ type Toaster() =
                 shown <- shown + 1
                 if item.Stage = 0 then
                     item.Stage <- 1
-                    match dispatcher with
-                    | ValueSome d ->
-                        d.Post(fun () ->
-                            if item.Stage = 1 then
-                                item.Stage <- 2
-                                this.Refresh()
-                                this.StartTimer item)
-                    | ValueNone -> ()
+                    dispatcher.Post(fun () ->
+                        if item.Stage = 1 then
+                            item.Stage <- 2
+                            this.Refresh()
+                            this.StartTimer item)
 
-    member private this.Add(options: ToastOptions) =
+    member this.Add(options: ToastOptions) =
         nextId <- nextId + 1
         items.Add(ToastItem(nextId, options))
         this.Promote()
@@ -215,40 +198,48 @@ type Toaster() =
                 if items.Remove item then
                     this.Promote()
                     this.Refresh()
-            match dispatcher with
-            | ValueSome d -> d.PostAfter(ToastPresenter.moveTime, remove)
-            | ValueNone -> remove ()
+            dispatcher.PostAfter(ToastPresenter.moveTime, remove)
+
+/// A window's toasts: short messages at its edge that go by themselves (DESIGN.md, "4d: Dialog and
+/// Toast"). Every window has one; get it where you are and show toasts with it:
+///
+///     let toaster = ctx.useToaster ()                       // in a component
+///     toaster.Show "Saved"
+///     toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> dispatch Undo) ]
+///
+///     model, Cmd.toast "Saved"                              // from an Elmish update
+///     App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])
+///
+/// A toast stays 4 seconds (`Toast.duration`), waits while the pointer is over it, and has a close
+/// button; an Error stays until closed. At most three show, the rest wait their turn. They never
+/// take the keyboard. `Show` is safe from any thread: keep the toaster and call it from a task.
+[<Sealed>]
+type Toaster internal (ui: unit -> Dispatcher voption, find: unit -> ToastStack voption) =
 
     /// Shows a toast saying `text`.
     member this.Show(text: string) = this.Show [ Toast.text text ]
 
     /// Shows a toast: `toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Couldn't save" ]`. Safe from any thread.
-    member this.Show(settings: ToastSetting list) =
+    member _.Show(settings: ToastSetting list) =
         let defaults = { Text = ""; Kind = ToastKind.Info; Duration = ValueNone; Action = ValueNone; Content = ValueNone }
         let options = settings |> List.fold (fun o (ToastSetting apply) -> apply o) defaults
-        let post =
-            lock gate (fun () ->
-                match dispatcher with
-                | ValueSome d -> ValueSome d
-                | ValueNone ->
-                    waiting.Enqueue options
-                    ValueNone)
-        match post with
-        | ValueSome d -> d.Post(fun () -> this.Add options)
-        | ValueNone -> ()
+        let noWindow () =
+#if DEBUG
+            DebugWarnings.Once("toast-no-window", "A toast was shown from a view that isn't in a window (a test's bare tree, a view rendered to an image): nothing shows.")
+#else
+            ()
+#endif
+        // On the UI thread: the window's toasts (and their layer) are made there, the first time.
+        match ui () with
+        | ValueSome dispatcher ->
+            dispatcher.Post(fun () ->
+                match find () with
+                | ValueSome stack -> stack.Add options
+                | ValueNone -> noWindow ())
+        | ValueNone -> noWindow ()
 
-    /// How many toasts it holds (showing, coming, going or waiting). For tests and tools; the UI thread.
-    member _.Count = items.Count
-
-    /// The host's side: where to run and how to show the layer's view. What was asked for before shows now.
-    member internal this.Bind(uiDispatcher: Dispatcher, show: View -> unit) =
-        let early =
-            lock gate (fun () ->
-                dispatcher <- ValueSome uiDispatcher
-                update <- show
-                let early = waiting.ToArray()
-                waiting.Clear()
-                early)
-        this.Refresh()
-        for options in early do
-            uiDispatcher.Post(fun () -> this.Add options)
+    /// How many toasts the window holds (showing, coming, going or waiting). For tests and tools; the UI thread.
+    member _.Count =
+        match find () with
+        | ValueSome stack -> stack.Count
+        | ValueNone -> 0

@@ -17,10 +17,10 @@ let private view =
         StackPanel.children [
             TextBlock.create [ TextBlock.text "The app, under the scrim"; TextBlock.fontSize 18.0 ]
             Button.create [ Button.text "A button below"; Button.horizontalAlignment HorizontalAlignment.Left ]
-            Dialog.create [
-                Dialog.isOpen true
-                Dialog.title "Delete the draft?"
-                Dialog.content (
+            Modal.create [
+                Modal.isOpen true
+                Modal.title "Delete the draft?"
+                Modal.content (
                     StackPanel.create [
                         StackPanel.spacing 16.0
                         StackPanel.children [
@@ -48,8 +48,7 @@ type DialogToastTests(fixture: TextFixture) =
                 ElementHost.dispatcher dispatcher
                 ElementHost.theme theme
             ]
-        let toaster = Toaster()
-        host.AddToaster toaster
+        let toaster = host.Toaster
         // Opened by keyboard, so focus in the dialog shows its ring.
         host.MoveFocus FocusDirection.Next
         host.Update view
@@ -62,7 +61,7 @@ type DialogToastTests(fixture: TextFixture) =
             for l in host.Layers do
                 l.Tree.Time <- l.Tree.Time + TimeSpan.FromSeconds 1.0
             host.HandleEvent Frame |> ignore
-        Assert.Equal<string list>([ "App"; "Dialog"; "Toasts" ], host.Layers |> Seq.map _.Name |> List.ofSeq)
+        Assert.Equal<string list>([ "App"; "Modal"; "Toasts" ], host.Layers |> Seq.map _.Name |> List.ofSeq)
         let image =
             fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
                 f.Clear host.ClearColor
@@ -71,6 +70,42 @@ type DialogToastTests(fixture: TextFixture) =
         match Snapshot.check name image with
         | Some error -> Assert.Fail error
         | None -> ()
+
+    /// A confirmation asked for through `Dialogs`, opened by the keyboard so the focused button shows its ring.
+    member private _.Confirm(severity: Severity, name: string) =
+        let pixels: PixelSize = { Width = 420; Height = 220 }
+        let dispatcher = Dispatcher(ignore, fun _ _ -> ())
+        let host =
+            ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text [
+                ElementHost.dispatcher dispatcher
+                ElementHost.theme (Theme.dark [])
+            ]
+        let dialogs = host.Dialogs
+        host.Update(Button.create [ Button.text "The app"; Button.horizontalAlignment HorizontalAlignment.Left; Button.verticalAlignment VerticalAlignment.Top ])
+        host.HandleEvent Frame |> ignore
+        host.MoveFocus FocusDirection.Next
+        dialogs.Confirm [ Confirm.title "Delete the draft?"; Confirm.text "It can't be brought back."; Confirm.accept "Delete"; Confirm.cancel "Keep"; Confirm.severity severity ]
+        |> ignore
+        for _ in 1..4 do
+            dispatcher.RunPending()
+            for l in host.Layers do
+                l.Tree.Time <- l.Tree.Time + TimeSpan.FromSeconds 1.0
+            host.HandleEvent Frame |> ignore
+        Assert.Contains("Modal", host.Layers |> Seq.map _.Name)
+        let image =
+            fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
+                f.Clear host.ClearColor
+                for l in host.Layers do
+                    l.Tree.Render f.DrawList)
+        match Snapshot.check name image with
+        | Some error -> Assert.Fail error
+        | None -> ()
+
+    [<Fact>]
+    member this.``a Critical confirmation: the danger button, focus on cancel``() = this.Confirm(Severity.Critical, "confirm-critical@1x")
+
+    [<Fact>]
+    member this.``a Warning confirmation: the warning button, focus on it``() = this.Confirm(Severity.Warning, "confirm-warning@1x")
 
     [<Fact>]
     member this.``a dialog with toasts above it, dark``() = this.Shoot(Theme.dark [], "dialog-toasts@1x")

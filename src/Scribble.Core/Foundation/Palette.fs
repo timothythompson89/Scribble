@@ -21,6 +21,8 @@ module Palette =
     let textDim = ThemeValue.define "Palette.textDim" (Color.Hex 0x9A9AB0)
     let accent = ThemeValue.define "Palette.accent" (Color.Hex 0x3D59A1)
     let danger = ThemeValue.define "Palette.danger" (Color.Hex 0x8C2F39)
+    /// Something to be careful about (a Warning confirmation's button); `onAccent` text reads on it.
+    let warning = ThemeValue.define "Palette.warning" (Color.Hex 0x9A6700)
     /// Text on accent- or danger-colored backgrounds (white in both built-in themes).
     let onAccent = ThemeValue.define "Palette.onAccent" Color.White
     let focusRing = ThemeValue.define "Palette.focusRing" (Color.Hex 0x7AA2F7)
@@ -28,7 +30,7 @@ module Palette =
     let hoverTint = ThemeValue.define "Palette.hoverTint" (Color.White.WithAlpha 0.08f)
     /// Laid over a control while pressed.
     let pressTint = ThemeValue.define "Palette.pressTint" (Color.Black.WithAlpha 0.2f)
-    /// The dimming a dialog lays over everything below it.
+    /// The dimming a modal lays over everything below it.
     let scrim = ThemeValue.define "Palette.scrim" (Color.Black.WithAlpha 0.55f)
     /// The scrollbar's thumb.
     let scrollThumb = ThemeValue.define "Palette.scrollThumb" (Color.White.WithAlpha 0.3f)
@@ -59,8 +61,8 @@ module internal ThemeConvert =
         fun v ->
             let s = unbox<BoxShadow> v
             box (ValueSome { s with Blur = s.Blur * 4.0; OffsetY = s.OffsetY * 4.0 })
-    /// The same shadow under a dialog: wider and lower still.
-    let dialogShadow: obj -> obj =
+    /// The same shadow under a modal: wider and lower still.
+    let modalShadow: obj -> obj =
         fun v ->
             let s = unbox<BoxShadow> v
             box (ValueSome { s with Blur = s.Blur * 8.0; OffsetY = s.OffsetY * 8.0 })

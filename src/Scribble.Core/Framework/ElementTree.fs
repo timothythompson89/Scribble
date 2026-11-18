@@ -89,6 +89,9 @@ type ElementTree(text: TextSystem) =
     /// Hears every restyle request (before the tree decides it needs one): the host restyles flyouts whose element
     /// is or is inside the element asking.
     member val internal RestyleHandler: Element -> unit = ignore with get, set
+    /// What the host that runs this tree offers the components in it (its toasts and dialogs): a
+    /// `HostServices`, kept untyped because those types come later in the compile order.
+    member val internal Services: obj = null with get, set
     /// The element this tree belongs to (a flyout's or tooltip's): styled as if inside it.
     member val internal Owner: Element voption = ValueNone with get, set
     /// Where the root goes, from the root (measured: its `DesiredSize`, its settings) and the window's size: a flyout's

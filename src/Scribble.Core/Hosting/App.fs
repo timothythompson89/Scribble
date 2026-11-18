@@ -27,6 +27,10 @@ type AppContext internal (host: ElementHost, platform: IPlatform) =
     member _.Get<'T>(value: AppValue<'T>) : 'T = host.AppValues.Get value
     /// Sets an app value for the whole app (from any thread): `ctx.Set(compactMode, true)`.
     member _.Set<'T>(value: AppValue<'T>, next: 'T) : unit = host.AppValues.Set(value, next)
+    /// The window's toasts: `app.Toaster.Show "Saved"`.
+    member _.Toaster = host.Toaster
+    /// The window's dialogs: `app.Dialogs.Confirm [ ... ]`.
+    member _.Dialogs = host.Dialogs
 
 /// Everything App settings configure.
 type AppConfig<'Msg> internal () =
@@ -37,9 +41,8 @@ type AppConfig<'Msg> internal () =
     member val internal CloseOnEscape = false with get, set
     member val internal OnKey: (Key -> Modifiers -> 'Msg option) list = [] with get, set
     member val internal OnFrame: (FrameTime -> 'Msg option) list = [] with get, set
-    member val internal OnError: (exn -> unit) voption = ValueNone with get, set
+    member val internal OnError: (AppContext -> exn -> unit) voption = ValueNone with get, set
     member val internal Layers: LayerSetting list list = [] with get, set
-    member val internal Toasters: Toaster list = [] with get, set
     member val internal Styles: Style list = [] with get, set
     member val internal OnStart: (AppContext -> unit) list = [] with get, set
     member val internal Values: (AppValues -> unit) list = [] with get, set
@@ -128,7 +131,9 @@ type App =
     /// Where errors from app code go, so the app keeps running: event handlers, the view,
     /// components, render functions, effects, commands, work queued to the UI thread, tasks nobody
     /// awaited. What failed is left out (README, "Errors"). Without it, an error ends the app.
-    static member onError<'Msg>(handler: exn -> unit) : AppSetting<'Msg> = AppSetting(fun c -> c.OnError <- ValueSome handler)
+    /// The handler gets the app's context, so it can tell the user in the app's own window:
+    /// `App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])`.
+    static member onError<'Msg>(handler: AppContext -> exn -> unit) : AppSetting<'Msg> = AppSetting(fun c -> c.OnError <- ValueSome handler)
 
     /// Styles for the whole app (every layer but those with `Layer.appStyles false`); later ones win
     /// over earlier ones, and styles set on elements win over these. Several `App.styles` add up.
@@ -147,10 +152,6 @@ type App =
     /// `Layer.modal true`. Its view is fixed (components inside keep their own state); see `Layer`.
     static member layer<'Msg>(settings: LayerSetting list) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Layers <- c.Layers @ [ settings ])
-
-    /// The app's toasts: `let toaster = Toaster()`, `App.toaster toaster`, then `toaster.Show "Saved"` from anywhere
-    /// (a handler, `update`, `App.onError`, another thread). They show in a layer of their own above dialogs and flyouts.
-    static member toaster<'Msg>(value: Toaster) : AppSetting<'Msg> = AppSetting(fun c -> c.Toasters <- c.Toasters @ [ value ])
 
     /// An app value's starting value (`AppValue.define`): `App.value compactMode true`.
     static member value<'Msg, 'T> (value: AppValue<'T>) (start: 'T) : AppSetting<'Msg> =
@@ -188,7 +189,15 @@ type App =
         // Work from other threads reaches this (the UI) thread through the dispatcher; the
         // platform wakes the loop to run it.
         let dispatcher = Dispatcher(platform.Wake, fun delay action -> platform.After(delay, action))
-        config.OnError |> ValueOption.iter (fun handler -> dispatcher.OnError <- handler)
+        // The handler gets the app's context; an error before the host exists has none, and ends the app as it
+        // would without a handler.
+        config.OnError
+        |> ValueOption.iter (fun handler ->
+            dispatcher.OnError <-
+                fun e ->
+                    match host.Value with
+                    | ValueSome h -> handler (AppContext(h, platform)) e
+                    | ValueNone -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw e)
         platform.SetWakeHandler dispatcher.RunPending
         // The app values, shared by its windows and layers, with their starting values.
         let values = AppValues(Dispatcher = ValueSome dispatcher)
@@ -287,8 +296,6 @@ type App =
         |> ignore
         for layer in config.Layers do
             h.AddLayer layer |> ignore
-        for toaster in config.Toasters do
-            h.AddToaster toaster
         for handler in config.OnStart do
             handler (AppContext(h, platform))
         Console.WriteLine($"Scribble: {device.Description}, {shaper.Name} shaping, {platform.Name}")

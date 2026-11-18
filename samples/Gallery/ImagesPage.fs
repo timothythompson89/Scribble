@@ -121,6 +121,7 @@ let private saving =
         let card = ctx.useCapture ()
         let whole = ctx.useAppValue wholeGallery
         let rendered = ctx.useState<Image voption> ValueNone
+        let toaster = ctx.useToaster ()
         // Errors (no GPU readback, the dialog failing) show as a toast.
         let run (work: unit -> Threading.Tasks.Task) =
             task {

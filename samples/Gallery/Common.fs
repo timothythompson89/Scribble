@@ -121,7 +121,3 @@ let lightTheme =
 /// The whole Gallery as a view, for the Images page to render as a picture. GalleryApp sets it (`App.value`): the
 /// pages are compiled before it, so they can't name it.
 let wholeGallery: AppValue<(unit -> View) voption> = AppValue.define "WholeGallery" ValueNone
-
-/// The Gallery's toasts (GalleryApp gives it to the app): pages show them with `toaster.Show`, and the app's errors
-/// show as Error toasts.
-let toaster = Toaster()

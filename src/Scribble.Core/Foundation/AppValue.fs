@@ -46,6 +46,10 @@ type AppValues() =
     /// layout, for `Cmd.scrollTo`. Weak: a removed element's scroller goes away with it.
     member val internal NamedScrollers = Dictionary<string, WeakReference<Scroller>>() with get
 
+    /// What the host that runs these values offers commands (its toasts and dialogs): a `HostServices`,
+    /// kept untyped because those types come later in the compile order.
+    member val internal Services: obj = null with get, set
+
     /// Registers a named scroller; called at every arrange, so it allocates only when it changes.
     member internal this.RegisterScroller(name: string, scroller: Scroller) =
         match this.NamedScrollers.TryGetValue name with

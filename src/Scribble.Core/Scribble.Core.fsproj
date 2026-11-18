@@ -52,12 +52,13 @@
     <Compile Include="Elements/Controls/ListBox.fs" />
     <Compile Include="Elements/Controls/RadioButton.fs" />
     <Compile Include="Elements/Controls/ComboBox.fs" />
-    <Compile Include="Elements/Controls/Dialog.fs" />
+    <Compile Include="Elements/Controls/Modal.fs" />
     <Compile Include="Elements/Controls/Toast.fs" />
     <Compile Include="Themes/Theme.fs" />
+    <Compile Include="Hosting/Toaster.fs" />
+    <Compile Include="Hosting/Dialogs.fs" />
     <Compile Include="Hosting/Component.fs" />
     <Compile Include="Hosting/Layer.fs" />
-    <Compile Include="Hosting/Toaster.fs" />
     <Compile Include="Hosting/ElementHost.fs" />
     <Compile Include="Hosting/SemanticTree.fs" />
     <Compile Include="Hosting/App.fs" />

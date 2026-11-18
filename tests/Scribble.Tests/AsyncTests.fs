@@ -269,7 +269,7 @@ let ``App.programWithCmd runs tasks and routes errors to App.onError`` () =
             App.programWithCmd ("idle", Cmd.ofMsg Load) update (fun model d ->
                 dispatch <- ValueSome d
                 TextBlock.create [ TextBlock.text model ])
-            App.onError errors.Add
+            App.onError (fun _ e -> errors.Add e)
         ]
     w.DeliverFrame() |> ignore
     Assert.Equal("loading", firstText host.Tree.Root.Value)

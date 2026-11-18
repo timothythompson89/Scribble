@@ -11,7 +11,7 @@ module internal ThemeLooks =
     let private tintTime = TimeSpan.FromMilliseconds 100.0
     /// How long a toast takes to fade in or out (it slides for as long: `ToastPresenter`).
     let private moveTime = TimeSpan.FromMilliseconds 150.0
-    /// How long a dialog takes to fade in.
+    /// How long a modal takes to fade in.
     let private fadeTime = TimeSpan.FromMilliseconds 120.0
     /// How long a press takes to sink in and spring back.
     let private pressTime = TimeSpan.FromMilliseconds 120.0
@@ -151,15 +151,15 @@ module internal ThemeLooks =
               Flyout.padding 4.0
               Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
           ]
-          // A dialog (M8 step 4d): the scrim dims what's below and fades in with the box on it.
+          // A modal (M8 step 4d): the scrim dims what's below and fades in with the box on it.
           Scrim.style [] [ Scrim.background Palette.scrim; Style.transition LayoutProps.opacity fadeTime ]
-          Dialog.style [] [
-              Dialog.background Palette.surface
-              Dialog.borderBrush Palette.border
-              Dialog.borderThickness 1.0
-              Dialog.cornerRadius Palette.cornerRadius
-              Dialog.padding 20.0
-              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.dialogShadow
+          Modal.style [] [
+              Modal.background Palette.surface
+              Modal.borderBrush Palette.border
+              Modal.borderThickness 1.0
+              Modal.cornerRadius Palette.cornerRadius
+              Modal.padding 20.0
+              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.modalShadow
           ]
           // Toasts (M8 step 4d): the surface colour with a line and a floating shadow; an error in the danger colour.
           ToastPresenter.style [] [

@@ -32,17 +32,17 @@ let private app =
         StackPanel.children [ Button.create [ Button.name "one"; Button.text "One" ]; Button.create [ Button.name "two"; Button.text "Two" ] ]
     ]
 
-let private show (toaster: Toaster) (extra: AppSetting<unit> list) =
-    let w, _, a = start ([ App.view app; App.toaster toaster ] @ extra)
+let private show (extra: AppSetting<unit> list) =
+    let w, _, a = start ([ App.view app ] @ extra)
     let host = a :?> ElementHost
     pump w host
     w, host
 
-let private layer (host: ElementHost) = host.Layers |> Seq.find (fun l -> l.Name = "Toasts")
+/// The toasts showing (their layer is made with the first toast).
 let private toasts (host: ElementHost) =
-    match (layer host).Tree.Root with
-    | ValueSome root -> all root |> Seq.filter (fun e -> obj.ReferenceEquals(e.Type, ToastPresenter.Type)) |> List.ofSeq
-    | ValueNone -> []
+    match host.Layers |> Seq.tryFind (fun l -> l.Name = "Toasts") |> Option.bind (fun l -> ValueOption.toOption l.Tree.Root) with
+    | Some root -> all root |> Seq.filter (fun e -> obj.ReferenceEquals(e.Type, ToastPresenter.Type)) |> List.ofSeq
+    | None -> []
 let private textOf (e: Element) =
     all e |> Seq.filter (fun x -> obj.ReferenceEquals(x.Type, TextBlock.Type)) |> Seq.map (fun x -> x.Get TextProps.text) |> String.concat " "
 let private texts (host: ElementHost) = toasts host |> List.map textOf
@@ -61,8 +61,8 @@ let private clickOn (w: FakeWindow) (host: ElementHost) (e: Element) =
 
 [<Fact>]
 let ``a toast shows in the Toasts layer, fully there after it slid in, and goes after four seconds`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     Assert.Empty(toasts host)
     toaster.Show "Saved"
     pump w host
@@ -77,8 +77,8 @@ let ``a toast shows in the Toasts layer, fully there after it slid in, and goes 
 
 [<Fact>]
 let ``nothing asks for frames while a toast waits`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     toaster.Show "Saved"
     pump w host
     w.Time.AdvanceMs 2000.0
@@ -86,24 +86,17 @@ let ``nothing asks for frames while a toast waits`` () =
     Assert.False w.FrameRequested
 
 [<Fact>]
-let ``toasts asked for before the app starts show once it has`` () =
-    let toaster = Toaster()
-    toaster.Show "Early"
-    let _, host = show toaster []
-    Assert.Equal<string list>([ "Early" ], texts host)
-
-[<Fact>]
 let ``Show from another thread reaches the UI thread`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     Task.Run(fun () -> toaster.Show "From a task").Wait()
     pump w host
     Assert.Equal<string list>([ "From a task" ], texts host)
 
 [<Fact>]
 let ``an Error stays until its close button is clicked`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Couldn't save" ]
     pump w host
     advance w host 60_000.0
@@ -115,8 +108,8 @@ let ``an Error stays until its close button is clicked`` () =
 
 [<Fact>]
 let ``a duration of its own`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     toaster.Show [ Toast.text "Quick"; Toast.duration (TimeSpan.FromSeconds 1.0) ]
     toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Timed error"; Toast.duration (TimeSpan.FromSeconds 2.0) ]
     pump w host
@@ -127,8 +120,8 @@ let ``a duration of its own`` () =
 
 [<Fact>]
 let ``at most three show, newest lowest; the rest wait their turn, and their time starts when they show`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     for i in 1..5 do
         toaster.Show("Toast " + string i)
     pump w host
@@ -146,8 +139,8 @@ let ``at most three show, newest lowest; the rest wait their turn, and their tim
 
 [<Fact>]
 let ``a toast waits while the pointer is over it, and its time starts again when the pointer leaves`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     toaster.Show "Hold me"
     pump w host
     let toast = (toasts host).Head
@@ -163,9 +156,9 @@ let ``a toast waits while the pointer is over it, and its time starts again when
 
 [<Fact>]
 let ``an action runs its handler and closes the toast`` () =
-    let toaster = Toaster()
     let log = List<string>()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> log.Add "undo") ]
     pump w host
     let undo = buttons (toasts host).Head |> List.head
@@ -177,8 +170,8 @@ let ``an action runs its handler and closes the toast`` () =
 
 [<Fact>]
 let ``a press on a toast doesn't take the keyboard from the app`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     let one = all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "one")
     one.Focus()
     toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Still here"; Toast.action ("Retry", ignore) ]
@@ -199,8 +192,8 @@ let ``a press on a toast doesn't take the keyboard from the app`` () =
 
 [<Fact>]
 let ``in a narrow window toasts go across the bottom; in a wide one, at the bottom right, at most 360 wide`` () =
-    let toaster = Toaster()
-    let w, host = show toaster []
+    let w, host = show []
+    let toaster = host.Toaster
     toaster.Show [ Toast.kind ToastKind.Error; Toast.text "A fairly long message that would like more room than a narrow window has to give it" ]
     pump w host
     let toast () = (toasts host).Head
@@ -216,11 +209,11 @@ let ``in a narrow window toasts go across the bottom; in a wide one, at the bott
 
 [<Fact>]
 let ``only the toasts take the pointer: the app under the rest of their layer still gets clicks`` () =
-    let toaster = Toaster()
     let log = List<string>()
     let view = Button.create [ Button.name "big"; Button.text "Big"; Button.onClick (fun _ -> log.Add "big") ]
-    let w, _, a = start [ App.view view; App.toaster toaster ]
+    let w, _, a = start [ App.view view ]
     let host = a :?> ElementHost
+    let toaster = host.Toaster
     toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Here" ]
     pump w host
     w.Send(PointerPressed(Mouse, 0, { X = 50.0; Y = 50.0 }, MouseButton.Left, Modifiers.None))
@@ -230,19 +223,99 @@ let ``only the toasts take the pointer: the app under the rest of their layer st
 
 [<Fact>]
 let ``toasts are above dialogs and flyouts, and a toast's node is an Alert named by its text`` () =
-    let toaster = Toaster()
     let view =
-        Dialog.create [ Dialog.isOpen true; Dialog.title "Sure?"; Dialog.content (Button.create [ Button.name "more"; Button.text "More"; Button.flyout (TextBlock.create [ TextBlock.text "Inside" ]) ]) ]
-    let w, _, a = start [ App.view view; App.toaster toaster ]
+        Modal.create [ Modal.isOpen true; Modal.title "Sure?"; Modal.content (Button.create [ Button.name "more"; Button.text "More"; Button.flyout (TextBlock.create [ TextBlock.text "Inside" ]) ]) ]
+    let w, _, a = start [ App.view view ]
     let host = a :?> ElementHost
+    let toaster = host.Toaster
     pump w host
     let more = host.Layers |> Seq.collect (fun l -> l.Tree.Root |> ValueOption.toArray |> Seq.collect all) |> Seq.find (fun e -> e.Name = "more")
     clickOn w host more
     toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Offline" ]
     pump w host
-    Assert.Equal<string list>([ "App"; "Dialog"; "Flyout of more"; "Toasts" ], host.Layers |> Seq.map _.Name |> List.ofSeq)
+    Assert.Equal<string list>([ "App"; "Modal"; "Flyout of more"; "Toasts" ], host.Layers |> Seq.map _.Name |> List.ofSeq)
     Assert.True(host.SemanticTree().ToString().Contains("Alert \"Offline\""), host.SemanticTree().ToString())
     // The toast can be closed over the dialog.
     clickOn w host (buttons (toasts host).Head |> List.last)
     advance w host 200.0
     Assert.Empty(toasts host)
+
+[<Fact>]
+let ``every host has its own toasts: one shown in a window shows there and nowhere else`` () =
+    let w1, host1 = show []
+    let w2, host2 = show []
+    Assert.False(obj.ReferenceEquals(host1.Toaster, host2.Toaster))
+    host1.Toaster.Show "In the first"
+    pump w1 host1
+    pump w2 host2
+    Assert.Equal<string list>([ "In the first" ], texts host1)
+    // The second never made a toasts layer: nothing asked it for one.
+    Assert.DoesNotContain("Toasts", host2.Layers |> Seq.map _.Name)
+    Assert.Equal(0, host2.Toaster.Count)
+
+[<Fact>]
+let ``ctx.useToaster gives the toasts of the window the component is in, the same one every run`` () =
+    let seen = List<Toaster>()
+    let view =
+        Component.define "Sender" (fun ctx () ->
+            let toaster = ctx.useToaster ()
+            seen.Add toaster
+            let count = ctx.useState 0
+            Button.create [
+                Button.name "send"
+                Button.text ("Sent " + string count.Current)
+                Button.onClick (fun _ ->
+                    count.Set(count.Current + 1)
+                    toaster.Show "From the component")
+            ]) ()
+    let w, _, a = start [ App.view view ]
+    let host = a :?> ElementHost
+    pump w host
+    let send () = all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "send")
+    clickOn w host (send ())
+    clickOn w host (send ())
+    Assert.Equal<string list>([ "From the component"; "From the component" ], texts host)
+    Assert.True(seen.Count >= 2)
+    Assert.True(seen |> Seq.forall (fun t -> obj.ReferenceEquals(t, seen[0])))
+    // It is the host's own toasts it reached.
+    Assert.Equal(2, host.Toaster.Count)
+
+[<Fact>]
+let ``ctx.useToaster in a tree no host runs shows nothing`` () =
+    let mutable toaster = Unchecked.defaultof<Toaster>
+    let view =
+        Component.define "Loose" (fun ctx () ->
+            toaster <- ctx.useToaster ()
+            Border.create []) ()
+    let tree = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    tree.Update view
+    toaster.Show "Nobody sees this"
+    toaster.Show "Nor this"
+    Assert.Equal(0, toaster.Count)
+
+[<Fact>]
+let ``Cmd.toast and Cmd.toastWith show in the program's window`` () =
+    let update (text: string) (model: int) =
+        model + 1, (if text = "error" then Cmd.toastWith [ Toast.kind ToastKind.Error; Toast.text "Failed" ] else Cmd.toast text)
+    let view (_: int) (dispatch: string -> unit) =
+        StackPanel.create [
+            StackPanel.children [
+                Button.create [ Button.name "save"; Button.text "Save"; Button.onClick (fun _ -> dispatch "Saved") ]
+                Button.create [ Button.name "fail"; Button.text "Fail"; Button.onClick (fun _ -> dispatch "error") ]
+            ]
+        ]
+    let w, _, a = start [ App.programWithCmd (0, Cmd.none) update view ]
+    let host = a :?> ElementHost
+    pump w host
+    clickOn w host (all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "save"))
+    clickOn w host (all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "fail"))
+    Assert.Equal<string list>([ "Saved"; "Failed" ], texts host)
+
+[<Fact>]
+let ``App.onError gets the app's context, so an error can show as a toast in its window`` () =
+    let view = Button.create [ Button.name "break"; Button.text "Break"; Button.onClick (fun _ -> failwith "It broke") ]
+    let w, _, a = start [ App.view view; App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]) ]
+    let host = a :?> ElementHost
+    pump w host
+    clickOn w host (all host.Tree.Root.Value |> Seq.find (fun e -> e.Name = "break"))
+    Assert.Equal<string list>([ "It broke" ], texts host)

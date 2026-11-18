@@ -4,7 +4,7 @@ A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.m
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Status** (2026-11-17): milestones 0–7b done; M8 (core controls) under way: scrolling and virtualized lists, Grid,
-DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox, Dialog, toasts. Apps are F# view
+DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox, Modal, dialogs, toasts. Apps are F# view
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
@@ -188,11 +188,12 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      "Show an error" stays until its × is clicked; "With an action" has an Undo button. Three show at a time,
      newest lowest. The app keeps working everywhere except on a toast itself, and a click on a toast never
      moves keyboard focus.
-   - Dialog: "Open a dialog" dims the window and shows a box. Nothing below reacts: no hover, no clicks, no wheel,
-     and Tab cycles only through the dialog's buttons (the app's focus ring goes away and comes back after).
-     "Toast" in the dialog shows a toast above the dimming; Escape, a click outside or Close brings the app back
-     exactly as it was. "Ask a question" opens one that must be answered.
-   - Hover a button, then open the dialog without moving the mouse: the button stops looking hovered.
+   - Modal and dialogs: "Open a modal" dims the window and shows a box. Nothing below reacts: no hover, no clicks, no wheel,
+     and Tab cycles only through the modal's buttons (the app's focus ring goes away and comes back after).
+     "Toast" in the modal shows a toast above the dimming; Escape, a click outside or Close brings the app back
+     exactly as it was. Confirm, Warning, Critical, Three choices and Inform are declared with hooks; the line
+     under them shows the answer (Critical starts with focus on Keep).
+   - Hover a button, then open the modal without moving the mouse: the button stops looking hovered.
 9. The Styles page (M7 step 1, verified on Windows and in the browser 2026-11-16):
    - Primary is blue and Danger red (classes); the selected tab's blue comes from a style too.
    - Hover the card: its border and all three lines of text turn light blue (`Style.on States.hover` on the card,
@@ -223,7 +224,7 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    - Light: a light grey window (the window's background follows the theme), white buttons with grey borders, dark
      text; the selected tab, Primary and Danger keep white text. Hover darkens a button slightly, press darkens it
      more and sinks it; disabled buttons fade.
-   - Every page follows: the counters' bars, the Scrolling page's rows, scrollbar, toast and dialog (open it after
+   - Every page follows: the counters' bars, the Scrolling page's rows, scrollbar, toast and modal (open it after
      switching), the Styles page's cards and chips. "Dark" switches back to exactly the old look (the count and
      list text is now the theme's text color, a hair softer than white).
    - The inspector stays dark either way.
@@ -541,7 +542,7 @@ match square with
 - **From other threads:** `State.Set`/`Update` and Elmish `dispatch` may be called from any thread; they're queued
   to the UI thread. Elements themselves are UI-thread only. `await` inside `task { }` started on the UI thread
   resumes there (Scribble installs a `SynchronizationContext`).
-- **Errors:** an exception from app code goes to `App.onError (fun e -> ...)`, and the app keeps running, losing
+- **Errors:** an exception from app code goes to `App.onError (fun app e -> ...)` (`app` is the app's context: `app.Toaster` shows it as a toast), and the app keeps running, losing
   only what failed: an event handler (a failed `update` leaves the model as it was), the view (the last one stays
   on screen until the model changes again), a component (it keeps its last output), an element's render (it's
   left out of that frame), an ItemsView item's `view` (that item is left out), an effect, a command, queued work,
@@ -555,7 +556,7 @@ match square with
 
 ### Layers
 
-Dialogs, flyouts, toasts and the inspector go in layers: element trees drawn above the app, each filling the
+Modals, dialogs, flyouts, toasts and the inspector go in layers: element trees drawn above the app, each filling the
 window and laid out on its own (a layer never moves the app).
 
 ```fsharp
@@ -568,7 +569,7 @@ App.layer [ Layer.name "Lock"; Layer.order 200; Layer.modal true; Layer.view (lo
   the window. A component's own host element doesn't count, only what it shows. A press stays with its layer
   until release; dragged over another layer, it's over nothing in its own.
 - **Modal:** `Layer.modal true` takes all pointer and keyboard input while the layer shows something; showing
-  nothing (hidden content), it blocks nothing, so a dialog layer can stay in place.
+  nothing (hidden content), it blocks nothing, so a layer of your own can stay in place.
 - **Keyboard:** each layer has its own focus and Tab order. Keys go to the layer last clicked, unless a modal layer
   is above it; the other layers' focus rings hide until they get the keyboard back. `Layer.keyboard false` keeps
   the keyboard out of a layer: a press in it leaves keys where they were (the toasts' layer).
@@ -576,17 +577,18 @@ App.layer [ Layer.name "Lock"; Layer.order 200; Layer.modal true; Layer.view (lo
 - **Wheel:** `Layer.letWheelThrough true` sends the wheel on to the layers below even where this one has an
   element: an overlay that takes clicks but shouldn't stop scrolling (the inspector's pick mode uses it).
 - **At run time:** `host.AddLayer [ ... ]` returns the `Layer` (`Update view`, `Focused`, `MoveFocus`), and
-  `host.RemoveLayer layer` takes it away (its components stop). For dialogs and toasts, use `Dialog` and a `Toaster` (below) rather than layers of your own.
+  `host.RemoveLayer layer` takes it away (its components stop). For modals, dialogs and toasts, use `Modal`, the
+  dialog hooks and the toasts (below) rather than layers of your own.
 
-**Dialogs** (M8 step 4d): a `Dialog` stands anywhere in the view, takes no space there, and shows its box over a
-scrim in its own modal layer while the view says it's open:
+**Modals** (M8 step 4d): a `Modal` is content of your own over a scrim, written in the view. It stands anywhere
+there, takes no space, and shows its box in its own modal layer while the view says it's open:
 
 ```fsharp
-Dialog.create [
-    Dialog.isOpen model.Confirming
-    Dialog.onOpenChanged (fun isOpen -> if not isOpen then dispatch Cancel)   // Escape asks; the view decides
-    Dialog.title "Delete the file?"
-    Dialog.content (
+Modal.create [
+    Modal.isOpen model.Confirming
+    Modal.onOpenChanged (fun isOpen -> if not isOpen then dispatch Cancel)   // Escape asks; the view decides
+    Modal.title "Delete the file?"
+    Modal.content (
         StackPanel.create [
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "It can't be brought back." ]
@@ -597,40 +599,138 @@ Dialog.create [
 ```
 
 - It is always controlled: `isOpen` shows it, and Escape only calls `onOpenChanged false`.
-  `Dialog.closeOnEscape false` is for a dialog that must be answered; `Dialog.lightDismiss true` lets a press on
+  `Modal.closeOnEscape false` is for a modal that must be answered; `Modal.lightDismiss true` lets a press on
   the scrim ask too.
 - Opening, focus goes to the first Tab stop inside and Tab stays inside; closing, it goes back to what had it.
-- The Dialog is also the box: surface colour, a line, rounded corners, padding and a shadow from the theme, in
-  the middle of the window, at most 560 DIPs wide and 16 DIPs from the window's edges. `Dialog.style [] [ ... ]`
-  restyles every dialog, `Scrim.style` and `Theme.scrim` the dimming. Content too tall scrolls if you put it in a
+- The Modal is also the box: surface colour, a line, rounded corners, padding and a shadow from the theme, in
+  the middle of the window, at most 560 DIPs wide and 16 DIPs from the window's edges. `Modal.style [] [ ... ]`
+  restyles every modal, `Scrim.style` and `Theme.scrim` the dimming. Content too tall scrolls if you put it in a
   ScrollViewer.
-- A flyout opened inside a dialog shows above it.
+- A flyout opened inside a modal shows above it.
 
-**Toasts** (M8 step 4d): short messages at the window's edge, shown as an action from anywhere. Make a `Toaster`,
-give it to the app, and call `Show`, on any thread:
+**Dialogs** (M8 step 4d): a dialog is a modal with fixed content that tells or asks and gives back an answer.
+Every window has its own. A component declares one with a hook, saying what its answers do, and gets back a
+function that opens it:
 
 ```fsharp
-let toaster = Toaster()
+Component.define "Editor" (fun ctx () ->
+    let confirmDelete =
+        ctx.useConfirm [
+            Confirm.title "Delete the draft?"
+            Confirm.text "It can't be brought back."
+            Confirm.accept "Delete"
+            Confirm.cancel "Keep"
+            Confirm.severity Severity.Critical
+            Confirm.onAccept (fun () -> dispatch DeleteDraft)
+        ]
+    let askClose =
+        ctx.useAsk [
+            Ask.title "Unsaved changes"
+            Ask.choice ("Save", fun () -> dispatch Save)
+            Ask.choice ("Discard", fun () -> dispatch Discard)
+            Ask.choice ("Cancel", ignore)
+        ]
+    let sessionExpired = ctx.useInform [ Inform.title "Your session has expired"; Inform.text "Sign in again." ]
 
-App.run [
-    App.toaster toaster
-    App.onError (fun e -> toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])
-    ...
-]
+    StackPanel.create [
+        StackPanel.children [
+            Button.create [ Button.text "Delete"; Button.onClick (fun _ -> confirmDelete ()) ]
+            Button.create [ Button.text "Close"; Button.onClick (fun _ -> askClose ()) ]
+        ]
+    ])
+```
 
-toaster.Show "Saved"                                                              // in a handler, update, a task
+- **`useConfirm`**: `Confirm.onAccept` and `Confirm.onCancel` (Escape is cancel); `Confirm.accept`/`cancel` name
+  the buttons ("OK" and "Cancel" otherwise). **`useAsk`**: each `Ask.choice (label, handler)` is a button that
+  does something; `Ask.onDismiss` is Escape. **`useInform`**: one button (`Inform.button`, "OK" otherwise);
+  `Inform.onClosed` when it's closed.
+- The settings are built on every run of the component, so a title or text can follow its state.
+- **When it depends on what was clicked** (a row's item: hooks can't sit in a loop), give a function from that
+  value to the settings, and the function you get back takes the value:
+
+```fsharp
+let confirmDelete =
+    ctx.useConfirm (fun (file: File) -> [
+        Confirm.title ("Delete " + file.Name + "?")
+        Confirm.severity Severity.Critical
+        Confirm.onAccept (fun () -> dispatch (Delete file.Id))
+    ])
+// in each row
+Button.onClick (fun _ -> confirmDelete file)
+```
+
+- **A dialog with content of your own:** `ctx.useDialog` takes the dialog's settings, given `close`, and gives
+  back a function that opens it. While it's open its content is the component's latest run's, so it follows the
+  component's state:
+
+```fsharp
+let rename =
+    ctx.useDialog (fun close -> [
+        Dialog.title "Rename the file"
+        Dialog.content (
+            StackPanel.create [
+                StackPanel.children [
+                    TextBlock.create [ TextBlock.text ("New name: " + name.Current) ]
+                    Button.create [ Button.text "Save"; Dialog.initialFocus true
+                                    Button.onClick (fun _ -> dispatch (Rename name.Current); close ()) ]
+                    Button.create [ Button.text "Cancel"; Button.onClick (fun _ -> close ()) ]
+                ]
+            ])
+    ])
+Button.onClick (fun _ -> rename ())
+```
+
+  `Dialog.title`, `Dialog.content`, `Dialog.closeOnEscape` (default true), `Dialog.lightDismiss` (default false: a
+  press outside does nothing) and `Dialog.onClosed` (however it closed) are its settings; `Dialog.initialFocus
+  true` on something inside the content gives it focus on opening. The hook keeps whether it's open, so there is
+  no flag in your state and nothing to place in the view. It closes if its component goes away. With an argument:
+  `ctx.useDialog (fun (file: File) close -> [ ... ])` gives a function taking the file.
+- **Dialog or Modal?** Use a dialog (`useDialog`) for a component's own; write a `Modal` in the view when "this is
+  open" belongs in the app's model (an Elmish app that must be able to restore or test it from a model).
+- **`Confirm.severity`**: `Informational` (default; the accept button in the accent colour, with focus),
+  `Warning` (the warning colour, `Theme.warning`) or `Critical` (the danger colour, and focus starts on cancel, so
+  Enter doesn't do what can't be undone).
+- A press outside the box does nothing. Two opened at once show one after the other. The window closing cancels
+  what's open or waiting.
+- **A sequence of questions, or code outside a component:** `ctx.useDialogs ()` gives the window's `Dialogs`, whose
+  calls give back the answer as a task: `let! ok = dialogs.Confirm [ ... ]` (`Task<bool>`),
+  `let! choice = dialogs.Ask [ Ask.option (Save, "Save"); ... ]` (`Task<'T voption>`, your own values; none for
+  Escape), `do! dialogs.Inform [ ... ]`. It can be kept and called from any thread. Handlers given as settings run
+  there too.
+- **In an Elmish `update`**, commands ask in the program's window and send the answer as a message:
+  `model, Cmd.confirm [ Confirm.title "Delete?" ] DeleteAnswered`, `Cmd.ask [ ... ] Chose`,
+  `Cmd.inform [ ... ] Acknowledged`.
+- **Elsewhere:** `app.Dialogs` on the `AppContext` (`App.onStart`, `App.onError`), `host.Dialogs` on a host.
+- A dialog's box is a Modal element, so the theme and `Modal.style` apply; `Dialog.style [] [ Modal.cornerRadius 12.0 ]`
+  styles dialogs only.
+
+**Toasts** (M8 step 4d): short messages at the window's edge, shown as an action. Every window has its own
+toasts; a component gets them with a hook:
+
+```fsharp
+let toaster = ctx.useToaster ()                                                   // in a component
+
+toaster.Show "Saved"                                                              // in a handler, a task
 toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> dispatch Undo) ]
+
+model, Cmd.toast "Saved"                                                          // from an Elmish update
+
+App.onError (fun app e -> app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])
 ```
 
 - A toast stays 4 seconds (`Toast.duration`), waits while the pointer is on it, and has a close button. A
   `ToastKind.Error` stays until closed. Three show at a time, newest lowest; the rest wait their turn.
-- They sit at the bottom right, or across the bottom of a window narrower than 480 DIPs, above dialogs and
-  flyouts, so an error stays in sight and can be closed while a dialog is open.
+- They sit at the bottom right, or across the bottom of a window narrower than 480 DIPs, above modals, dialogs and
+  flyouts, so an error stays in sight and can be closed while a modal or a dialog is open.
 - They never take the keyboard: a click on one leaves focus where it was, and Tab doesn't reach them. A toast's
   action is pointer-only for now.
 - `Toast.content view` replaces the text (give `Toast.text` too: it is the toast's name for screen readers).
   `ToastPresenter.style [] [ ... ]` restyles them, `ToastPresenter.style [ Style.cls "error" ] [ ... ]` the errors.
-- A custom host gives a Toaster its layer with `host.AddToaster toaster`.
+- **Which window:** the hook gives the toasts of the window the component is in (also from inside a flyout or a
+  dialog of that window); `Cmd.toast` and `Cmd.toastWith [ ... ]` those of the program's window; `app.Toaster`
+  those of the app's. `Show` is safe from any thread: keep the toaster and call it from a task. There is no
+  `Toaster` to make yourself, so there is none that belongs to no window. In a view no window shows (rendered
+  to an image, a test's bare tree) a toast shows nothing and a dialog's task is cancelled.
 
 **Flyouts** (M8 step 4a): any element can have one. A flyout is content shown in its own layer next to the
 element, from wherever the view declares it. Give `flyout` the content alone, or the Flyout's settings when it needs

@@ -115,6 +115,19 @@ type internal ComponentInstance(element: Element, name: string) =
             | ValueSome r -> r.AppValues
             | ValueNone -> invalidOp $"Component '{name}' used an app value outside a tree."
 
+    /// The tree it's in (or is being built in), when it's an ElementTree (a host's layer, or a bare tree).
+    member _.Tree: ElementTree voption =
+        let root =
+            match element.Root with
+            | ValueSome r -> ValueSome r
+            | ValueNone -> Element.Realizing
+        match root with
+        | ValueSome(:? ElementTree as tree) -> ValueSome tree
+        | _ -> ValueNone
+
+    /// What the host of its tree offers (its toasts and dialogs); none in a tree no host runs.
+    member this.Services: HostServices voption = this.Tree |> ValueOption.bind (fun t -> HostServices.Of t.Services)
+
     /// Runs `action` after the frame that drew this run (effects).
     member _.Queue(action: unit -> unit) = pending.Add action
 
@@ -239,6 +252,15 @@ type internal StateSlot<'T>(kind: string, state: State<'T>) =
     inherit HookSlot(kind)
     member _.State = state
     override _.Inspect _ = struct (ValueSome(box state.Current), "")
+
+/// `ctx.useDialog`: the dialog it keeps; it closes when the component goes away.
+[<Sealed>]
+type internal LiveDialogSlot(live: LiveDialog) =
+    inherit HookSlot("useDialog")
+    member _.Live = live
+    override _.Inspect _ = struct (ValueSome(box (if live.IsOpen then "open" else "closed")), "")
+    interface IDisposable with
+        member _.Dispose() = live.Drop()
 
 [<Sealed>]
 type internal MemoSlot<'D, 'T>() =
@@ -392,6 +414,118 @@ type ComponentContext internal (instance: ComponentInstance) =
             slot.Value <- Capture()
             slot.HasValue <- true
         slot.Value
+
+    /// The toasts of the window this component is in: `let toaster = ctx.useToaster ()`, then in a handler
+    /// `toaster.Show "Saved"`. The same toaster for as long as the component lives; safe to call from a task.
+    member _.useToaster() : Toaster =
+        let slot = instance.Slot("useToaster", fun () -> MemoSlot<unit, Toaster>())
+        if not slot.HasValue then
+            slot.Value <-
+                Toaster(
+                    (fun () -> instance.Tree |> ValueOption.bind (fun t -> t.Dispatcher)),
+                    fun () -> instance.Services |> ValueOption.bind (fun s -> s.FindToasts()))
+            slot.HasValue <- true
+        slot.Value
+
+    /// The dialogs of the window this component is in: `let dialogs = ctx.useDialogs ()`, then in a
+    /// handler `let! ok = dialogs.Confirm [ Confirm.title "Delete the draft?" ]` (also `Inform` and `Ask`).
+    member _.useDialogs() : Dialogs =
+        let slot = instance.Slot("useDialogs", fun () -> MemoSlot<unit, Dialogs>())
+        if not slot.HasValue then
+            slot.Value <-
+                Dialogs(
+                    (fun () -> instance.Tree |> ValueOption.bind (fun t -> t.Dispatcher)),
+                    fun () -> instance.Services |> ValueOption.bind (fun s -> s.FindDialogs()))
+            slot.HasValue <- true
+        slot.Value
+
+    /// A dialog with content of your own, declared here and opened from a handler:
+    ///
+    ///     let rename =
+    ///         ctx.useDialog (fun close -> [
+    ///             Dialog.title "Rename the file"
+    ///             Dialog.content (renameForm name.Current (fun () -> dispatch (Rename name.Current); close ()))
+    ///         ])
+    ///     Button.onClick (fun _ -> rename ())
+    ///
+    /// `close ()` closes it (so does Escape, unless `Dialog.closeOnEscape false`). While it's open its content is
+    /// this component's latest run's, so it follows the component's state. It opens in the component's window, one
+    /// at a time with the window's other dialogs, and closes if the component goes away. For a modal whose
+    /// being open belongs in the app's model, write a `Modal` in the view instead.
+    member this.useDialog(settingsFor: (unit -> unit) -> DialogSetting list) : unit -> unit =
+        let dialogs = this.useDialogs ()
+        let slot = instance.Slot("useDialog", fun () -> new LiveDialogSlot(LiveDialog dialogs))
+        let live = slot.Live
+        live.Settings <- fun () -> settingsFor live.Close
+        live.Refresh()
+        live.Open
+
+    /// A dialog of your own that depends on what was clicked (a row's item): the settings come from that value
+    /// too, and the function it gives takes the value: `let edit = ctx.useDialog (fun (file: File) close -> [ ... ])`,
+    /// then `Button.onClick (fun _ -> edit file)`.
+    member this.useDialog<'A>(settingsFor: 'A -> (unit -> unit) -> DialogSetting list) : 'A -> unit =
+        let dialogs = this.useDialogs ()
+        let slot = instance.Slot("useDialog", fun () -> new LiveDialogSlot(LiveDialog dialogs))
+        let live = slot.Live
+        live.Settings <- fun () -> settingsFor (unbox<'A> live.Argument) live.Close
+        live.Refresh()
+        fun arg ->
+            if not live.IsOpen then
+                live.Argument <- box arg
+                live.Open()
+
+    /// A confirmation, declared here and opened from a handler:
+    ///
+    ///     let confirmDelete =
+    ///         ctx.useConfirm [ Confirm.title "Delete the draft?"; Confirm.accept "Delete"
+    ///                          Confirm.severity Severity.Critical
+    ///                          Confirm.onAccept (fun () -> dispatch DeleteDraft) ]
+    ///     Button.onClick (fun _ -> confirmDelete ())
+    ///
+    /// The settings are this run's, so they can follow the model. It opens in the component's window. For a
+    /// sequence of questions, use the task forms of `ctx.useDialogs ()`.
+    member this.useConfirm(settings: ConfirmSetting list) : unit -> unit =
+        let dialogs = this.useDialogs ()
+        fun () -> dialogs.Confirm settings |> ignore
+
+    /// A confirmation that depends on what was clicked (a row's item): the settings come from that value, and so
+    /// does the function it gives: `let confirmDelete = ctx.useConfirm (fun (file: File) -> [ Confirm.title
+    /// ("Delete " + file.Name + "?"); Confirm.onAccept (fun () -> dispatch (Delete file.Id)) ])`, then
+    /// `Button.onClick (fun _ -> confirmDelete file)`.
+    member this.useConfirm<'A>(settingsFor: 'A -> ConfirmSetting list) : 'A -> unit =
+        let dialogs = this.useDialogs ()
+        fun arg -> dialogs.Confirm(settingsFor arg) |> ignore
+
+    /// A choice, declared here and opened from a handler; each choice says what it does:
+    ///
+    ///     let askClose =
+    ///         ctx.useAsk [ Ask.title "Unsaved changes"
+    ///                      Ask.choice ("Save", fun () -> dispatch Save)
+    ///                      Ask.choice ("Discard", fun () -> dispatch Discard)
+    ///                      Ask.choice ("Cancel", ignore) ]
+    ///     Button.onClick (fun _ -> askClose ())
+    member this.useAsk(settings: AskSetting<unit -> unit> list) : unit -> unit =
+        let dialogs = this.useDialogs ()
+        fun () -> dialogs.Ask settings |> ignore
+
+    /// A choice that depends on what was clicked: `ctx.useAsk (fun (file: File) -> [ ... ])` gives a function
+    /// taking the file.
+    member this.useAsk<'A>(settingsFor: 'A -> AskSetting<unit -> unit> list) : 'A -> unit =
+        let dialogs = this.useDialogs ()
+        fun arg -> dialogs.Ask(settingsFor arg) |> ignore
+
+    /// Something to tell the user, declared here and opened from a handler:
+    /// `let sessionExpired = ctx.useInform [ Inform.title "Your session has expired"; Inform.text "Sign in again." ]`,
+    /// then `sessionExpired ()`. `Inform.onClosed` runs when it's closed.
+    member this.useInform(settings: InformSetting list) : unit -> unit =
+        let dialogs = this.useDialogs ()
+        fun () -> dialogs.Inform settings |> ignore
+
+    /// Something to tell the user that depends on what happened: `ctx.useInform (fun (e: exn) -> [ Inform.text
+    /// e.Message ])` gives a function taking the error.
+    member this.useInform<'A>(settingsFor: 'A -> InformSetting list) : 'A -> unit =
+        let dialogs = this.useDialogs ()
+        fun arg -> dialogs.Inform(settingsFor arg) |> ignore
 
     /// Runs `effect` after the frame that shows the component, the first time and whenever `deps`
     /// change (F# equality; use a tuple for several values, `()` for "once").

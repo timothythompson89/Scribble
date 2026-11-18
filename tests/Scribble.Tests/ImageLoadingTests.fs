@@ -299,7 +299,7 @@ let ``an image cursor shows the arrow until its picture arrives, then changes wi
             Border.verticalAlignment VerticalAlignment.Top
             Border.cursor cursor
         ]
-    let app = App.start (platform, device, new FixedShaper(), [ App.view view; App.onError errors.Add ])
+    let app = App.start (platform, device, new FixedShaper(), [ App.view view; App.onError (fun _ e -> errors.Add e) ])
     let w = platform.Window.Value
     let host = app :?> ElementHost
     try

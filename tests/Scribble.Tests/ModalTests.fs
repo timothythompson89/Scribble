@@ -1,6 +1,6 @@
-/// M8 step 4d: Dialog on the fake platform (DESIGN.md, "4d: Dialog and Toast"): its own modal layer over a scrim,
+/// M8 step 4d: Modal on the fake platform (DESIGN.md, "4d: Dialog and Toast", round 5): its own modal layer over a scrim,
 /// the view deciding whether it's open, Escape and the scrim asking, focus in and back, size, stacking, semantics.
-module Scribble.Tests.DialogTests
+module Scribble.Tests.ModalTests
 
 open System.Collections.Generic
 open Xunit
@@ -27,11 +27,11 @@ let private show (view: View) =
     settle w
     w, host
 
-let private dialogLayer (host: ElementHost) = host.Layers |> Seq.tryFind (fun l -> l.Name = "Dialog")
-let private isOpen (host: ElementHost) = (dialogLayer host).IsSome
+let private modalLayer (host: ElementHost) = host.Layers |> Seq.tryFind (fun l -> l.Name = "Modal")
+let private isOpen (host: ElementHost) = (modalLayer host).IsSome
 let private named (host: ElementHost) (name: string) =
     host.Layers |> Seq.collect (fun l -> l.Tree.Root |> ValueOption.toArray |> Seq.collect all) |> Seq.find (fun e -> e.Name = name)
-let private boxOf (host: ElementHost) = all (dialogLayer host).Value.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, Dialog.Type))
+let private boxOf (host: ElementHost) = all (modalLayer host).Value.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, Modal.Type))
 
 let private clickAt (w: FakeWindow) (x: float) (y: float) =
     w.Send(PointerPressed(Mouse, 0, { X = x; Y = y }, MouseButton.Left, Modifiers.None))
@@ -53,18 +53,18 @@ type private Log() =
     member l.Add(s: string) = l.Items.Add s
     member l.All = List.ofSeq l.Items
 
-/// A button "open" above a button "below", and a Dialog between them in the view with OK and Cancel.
-let private app (log: Log) (isOpen: bool) (extra: Setting<Dialog> list) =
+/// A button "open" above a button "below", and a Modal between them in the view with OK and Cancel.
+let private app (log: Log) (isOpen: bool) (extra: Setting<Modal> list) =
     StackPanel.create [
-        // The gap is between the two buttons only: a Dialog standing between them gets none.
+        // The gap is between the two buttons only: a Modal standing between them gets none.
         StackPanel.spacing 10.0
         StackPanel.children [
             Button.create [ Button.name "open"; Button.text "Open"; Button.height 30.0; Button.onClick (fun _ -> log.Add "open") ]
-            Dialog.create (
-                [ Dialog.isOpen isOpen
-                  Dialog.onOpenChanged (fun v -> log.Add(if v then "asked to open" else "asked to close"))
-                  Dialog.title "Delete the file?"
-                  Dialog.content (
+            Modal.create (
+                [ Modal.isOpen isOpen
+                  Modal.onOpenChanged (fun v -> log.Add(if v then "asked to open" else "asked to close"))
+                  Modal.title "Delete the file?"
+                  Modal.content (
                       StackPanel.create [
                           StackPanel.orientation Orientation.Horizontal
                           StackPanel.children [
@@ -85,7 +85,7 @@ let ``closed, it shows nothing and takes no space; open, its box is in the middl
     Assert.Equal(40.0, (named host "below").PositionInTree.Y)
     host.Update(app log true [])
     settle w
-    let layer = (dialogLayer host).Value
+    let layer = (modalLayer host).Value
     Assert.True layer.IsModal
     let scrim = layer.Tree.Root.Value
     Assert.True(obj.ReferenceEquals(scrim.Type, Scrim.Type))
@@ -105,7 +105,7 @@ let ``closed, it shows nothing and takes no space; open, its box is in the middl
 [<Fact>]
 let ``the box is never closer than 16 DIPs to the window's edges`` () =
     let wide =
-        Dialog.create [ Dialog.isOpen true; Dialog.content (Border.create [ Border.width 2000.0; Border.height 2000.0 ]) ]
+        Modal.create [ Modal.isOpen true; Modal.content (Border.create [ Border.width 2000.0; Border.height 2000.0 ]) ]
     let _, host = show wide
     let box = boxOf host
     let p = box.PositionInTree
@@ -113,7 +113,7 @@ let ``the box is never closer than 16 DIPs to the window's edges`` () =
     Assert.Equal((368.0, 268.0), (box.Bounds.Width, box.Bounds.Height))
 
 [<Fact>]
-let ``while it's open the app below gets no clicks, and clicks inside reach the dialog's buttons`` () =
+let ``while it's open the app below gets no clicks, and clicks inside reach the modal's buttons`` () =
     let log = Log()
     let w, host = show (app log true [])
     clickOn w (named host "below")
@@ -149,7 +149,7 @@ let ``Escape asks to close and the view decides; closeOnEscape false doesn't ask
     // Controlled: still open until the view says otherwise.
     Assert.True(isOpen host)
     log.Items.Clear()
-    let w, host = show (app log true [ Dialog.closeOnEscape false ])
+    let w, host = show (app log true [ Modal.closeOnEscape false ])
     key w Key.Escape
     Assert.Empty log.All
     Assert.True(isOpen host)
@@ -160,7 +160,7 @@ let ``a press on the scrim asks to close only with lightDismiss; a press on the 
     let w, host = show (app log true [])
     clickAt w 5.0 5.0
     Assert.Empty log.All
-    let w, host = show (app log true [ Dialog.lightDismiss true ])
+    let w, host = show (app log true [ Modal.lightDismiss true ])
     let box = boxOf host
     clickAt w (box.PositionInTree.X + 4.0) (box.PositionInTree.Y + 4.0)
     Assert.Empty log.All
@@ -169,27 +169,27 @@ let ``a press on the scrim asks to close only with lightDismiss; a press on the 
     Assert.True(isOpen host)
 
 [<Fact>]
-let ``a flyout opened inside a dialog shows above it, and Escape closes the flyout first`` () =
+let ``a flyout opened inside a modal shows above it, and Escape closes the flyout first`` () =
     let log = Log()
     let view =
-        Dialog.create [
-            Dialog.isOpen true
-            Dialog.onOpenChanged (fun _ -> log.Add "asked to close")
-            Dialog.content (Button.create [ Button.name "more"; Button.text "More"; Button.flyout (Button.create [ Button.name "inner"; Button.text "Inner" ]) ])
+        Modal.create [
+            Modal.isOpen true
+            Modal.onOpenChanged (fun _ -> log.Add "asked to close")
+            Modal.content (Button.create [ Button.name "more"; Button.text "More"; Button.flyout (Button.create [ Button.name "inner"; Button.text "Inner" ]) ])
         ]
     let w, host = show view
     clickOn w (named host "more")
     let names = host.Layers |> Seq.map _.Name |> List.ofSeq
-    Assert.Equal<string list>([ "App"; "Dialog"; "Flyout of more" ], names)
+    Assert.Equal<string list>([ "App"; "Modal"; "Flyout of more" ], names)
     key w Key.Escape
-    Assert.Equal<string list>([ "App"; "Dialog" ], host.Layers |> Seq.map _.Name |> List.ofSeq)
+    Assert.Equal<string list>([ "App"; "Modal" ], host.Layers |> Seq.map _.Name |> List.ofSeq)
     Assert.Empty log.All
     key w Key.Escape
     Assert.Equal<string list>([ "asked to close" ], log.All)
 
 [<Fact>]
 let ``its content follows the view while it's open, and it closes when it leaves the view`` () =
-    let view (text: string) = Dialog.create [ Dialog.isOpen true; Dialog.content (TextBlock.create [ TextBlock.name "text"; TextBlock.text text ]) ]
+    let view (text: string) = Modal.create [ Modal.isOpen true; Modal.content (TextBlock.create [ TextBlock.name "text"; TextBlock.text text ]) ]
     let w, host = show (view "One")
     Assert.Equal("One", (named host "text").Get TextProps.text)
     host.Update(view "Two")
@@ -200,7 +200,7 @@ let ``its content follows the view while it's open, and it closes when it leaves
     Assert.False(isOpen host)
 
 [<Fact>]
-let ``its node is a Dialog named by its title, and the app below is left out while it shows`` () =
+let ``its node has the Dialog role, named by its title, and the app below is left out while it shows`` () =
     let lines (s: string) = s.Replace("\r", "").TrimEnd('\n').Split('\n') |> List.ofArray |> List.map (fun l -> l.Trim())
     let log = Log()
     let w, host = show (app log false [])
@@ -210,3 +210,15 @@ let ``its node is a Dialog named by its title, and the app below is left out whi
     Assert.Equal<string list>(
         [ "Dialog \"Delete the file?\""; "Text \"Delete the file?\""; "Button \"OK\" focused"; "Button \"Cancel\"" ],
         lines (host.SemanticTree().ToString()))
+
+[<Fact>]
+let ``a Modal with a title keeps its content's elements across updates (their focus and state stay)`` () =
+    let view (n: int) =
+        Modal.create [ Modal.isOpen true; Modal.title "Counting"; Modal.content (Button.create [ Button.name "inner"; Button.text ("Count " + string n) ]) ]
+    let w, host = show (view 0)
+    let inner = named host "inner"
+    Assert.True inner.IsFocused
+    host.Update(view 1)
+    settle w
+    Assert.True(obj.ReferenceEquals(inner, named host "inner"))
+    Assert.True inner.IsFocused

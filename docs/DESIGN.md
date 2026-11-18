@@ -23,7 +23,7 @@ questions", as paragraphs starting with the name given here.
 | M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
-| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" (4a flyouts, 4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast) |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" (4a flyouts, 4b ListBox and RadioButton, 4c ComboBox, 4d Modal, dialogs and toasts) |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
@@ -72,7 +72,7 @@ each in its own layer, light dismiss, placement) and tooltips. Rendering to an i
 
 Tim tried M8 step 4b on the desktop and passed it (2026-11-18), with Tab order as view order and `Dock.Fill`. Tim passed M8 step 4c too (2026-11-18, the whole checklist, the browser pass included): `ComboBox` (a box showing one item picked from a ListBox in its flyout; `source`, `keySelector`, `viewSelector`, `selected`, `placeholder`; both keyboards) and the Controls page's ComboBox section.
 
-M8 step 4d (2026-11-18), built and waiting for Tim: `Dialog` (an element in the view whose box shows over a scrim in its own modal layer; `isOpen`, `onOpenChanged`, `title`) and toasts (`Toaster`, `App.toaster`, `toaster.Show`); the Gallery's Layers page and `App.onError` use them. That completes M8 step 4.
+M8 step 4d (2026-11-18), built and waiting for Tim: `Modal` (an element in the view whose box shows over a scrim in its own modal layer; `isOpen`, `onOpenChanged`, `title`; it was `Dialog` until round 5), each window's own toasts (`ctx.useToaster`, `Cmd.toast`, `app.Toaster`) and dialogs (declared with `ctx.useConfirm`, `useAsk`, `useInform`, their answers as settings, and `ctx.useDialog` for content of your own; `Confirm.severity`; task forms on `ctx.useDialogs`; `Cmd.inform`, `confirm`, `ask`); `App.onError` gets the app's context. The Gallery's Layers page uses them. That completes M8 step 4.
 
 Next: Tim tries M8 step 4d (section "4d: Dialog and Toast"). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
@@ -150,7 +150,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, Dialog, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -173,7 +173,8 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 
 - **MVU is built in:** `App.program init update view` (Elmish; an equal model doesn't rebuild), with commands
   (`App.programWithCmd`); or a view of **components** with hooks (`useState`, `useEffect`, `useMemo`,
-  `useElmish`, `useAsync`, `useAnimated`, `useAppValue`, `useScroller`, `useSubscription`), or both.
+  `useElmish`, `useAsync`, `useAnimated`, `useAppValue`, `useScroller`, `useSubscription`, `useToaster`, `useDialogs`,
+  `useInform`, `useConfirm`, `useAsk`, `useDialog`), or both.
 - **Settings lists everywhere:** views (`Border.create [ ... ]`), apps (`App.run [ App.title ...; ... ]`), element
   types, themes, hosts. No computation-expression or modifier-chain syntax. Exceptions are listed in "Settings
   everywhere" (Part 2).
@@ -3427,6 +3428,238 @@ Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18.
 - **Not done:** no fade when a dialog closes; no keyboard way to a toast's action (decision 14's gap); toasts
   aren't announced (waits for the first bridge).
 
+
+**Round 2: message dialogs as actions (Tim, 2026-11-18).** Tim asked whether dialogs should work like toasts and
+not be part of the view. Settled: `Dialog.create` stays for content that follows the model (a form, a picker:
+shown once by a call, its view would be a snapshot; in the view it re-renders, closes with what owns it, and comes
+back after a hot reload); questions with fixed content become actions that return the answer.
+20. **A `Dialogs` controller**, the Toaster's shape: `let dialogs = Dialogs()`, `App.dialogs dialogs`, callable from
+    a handler, `update`, `App.onError` or another thread. No `dialogs.Show(view)`: that case is `Dialog.create`'s.
+21. **Three calls, each returning what the caller wants:** `dialogs.Message` (`Task<unit>`; a text, or
+    `Message.title`, `text`, `button`), `dialogs.Confirm` (`Task<bool>`; `Confirm.title`, `text`, `accept`,
+    `cancel`, `severity`) and `dialogs.Ask` (`Task<'T voption>`; `Ask.title`, `text`, and `Ask.option (value,
+    label)` with the app's own values).
+22. **`Confirm.severity`** (Tim, in place of `Confirm.danger true`): `Severity.Informational` (default),
+    `Warning` or `Critical`.
+23. **Behaviour:** Escape closes a Message, is cancel for a Confirm (`false`) and no choice for an Ask
+    (`ValueNone`); a press on the scrim does nothing; two asked at once queue; toasts show above; a call from
+    another thread is posted to the UI thread, where the task completes; the app closing cancels what's open or
+    waiting. They are the same `Dialog` box and scrim, so `Dialog.style` and the theme apply.
+24. **GLOSSARY:** no new term ("message dialogs" in prose; `Dialogs` is the controller).
+
+Status: **agreed (Tim, 2026-11-18: "yes to all but for Confirm.danger let's make it Confirm.severity with Critical,
+Warning and Informational").** Built 2026-11-18.
+
+**Round 2 as built (2026-11-18):**
+- **`Hosting/Dialogs.fs`:** `Severity`, the three settings types (`Message`, `Confirm`, `Ask`, each a struct
+  setting over an options record), and `Dialogs`. Each call makes a `TaskCompletionSource` and a request whose view
+  is a `Dialog.create` (title, text, a WrapPanel of buttons at the right) with `isOpen true`; Escape arrives as
+  `onOpenChanged false` and answers as decided. The host gives a `Dialogs` a layer of its own ("Dialogs", which
+  shows nothing and never takes the keyboard) for that Dialog to stand in; the dialog itself opens in a modal
+  layer like any other. After an answer the view goes back to nothing, and the next request shows on the next
+  posted turn, so it opens afresh (its own focus, its own fade).
+- **Severity:** the accept button takes `Palette.accent`, the new `Palette.warning` (`Theme.warning`; amber, with
+  `onAccent` text) or `Palette.danger`. Focus starts on accept, or on cancel for Critical.
+- **`Dialog.initialFocus true`** (new, attached, public): on something focusable inside a dialog, it takes focus on
+  opening in place of the first Tab stop. Confirm needed it (cancel is written first, so it would always have had
+  focus), and it settles decision 5's "waits for focusing from code" for dialogs.
+- **The focus ring in a dialog** now follows the layer that had the keyboard when it opened, not the anchor's
+  layer: a message dialog's anchor stands in the Dialogs layer, which never has the keyboard, so a dialog opened
+  with Enter showed no ring.
+- **One controller, several hosts** (found by a test that failed once in four runs): the Gallery has one `Toaster`
+  and one `Dialogs` at module level, and every test host that started the Gallery took them over from the last, so
+  a toast could be posted to another test's UI thread. Both controllers now keep a stack or queue per host; a call
+  from a host's UI thread goes to that host, a call from any other thread to the host given last, and a closing
+  host lets go (`Unbind`). Right for an app with two windows too. 14 unit runs clean afterwards.
+- **`Message` as a type name** can meet an app's own `Message` type (two of our samples have one, in other
+  modules): such an app writes `Scribble.Core.Message.title`. Kept as agreed; `Notice` would avoid it.
+- **Gallery:** the Dialog section has "Open a dialog" (the view form) and five actions: Confirm, Warning, Critical,
+  Three choices, Message; a line under them shows what came back.
+- **Tests:** 9 unit tests (`DialogsTests`: each call's answers and Escape, severity colours and focus, the scrim,
+  queueing, before start and another thread, the keyboard back in the app, cancelling on close) and one for two
+  hosts sharing a Toaster. 2 new screenshots: `confirm-critical@1x` and `confirm-warning@1x`.
+  `gallery-phone-layers@3x` changed again (the section's buttons). Unit: 1,113 passed plus 6 timing skipped.
+  Rendering: 94. Timing: 6.
+
+**Round 3: toasts and message dialogs belong to the window (Tim, 2026-11-18).** Tim asked how a `Toaster` or
+`Dialogs` declared for the app knows which window to show in, and whether they should be hooks. They didn't know:
+routing by thread (round 2 as built) tells tests apart, each on its own thread, but an app's windows share one UI
+thread, so every call would have gone to the window set up last.
+25. **Every host owns its toasts and message dialogs.** No `Toaster()` or `Dialogs()` made by the app, no
+    `App.toaster`/`App.dialogs`; their constructors aren't public, so there can't be one that belongs to no window.
+26. **Hooks in components:** `ctx.useToaster ()` and `ctx.useDialogs ()` give the ones of the window the component
+    is in.
+27. **Where there's no component:** commands for an Elmish `update` (`Cmd.toast`, `Cmd.inform`, `Cmd.confirm`,
+    `Cmd.ask`, run by the program's host); `App.onError (fun app e -> ...)` gets the app's context
+    (`app.Toaster`, `app.Dialogs`); `AppContext` for `App.onStart` and packages; `host.Toaster`/`host.Dialogs` for
+    custom hosts and tests. From another thread: take the toaster on the UI thread, call `Show` later.
+28. **`Message` becomes `Inform`** (Tim): `dialogs.Inform`, `Inform.title`/`text`/`button`. It also ends the clash
+    with apps' own `Message` types.
+29. **Shortcut hooks** (Tim): `ctx.useInform ()`, `ctx.useConfirm ()` and `ctx.useAsk ()` give the call itself:
+    `let confirm = ctx.useConfirm ()`, then `let! ok = confirm [ Confirm.title "Delete?" ]`.
+What goes: the per-thread routing and "the host given last"; toasts and dialogs asked for before the app starts
+(nothing holds them); the Gallery's module-level `toaster` and `dialogs`.
+
+Status: **agreed (Tim, 2026-11-18: "yes to all. Change Message to Inform. Can we create a shortcut hook for Inform,
+Confirm and Ask?").** Built 2026-11-18.
+
+**Round 3 as built (2026-11-18):**
+- **The host owns them.** `ElementHost.Toaster` and `ElementHost.Dialogs`; the state behind each (`ToastStack`,
+  `DialogQueue`) and its layer are made the first time something shows, so a window that never shows a toast has
+  no Toasts layer. `Toaster` and `Dialogs` have internal constructors taking how to find the UI dispatcher and
+  the state; `Show` and the three calls post to the dispatcher first and look the state up there, so the layer is
+  only ever made on the UI thread. `AddToaster`, `AddDialogs`, `App.toaster`, `App.dialogs`, the per-thread
+  routing, `Bind`/`Unbind` and "asked for before the app starts" are gone.
+- **How a call finds its window:** the host puts one `HostServices` on every layer's tree (`ElementTree.Services`)
+  and on its app values (`AppValues.Services`), both untyped fields because those types come earlier in the
+  compile order. A hook looks at the tree its component is in (the app's, a flyout's or a dialog's: all the same
+  window's); a command looks at the values its program runs with, as `Cmd.scrollTo` does.
+- **Hooks** (`Hosting/Component.fs`; `Toaster.fs` and `Dialogs.fs` moved before it in the compile order):
+  `ctx.useToaster ()` and `ctx.useDialogs ()` (one object per component, kept), and the shortcuts
+  `ctx.useInform ()`, `ctx.useConfirm ()` and `ctx.useAsk<'T> ()`, which give the call as a function
+  (`useAsk` is for one type of choice per hook).
+- **Commands** (`DialogCommands`, a second `Cmd` module, opened automatically): `Cmd.toast text`,
+  `Cmd.toastWith [ ... ]`, `Cmd.inform [ ... ] msg`, `Cmd.confirm [ ... ] ofAnswer`, `Cmd.ask [ ... ] ofChoice`.
+  The message is sent on the thread that answers (the UI thread), at once; a cancelled dialog sends nothing.
+- **`App.onError` takes `AppContext -> exn -> unit`** (17 callers changed, 16 of them tests). `AppContext` has
+  `Toaster` and `Dialogs`. An error before the host exists has no context and ends the app, as with no handler.
+- **Outside any window** (a test's bare tree, a view rendered to an image): a toast shows nothing and a message
+  dialog's task is cancelled, each with a Debug warning once. The Gallery's pages are drawn that way by many
+  tests, so the hooks must not throw there.
+- **`Message` is `Inform`** everywhere (`dialogs.Inform`, `Inform.title`/`text`/`button`, `Cmd.inform`).
+- **Gallery:** no module-level `toaster` or `dialogs`. The Layers page uses `useToaster`, `useConfirm`,
+  `useAsk<string>` and `useInform`; the Images page `useToaster`; `App.onError (fun app e -> app.Toaster.Show ...)`.
+- **What multi-window still needs:** today one app is one window plus the inspector's pop-out, and app values are
+  per app. If an app's windows come to share their values, commands will need a per-window way in (the hooks
+  already have one, through the tree). Noted here, not built.
+- **Tests:** unit tests now use `host.Toaster` and `host.Dialogs`. New: each host has its own toasts and its own
+  dialogs; `useToaster` (the same object every run; the host's own); the shortcut hooks giving back answers;
+  `useDialogs` from inside a Dialog's content reaching the same window; a bare tree (nothing shows, the task is
+  cancelled); `Cmd.toast`/`toastWith`; `Cmd.confirm`/`ask`/`inform`; `App.onError` showing a toast through its
+  context. Removed: "before the app starts" and the two-hosts-one-toaster test. `gallery-phone-layers@3x` changed
+  (the "Inform" button, the section's note). Unit: 1,121 passed plus 6 timing skipped (four runs). Rendering: 94.
+  Timing: 6.
+
+**Round 4: the shortcut hooks take the settings and give back a function (Tim, 2026-11-18).** Tim: "I'd love to
+get rid of the 'asked' function and maybe define the settings (like Confirm.Title) as part of the shortcut". The
+Gallery needed a helper to run each task and put its answer somewhere, because the shortcuts handed back tasks.
+30. **Handlers are settings, and the hook returns a function that opens the dialog:**
+    `let confirmDelete = ctx.useConfirm [ Confirm.title "Delete the draft?"; Confirm.onAccept (fun () -> ...) ]`,
+    then `Button.onClick (fun _ -> confirmDelete ())`. No task, no helper; the dialog is declared at the top of
+    the component, and its settings are built on every run, so they can follow the model.
+31. **`Confirm.onAccept` and `Confirm.onCancel`** (not one `onAnswer`): most confirmations care only about accept;
+    Escape counts as cancel.
+32. **`Ask.choice (label, handler)`** and **`Ask.onDismiss`** (Escape): each choice carries what it does, so
+    `useAsk` needs no type argument and nothing to match on. `Ask.option (value, label)` stays for the task form.
+33. **`Inform.onClosed`**, optional.
+34. **A form with an argument** for all three, for when the dialog depends on what was clicked (hooks can't sit in
+    a loop): `ctx.useConfirm (fun (file: File) -> [ ... ])` gives a function taking the file.
+35. **The task-returning shortcuts of round 3 are replaced.** `ctx.useDialogs ()` keeps the task forms
+    (`dialogs.Confirm`, `Ask`, `Inform`) for a sequence of questions and for code outside a component; a handler
+    given to a task form runs too, just before the task completes.
+
+Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18.
+
+**Round 4 as built (2026-11-18):**
+- **Settings:** `Confirm.onAccept`/`onCancel`, `Inform.onClosed`, `Ask.onDismiss`, and `Ask.choice (label,
+  handler)`, which is an `AskSetting<unit -> unit>`: the option's value is its handler, and an internal `OnChoice`
+  runs the one picked. So the hook form of Ask is the task form at one type, with nothing new underneath.
+- **One path for every answer** (`Dialogs.Show`'s `answer`): the dialog closes, the handler runs, and the task
+  completes in a `finally`, so a handler that throws still leaves the dialog closed and the task answered. The
+  error goes where the click's or the key's would (the element's `ReportError`, then `App.onError`): handlers run
+  inside the button's click or the Dialog's Escape, which are already guarded. Tested.
+- **Hooks** (`Component.fs`): `useConfirm`, `useAsk` and `useInform`, each in two forms: a settings list giving
+  `unit -> unit`, and a function from a value to the settings giving a function of that value. Each is
+  `useDialogs` plus a closure over this run's settings, so the function a handler holds is always the run's that
+  made it (tested: the text follows a counter). The task-returning shortcuts of round 3 are gone.
+- **Gallery:** the Layers page declares five message dialogs at the top of its component (two confirmations, one
+  with an argument, a choice, an inform) and its buttons call them; the `asked` helper and every `task { }` on
+  the page are gone.
+- **Tests:** handlers on the task forms and their order against the task; a handler that throws; the three hooks;
+  the form with an argument; settings following state; a bare tree. Unit: 1,125 passed plus 6 timing skipped
+  (three runs). Rendering: 94. Timing: 6. `gallery-phone-layers@3x` changed (the section's note).
+
+**Round 5: Modal and Dialog (Tim, 2026-11-18).** Tim: "should we change the Dialogs that are part of the view into
+Modal and leave the term Dialog for Modals requiring input?" `Dialog` (the element) and `Dialogs` (the controller)
+differed by a letter and were two mechanisms.
+36. **The element in the view is a `Modal`:** content written in the view, shown over a scrim in its own layer,
+    taking all input until it closes; the view says whether it's open. `Modal.create`, `Modal.isOpen`,
+    `onOpenChanged`, `title`, `lightDismiss`, `closeOnEscape`, `initialFocus`, `Modal.style`. The word says what it
+    does, as `Layer.modal true` already did.
+37. **A Dialog is a modal with fixed content that tells or asks and gives back an answer:** Inform, Confirm, Ask,
+    opened as an action. Defined by its fixed content and its answer, not by "requiring input" (a Modal holding a
+    form requires input too; an Inform only wants acknowledging). `Dialogs`, `ctx.useDialogs`, the hooks, the
+    commands and the settings types keep their names; "message dialogs" in the docs become "dialogs".
+38. **The semantic role stays `Role.Dialog` for both:** role names are the ones screen readers know (ARIA,
+    UI Automation).
+39. **A dialog's box is a Modal element,** so `Modal.style` restyles dialogs too; the box has the class `dialog`,
+    so `Modal.style [ Style.cls "dialog" ] [ ... ]` styles them apart.
+40. **Now, before rounds 2 to 4 are committed:** nothing is published, and only the first Dialog commit has the
+    old name.
+Decisions 1 to 8 above say "Dialog" for what is now the Modal; they are left as written.
+
+Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18.
+
+**Round 5 as built (2026-11-18):**
+- **Renamed:** `Elements/Controls/Dialog.fs` is `Modal.fs` (`ModalProps`, `Scrim`, `ModalAnchor`, `Modal`); the
+  element type's name is "Modal" (what the inspector shows); the host's layer for one is named "Modal", and its
+  order `modalOrder`; `ThemeConvert.modalShadow`; `tests/Scribble.Tests/DialogTests.fs` is `ModalTests.fs`.
+- **Kept:** `Role.Dialog`; `Dialogs`, `DialogQueue`, `DialogRequest`, `DialogCommands`, `ctx.useDialogs`, the
+  hooks, the commands; the "Dialogs" layer a host's dialogs stand in; `DialogsTests.fs`, `DialogToastTests.fs`.
+- **A dialog's box** is `Modal.create [ ...; Modal.classes [ "dialog" ] ]`. Tested.
+- **Words:** GLOSSARY has *Modal* (new) and *Dialog* (redefined; "message dialog" is on its avoid list); *Scrim*
+  says "a modal". Code comments, the README and the Gallery say "modal" for the element and "dialogs" for
+  Inform, Confirm and Ask. Decisions 1 to 8 and the round 1 to 4 notes above are left as written.
+- **Gallery:** the section is "Modal and dialogs"; its first button is "Open a modal".
+- **Tests:** unit 1,126 passed plus 6 timing skipped (two runs). Rendering: 94. Timing: 6.
+  `gallery-phone-layers@3x` changed (the section's heading and button).
+
+**Round 6: `ctx.useDialog`, a dialog with content of your own (Tim, 2026-11-18).** Tim: "let's add ctx.useDialog
+that accepts a custom view". As a hook it needn't be the snapshot `dialogs.Show(view)` would have been (round 2):
+a hook runs on every render.
+41. **`ctx.useDialog (fun close -> [ Dialog.title "..."; Dialog.content view ])`** gives a function that opens it;
+    `close ()` closes it. The hook owns whether it's open: no flag in the app's state, nothing to place in the view.
+42. **Live content:** while it's open, each run of the component updates it, so it follows state as a Modal in the
+    view does.
+43. **Its own settings, `Dialog.*`, not the Modal's** (Tim: "Otherwise, we'd see things like Modal.isOpen"):
+    `Dialog.title`, `Dialog.content`, `Dialog.closeOnEscape` (default true), `Dialog.lightDismiss` (default
+    false), `Dialog.onClosed` (however it closes: `close ()`, Escape, a press outside), and
+    `Dialog.initialFocus true` on something inside the content (the same as `Modal.initialFocus`, under a name
+    that keeps `Modal` out of dialog code).
+44. **No result type:** `close` takes nothing; the content's handlers do the work first.
+45. **A form with an argument,** as the other hooks: `ctx.useDialog (fun (file: File) close -> [ ... ])`.
+46. **Through the window's dialog queue:** one at a time with Inform, Confirm and Ask; its box has the `dialog`
+    class.
+47. **`Dialog.style parts settings`** (Tim): `Modal.style` for boxes with the `dialog` class, so styling dialogs
+    needn't say `Modal.style [ Style.cls "dialog" ]`.
+48. **GLOSSARY: Dialog widens** to "a modal opened as an action: inform, confirm, ask, or content of your own".
+    The line between Modal and Dialog is how it's opened.
+
+Status: **agreed (Tim, 2026-11-18: "yes to all, and add Dialog.style").** Built 2026-11-18.
+
+**Round 6 as built (2026-11-18):**
+- **`Dialog`** (`Hosting/Dialogs.fs`): a settings type like `Inform`'s (`DialogSetting` over `DialogOptions`) with
+  `title`, `content`, `closeOnEscape`, `lightDismiss`, `onClosed`; plus two members of another kind:
+  `Dialog.initialFocus` (an element setting, the same property as `Modal.initialFocus`) and `Dialog.style parts
+  settings` (`Modal.style` with the `dialog` class first; its settings are Modal's, since the box is one).
+- **`LiveDialog`**, kept by the hook's slot: `Open` queues a request in the window's dialogs whose view is built
+  from the settings function when shown; `Close` answers it and calls `onClosed`; `Refresh`, called on every run of
+  the component, asks the queue (`DialogQueue.Refresh`, posted to the UI thread) to show the view again if it's
+  the one showing. The view is a `Modal.create` patched in place, so what's inside keeps its elements, focus and
+  state (tested). The slot is disposable: a component that goes away closes its dialog without calling `onClosed`.
+- **The hook** (`Component.fs`): `useDialog (fun close -> [ ... ])` giving `unit -> unit`, and
+  `useDialog (fun arg close -> [ ... ])` giving a function of the argument (kept on the dialog while it's open,
+  so later runs build the content for the same argument). F# tells the two apart by the lambda's shape.
+- **A bug this found in Modal:** with a `title`, the content was given twice (the app's `content` setting was left
+  in the list beside the stack that also holds it), and the differ made what was inside again on every update:
+  focus and state were lost each time a titled Modal's view changed. The app's `content` setting is now taken
+  out when the stack is made. Tested on a Modal written in the view.
+- **Gallery:** a "Custom" button on the Layers page opens a `useDialog` whose text counts taps kept in the page's
+  state.
+- **Tests:** opening and closing with content; `initialFocus`; the `dialog` class; content following state with
+  focus kept; Escape, `closeOnEscape false`, `lightDismiss`; the argument form; waiting its turn; closing when the
+  component leaves; `Dialog.style` reaching dialogs and not a Modal in the view. Unit: 1,134 passed plus 6 timing
+  skipped (three runs). Rendering: 94. Timing: 6. `gallery-phone-layers@3x` changed (the new button).
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 
 Found driving the Gallery's Lists page with a real keyboard: Tab went from the Reverse order button to the swatches

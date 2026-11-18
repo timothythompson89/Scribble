@@ -81,7 +81,7 @@ let ``with onError, a click handler or update that throws is reported and the ap
             button "add" (fun _ -> dispatch Add)
             TextBlock.create [ TextBlock.text ("Count: " + string count) ]
         ]
-    let w, _, app = start [ App.program 0 update view; App.onError errors.Add ]
+    let w, _, app = start [ App.program 0 update view; App.onError (fun _ e -> errors.Add e) ]
     settle w
     click w 50.0 15.0
     click w 50.0 45.0
@@ -108,7 +108,7 @@ let ``a view that throws keeps the elements of the last one, until the model cha
     let view count dispatch =
         if count = 1 then invalidOp "view failed"
         column [ button "add" (fun _ -> dispatch Add); TextBlock.create [ TextBlock.text ("Count: " + string count) ] ]
-    let w, _, app = start [ App.program 0 (fun Add c -> c + 1) view; App.onError errors.Add ]
+    let w, _, app = start [ App.program 0 (fun Add c -> c + 1) view; App.onError (fun _ e -> errors.Add e) ]
     settle w
     click w 50.0 15.0
     settle w
@@ -126,7 +126,7 @@ let ``a render that throws leaves out that element only, and is reported once wh
     let view (n: int) _ =
         let failing = n % 20 < 10
         column [ Failing.create failing false; TextBlock.create [ TextBlock.text "sibling" ] ]
-    let w, device, app = start [ App.program 0 (fun (d: int) n -> n + d) view; App.onFrame (fun _ -> Some 1); App.onError errors.Add ]
+    let w, device, app = start [ App.program 0 (fun (d: int) n -> n + d) view; App.onFrame (fun _ -> Some 1); App.onError (fun _ e -> errors.Add e) ]
     let shapes = HashSet<int>()
     for _ in 1..35 do
         Assert.True(w.DeliverFrame())
@@ -143,7 +143,7 @@ let ``a measure that throws drops the frame; the last one stays on screen`` () =
     let errors = List<exn>()
     let view (failing: bool) dispatch =
         column [ button "toggle" (fun _ -> dispatch ()); Failing.create false failing ]
-    let w, device, _ = start [ App.program false (fun () b -> not b) view; App.onError errors.Add ]
+    let w, device, _ = start [ App.program false (fun () b -> not b) view; App.onError (fun _ e -> errors.Add e) ]
     settle w
     let drawn = device.Frames
     click w 50.0 15.0
@@ -165,7 +165,7 @@ let ``a component that throws keeps showing its last output, and runs again when
             // A hook rule broken on one run is an error like any other.
             if n.Current = 3 then ctx.useState "extra" |> ignore
             column [ button "next" (fun _ -> n.Update(fun v -> v + 1)); TextBlock.create [ TextBlock.text ("n = " + string n.Current) ] ])
-    let w, _, app = start [ App.view (flaky ()); App.onError errors.Add ]
+    let w, _, app = start [ App.view (flaky ()); App.onError (fun _ e -> errors.Add e) ]
     settle w
     click w 50.0 15.0
     settle w
@@ -192,7 +192,7 @@ let ``an effect that throws doesn't stop the others`` () =
             ctx.useEffect((), fun () -> invalidOp "effect failed")
             ctx.useEffect(1, fun (_: int) -> s.Set "second ran")
             TextBlock.create [ TextBlock.text s.Current ])
-    let w, _, app = start [ App.view (effects ()); App.onError errors.Add ]
+    let w, _, app = start [ App.view (effects ()); App.onError (fun _ e -> errors.Add e) ]
     settle w
     Assert.Equal(1, errors.Count)
     Assert.Contains("second ran", texts app)
@@ -206,7 +206,7 @@ let ``an ItemsView item whose view throws is left out; the others show`` () =
             ItemsView.keySelector (fun (i: int) -> i)
             ItemsView.viewSelector (fun (i: int) -> if i = 3 then invalidOp "item failed" else TextBlock.create [ TextBlock.text ("item " + string i) ])
         ]
-    let w, _, app = start [ App.view items; App.onError errors.Add ]
+    let w, _, app = start [ App.view items; App.onError (fun _ e -> errors.Add e) ]
     settle w
     let shown = texts app
     Assert.Equal<string list>([ "item 1"; "item 2"; "item 4"; "item 5" ], shown)

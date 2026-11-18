@@ -40,7 +40,7 @@ let private blue = (0uy, 0uy, 255uy)
 let private show (view: View) (extra: AppSetting<unit> list) =
     ImageCache.DecodeInlineOnThisThread <- true
     let errors = List<exn>()
-    let w, _, app = start ([ App.view view; App.onError errors.Add ] @ extra)
+    let w, _, app = start ([ App.view view; App.onError (fun _ e -> errors.Add e) ] @ extra)
     settle w
     w, app :?> ElementHost, errors
 

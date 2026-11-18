@@ -107,7 +107,6 @@ let app: AppSetting<unit> list =
       // The Images page renders the Gallery itself into a picture (ViewImage).
       App.value wholeGallery (ValueSome(fun () -> gallery ()))
       // An error from app code (a broken image on the Images page) shows as a toast instead of ending the app.
-      App.toaster toaster
-      App.onError (fun e ->
+      App.onError (fun app e ->
           System.Console.WriteLine("Gallery: " + string e)
-          toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]) ]
+          app.Toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]) ]

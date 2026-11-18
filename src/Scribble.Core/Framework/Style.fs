@@ -439,6 +439,7 @@ type Theme internal (values: Dictionary<int, obj>, looks: Lazy<Style list * stru
     static member textDim(value: Scribble.Rendering.Color) = Theme.set Palette.textDim value
     static member accent(value: Scribble.Rendering.Color) = Theme.set Palette.accent value
     static member danger(value: Scribble.Rendering.Color) = Theme.set Palette.danger value
+    static member warning(value: Scribble.Rendering.Color) = Theme.set Palette.warning value
     static member onAccent(value: Scribble.Rendering.Color) = Theme.set Palette.onAccent value
     static member focusRing(value: Scribble.Rendering.Color) = Theme.set Palette.focusRing value
     static member hoverTint(value: Scribble.Rendering.Color) = Theme.set Palette.hoverTint value

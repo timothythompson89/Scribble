@@ -53,9 +53,9 @@ type internal OpenFlyout(anchor: Element, anchorLayer: Layer, layer: Layer, retu
     /// Focus moves into it after its first layout.
     member val FocusPending = true with get, set
     member val Ring = false with get, set
-    /// A dialog: its layer is modal and fills the window (a scrim with the box in the middle), not placed by an anchor.
-    member val IsDialog = false with get, set
-    /// A dialog's scrim starts clear and fades in once it has been laid out.
+    /// A modal: its layer is modal and fills the window (a scrim with the box in the middle), not placed by an anchor.
+    member val IsModal = false with get, set
+    /// A modal's scrim starts clear and fades in once it has been laid out.
     member val Entered = false with get, set
 
 /// Connects element trees to a window: lays them out at the window's size and scale, draws them
@@ -76,6 +76,9 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     let mutable currentBackground = options.Background
     let sharedValues = match options.AppValues with ValueSome v -> v | ValueNone -> AppValues()
     do options.Theme |> ValueOption.iter (fun t -> sharedValues.Set(Theme.current, t))
+    /// What this host offers its trees' components and its program's commands (its toasts and dialogs).
+    let services = HostServices()
+    do sharedValues.Services <- box services
     let mutable stats = { LayoutMilliseconds = 0.0; RenderMilliseconds = 0.0; Shapes = 0 }
     let runBeforeFrame = options.BeforeFrame
     let now =
@@ -132,6 +135,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         tree.Scale <- window.Scale
         tree.Dispatcher <- options.Dispatcher
         tree.AppValues <- sharedValues
+        tree.Services <- box services
         if layer.UsesAppStyles then
             tree.Styles <- options.Styles
             tree.Theme <- ValueSome(sharedValues.Get Theme.current)
@@ -226,9 +230,9 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
 
     // --- Flyouts (DESIGN.md, "M8 step 4", round 1) -------------------------------------------------
 
-    /// Above the app's own layers: dialogs, then flyouts (one opened in a dialog shows over it), then toasts (an error
-    /// stays in sight over a dialog); all below the inspector.
-    let dialogOrder = System.Int32.MaxValue - 5
+    /// Above the app's own layers: modals (and the dialogs shown in them), then flyouts (one opened in a modal shows over it), then toasts (an error
+    /// stays in sight over a modal); all below the inspector.
+    let modalOrder = System.Int32.MaxValue - 5
     let flyoutOrder = System.Int32.MaxValue - 4
     let toastOrder = System.Int32.MaxValue - 3
     let flyoutGap = 4.0
@@ -239,14 +243,14 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// Whether presses elsewhere and Escape close it: the Flyout's own setting (styles included).
     let lightDismissOf (f: OpenFlyout) =
         match f.Layer.Tree.Root with
-        // A dialog: whether Escape asks to close it (the box is the scrim's child).
-        | ValueSome root when f.IsDialog -> root.Children.Count = 0 || root.Children[0].Get DialogProps.closeOnEscape
+        // A modal: whether Escape asks to close it (the box is the scrim's child).
+        | ValueSome root when f.IsModal -> root.Children.Count = 0 || root.Children[0].Get ModalProps.closeOnEscape
         | ValueSome root -> root.Get FlyoutProps.lightDismiss
         | _ -> true
 
     let flyoutView (f: OpenFlyout) (content: View) =
-        // A dialog: the box on its scrim, clear until it has been laid out once (then it fades in).
-        if f.IsDialog then Scrim.create [ Scrim.opacity (if f.Entered then 1.0 else 0.0); Scrim.content content ]
+        // A modal: the box on its scrim, clear until it has been laid out once (then it fades in).
+        if f.IsModal then Scrim.create [ Scrim.opacity (if f.Entered then 1.0 else 0.0); Scrim.content content ]
         // Hidden while its anchor doesn't show (it closes after the frame).
         elif f.Shown then content
         else content.With(LayoutProps.isVisible, box false)
@@ -280,14 +284,14 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 let want = anchor.Root.IsSome && isIn anchorLayer && Flyouts.hasFlyout anchor && Flyouts.isOpen anchor
                 match flyoutOf anchor, want with
                 | None, true ->
-                    // A Dialog in the view stands where a flyout's anchor would: its layer is modal and fills the window.
-                    let isDialog = obj.ReferenceEquals(anchor.Type, DialogAnchor.Type)
+                    // A Modal in the view stands where a flyout's anchor would: its layer is modal and fills the window.
+                    let isModal = obj.ReferenceEquals(anchor.Type, ModalAnchor.Type)
                     let layer =
                         Layer.Create(
                             text,
-                            [ if isDialog then
-                                  Layer.name "Dialog"
-                                  Layer.order dialogOrder
+                            [ if isModal then
+                                  Layer.name "Modal"
+                                  Layer.order modalOrder
                                   Layer.modal true
                               else
                                   Layer.name ("Flyout of " + (if anchor.Name <> "" then anchor.Name else anchor.Type.Name))
@@ -296,12 +300,14 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                             window.SetCursor)
                     layer.Tree.Owner <- ValueSome anchor
                     let f = OpenFlyout(anchor, anchorLayer, layer, anchorLayer.Focused)
-                    f.IsDialog <- isDialog
+                    f.IsModal <- isModal
                     // The Flyout is the layer's root, placed beside the anchor where it is now (the tree lays out its root every
                     // frame, and the anchor moving brings one).
-                    if not isDialog then
+                    if not isModal then
                         layer.Tree.Place <- ValueSome(fun root window -> FlyoutPlacement.flyout f.Rect flyoutGap root window)
-                    f.Ring <- anchorLayer.Input.KeyboardMode
+                    // The ring shows inside if the keyboard was in use where the keys were (usually the anchor's layer; a
+                    // dialog's anchor stands in a layer of its own, which never has the keyboard).
+                    f.Ring <- (keyboardLayer ()).Input.KeyboardMode
                     openFlyouts.Add f
                     addLayer layer
                     if not anchorLayer.UsesAppStyles then layer.Tree.Theme <- anchorLayer.Tree.Theme
@@ -319,8 +325,8 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             let b = a.Bounds
             let rect = Rect.Create(p.X, p.Y, b.Width, b.Height)
             let visible = a.VisibleBounds
-            // A dialog shows wherever it stands in the view (which has no size).
-            let shown = f.IsDialog || (visible.Width > 0.0 && visible.Height > 0.0)
+            // A modal shows wherever it stands in the view (which has no size).
+            let shown = f.IsModal || (visible.Width > 0.0 && visible.Height > 0.0)
             let changed =
                 f.Content.IsNone || not (obj.ReferenceEquals(f.Content.Value, content)) || f.Rect <> rect || f.Shown <> shown
             if changed then
@@ -341,11 +347,11 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 let f = openFlyouts[i]
                 let v = f.Anchor.VisibleBounds
                 let onAnchor = p.X >= v.X && p.X < v.X + v.Width && p.Y >= v.Y && p.Y < v.Y + v.Height
-                if f.IsDialog then
-                    // Nothing below a dialog is reached. A press on its scrim (not the box) asks to close it, if it says so.
+                if f.IsModal then
+                    // Nothing below a modal is reached. A press on its scrim (not the box) asks to close it, if it says so.
                     stop <- true
                     match f.Layer.Tree.Root, f.Layer.Tree.HitTest(p.X, p.Y) with
-                    | ValueSome root, ValueSome hit when obj.ReferenceEquals(root, hit) && root.Children.Count > 0 && root.Children[0].Get DialogProps.lightDismiss ->
+                    | ValueSome root, ValueSome hit when obj.ReferenceEquals(root, hit) && root.Children.Count > 0 && root.Children[0].Get ModalProps.lightDismiss ->
                         dismiss f
                         dismissed <- true
                     | _ -> ()
@@ -365,6 +371,51 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 dismiss f
                 true
             | None -> false
+
+    // --- Toasts and dialogs (DESIGN.md, "4d", round 3): this window's own -------------------
+
+    /// Their state, made (with its layer) the first time something asks for it.
+    let mutable toastStack: ToastStack voption = ValueNone
+    let mutable dialogQueue: DialogQueue voption = ValueNone
+
+    let uiDispatcher (what: string) =
+        match options.Dispatcher with
+        | ValueSome d -> d
+        | ValueNone -> invalidOp (what + " need the host's dispatcher (ElementHost.dispatcher).")
+
+    let toastsOf () =
+        match toastStack with
+        | ValueSome s -> s
+        | ValueNone ->
+            let dispatcher = uiDispatcher "Toasts"
+            let layer = Layer.Create(text, [ Layer.name "Toasts"; Layer.order toastOrder; Layer.keyboard false ], window.SetCursor)
+            addLayer layer
+            let s = ToastStack(dispatcher, layer.Update)
+            toastStack <- ValueSome s
+            s
+
+    let dialogsOf () =
+        match dialogQueue with
+        | ValueSome q -> q
+        | ValueNone ->
+            let dispatcher = uiDispatcher "Dialogs"
+            // A place for the dialog's Modal to stand: this layer shows nothing itself and never takes the keyboard;
+            // each dialog opens in its own modal layer, like any Modal.
+            let layer = Layer.Create(text, [ Layer.name "Dialogs"; Layer.keyboard false ], window.SetCursor)
+            addLayer layer
+            let q = DialogQueue(dispatcher, layer.Update)
+            layer.Update DialogQueue.Nothing
+            dialogQueue <- ValueSome q
+            closed.Publish.Add(fun () -> q.CancelAll())
+            q
+
+    let toaster = Toaster((fun () -> options.Dispatcher), fun () -> ValueSome(toastsOf ()))
+    let dialogs = Dialogs((fun () -> options.Dispatcher), fun () -> ValueSome(dialogsOf ()))
+
+    // What components in this host's trees and its program's commands reach them through.
+    do
+        services.FindToasts <- fun () -> ValueSome(toastsOf ())
+        services.FindDialogs <- fun () -> ValueSome(dialogsOf ())
 
     // --- Tooltips (DESIGN.md, "M8 step 4", round 1, 8) ---------------------------------------------
 
@@ -559,16 +610,14 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         addLayer layer
         layer
 
-    /// Gives a Toaster its layer (above dialogs and flyouts, below the inspector; a press in it never takes the
-    /// keyboard) and this host's UI thread. `App.toaster` calls it; a custom host calls it itself. Needs a
+    /// This window's toasts (their layer is added the first time they're asked for: above dialogs and flyouts, below
+    /// the inspector; a press in it never takes the keyboard). Components get it with `ctx.useToaster ()`. Needs a
     /// dispatcher (`ElementHost.dispatcher`).
-    member _.AddToaster(toaster: Toaster) =
-        match options.Dispatcher with
-        | ValueSome dispatcher ->
-            let layer = Layer.Create(text, [ Layer.name "Toasts"; Layer.order toastOrder; Layer.keyboard false ], window.SetCursor)
-            addLayer layer
-            toaster.Bind(dispatcher, layer.Update)
-        | ValueNone -> invalidOp "A Toaster needs the host's dispatcher (ElementHost.dispatcher)."
+    member _.Toaster = toaster
+
+    /// This window's dialogs (`Inform`, `Confirm`, `Ask`). Components get it with `ctx.useDialogs ()`.
+    /// What's open or waiting is cancelled when the host closes. Needs a dispatcher (`ElementHost.dispatcher`).
+    member _.Dialogs = dialogs
 
     /// Takes a layer away (its elements leave the tree, so components stop). Not the app's.
     member _.RemoveLayer(layer: Layer) =
@@ -633,8 +682,18 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 | Some f when f.FocusPending && f.Shown ->
                     f.FocusPending <- false
                     pressedLayer <- ValueSome l
-                    l.Input.FocusFirst f.Ring
-                    if f.IsDialog then
+                    // The first Tab stop, or in a modal the element that asked for it (`Modal.initialFocus`).
+                    let rec asked (e: Element) : Element voption =
+                        if e.Get ModalProps.initialFocus && e.Get LayoutProps.focusable && e.IsEnabled then ValueSome e
+                        else
+                            let mutable found = ValueNone
+                            for c in e.Children do
+                                if found.IsNone then found <- asked c
+                            found
+                    match (if f.IsModal then l.Tree.Root |> ValueOption.bind asked else ValueNone) with
+                    | ValueSome e -> l.Input.Restore(e, f.Ring)
+                    | ValueNone -> l.Input.FocusFirst f.Ring
+                    if f.IsModal then
                         // Laid out once, clear: now it fades in (the theme's transition on the scrim's opacity).
                         f.Entered <- true
                         f.Content |> ValueOption.iter (fun content -> l.Update(flyoutView f content))
