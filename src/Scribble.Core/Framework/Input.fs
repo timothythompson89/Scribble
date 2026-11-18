@@ -55,8 +55,10 @@ module internal Clicks =
             with ex ->
                 e.ReportError ex
         | _ -> ()
+        // An element with a flyout opens or closes it (a controlled one asks; DESIGN.md, "M8 step 4", round 1, 5).
+        if Flyouts.hasFlyout e && e.Root.IsSome && e.IsEnabled then Flyouts.request e (not (Flyouts.isOpen e))
 
-    let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome || e.Type.Click.IsSome
+    let hasClick (e: Element) = (e.Get LayoutProps.onClick).IsSome || e.Type.Click.IsSome || Flyouts.hasFlyout e
 
 /// Turns platform input (in DIPs) into element events: enter and leave on the chain of elements
 /// under the pointer, routed pointer, wheel and key events (Preview from the root down, then
@@ -458,6 +460,22 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
 
     /// The element with keyboard focus, if any.
     member _.Focused = currentFocus ()
+
+    /// The last focus came from the keyboard (the ring shows).
+    member internal _.KeyboardMode = keyboardMode
+
+    /// Gives focus back to `e` (a flyout closed) without scrolling to it, with the ring if `ring`.
+    member internal _.Restore(e: Element, ring: bool) =
+        if canFocus e then
+            keyboardMode <- ring
+            setFocus (ValueSome e)
+
+    /// Focuses the first focusable element in tree order (a flyout that opened), with the ring if `ring`.
+    member internal _.FocusFirst(ring: bool) =
+        let order = focusOrder ()
+        if order.Count > 0 then
+            keyboardMode <- ring
+            setFocus (ValueSome order[0])
 
     /// Moves focus to the next or previous focusable element in tree order, wrapping around, and
     /// shows the focus ring. With nothing focused, Next goes to the first and Previous to the last.

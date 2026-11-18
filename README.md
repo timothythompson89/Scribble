@@ -9,7 +9,7 @@ functions: `App.run` starts one, on the desktop or in the browser; views are bui
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
 ScrollViewer and virtualized ItemsView, an inspector, styles, light and dark themes, app values, semantics for
-assistive technology, icons (with the
+assistive technology, flyouts and tooltips, images, icons (with the
 Material Symbols package) and icon cursors. Underneath: WPF-style layout (measure/arrange, lengths in px, % and star), our own text stack
 (TrueType parser, rasterizer, HarfBuzz shaping, emoji fallback), and a GPU draw list rendered in one draw call per
 frame, on Windows and in the browser. Scribble draws only when something asks for a frame.
@@ -565,8 +565,40 @@ App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (
 - **Wheel:** `Layer.letWheelThrough true` sends the wheel on to the layers below even where this one has an
   element: an overlay that takes clicks but shouldn't stop scrolling (the inspector's pick mode uses it).
 - **At run time:** `host.AddLayer [ ... ]` returns the `Layer` (`Update view`, `Focused`, `MoveFocus`), and
-  `host.RemoveLayer layer` takes it away (its components stop). For now a layer's view is fixed; an element that
-  shows view content in a layer from wherever it's declared (and Dialog, Toast) come with M8.
+  `host.RemoveLayer layer` takes it away (its components stop). Dialog and Toast come with M8 step 4d.
+
+**Flyouts** (M8 step 4a): any element can have one: content shown in its own layer next to it, from wherever the
+view declares it.
+
+```fsharp
+Button.create [
+    Button.text "Actions"
+    Button.flyoutContent (StackPanel.create [ StackPanel.children [ menuItem "Copy"; menuItem "Delete" ] ])
+    Button.flyoutPlacement Placement.Below         // Above, Left, Right; flips when it doesn't fit
+    Button.flyoutAlignment FlyoutAlignment.Start   // Center, End, along the button
+]
+```
+
+- **Opening:** the element's click opens and closes it (for a Button, Enter and Space too). Give `isFlyoutOpen`
+  to control it from the view; `onFlyoutOpenChanged` hears every open and close (controlled, a request).
+- **Closing:** Escape, or a press outside the content and the element, closes it, and that press does nothing else.
+  `flyoutLightDismiss false` keeps it open until the element is clicked again (or the view says). It also closes
+  when its element scrolls out of view or goes away.
+- **Focus:** moves into the content when it opens and back when it closes.
+- **Placement:** 4 DIPs from the element, flipped and kept inside the window, following the element as it moves.
+  `flyoutMatchAnchorWidth true` makes it at least as wide.
+- **Stacking:** each open flyout is a layer of its own, stacked in opening order (a flyout from a flyout shows
+  above it), above the app's layers and below the inspector.
+- **Look:** the content sits in a `FlyoutPresenter` (the theme's surface, a line, rounded corners, a floating
+  shadow): restyle it with `FlyoutPresenter.style [] [ ... ]`.
+
+**Tooltips:** `Button.tooltip "Save (Ctrl+S)"` (any element), or `tooltipView view` for any content.
+- **Showing:** after the mouse rests on the element for 500 ms. Moving straight on to another element with one
+  shows the next at once.
+- **Placement:** below the pointer, kept inside the window.
+- **Hiding:** a press, the wheel or a key hides it until the pointer leaves the element.
+- **Never in the way:** it takes no focus or clicks, and there are none on touch.
+- **Look:** `TooltipPresenter.style` restyles it.
 
 **ScrollViewer** (M6, completed in M8 step 1): `ScrollViewer.create [ ScrollViewer.height 300.0; ScrollViewer.content list ]`
 scrolls its content when it's bigger than the ScrollViewer. Give it a bounded height.

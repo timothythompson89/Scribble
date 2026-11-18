@@ -52,6 +52,11 @@ module internal ThemeConvert =
         fun v ->
             let s = unbox<BoxShadow> v
             box (ValueSome { s with Blur = s.Blur * 0.4; OffsetY = 0.0 })
+    /// The same shadow, floating (a flyout or a tooltip above the window): wider and lower.
+    let floatShadow: obj -> obj =
+        fun v ->
+            let s = unbox<BoxShadow> v
+            box (ValueSome { s with Blur = s.Blur * 4.0; OffsetY = s.OffsetY * 4.0 })
     /// A number theme value as a uniform corner radius.
     let uniformCorners: obj -> obj = fun v -> box (CornerRadius.Uniform(unbox<float> v))
     /// Half of a number theme value as a uniform corner radius (a CheckBox's box).

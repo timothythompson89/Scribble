@@ -198,8 +198,7 @@ module internal Views =
           Layoutable.onPointerMove (fun a -> state.DragTo a.Position)
           Layoutable.onPointerUp (fun _ -> state.EndDrag()) ]
 
-    /// The title, and the area to drag the panel by (double-click collapses). While the pointer is
-    /// over a toolbar button, it says what the button does instead.
+    /// The title, and the area to drag the panel by (double-click collapses). While picking, it says so instead.
     let private title (state: InspectorState) (draggable: bool) (hint: string) =
         Border.create (
             [ Border.width "1*"
@@ -221,8 +220,8 @@ module internal Views =
         )
 
     /// A toolbar button: an icon, transparent until hovered (accent-filled when `isActive`);
-    /// hovering shows `hint` in the title.
-    let private toolButton (name: string) (icon: Icon) (hint: string) (isActive: bool) (showHint: string -> unit) (onClick: unit -> unit) =
+    /// `hint` is its tooltip.
+    let private toolButton (name: string) (icon: Icon) (hint: string) (isActive: bool) (onClick: unit -> unit) =
         Button.create [
             Button.name name
             Button.icon icon
@@ -236,8 +235,7 @@ module internal Views =
             Button.background (if isActive then Color.Hex 0x3D59A1 else Color.Transparent)
             Button.foreground (if isActive then Color.White else Color.Hex 0xC8C8D8)
             Button.verticalAlignment VerticalAlignment.Center
-            Button.onPointerEnter (fun _ -> showHint name)
-            Button.onPointerLeave (fun _ -> showHint "")
+            Button.tooltip hint
             Button.onClick (fun _ -> onClick ())
         ]
 
@@ -251,15 +249,10 @@ module internal Views =
             Border.background (Color.White.WithAlpha 0.12f)
         ]
 
-    /// The title and the toolbar. Its own component, so hovering a button (which changes the
-    /// title) re-runs only this.
+    /// The title and the toolbar.
     let private header =
         Component.define "InspectorHeader" (fun ctx (p: HeaderProps) ->
             let state = p.State
-            // The hovered button's name; its hint shows only while that button is still there
-            // (a click can remove it before the pointer leaves).
-            let hovered = ctx.useState ""
-            let show = hovered.Set
             let buttons = [
                 yield "pick", InspectorIcons.pick, (if p.IsPicking then "Stop picking (Esc)" else "Pick (Ctrl+Shift+C)"), p.IsPicking, state.TogglePick
                 if p.IsPoppedOut then
@@ -274,12 +267,8 @@ module internal Views =
                     else yield "fold", InspectorIcons.fold, "Minimize", false, state.ToggleCollapsed
                     yield "close", InspectorIcons.close, "Close (F12)", false, state.Toggle
             ]
-            // A hovered button's hint, else pick mode's status (the pointer is out in the app while
-            // picking), else the title.
-            let hint =
-                buttons
-                |> List.tryPick (fun (name, _, hint, _, _) -> if name = hovered.Current then Some hint else None)
-                |> Option.defaultValue (if p.IsPicking then "Picking… (Esc stops)" else "")
+            // Pick mode's status (the pointer is out in the app while picking), else the title.
+            let hint = if p.IsPicking then "Picking… (Esc stops)" else ""
             // Groups: pick | where the panel goes | fold and close.
             let groupOf name =
                 match name with
@@ -298,7 +287,7 @@ module internal Views =
                         if groupOf name <> group then
                             group <- groupOf name
                             yield toolSeparator ()
-                        yield toolButton name icon text isActive show onClick
+                        yield toolButton name icon text isActive onClick
                 ]
             ])
 

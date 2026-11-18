@@ -25,6 +25,7 @@
     <Compile Include="ControlTests.fs" />
     <Compile Include="ImageTests.fs" />
     <Compile Include="ImageViewTests.fs" />
+    <Compile Include="FlyoutTests.fs" />
     <Compile Include="BackendTests.fs" />
   </ItemGroup>
   <ItemGroup>

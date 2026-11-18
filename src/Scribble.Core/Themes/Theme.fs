@@ -92,7 +92,24 @@ module internal ThemeLooks =
           TextBlock.style [ Style.inside Switch.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside TabHeader.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb; ScrollViewer.track Palette.scrollTrack ]
-          Separator.style [] [ Separator.color Palette.border ] ]
+          Separator.style [] [ Separator.color Palette.border ] 
+          // Flyouts and tooltips float: the surface colour, a line, the theme's corners, a wide shadow.
+          FlyoutPresenter.style [] [
+              FlyoutPresenter.background Palette.surface
+              FlyoutPresenter.borderBrush Palette.border
+              FlyoutPresenter.borderThickness 1.0
+              FlyoutPresenter.cornerRadius Palette.cornerRadius
+              FlyoutPresenter.padding 4.0
+              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
+          ]
+          TooltipPresenter.style [] [
+              TooltipPresenter.background Palette.surface
+              TooltipPresenter.borderBrush Palette.border
+              TooltipPresenter.borderThickness 1.0
+              TooltipPresenter.cornerRadius Palette.cornerRadius
+              TooltipPresenter.padding (8.0, 4.0)
+              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
+          ] ]
 
     /// Inherited properties' base values, by theme value.
     let private bases: struct (Prop * ThemeKey)[] =

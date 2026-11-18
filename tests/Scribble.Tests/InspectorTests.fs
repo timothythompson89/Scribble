@@ -206,31 +206,33 @@ let private hasNamed (layer: Layer) (name: string) =
     find layer.Tree.Root.Value
 
 [<Fact>]
-let ``hovering a toolbar button says what it does in the title, until the pointer leaves`` () =
+let ``a toolbar button's tooltip says what it does; the title stays`` () =
     let log = List<string>()
-    let w, _, panel = start log
+    let w, host, panel = start log
     openPanel w
-    Assert.Contains("Inspector", texts panel)
+    let tip () = host.Layers |> Seq.tryFind (fun l -> l.Name = "Tooltip") |> Option.map texts
     let rec named (e: Element) = if e.Name = "close" then Some e else e.Children |> Seq.tryPick named
     let close = (named panel.Tree.Root.Value).Value
     let p = close.PositionInTree
     move w (p.X + 14.0) (p.Y + 14.0)
+    w.Time.AdvanceMs 500.0
     settle w
-    Assert.Contains("Close (F12)", texts panel)
-    Assert.DoesNotContain("Inspector", texts panel)
+    Assert.Equal(Some [ "Close (F12)" ], tip ())
+    Assert.Contains("Inspector", texts panel)
+    // Above the inspector.
+    Assert.Equal("Tooltip", (Seq.last host.Layers).Name)
     move w 100.0 300.0
     settle w
-    Assert.Contains("Inspector", texts panel)
-    // A button that goes away under the pointer leaves no hint behind: Dock on the left
-    // replaces itself with Dock on the right.
+    Assert.Equal(None, tip ())
+    // A click hides it (Dock on the left replaces itself with Dock on the right).
     let rec namedLeft (e: Element) = if e.Name = "dockLeft" then Some e else e.Children |> Seq.tryPick namedLeft
     let left = (namedLeft panel.Tree.Root.Value).Value
     let lp = left.PositionInTree
     move w (lp.X + 14.0) (lp.Y + 14.0)
-    settle w
-    Assert.Contains("Dock left", texts panel)
+    w.Time.AdvanceMs 500.0
+    Assert.Equal(Some [ "Dock left" ], tip ())
     clickButton w panel "dockLeft"
-    Assert.DoesNotContain("Dock left", texts panel)
+    Assert.Equal(None, tip ())
 
 [<Fact>]
 let ``while picking, the title says so wherever the pointer is, until Escape`` () =

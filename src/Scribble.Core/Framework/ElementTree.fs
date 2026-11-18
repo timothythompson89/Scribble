@@ -84,6 +84,8 @@ type ElementTree(text: TextSystem) =
 
     /// What `element.Focus()` does: the input router that serves this tree sets it.
     member val internal FocusHandler: Element -> unit = ignore with get, set
+    /// Hears elements whose watched properties changed (`IElementRoot.Watch`): the host's flyouts.
+    member val internal WatchHandler: Element -> unit = ignore with get, set
 
     /// Re-runs components whose state changed, parents before children (a parent that re-runs a
     /// child with new props takes care of it). Part of UpdateLayout.
@@ -259,7 +261,7 @@ type ElementTree(text: TextSystem) =
                         found <- hit children[i] left top
                         i <- i - 1
                     if found.IsSome then found
-                    elif e.ComponentState.IsSome then ValueNone
+                    elif e.ComponentState.IsSome || not e.Type.HitsSelf then ValueNone
                     else ValueSome e
                 else ValueNone
         match root with
@@ -282,6 +284,9 @@ type ElementTree(text: TextSystem) =
             | ValueNone -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw error
         member _.AppValues = appValues
         member this.Focus(element) = this.FocusHandler(element :?> Element)
+        member this.Watch(element) =
+            this.WatchHandler(element :?> Element)
+            onInvalidated ()
         member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)
         member this.RequestRestyle(element, deep, stateChange) =
             if stylesInUse then

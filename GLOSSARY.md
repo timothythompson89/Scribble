@@ -126,6 +126,13 @@ _Avoid_: visual tree, DOM
 One element tree in a window's ordered stack (app, popups, modal, inspector), with its own focus; it lets the pointer through where it has nothing, or blocks everything below.
 _Avoid_: popup, portal, overlay
 
+**Flyout**:
+Content shown in its own layer, anchored to an element (`flyoutContent`); it closes when you press elsewhere or press Escape.
+_Avoid_: popup, dropdown (for the mechanism; a ComboBox's list is its flyout)
+
+**Tooltip**:
+A short hint shown near the pointer after it rests on an element; never focused, never clicked.
+
 **Host**:
 What runs a window's layers: input, frames and the window's theme (`ElementHost`).
 _Avoid_: window (for the host), root

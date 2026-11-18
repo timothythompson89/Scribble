@@ -40,6 +40,9 @@ type IElementRoot =
     /// to App.onError through the dispatcher (repeats counted, not reported again), or rethrown
     /// when there's no dispatcher or no onError.
     abstract ReportError: error: exn -> unit
+    /// An element (an `Element`) changed a watched property (`Prop.Watched`), or joined the tree with one: the host
+    /// opens or closes its flyout at the next frame.
+    abstract Watch: element: obj -> unit
 
 [<AutoOpen>]
 module internal StyleMarks =
@@ -134,7 +137,9 @@ type ElementType =
       /// without its scrollbars); by default its bounds when `clipToBounds` is set.
       ClipChildren: (RenderContext -> Rect) voption
       /// How it takes part in scrolling (ScrollViewer, ItemsView).
-      Scrolling: ScrollHooks voption }
+      Scrolling: ScrollHooks voption 
+      /// Hit by the pointer itself (false: only its children are, as for a flyout layer's root).
+      HitsSelf: bool }
 
     override t.ToString() = t.Name
 
@@ -154,6 +159,7 @@ type ElementType =
           Click = ValueNone
           ClipChildren = ValueNone
           Scrolling = ValueNone
+          HitsSelf = true
           Measure =
             fun ctx available ->
                 let mutable w, h = 0.0, 0.0
@@ -581,10 +587,24 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         for child in children do
             child.SetRootInSubtree r
         if before.IsSome && r.IsNone then this.LetGoOfImages true
+        if before.IsNone && r.IsSome && this.HasWatchedValue then this.NotifyWatch()
         match componentState, before, r with
         | ValueSome c, ValueSome _, ValueNone -> c.Detached()
         | ValueSome c, ValueNone, ValueSome added -> c.Attached added
         | _ -> ()
+
+    /// Has an own value of a watched property (`Prop.Watched`).
+    member private _.HasWatchedValue =
+        let mutable has = false
+        for i in 0 .. count - 1 do
+            if keys[i].Watched then has <- true
+        has
+
+    /// Tells its tree a watched property changed (the host looks at its flyout at the next frame).
+    member internal this.NotifyWatch() =
+        match root with
+        | ValueSome r -> r.Watch(box this)
+        | ValueNone -> ()
 
     /// Has a `styles` setting or an inline state block of its own.
     member private _.UsesStyles =
@@ -1174,6 +1194,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | ValueNone -> ()
         if prop.Restyles || prop.IsStyles || prop.IsTheme then this.RequestRestyle(true, false)
         elif prop.IsStateBlock then this.RequestRestyle(false, false)
+        if prop.Watched then this.NotifyWatch()
 
     /// Removes the element's own value (a setting the view dropped, or Reset).
     member internal this.ClearValue(prop: Prop) =
@@ -1775,6 +1796,10 @@ module Element =
     /// The clip for the children (own coordinates) when `clipToBounds` is set, instead of the
     /// element's bounds.
     let clipChildren (f: RenderContext -> Rect) = ElementPart(fun t -> { t with ClipChildren = ValueSome f })
+
+    /// The pointer never hits the element itself, only its children: a root covering the window that should let the
+    /// pointer through where it shows nothing.
+    let passThrough = ElementPart(fun t -> { t with HitsSelf = false })
 
     /// Scrolling hooks (ScrollViewer, ItemsView).
     let internal scrolling (hooks: ScrollHooks) = ElementPart(fun t -> { t with Scrolling = ValueSome hooks })

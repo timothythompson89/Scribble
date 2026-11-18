@@ -68,6 +68,26 @@ type Layoutable =
     static member isEnabled<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create LayoutProps.isEnabled value
     /// The pointer's look over this element (and inside it, unless something there sets its own).
     static member cursor<'k when 'k :> Layoutable>(value: Cursor) : Setting<'k> = Setting.create LayoutProps.cursor (ValueSome value)
+    /// What this element's flyout shows: content in its own layer next to the element, closed by Escape or a press
+    /// elsewhere. Unless `isFlyoutOpen` is given, the element's click opens and closes it.
+    static member flyoutContent<'k when 'k :> Layoutable>(value: View) : Setting<'k> = Setting.create FlyoutProps.content (ValueSome value)
+    /// Which side of the element the flyout shows on (default Below; flipped when it doesn't fit).
+    static member flyoutPlacement<'k when 'k :> Layoutable>(value: Placement) : Setting<'k> = Setting.create FlyoutProps.placement value
+    /// Where the flyout lines up along that side (default Start).
+    static member flyoutAlignment<'k when 'k :> Layoutable>(value: FlyoutAlignment) : Setting<'k> = Setting.create FlyoutProps.alignment value
+    /// Makes the flyout controlled: it shows exactly this; clicks and dismissals only call `onFlyoutOpenChanged`.
+    static member isFlyoutOpen<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create FlyoutProps.isOpen (ValueSome value)
+    /// The flyout opened or closed (or, controlled, asks to): a click, Escape, a press elsewhere.
+    static member onFlyoutOpenChanged<'k when 'k :> Layoutable>(handler: bool -> unit) : Setting<'k> =
+        Setting.create FlyoutProps.onOpenChanged (ValueSome handler)
+    /// False: Escape and presses elsewhere don't close the flyout; only the view or a click on the element does.
+    static member flyoutLightDismiss<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create FlyoutProps.lightDismiss value
+    /// True: the flyout is at least as wide as the element (a ComboBox's list).
+    static member flyoutMatchAnchorWidth<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create FlyoutProps.matchAnchorWidth value
+    /// A hint shown near the pointer after it rests on the element for half a second.
+    static member tooltip<'k when 'k :> Layoutable>(text: string) : Setting<'k> = Setting.create FlyoutProps.tooltip text
+    /// Like `tooltip`, with any view (it never takes focus or clicks).
+    static member tooltipView<'k when 'k :> Layoutable>(value: View) : Setting<'k> = Setting.create FlyoutProps.tooltipView (ValueSome value)
     /// Fades this element and everything inside it (0 to 1). Each shape fades on its own, so where
     /// shapes overlap they show through each other.
     static member opacity<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create LayoutProps.opacity value

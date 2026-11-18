@@ -39,6 +39,24 @@ type internal LayerPointer(kind: PointerKind) =
     member val Capture: Layer voption = ValueNone with get, set
     member val Buttons = 0 with get, set
 
+/// A flyout the host shows: its anchor, the layer the anchor is in, and its own layer.
+type internal OpenFlyout(anchor: Element, anchorLayer: Layer, layer: Layer, returnFocus: Element voption) =
+    member _.Anchor = anchor
+    member _.AnchorLayer = anchorLayer
+    member _.Layer = layer
+    /// What had focus in the anchor's layer when it opened (focus goes back there when it closes).
+    member _.ReturnFocus = returnFocus
+    /// What the layer shows was made from these (a change rebuilds the view).
+    member val Content: View voption = ValueNone with get, set
+    member val Rect = Rect.Create(0.0, 0.0, 0.0, 0.0) with get, set
+    member val Placement = Placement.Below with get, set
+    member val Alignment = FlyoutAlignment.Start with get, set
+    member val MatchWidth = false with get, set
+    member val Shown = false with get, set
+    /// Focus moves into it after its first layout.
+    member val FocusPending = true with get, set
+    member val Ring = false with get, set
+
 /// Connects element trees to a window: lays them out at the window's size and scale, draws them
 /// on every Frame, and asks for a frame whenever something in them changes. `App.start` makes
 /// one; a custom host (a game engine, a test) makes its own with `ElementHost.create`.
@@ -90,8 +108,16 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     let same (a: Layer) (b: Layer) = obj.ReferenceEquals(a, b)
     let isIn (layer: Layer) = layers.Contains layer
 
+    /// Anchors whose flyout may have opened or closed, and the layer each is in (`IElementRoot.Watch`).
+    let watched = List<struct (Element * Layer)>()
+    /// Shown flyouts, in opening order (their layers stack the same way).
+    let openFlyouts = List<OpenFlyout>()
+    /// Pointers whose press closed a flyout: their release goes nowhere either.
+    let swallowed = HashSet<int>()
+
     let add (layer: Layer) =
         let tree = layer.Tree
+        tree.WatchHandler <- fun e -> watched.Add(struct (e, layer))
         tree.Scale <- window.Scale
         tree.Dispatcher <- options.Dispatcher
         tree.AppValues <- sharedValues
@@ -172,6 +198,220 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             previous |> ValueOption.iter (fun l -> if isIn l then l.Input.WindowFocusChanged false)
             keyboardOwner <- ValueSome current
             current.Input.WindowFocusChanged windowActive
+
+    let removeLayer (layer: Layer) =
+        if layers.Remove layer then
+            for s in pointers.Values do
+                match s.Over with
+                | ValueSome l when same l layer -> s.Over <- ValueNone
+                | _ -> ()
+                match s.Capture with
+                | ValueSome l when same l layer ->
+                    s.Capture <- ValueNone
+                    s.Buttons <- 0
+                | _ -> ()
+            layer.Tree.Root <- ValueNone
+            window.RequestFrame()
+
+    // --- Flyouts (DESIGN.md, "M8 step 4", round 1) -------------------------------------------------
+
+    /// Flyouts stack above the app's own layers (dialogs, toasts), below the inspector.
+    let flyoutOrder = System.Int32.MaxValue - 2
+    let flyoutGap = 4.0
+
+    let flyoutOf (anchor: Element) = openFlyouts |> Seq.tryFind (fun f -> obj.ReferenceEquals(f.Anchor, anchor))
+    let flyoutIn (layer: Layer) = openFlyouts |> Seq.tryFind (fun f -> same f.Layer layer)
+
+    let flyoutView (f: OpenFlyout) (content: View) =
+        let target = FlyoutTarget(f.Rect, f.Placement, f.Alignment, f.MatchWidth, flyoutGap)
+        FlyoutRoot.create target (FlyoutPresenter.create [ Border.child content; if not f.Shown then Layoutable.isVisible false ])
+
+    /// Asks the anchor to close its flyout (an uncontrolled one closes; a controlled one's view decides). During a
+    /// frame, after it, so what the handler changes asks for the next frame.
+    let dismiss (f: OpenFlyout) =
+        let a = f.Anchor
+        if inFrame then
+            match a.Root with
+            | ValueSome r -> r.AfterFrame(fun () -> Flyouts.request a false)
+            | ValueNone -> ()
+        else Flyouts.request a false
+
+    let closeFlyout (f: OpenFlyout) =
+        let hadKeys = same (keyboardLayer ()) f.Layer
+        openFlyouts.Remove f |> ignore
+        removeLayer f.Layer
+        if hadKeys && isIn f.AnchorLayer then
+            pressedLayer <- ValueSome f.AnchorLayer
+            match f.ReturnFocus with
+            | ValueSome e when e.Root.IsSome -> f.AnchorLayer.Input.Restore(e, f.Layer.Input.KeyboardMode)
+            | _ -> ()
+
+    /// Opens and closes the flyouts whose anchors changed.
+    let syncFlyouts () =
+        while watched.Count > 0 do
+            let batch = watched.ToArray()
+            watched.Clear()
+            for struct (anchor, anchorLayer) in batch do
+                let want = anchor.Root.IsSome && isIn anchorLayer && Flyouts.hasFlyout anchor && Flyouts.isOpen anchor
+                match flyoutOf anchor, want with
+                | None, true ->
+                    let layer =
+                        Layer.Create(
+                            text,
+                            [ Layer.name ("Flyout of " + (if anchor.Name <> "" then anchor.Name else anchor.Type.Name))
+                              Layer.order flyoutOrder
+                              Layer.appStyles anchorLayer.UsesAppStyles ],
+                            window.SetCursor)
+                    let f = OpenFlyout(anchor, anchorLayer, layer, anchorLayer.Focused)
+                    f.Ring <- anchorLayer.Input.KeyboardMode
+                    openFlyouts.Add f
+                    addLayer layer
+                    if not anchorLayer.UsesAppStyles then layer.Tree.Theme <- anchorLayer.Tree.Theme
+                | Some f, false -> closeFlyout f
+                | _ -> ()
+
+    /// Before a flyout's layer is laid out (its anchor's layer is below it, so laid out already): follows the anchor,
+    /// and asks to close when the anchor no longer shows (scrolled out, hidden); closes when it went away.
+    let refreshFlyout (f: OpenFlyout) =
+        let a = f.Anchor
+        match (if a.Root.IsSome then a.Get FlyoutProps.content else ValueNone) with
+        | ValueNone -> closeFlyout f
+        | ValueSome content ->
+            let p = a.PositionInTree
+            let b = a.Bounds
+            let rect = Rect.Create(p.X, p.Y, b.Width, b.Height)
+            let visible = a.VisibleBounds
+            let shown = visible.Width > 0.0 && visible.Height > 0.0
+            let placement = a.Get FlyoutProps.placement
+            let alignment = a.Get FlyoutProps.alignment
+            let matchWidth = a.Get FlyoutProps.matchAnchorWidth
+            let changed =
+                f.Content.IsNone || not (obj.ReferenceEquals(f.Content.Value, content)) || f.Rect <> rect || f.Shown <> shown
+                || f.Placement <> placement || f.Alignment <> alignment || f.MatchWidth <> matchWidth
+            if changed then
+                f.Content <- ValueSome content
+                f.Rect <- rect
+                f.Shown <- shown
+                f.Placement <- placement
+                f.Alignment <- alignment
+                f.MatchWidth <- matchWidth
+                f.Layer.Update(flyoutView f content)
+                if not shown then dismiss f
+
+    /// A press at `p` closes the flyouts it's outside of (and outside their anchors), from the top down to the first
+    /// it's in; pinned ones stay. True if one closed: the press goes no further.
+    let lightDismissAt (p: Point) =
+        let mutable dismissed = false
+        if openFlyouts.Count > 0 && (layerAt p).Order <= flyoutOrder then
+            let mutable stop = false
+            let mutable i = openFlyouts.Count - 1
+            while not stop && i >= 0 do
+                let f = openFlyouts[i]
+                let v = f.Anchor.VisibleBounds
+                let onAnchor = p.X >= v.X && p.X < v.X + v.Width && p.Y >= v.Y && p.Y < v.Y + v.Height
+                if onAnchor || f.Layer.Tree.HitTest(p.X, p.Y).IsSome then stop <- true
+                elif f.Anchor.Get FlyoutProps.lightDismiss then
+                    dismiss f
+                    dismissed <- true
+                i <- i - 1
+        dismissed
+
+    /// Escape that nothing handled closes the top flyout light dismiss can close (unless keys are in a layer above).
+    let dismissTopFlyout () =
+        if (keyboardLayer ()).Order > flyoutOrder then false
+        else
+            match openFlyouts |> Seq.tryFindBack (fun f -> f.Anchor.Get FlyoutProps.lightDismiss) with
+            | Some f ->
+                dismiss f
+                true
+            | None -> false
+
+    // --- Tooltips (DESIGN.md, "M8 step 4", round 1, 8) ---------------------------------------------
+
+    /// The element whose tooltip shows (or is waiting to), and the layer showing it.
+    let mutable tipOwner: Element voption = ValueNone
+    let mutable tipLayer: Layer voption = ValueNone
+    /// Bumped whenever the pointer moves or the tooltip goes: a wait that sees another number is stale.
+    let mutable tipGeneration = 0
+    /// When the last tooltip went (the next shows at once within `tipWarm`).
+    let mutable tipHiddenAt: System.TimeSpan voption = ValueNone
+    /// Pressed while its tooltip showed or waited: no tooltip again until the pointer leaves it.
+    let mutable tipSuppressed: Element voption = ValueNone
+    let tipDelay = System.TimeSpan.FromMilliseconds 500.0
+    let tipWarm = System.TimeSpan.FromMilliseconds 300.0
+    /// Below the pointer: about a cursor's height down.
+    let tipCursorHeight = 16.0
+
+    let hasTip (e: Element) = e.Get FlyoutProps.tooltip <> "" || (e.Get FlyoutProps.tooltipView).IsSome
+
+    /// The nearest element under `p` (or around what's there) with a tooltip.
+    let tipAt (p: Point) =
+        let mutable e = (layerAt p).Tree.HitTest(p.X, p.Y)
+        while e.IsSome && not (hasTip e.Value) do
+            e <- e.Value.Parent
+        e
+
+    let hideTip () =
+        tipGeneration <- tipGeneration + 1
+        match tipLayer with
+        | ValueSome l ->
+            removeLayer l
+            tipLayer <- ValueNone
+            tipHiddenAt <- ValueSome(now ())
+        | ValueNone -> ()
+        tipOwner <- ValueNone
+
+    let showTip (owner: Element) (p: Point) =
+        let content =
+            match owner.Get FlyoutProps.tooltipView with
+            | ValueSome v -> v
+            | ValueNone -> TextBlock.create [ TextBlock.text (owner.Get FlyoutProps.tooltip) ]
+        let mutable top = owner
+        while top.Parent.IsSome do
+            top <- top.Parent.Value
+        let ownerLayer = layers |> Seq.tryFind (fun l -> l.Tree.Root.IsSome && obj.ReferenceEquals(l.Tree.Root.Value, top))
+        let usesAppStyles = ownerLayer |> Option.map _.UsesAppStyles |> Option.defaultValue true
+        let layer = Layer.Create(text, [ Layer.name "Tooltip"; Layer.order System.Int32.MaxValue; Layer.appStyles usesAppStyles ], window.SetCursor)
+        addLayer layer
+        match ownerLayer with
+        | Some l when not usesAppStyles -> layer.Tree.Theme <- l.Tree.Theme
+        | _ -> ()
+        let target = FlyoutTarget(Rect.Create(p.X, p.Y, 0.0, tipCursorHeight), Placement.Below, FlyoutAlignment.Start, false, 0.0)
+        layer.Update(FlyoutRoot.create target (TooltipPresenter.create [ TooltipPresenter.child content ]))
+        tipLayer <- ValueSome layer
+
+    /// The mouse moved to `p` (no button down): the tooltip under it waits, shows, stays or goes.
+    let tipMoved (p: Point) =
+        let under = tipAt p
+        match tipSuppressed with
+        | ValueSome s when not (under.IsSome && obj.ReferenceEquals(under.Value, s)) -> tipSuppressed <- ValueNone
+        | _ -> ()
+        match under, tipOwner with
+        | ValueSome u, ValueSome o when obj.ReferenceEquals(u, o) && tipLayer.IsSome -> ()
+        | _ ->
+            let wasShown = tipLayer.IsSome
+            hideTip ()
+            match under with
+            | ValueSome u when tipSuppressed.IsNone ->
+                tipOwner <- ValueSome u
+                if wasShown || (tipHiddenAt.IsSome && now () - tipHiddenAt.Value <= tipWarm) then showTip u p
+                else
+                    match options.Dispatcher with
+                    | ValueSome d ->
+                        let generation = tipGeneration
+                        d.PostAfter(
+                            tipDelay,
+                            fun () ->
+                                if generation = tipGeneration && tipLayer.IsNone && u.Root.IsSome && hasTip u then showTip u p
+                        )
+                    | ValueNone -> ()
+            | _ -> ()
+
+    /// A press, the wheel or a key: the tooltip goes, and stays away from that element until the pointer leaves it.
+    let tipInterrupted () =
+        if tipOwner.IsSome then
+            tipSuppressed <- tipOwner
+            hideTip ()
 
     let pointerFor (kind: PointerKind) (id: int) =
         match pointers.TryGetValue id with
@@ -276,18 +516,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// Takes a layer away (its elements leave the tree, so components stop). Not the app's.
     member _.RemoveLayer(layer: Layer) =
         if same layer app then invalidOp "The app's layer can't be removed."
-        if layers.Remove layer then
-            for s in pointers.Values do
-                match s.Over with
-                | ValueSome l when same l layer -> s.Over <- ValueNone
-                | _ -> ()
-                match s.Capture with
-                | ValueSome l when same l layer ->
-                    s.Capture <- ValueNone
-                    s.Buttons <- 0
-                | _ -> ()
-            layer.Tree.Root <- ValueNone
-            window.RequestFrame()
+        removeLayer layer
 
     /// Cleared behind the layers every frame instead of the theme's background (starts as
     /// `ElementHost.background`; ValueNone follows the theme; may change while running).
@@ -329,9 +558,29 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         let scale = window.Scale
         let started = Stopwatch.GetTimestamp()
         let available: Size = { Width = float size.Width / scale; Height = float size.Height / scale }
-        for l in layers.ToArray() do
-            l.Tree.Scale <- scale
-            l.Tree.UpdateLayout available
+        // A tooltip whose element went goes too.
+        match tipOwner with
+        | ValueSome o when o.Root.IsNone -> hideTip ()
+        | _ -> ()
+        // Bottom to top, opening and closing flyouts as anchors change; a flyout's layer follows its anchor, which is
+        // laid out before it.
+        syncFlyouts ()
+        let mutable i = 0
+        while i < layers.Count do
+            let l = layers[i]
+            flyoutIn l |> Option.iter refreshFlyout
+            if isIn l then
+                l.Tree.Scale <- scale
+                l.Tree.UpdateLayout available
+                match flyoutIn l with
+                | Some f when f.FocusPending && f.Shown ->
+                    f.FocusPending <- false
+                    pressedLayer <- ValueSome l
+                    l.Input.FocusFirst f.Ring
+                | _ -> ()
+            syncFlyouts ()
+            // A layer that went away starts the walk again (laying out what's laid out is cheap).
+            i <- layers.IndexOf l + 1
         // Layout may have moved things under a pointer that stood still (hover, cursor), or put a
         // layer under it, or taken one away.
         for KeyValue(id, s) in List.ofSeq pointers do
@@ -419,19 +668,30 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             s.Position <- ValueSome p
             s.Modifiers <- mods
             (targetFor s id p).Input.PointerMoved(kind, id, p, mods)
+            // Tooltips: the mouse only (none on touch or pen), and not while a button is down.
+            if kind = PointerKind.Mouse && s.Buttons = 0 then tipMoved p
             false
         | PointerPressed(kind, id, p, button, mods) ->
             let p = dips p
             let s = pointerFor kind id
             s.Position <- ValueSome p
             s.Modifiers <- mods
-            let layer = targetFor s id p
-            if s.Buttons = 0 then
-                s.Capture <- ValueSome layer
-                pressedLayer <- ValueSome layer
-                updateKeyboardOwner ()
-            s.Buttons <- s.Buttons + 1
-            layer.Input.PointerPressed(kind, id, p, button, mods)
+            tipInterrupted ()
+            if s.Buttons = 0 && lightDismissAt p then swallowed.Add id |> ignore
+            else
+                let layer = targetFor s id p
+                if s.Buttons = 0 then
+                    s.Capture <- ValueSome layer
+                    pressedLayer <- ValueSome layer
+                    updateKeyboardOwner ()
+                s.Buttons <- s.Buttons + 1
+                layer.Input.PointerPressed(kind, id, p, button, mods)
+            false
+        | PointerReleased(_, id, p, _, mods) when swallowed.Contains id && pointers[id].Buttons = 0 ->
+            swallowed.Remove id |> ignore
+            let s = pointers[id]
+            s.Position <- ValueSome(dips p)
+            s.Modifiers <- mods
             false
         | PointerReleased(kind, id, p, button, mods) ->
             let p = dips p
@@ -446,6 +706,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             reassign id s
             false
         | PointerExited(kind, id) ->
+            if kind = PointerKind.Mouse then hideTip ()
             let s = pointerFor kind id
             match s.Capture, s.Over with
             | ValueSome l, _
@@ -467,13 +728,15 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             false
         | PointerWheel(p, dx, dy, mods) ->
             let p = dips p
+            tipInterrupted ()
             (wheelLayerAt p).Input.Wheel(p, dx, dy, mods)
             false
         | KeyDown(key, mods, isRepeat) ->
+            tipInterrupted ()
             let mutable taken = false
             for preview in keyPreviews.ToArray() do
                 if not taken then taken <- preview key mods
-            taken || (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat)
+            taken || (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat) || (key = Key.Escape && dismissTopFlyout ())
         | KeyUp(key, mods) -> (keyboardLayer ()).Input.KeyUp(key, mods)
         | FocusChanged active ->
             windowActive <- active

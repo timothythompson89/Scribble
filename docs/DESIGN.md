@@ -23,7 +23,7 @@ questions", as paragraphs starting with the name given here.
 | M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
-| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery" |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "M8 step 4: layers and selection controls" |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
@@ -62,10 +62,10 @@ SEMANTICS section), and M8 step 3b part (a): the Counter sample became the Galle
 part (b), the PNG decoder (`Scribble.Imaging`); part (c), images on the GPU (`DrawList.DrawImage`, image atlas pages,
 mip levels); part (d), the `Image` value, its process-wide cache and pool, decoding off the UI thread, `ImageView`,
 and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`; part (f), `Cursor.fromImage` and the
-inspector's IMAGES section. M8 step 3b is complete.
+inspector's IMAGES section. M8 step 3b is complete. M8 step 4a: flyouts (`flyoutContent` and its settings,
+each in its own layer, light dismiss, placement) and tooltips.
 
-Next: M8 step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
-"show this in a layer" element). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: the rest of M8 step 4 (4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -140,7 +140,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Scrolling:** ScrollViewer (bars, thumb drag, wheel, keys, touch with fling) and ItemsView (virtualized lists
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
-- **Elements:** Border, TextBlock, IconView, Separator, FocusRing; Button, ToggleButton, CheckBox, Switch, Slider,
+- **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, FlyoutPresenter, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
   TabControl (controls are controlled when the view gives their value, else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order, focus-visible.
@@ -148,6 +148,8 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   style over theme; transitions; dark and light themes with theme values (`Palette.surface`); app values that any
   view can read; visual states that apps can define and tools can force.
 - **Layers:** the app's view and more (dialogs, toasts, the inspector) over it, each with its own tree and focus.
+  Flyouts (`flyoutContent`: content anchored to an element, light dismiss, flip and clamp) and tooltips each show
+  in a layer of their own. Section "M8 step 4".
 - **Errors:** app code (handlers, views, components, render functions, items) is guarded; with `App.onError` an
   error is reported and only what failed is left out; without it the app ends.
 - **Semantics** (namespace `Scribble.Accessibility`, seen only after `open`): what each element is to assistive
@@ -2684,6 +2686,120 @@ the page title), `LayoutTabTests.fs` became `LayoutPageTests.fs` (`layout-page@1
 fake window didn't draw after `Resized` (real platforms do), so tests that resized laid the app out at 400 × 300
 until something else asked for a frame; `FakeWindow.Send (Resized _)` now asks for one. 435 unit tests (+5 timing
 skipped), 61 rendering tests (one phone page fewer), all pictures looked at.
+
+## M8 step 4: layers and selection controls (planned 2026-11-17)
+
+What the step covers (M8 round 1, decision 1): content shown in a layer from the view, tooltips, ListBox and
+RadioButton (selection), ComboBox, Dialog and Toast. Facts it rests on: layers can be added and removed at any time
+(`ElementHost.AddLayer`/`RemoveLayer`), each with its own focus; a modal layer blocks only while it shows something;
+the Gallery's toasts and dialog still listen to F# events because a view can't put content into a layer yet.
+
+**Round 1 (grilled 2026-11-17; Tim: yes to all, Q3 reshaped by Tim):**
+1. **Four parts, each tried by Tim before the next:** **4a** the flyout and tooltips; **4b** ListBox and RadioButton;
+   **4c** ComboBox; **4d** Dialog and Toast (the Layers page and `App.onError` move onto them). 4b, 4c and 4d each
+   get their own round.
+2. **Flyout** is the name (WinUI's): content shown in its own layer, anchored to an element. GLOSSARY: Flyout.
+3. **Flat settings on every element** (Tim: "instead of a Flyout element or a `flyout [ ... ]` list"), inherited
+   from `Layoutable` like `cursor` and `tooltip`, so styles can set them per type:
+   - `flyoutContent view`: what shows; giving it is what makes the element have a flyout;
+   - `flyoutPlacement` (`Placement.Below` default, `Above`, `Left`, `Right`);
+   - `flyoutAlignment` (`FlyoutAlignment.Start` default, `Center`, `End`) along the anchor;
+   - `isFlyoutOpen` and `onFlyoutOpenChanged`;
+   - `flyoutLightDismiss` (default true);
+   - `flyoutMatchAnchorWidth` (ComboBox).
+   The content is part of the view: it diffs with it, its components keep their state, and it goes when the anchor
+   leaves.
+4. **Its own layer:** each open flyout (and later each dialog) gets a layer added on top when it opens and removed when
+   it closes, so stacking follows opening order (a flyout from inside a dialog or another flyout shows above it),
+   always below the inspector. Toasts (4d) get one fixed layer. `App.layer` stays for app-specific layers.
+5. **Controlled or not** (decision 8): given `isFlyoutOpen`, it shows exactly that and reports `onFlyoutOpenChanged`;
+   left out, the element's click toggles it (a Button's click, Enter and Space included; any other element's press
+   and release on it). A controlled flyout opens only when the view says, so a model can open it from anywhere.
+6. **Light dismiss:** Escape, or a press outside both the content and the anchor, closes it; that press is consumed
+   (WinUI, WPF, Windows menus: closing a menu never clicks what's behind it). Focus moves into the content when it
+   opens and back when it closes. `flyoutLightDismiss false` keeps it open until the view closes it.
+7. **Placement:** the side, flipped to the opposite one when it doesn't fit; pushed inside the window; never larger
+   than the window (tall content scrolls if it's in a ScrollViewer); at least the anchor's width with
+   `flyoutMatchAnchorWidth`. It follows the anchor at the next frame; an anchor scrolled out of view closes it.
+8. **Tooltips:** `Layoutable.tooltip "text"` and `Layoutable.tooltipView view` (inherited: `Button.tooltip`). Shown
+   once the pointer rests 500 ms (platform time, no frames while waiting); within 300 ms of another tooltip the next
+   shows at once. Hidden on leave, press, wheel or a key. Below the pointer, flipped and kept inside the window; never
+   takes focus or input. None on touch; keyboard-focus tooltips later. The inspector's toolbar hints move onto them.
+9. **Tests and Gallery for 4a:** unit tests for opening and closing (controlled and not), each dismissal, focus in and
+   back, flipping and clamping at each edge, following the anchor and closing when it scrolls away, stacking by
+   opening order (a flyout from a flyout), and tooltip timing on fake time with no waiting frames; screenshots of an
+   open flyout and a tooltip. The Layers page gets a Flyout section (a menu-like one, a flipped one, a pinned one) and
+   tooltips on a few buttons.
+10. **FlyoutPresenter:** the content sits in a themed element (the theme's surface, rounded corners, a shadow) that
+    styles can restyle, so content needn't bring its own background.
+
+**4a as built (2026-11-17):**
+- **Settings** (`Framework/Flyout.fs`): `FlyoutProps` with the settings above on `Layoutable`, plus `Placement` and
+  `FlyoutAlignment`. An uncontrolled flyout keeps its state in a local property. `Flyouts.request` changes it, or
+  for a controlled one only calls `onFlyoutOpenChanged`; the handler is guarded.
+- **How the host hears:** a property can be *watched* (`Prop.Watched`, only `isFlyoutOpen` today). When an
+  element's own value of it changes, or an element with one joins a tree, it calls `IElementRoot.Watch`. The host
+  queues the element with its layer. An uncontrolled toggle notifies the same way.
+- **Opening and closing:** at the start of each frame the host opens or closes the layers of queued anchors. It
+  lays the layers out bottom to top and checks the queue again after each one, so a flyout opened by a view update
+  shows in that same frame.
+  - Each flyout layer is named "Flyout of …" and has order `Int32.MaxValue - 2`: above the app's own layers,
+    below the inspector, stacked in opening order.
+  - It takes app styles if the anchor's layer does; otherwise it copies that layer's theme, so the inspector's
+    flyouts stay inspector-themed.
+- **Following the anchor:** before a flyout's layer is laid out, the host reads the anchor's window rect,
+  placement, alignment, width matching and content. If any changed, it gives the layer a new view: `FlyoutRoot`
+  (fills the window, passes the pointer through, places its one child) around a `FlyoutPresenter` holding the
+  content.
+  - When the anchor's `VisibleBounds` is empty (scrolled out, hidden), the presenter hides and the host asks to
+    close, after the frame.
+  - A detached anchor, or one with no content, closes at once.
+- **Placement** (`FlyoutPlacement.place`): 4 DIPs from the anchor. It flips when the content doesn't fit and the
+  other side has more room, then clamps into the window and rounds to whole DIPs.
+- **New element part:** `Element.passThrough`, an element that is never hit itself, only its children
+  (`ElementType.HitsSelf`).
+- **Light dismiss:**
+  - On a press (first button), the host walks open flyouts from the top. It stops at the first one whose content or
+    anchor is under the press, and dismisses the dismissable ones above it.
+  - If any was dismissed, the press and its release go nowhere.
+  - Presses in a layer above the flyouts (the inspector) dismiss nothing.
+  - Escape that nothing handled dismisses the top dismissable flyout, unless keys are in a layer above.
+- **Focus:**
+  - **Opening:** after the flyout's first layout, its layer takes the keyboard and focus goes to its first focusable
+    element (`InputRouter.FocusFirst`). The ring shows only if the anchor's layer was in keyboard mode.
+  - **Closing:** if the flyout's layer had the keyboard, focus goes back to what had it in the anchor's layer,
+    without scrolling it into view (`InputRouter.Restore`).
+  - Found by a test: `Focus()` scrolled an anchor that had scrolled away back into view.
+- **Clicks:** an element with `flyoutContent` counts as clickable. `Clicks.click` toggles its flyout after `onClick`
+  and the type's click.
+- **Tooltips** (in `ElementHost`, mouse only):
+  - **Finding the owner:** on each move with no button down, the host finds the nearest element under the pointer
+    (in the topmost layer there) with `tooltip` or `tooltipView`.
+  - **Waiting:** while it waits, each move restarts `Dispatcher.PostAfter` 500 ms (a generation counter drops stale
+    waits). Moving from a shown tooltip to another element, or arriving within 300 ms of one hiding, shows the next
+    at once.
+  - **Showing:** a "Tooltip" layer (order `Int32.MaxValue`, added last, so above the inspector) holds `FlyoutRoot`
+    around a `TooltipPresenter` (not hit-testable). It's anchored to a 16-DIP-tall rect at the pointer, so it shows
+    below the pointer.
+  - **Hiding:** a press, the wheel or a key hides it and suppresses that element until the pointer leaves it. Leaving
+    the window or the owner going away hides it too.
+  - **Without a dispatcher** (a custom host with none) there are no tooltips.
+- **Theme:** `FlyoutPresenter` and `TooltipPresenter` extend Border. The theme gives both the surface colour, a
+  1-DIP border line, the theme's corners and `ThemeConvert.floatShadow` (the theme shadow ×4). Padding is 4 on the
+  flyout and 8×4 on the tooltip.
+- **Inspector:** the toolbar buttons use `Button.tooltip`. The title stays "Inspector", or shows the picking
+  status.
+- **Gallery:** the Layers page has Flyout (a controlled Actions menu whose items close it and toast), Placement
+  (four sides and alignments), Pinned (a slider and a check box) and Tooltips (two text tooltips and a
+  `tooltipView`).
+- **Tests:** 18 unit tests (`FlyoutTests.fs`, 13 flyout and 5 tooltip); the inspector's hint test is rewritten for
+  tooltips; screenshots `flyout-open@1x` (opened by keyboard, ring on the first item) and `tooltip@1x`, the same on
+  Vulkan. The phone Layers picture was updated for the new sections.
+- **Left for later:**
+  - an element's own `theme` above the anchor doesn't reach its flyout (the flyout gets its layer's theme);
+  - flyout content taller than the window is cut to the window, and scrolls only if it's in a ScrollViewer;
+  - transforms on the anchor are ignored, as in `PositionInTree`;
+  - keyboard-focus tooltips.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

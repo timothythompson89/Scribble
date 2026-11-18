@@ -223,6 +223,9 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal IsLocal = false with get, set
     /// Changing it can change which styles match the element (and everything inside it).
     member val internal Restyles = false with get, set
+    /// Its tree hears when an element's own value changes or an element with one joins (`IElementRoot.Watch`): a
+    /// flyout's `isFlyoutOpen`.
+    member val internal Watched = false with get, set
     /// A style's selector tests its value (`Style.prop`, `Style.where`, `States.ofProp`): a change
     /// of the element's own value matches it again.
     member val internal TestedByStyles = false with get, set
