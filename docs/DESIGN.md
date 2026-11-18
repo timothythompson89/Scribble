@@ -60,10 +60,11 @@ TabControl), 3a+ and 3a++ (the inspector tree on ItemsView, sideways scrolling),
 docs), and the semantics stage (roles, names, states and actions for every element type; the inspector's
 SEMANTICS section), and M8 step 3b part (a): the Counter sample became the Gallery, plus a new one-file Counter;
 part (b), the PNG decoder (`Scribble.Imaging`); part (c), images on the GPU (`DrawList.DrawImage`, image atlas pages,
-mip levels), seen so far only in the screenshot tests.
+mip levels); part (d), the `Image` value, its process-wide cache and pool, decoding off the UI thread, `ImageView`,
+and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`.
 
-Next: the rest of M8 step 3b (section "M8 step 3b: images, and the Counter becomes the Gallery"): (d) `ImageView`, the `Image` value and its cache,
-then (e) sources and loading, (f) cursors and the inspector, with the Gallery's Images page growing alongside. Then step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
+Next: the rest of M8 step 3b (section "M8 step 3b: images, and the Counter becomes the Gallery"): (f) cursors and the
+inspector. Then step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
 "show this in a layer" element). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
@@ -2420,6 +2421,182 @@ does from (d). Choices made while building:
     - the pictures `images@1x` and `images@2x`, also in `BackendTests`, where D3D12 and Vulkan match exactly.
 - **Checked:** a NativeAOT publish of Hello starts. In the browser, the Gallery still renders with no WebGPU
   errors, but nothing there draws an image yet, so the browser's image path is first seen in (d).
+
+**(d) decisions (grilled in two rounds; Tim: yes to all, 2026-11-17):** the Image value, its cache and `ImageView`.
+1. **The split from here:**
+   - **(d)** the `Image` value, its cache and pool, decoding off the UI thread, the in-memory sources (`fromResource`,
+     `fromBytes`, `fromPixels`), `ImageView`, images in the render context, the "reduced" debug warning, and the
+     Gallery's Images page without the URL demo;
+   - **(e)** `fromFile` and `fromUrl`;
+   - **(f)** cursors and the inspector.
+   `ImageView` can't be tested without a source, and decision 16 decodes even in-memory images off the UI thread.
+2. **Identity:**
+   - **Keys:** two images are the same when their source keys are: a resource's assembly name plus resource name, or
+     the key given to `fromBytes`/`fromPixels`.
+   - **Bytes:** never compared; a second, different array under the same key gets the first one's pixels. Cheap for
+     views that build `fromBytes ("avatar-42", bytes)` on every update.
+   - **Density:** part of the value, not of the identity: one decoded image serves every density.
+3. **Elements hold images, not just ImageView.** An element holds every image it asks for through its context
+   (`ctx.Image`, `ctx.ImageSize`, in measure or render). It lets one go when it is detached (pooled by an ItemsView
+   included), or when a render no longer asks for it. At zero holders an image enters the recently-used pool; when the
+   pool drops it, `DecodedImage.Release()` is called. A custom element drawing images gets the same lifetime; there is
+   no public attach/detach hook.
+4. **Decoding:**
+   - **Where:** `Task.Run` on every platform: the thread pool on the desktop; in single-threaded WebAssembly, later
+     on the same thread, so the current frame isn't blocked.
+   - **When it's done:** the result comes back through `Dispatcher.Post`. The holders are re-measured if the size
+     wasn't known, else redrawn, and one frame is requested.
+   - **Many askers:** one decode however many elements ask.
+   - **Tests:** unit tests decode inline through an internal setting; one test runs the real path and waits.
+5. **`fromPixels` takes straight RGBA**, premultiplied when the image is made. It is ready the frame it is first asked
+   for, and its levels are built when first drawn small ((c) 5).
+6. **ImageView is as like IconView as it can be** (Tim). It inherits `Layoutable`, sits beside IconView in
+   `Elements/Basic`, and has the same parts:
+   - **Settings:** `ImageView.image`, the counterpart of `IconView.icon`.
+   - **Drawing:** centred in its space, and nothing when it has no image (or while loading, or after a failure).
+   - **Semantics:** role Image, named by `Semantics.label`.
+   - **For other elements:** an internal `ImageView.draw`, as Button uses `IconView.draw`.
+   - **Its module:** `Type`, `create` and `style`.
+   Where an image must differ:
+   - **No `size`:** its own size comes from the image (pixels ÷ density), and `width`/`height` set the box.
+   - **Fitting:** `stretch` and `stretchDirection` fit a shape into another shape (decision 13).
+   - **`scaling`** keeps pixel art square when enlarged (decision 14).
+   - **`cornerRadius`** takes a float or a `CornerRadius`, like Border's, and rounds the drawn image itself.
+   - **No foreground tint.**
+   Inheriting Border was turned down: it would have brought `child` and `overlay`, and its `cornerRadius` would have
+   clashed. A frame, background or padding comes from wrapping the ImageView in a Border.
+7. **Failure is reported once per image, not per element:** through `ReportError` by the first element that asked.
+   Every holder then draws nothing, and the image isn't tried again until it has left the cache.
+8. **Context members for element authors:** `ctx.Image image` gives `DecodedImage voption` (none while loading or
+   failed), and `ctx.ImageSize image` gives its size in DIPs, known before decoding for in-memory sources. Both are
+   on the measure and render contexts, and both hold the image (3).
+9. **Names:**
+   - **`ImageStretch`:** `None`, `Fill`, `Uniform`, `UniformToFill`, qualified access required (`None` would clash
+     with Option's, and `Stretch` with the alignment case).
+   - **`StretchDirection`:** `DownOnly`, `UpOnly`, `Both`.
+   - **`ImageScaling`:** Rendering's type, aliased in Core as Cursor is.
+10. **The pool** is fixed at 32 MB of CPU pixels, mip levels included (about four 1080p photos); an `App` setting
+    when an app needs more.
+11. **The Gallery's Images page:**
+    - **Pictures:** procedural PNGs written by `tools/MakeGalleryImages.fsx` and embedded as resources, plus a live
+      `fromPixels` pattern, and a broken image (`fromBytes` with corrupt bytes) reporting its error.
+    - **What it shows:** the stretch modes and directions, smooth against pixelated, a rounded avatar and a 2× image.
+    - **Later:** the URL demo in (e), cursors in (f).
+
+**(e) decisions (grilled in one round; Tim: yes to all, 2026-11-17):** `Image.fromFile` and `Image.fromUrl`.
+1. **One shared `HttpClient`** on the desktop and in the browser, where .NET's runs on `fetch` (decision 11 said
+   `fetch` and `HttpClient`: one path does both, with no JS of ours). It lives in a holder type. What it adds to a
+   NativeAOT exe is measured; over about 1.5 MB, revisit.
+2. **URLs:**
+   - **Forms:** `http` and `https`; in the browser a relative URL resolves against the page; on the desktop a
+     relative one is an error. `file:` goes to `fromFile`.
+   - **Key:** `"url:"` plus the absolute URL. A change on the server isn't noticed while cached; a new URL
+     (`?v=2`) is a new picture.
+3. **Files:**
+   - **Relative paths** resolve against the app's folder (`AppContext.BaseDirectory`), not the current directory,
+     which changes between Rider, a terminal and a shortcut.
+   - **Reading and key:** read off the UI thread, then decoded as in (d). The key is `"file:"` plus the full path.
+   - **In the browser** it fails through `App.onError`: no file system; use `fromResource` or `fromUrl`.
+4. **Downloads:**
+   - **How many:** at most 6 at once for the process (the browser's limit per server); the rest wait in the order
+     asked.
+   - **Cancelling:** one waiting or running while nothing holds it is cancelled and leaves the cache, so scrolling
+     past 9,000 avatar rows downloads about what's shown.
+   - **Decoding:** a finished download is always decoded and pooled.
+5. **Failures,** once per image ((d) 7):
+   - **What counts:** a response that isn't 2xx ("404 Not Found"), a 30-second timeout, a response over 64 MB
+     (decoding 8192² needs no more), and a network error.
+   - **CORS:** in the browser a cross-origin URL without CORS headers fails with no detail, so the message says it
+     must send Access-Control-Allow-Origin.
+   - **Retrying:** as in (d), tried again only after it has left the cache; no retry timer.
+   - **The timeout** runs on real time, not the platform clock: it's a network deadline, not something a frame waits
+     on. Tests shorten it through an internal setting.
+6. **No headers or credentials:** a signed-in image is downloaded by the app and given to `fromBytes`, which keeps
+   tokens out of the process-wide cache.
+7. **The Gallery:**
+   - **The picture:** Wikimedia's `Example.png` (172 × 178, public domain, served with
+     `Access-Control-Allow-Origin: *`): empty while loading, then the layout settles.
+   - **The failure:** a URL that gives 404, giving one toast.
+   - **Offline,** the first fails with a toast.
+8. **Tests:**
+   - **HTTP:** a fake handler behind an internal switch answers per URL (bytes, status, delay, error) and records
+     cancellations.
+   - **What they cover:** the limit of 6, cancelling, 404, oversized responses, the timeout, re-measuring when a
+     size arrives, and a 10,000-row scroll downloading only what's shown.
+   - **Files** go in a temp folder. No real network: the Wikimedia picture is on the checklist.
+
+**(e) as built (2026-11-17):**
+- **`Image.fs`:**
+  - `Image.fromFile` (relative paths against `AppContext.BaseDirectory`) and `Image.fromUrl`. A path starting with
+    "/" is kept relative, since `Uri` reads it as a file on Unix; a `file:` URL becomes `fromFile`.
+  - A relative URL's key is "url:" plus the URL as given: there is one page, so it names one picture.
+  - `ImageHttp` (internal): the client (its own `Timeout` off; ours covers the body too), the test handler, the
+    timeout, the page's address, and `Get`.
+- **Only `fromUrl` links `HttpClient`.** The URL source carries `ImageHttp.Get` as its download function, so the cache
+  never names `HttpClient`. Measured as NativeAOT Gallery exes: 10,851,840 bytes with `fromUrl`, 8,330,752
+  without (512 bytes more than with no download code at all). So **2.4 MB, but only for apps that call `fromUrl`**.
+  That is over decision 1's 1.5 MB line; **Tim accepted it** (2026-11-17): the standard client, and opt-in by use. Hello (no images) is unchanged.
+- **`ImageCache.fs`:**
+  - A queue of entries with 6 places. Each running download has a `CancellationTokenSource` cancelled after the
+    timeout, or by `Release` when the last holder goes (outside the lock).
+  - A dropped entry leaves the cache at once, and its download's end is ignored.
+  - Files are read and decoded in one `RunDecode`.
+  - Failures: "404 Not Found", "The download took longer than 30 s.", "The response is over 64 MB.", the
+    relative-URL and scheme messages, and the browser's "no file system" and CORS hints.
+- **A `User-Agent` on the desktop** (`Scribble/1.0`): Tim got 403 from Wikimedia, which refuses requests without one
+  (curl: none gives 403, any gives 200). Browsers send their own and forbid setting it, so it's left alone there. This
+  is our own header, not one set by apps, so decision 6 stands. A test checks it is sent; a real desktop download was
+  checked once with a throwaway test.
+- **Awaits use `ConfigureAwait(false)`.** Otherwise, on the desktop, the download's continuation (and its decoding)
+  came back through the UI thread's synchronization context.
+- **Found in Chrome:** reading the response stream in chunks fails in single-threaded WebAssembly ("Cannot wait on
+  monitors on this runtime"). In the browser the body is read whole (`ReadAsByteArrayAsync`) after the length check.
+  Checked afterwards: Wikimedia's `Example.png` downloads and draws, and the 404 gives one error.
+- **The browser's page address:** `scribble-platform.js` `pageUrl()` (`document.baseURI`), `BrowserPlatform.PageUrl`,
+  set into `ImageHttp.BaseUrl` by Scribble.Browser's `App.run` (Core's internals are now visible to Scribble.Browser).
+- **Gallery:** "From a URL" on the Images page, behind a "Load from Wikimedia" button, so nothing is downloaded until
+  asked (and the tests never touch the network).
+- **Tests:** 10 in `ImageLoadingTests.fs`, with a fake `HttpMessageHandler`:
+  - **Behaviour:** size after download, 404 once, over 64 MB, timeout, relative and ftp URLs, the limit of 6 and the
+    order, cancelling, files, and keys.
+  - **The long list:** 10,000 rows asking only for realized rows, with the first rows' 6 downloads cancelled after the
+    jump.
+  - **Taking down:** each test takes its tree down at the end, so its downloads don't fill the next test's places.
+  - **The Images page picture** was reshot taller for the new section (the same on Vulkan).
+
+**(d) as built (2026-11-17):**
+- **`Foundation/Image.fs`:** `Image` (sealed; `Key`, `Density`; equal by key and density), `Image.fromResource`,
+  `fromBytes`, `fromPixels`, `Image.density`; `ImageStretch`, `StretchDirection`, and `ImageScaling` aliasing
+  Rendering's.
+- **`Foundation/ImageCache.fs`:**
+  - `ImageCache` (internal; `Shared`, a locked static field): entries by key with a holder count, a recently-used pool
+    counting width × height × 16/3 bytes (levels included), oldest out first, `DecodedImage.Release()` on the way out.
+    A failed entry leaves as soon as nothing holds it.
+  - Resources and bytes read their header at once (`ImageDecoder.readInfo`), so the size is known before decoding.
+    Decoding runs through `Task.Run`; `ImageCache.DecodeInlineOnThisThread` (thread-static) runs it inline in unit
+    tests. `fromPixels` premultiplies at once (rounded, `(c·a + 127) / 255`).
+  - `ImageLoadException` (public: `Key`), the debug warning for reduced images, and a missing resource's message
+    listing what the assembly has and how to embed one.
+- **`Element`:** a lazily made list of `ImageHold`s. `ImageOf`/`ImageSizeOf` (behind `ctx.Image` and `ctx.ImageSize`
+  on the measure and render contexts) hold, report a failure once per image (`ClaimReport`), and while loading ask the
+  cache to post back through the root's dispatcher, then measure again (size unknown) or redraw. After an element's
+  render, the holds it didn't touch since the last render are let go; leaving the tree lets go of all.
+- **`Elements/Basic/ImageView.fs`:** as IconView: `ImageView.image`, `stretch`, `stretchDirection`, `scaling`,
+  `cornerRadius` (float or `CornerRadius`); internal `fit` and `draw`. What sticks out of the box is left out by
+  drawing only the visible part of the image (a `source` rectangle), not by clipping. The fitted image is placed on
+  whole pixels, keeping its size: a 1-pixel image centred on a half pixel vanished under `Math.Round`'s
+  round-to-even.
+- **The Gallery:**
+  - The Images page (`ImagesPage.fs`, a seventh tab). `tools/MakeGalleryImages.fsx` draws `landscape.png`,
+    `potion.png` and `avatar.png` into `samples/Gallery/Images`, embedded by file name.
+  - `App.onError` shows errors as toasts (`LayersPage.toast`), so the broken image doesn't end the app.
+- **Tests:**
+  - 15 unit tests (`ImageViewTests.fs`), among them 10,000 rows decoding only the realized ones, also after jumping
+    to 9,000 (none of rows 100–8,900 decoded).
+  - The `images-page@1x` picture, the same on D3D12 and Vulkan.
+  - The Gallery's six tab-row pictures, regenerated for the new tab (the only difference).
+- **Checked in Chrome:** the browser Images page decodes, uploads and draws, the slider makes new pictures, and the
+  broken image gives one toast with no console errors.
 
 **(a) as built (2026-11-17), waiting for Tim's check:** `samples/Gallery` (`Gallery`, `Gallery.Desktop`,
 `Gallery.Browser`, port 5281; `.run/Gallery.*`), files `Common.fs` (now also `page title line sections` and

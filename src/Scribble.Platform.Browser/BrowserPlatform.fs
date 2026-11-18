@@ -16,6 +16,7 @@ module internal PlatformJs =
     let takeEvents = JsFunction(ModuleName, "takeEvents", T.doubles, [])
     let takeTexts = JsFunction(ModuleName, "takeTexts", T.strings, [])
     let scale = JsFunction(ModuleName, "scale", T.double, [])
+    let pageUrl = JsFunction(ModuleName, "pageUrl", T.string, [])
     let requestFrame = JsFunction(ModuleName, "requestFrame", T.void', [])
     let setTitle = JsFunction(ModuleName, "setTitle", T.void', [ T.string ])
     let setCursor = JsFunction(ModuleName, "setCursor", T.void', [ T.double ])
@@ -310,6 +311,9 @@ type BrowserPlatform private () =
             platform.Start()
             return platform
         }
+
+    /// The page's address (`document.baseURI`), which relative URLs are resolved against.
+    member _.PageUrl: string = returnedString (PlatformJs.call0 PlatformJs.pageUrl)
 
     interface IPlatform with
         member _.Name = "Browser"

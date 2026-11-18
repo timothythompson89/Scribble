@@ -10,6 +10,7 @@
 /// - ScrollingPage.fs: 10,000 messages in an ItemsView, jumped through with a scroller (M8 step 1),
 /// - LayersPage.fs: toasts and a modal dialog (layers, M6),
 /// - StylesPage.fs: classes, state blocks and scoped styles (M7),
+/// - ImagesPage.fs: ImageView: stretching, pixelated, round, 2×, from pixels, a broken image (M8 step 3b),
 /// - GalleryApp.fs (this file): the tabs and the app's settings.
 module Scribble.Samples.GalleryApp
 
@@ -32,7 +33,8 @@ let private pages =
       "Controls", ControlsPage.view, Scrolls
       "Scrolling", ScrollingPage.view, Fills
       "Layers", LayersPage.view, Scrolls
-      "Styles", StylesPage.view, Scrolls ]
+      "Styles", StylesPage.view, Scrolls
+      "Images", ImagesPage.view, Scrolls ]
 
 let private titleOf i = let title, _, _ = pages[i] in title
 
@@ -99,5 +101,9 @@ let app: AppSetting<unit> list =
       App.size (720.0, 560.0)
       App.theme darkTheme
       App.view (gallery ())
+      // An error from app code (a broken image on the Images page) shows as a toast instead of ending the app.
+      App.onError (fun e ->
+          System.Console.WriteLine("Gallery: " + string e)
+          LayersPage.toast e.Message)
       App.layer [ Layer.name "Toasts"; Layer.view (LayersPage.toasts ()) ]
       App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (LayersPage.dialog ()) ] ]

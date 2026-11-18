@@ -192,6 +192,11 @@ and [<Struct>] MeasureContext internal (element: Element) =
     member _.Text: TextSystem = element.TextSystem
     member _.Scale = element.Scale
     /// Stores private data (a cache) without invalidating anything; see `Prop.local`.
+    /// An image's size in DIPs, known before it decodes for in-memory sources; none until known (or after a
+    /// failure, reported once to App.onError). The element holds the image while it shows (DESIGN.md, "M8 step 3b", (d)).
+    member _.ImageSize(image: Image) : Size voption = element.ImageSizeOf image
+    /// The decoded image to draw, or none while it loads or after it failed; see `RenderContext.Image`.
+    member _.Image(image: Image) : Scribble.Imaging.DecodedImage voption = element.ImageOf image
     member _.SetLocal<'T>(prop: Prop<'T>, value: 'T) = element.SetLocal(prop, value)
     member internal _.Element = element
 
@@ -234,6 +239,13 @@ and [<Struct>] RenderContext internal (element: Element) =
     /// The current frame's time.
     member _.Time = element.Time
     member internal _.Element = element
+
+    /// The decoded image to draw (`list.DrawImage`), or none while it loads or after it failed (reported once to
+    /// App.onError). The element holds what it asks for until a render doesn't ask or it leaves its tree; when
+    /// decoding ends it is drawn again (DESIGN.md, "M8 step 3b", (d) 3).
+    member _.Image(image: Image) : Scribble.Imaging.DecodedImage voption = element.ImageOf image
+    /// An image's size in DIPs (its pixels ÷ its density), once known.
+    member _.ImageSize(image: Image) : Size voption = element.ImageSizeOf image
 
     /// A value that moves to `target` over `duration` whenever the target changes (the first
     /// target is taken at once). Frames keep coming while it moves; nothing else re-runs.
@@ -399,6 +411,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     let mutable nearestTheme: IThemeSource voption = ValueNone
     let mutable nearestThemeEpoch = -1
     let mutable componentState: ComponentState voption = ValueNone
+    /// The pictures it holds (DESIGN.md, "M8 step 3b", (d) 3); null while none.
+    let mutable heldImages: ResizeArray<ImageHold> = null
 
     let find (id: int) =
         let mutable i = 0
@@ -566,6 +580,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         | _ -> ()
         for child in children do
             child.SetRootInSubtree r
+        if before.IsSome && r.IsNone then this.LetGoOfImages true
         match componentState, before, r with
         | ValueSome c, ValueSome _, ValueNone -> c.Detached()
         | ValueSome c, ValueNone, ValueSome added -> c.Attached added
@@ -1352,6 +1367,86 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         for child in children do
             child.InvalidateAll()
 
+    // --- Images (DESIGN.md, "M8 step 3b", (d) 3, 7, 8) ---------------------------------------------
+
+    /// Holds `image` while this element is in a tree (asked for this render), starting it in the cache if it's new.
+    member private this.HoldImage(image: Image) : ImageHold =
+        match root with
+        | ValueNone -> null
+        | ValueSome _ ->
+            if isNull heldImages then heldImages <- ResizeArray(1)
+            let mutable hold: ImageHold = null
+            for h in heldImages do
+                if isNull hold && h.Entry.Key = image.Key then hold <- h
+            if isNull hold then
+                hold <- ImageHold(ImageCache.Shared.Acquire image)
+                heldImages.Add hold
+            hold.Touched <- true
+            hold
+
+    /// While `hold` decodes: asks to be told when it ends, then measures again (its size wasn't known) or redraws.
+    member private this.WaitForImage(hold: ImageHold, sizeKnown: bool) =
+        if not hold.Waiting then
+            match root with
+            | ValueSome r ->
+                match r.Dispatcher with
+                | ValueSome d ->
+                    hold.Waiting <- true
+                    let ended () =
+                        hold.Waiting <- false
+                        if not (isNull heldImages) && heldImages.Contains hold then
+                            if sizeKnown then this.InvalidateVisual() else this.InvalidateMeasure()
+                    if not (ImageCache.Shared.AddWaiter(hold.Entry, fun () -> d.Post ended)) then ended ()
+                | ValueNone -> ()
+            | ValueNone -> ()
+
+    /// A failed picture is reported once, by the first element that asks after it failed ((d) 7).
+    member private this.ReportImageFailure(hold: ImageHold, e: exn) =
+        if ImageCache.Shared.ClaimReport hold.Entry then this.ReportError e
+
+    /// The decoded picture to draw, or none while it loads (or after it failed, or outside a tree).
+    member internal this.ImageOf(image: Image) : Scribble.Imaging.DecodedImage voption =
+        match this.HoldImage image with
+        | null -> ValueNone
+        | hold ->
+            match ImageCache.Shared.StateOf hold.Entry with
+            | ImageState.Ready d -> ValueSome d
+            | ImageState.Failed e ->
+                this.ReportImageFailure(hold, e)
+                ValueNone
+            | ImageState.Loading ->
+                this.WaitForImage(hold, (ImageCache.Shared.InfoOf hold.Entry).IsSome)
+                ValueNone
+
+    /// The picture's size in DIPs (its pixels before any reduction ÷ its density), once known.
+    member internal this.ImageSizeOf(image: Image) : Size voption =
+        match this.HoldImage image with
+        | null -> ValueNone
+        | hold ->
+            let info = ImageCache.Shared.InfoOf hold.Entry
+            match ImageCache.Shared.StateOf hold.Entry with
+            | ImageState.Failed e -> this.ReportImageFailure(hold, e)
+            | ImageState.Loading -> this.WaitForImage(hold, info.IsSome)
+            | ImageState.Ready _ -> ()
+            match info with
+            | ValueSome i -> ValueSome(Size.Create(float i.Width / image.Density, float i.Height / image.Density))
+            | ValueNone -> ValueNone
+
+    /// Lets go of every picture (`all`: leaving its tree), or of those this render didn't ask for.
+    member private this.LetGoOfImages(all: bool) =
+        if not (isNull heldImages) then
+            for i in heldImages.Count - 1 .. -1 .. 0 do
+                let h = heldImages[i]
+                if all || not h.Touched then
+                    ImageCache.Shared.Release h.Entry
+                    heldImages.RemoveAt i
+                else
+                    h.Touched <- false
+            if heldImages.Count = 0 then heldImages <- null
+
+    /// How many pictures it holds (tests).
+    member internal _.HeldImageCount = if isNull heldImages then 0 else heldImages.Count
+
     // --- Layout ----------------------------------------------------------------------------------
 
     static member private CeilToPixels(v: float, s: float) =
@@ -1492,6 +1587,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                     true
                 | ValueNone -> false
             elementType.Render (RenderContext this) list
+            if not (isNull heldImages) then this.LetGoOfImages false
             if children.Length > 0 then
                 let clip = lv.ClipToBounds
                 if clip then

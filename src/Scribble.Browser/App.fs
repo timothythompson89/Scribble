@@ -21,6 +21,8 @@ module BrowserApp =
             task {
                 try
                     let! platform = BrowserPlatform.InitializeAsync()
+                    // Relative image URLs (Image.fromUrl) resolve against the page.
+                    ImageHttp.BaseUrl <- Uri(platform.PageUrl)
                     let! device = BrowserGpuDevice.CreateAsync []
                     let! shaper = BrowserHarfBuzzShaper.CreateAsync()
                     let app = App.start (platform :> IPlatform, device :> IRenderDevice, shaper :> IShaper, settings)

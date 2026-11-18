@@ -89,6 +89,11 @@ export function takeTexts() {
   return taken;
 }
 
+// The page's address, for images with relative URLs (Image.fromUrl).
+export function pageUrl() {
+  return document.baseURI;
+}
+
 export function scale() {
   return window.devicePixelRatio || 1;
 }

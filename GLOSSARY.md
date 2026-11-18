@@ -149,6 +149,14 @@ _Avoid_: image control, picture box
 How many of an image's pixels make one DIP: 1 by default, 2 for an image made for a 2× screen.
 _Avoid_: DPI, scale (for an image's own density)
 
+**Holding an image**:
+An element holds the images it shows, keeping them decoded; it lets one go when it stops showing it or leaves its tree.
+_Avoid_: referencing, owning, loading (for holding)
+
+**Image pool**:
+Recently shown images that nothing holds any more, kept decoded up to a size limit in case they are shown again.
+_Avoid_: image cache (for the pool alone)
+
 ## Accessibility
 
 **Semantics**:

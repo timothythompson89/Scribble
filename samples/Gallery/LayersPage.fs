@@ -13,6 +13,9 @@ open Scribble.Samples.Gallery.Common
 // The page asks the layers to show something through these events. (Until M8 brings an element
 // that shows view content in a layer, a layer's view is fixed, so it listens instead.)
 let private toastRequests = Event<string>()
+
+/// Shows `text` in a toast (the app's errors use it: GalleryApp's `App.onError`).
+let toast (text: string) = toastRequests.Trigger text
 let private dialogRequests = Event<unit>()
 let private toastIds = ref 0
 

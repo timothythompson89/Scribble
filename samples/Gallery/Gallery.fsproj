@@ -7,7 +7,12 @@
     <Compile Include="ScrollingPage.fs" />
     <Compile Include="LayersPage.fs" />
     <Compile Include="StylesPage.fs" />
+    <Compile Include="ImagesPage.fs" />
     <Compile Include="GalleryApp.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Drawn by tools/MakeGalleryImages.fsx; Image.fromResource names them by file name. -->
+    <EmbeddedResource Include="Images/*.png" LogicalName="%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />

@@ -8,6 +8,8 @@
     <Compile Include="Foundation/InputTypes.fs" />
     <Compile Include="Foundation/Props.fs" />
     <Compile Include="Foundation/Icon.fs" />
+    <Compile Include="Foundation/Image.fs" />
+    <Compile Include="Foundation/ImageCache.fs" />
     <Compile Include="Foundation/Cursor.fs" />
     <Compile Include="Foundation/Palette.fs" />
     <Compile Include="Foundation/Dispatcher.fs" />
@@ -25,6 +27,7 @@
     <Compile Include="Elements/Basic/Border.fs" />
     <Compile Include="Elements/Basic/TextBlock.fs" />
     <Compile Include="Elements/Basic/IconView.fs" />
+    <Compile Include="Elements/Basic/ImageView.fs" />
     <Compile Include="Elements/Basic/Separator.fs" />
     <Compile Include="Elements/Panels/StackPanel.fs" />
     <Compile Include="Elements/Panels/Grid.fs" />
@@ -54,6 +57,8 @@
     <InternalsVisibleTo Include="Scribble.Tests" />
     <InternalsVisibleTo Include="Scribble.Tests.Rendering" />
     <InternalsVisibleTo Include="Scribble.Bench" />
+    <!-- The page's address for relative image URLs (ImageHttp.BaseUrl). -->
+    <InternalsVisibleTo Include="Scribble.Browser" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />
