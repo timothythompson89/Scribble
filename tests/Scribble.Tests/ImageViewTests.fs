@@ -212,8 +212,8 @@ let private longList (run: string) (scroller: Scroller) =
         ScrollViewer.content (
             ItemsView.create [
                 ItemsView.source [| 0..9999 |]
-                ItemsView.key id
-                ItemsView.view (fun (i: int) ->
+                ItemsView.keySelector id
+                ItemsView.viewSelector (fun (i: int) ->
                     ImageView.create [
                         ImageView.image (Image.fromBytes (run + "-" + string i, pngBytes) [])
                         ImageView.height 32.0

@@ -317,10 +317,10 @@ let private recyclingList (log: List<string>) (scroller: Scroller) =
         ScrollViewer.content (
             ItemsView.create [
                 ItemsView.source [| 0..99 |]
-                ItemsView.key id
+                ItemsView.keySelector id
                 ItemsView.layout (ItemsLayout.fixedStack 20.0)
                 ItemsView.scroller scroller
-                ItemsView.view (fun (i: int) ->
+                ItemsView.viewSelector (fun (i: int) ->
                     Border.create [
                         Border.name "row"
                         Border.height 20.0
@@ -399,9 +399,9 @@ let ``Shift+wheel scrolls a sideways ItemsView sideways`` () =
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source [| 0..999 |]
-                    ItemsView.key id
+                    ItemsView.keySelector id
                     ItemsView.layout (ItemsLayout.fixedStack 20.0)
-                    ItemsView.view (fun (i: int) -> Border.create [ Border.height 20.0; Border.content (Border.create [ Border.width 900.0 ]) ])
+                    ItemsView.viewSelector (fun (i: int) -> Border.create [ Border.height 20.0; Border.content (Border.create [ Border.width 900.0 ]) ])
                 ])
         ]
     let w, host, find = show view

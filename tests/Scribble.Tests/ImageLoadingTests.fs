@@ -260,8 +260,8 @@ let ``10,000 rows of downloaded avatars ask only for the realized rows, also aft
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source [| 0..9999 |]
-                    ItemsView.key id
-                    ItemsView.view (fun (i: int) -> ImageView.create [ ImageView.image (Image.fromUrl (urlOf i) []); ImageView.height 32.0 ])
+                    ItemsView.keySelector id
+                    ItemsView.viewSelector (fun (i: int) -> ImageView.create [ ImageView.image (Image.fromUrl (urlOf i) []); ImageView.height 32.0 ])
                     ItemsView.scroller scroller
                 ])
         ]

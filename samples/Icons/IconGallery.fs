@@ -125,7 +125,7 @@ let gallery =
             ItemsView.create [
                 ItemsView.name "icons"
                 ItemsView.source names.Value
-                ItemsView.view (fun (name: string) -> tile name filled.Current (Some name = found) picked.Set)
+                ItemsView.viewSelector (fun (name: string) -> tile name filled.Current (Some name = found) picked.Set)
                 ItemsView.layout (ItemsLayout.wrap 116.0 80.0)
                 ItemsView.scroller scroller
             ]

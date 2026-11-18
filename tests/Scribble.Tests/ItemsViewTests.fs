@@ -24,8 +24,8 @@ let private build (source: Item array) (layout: ItemsLayout) (scroller: Scroller
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source source
-                    ItemsView.key (fun (it: Item) -> it.Id)
-                    ItemsView.view (fun (it: Item) ->
+                    ItemsView.keySelector (fun (it: Item) -> it.Id)
+                    ItemsView.viewSelector (fun (it: Item) ->
                         made.Value <- made.Value + 1
                         Border.create [ Border.name (string it.Id); Border.height it.Height; Border.background Color.White ])
                     ItemsView.layout layout
@@ -136,8 +136,8 @@ let ``outside a ScrollViewer every item is realized`` () =
             StackPanel.children [
                 ItemsView.create [
                     ItemsView.source (items 50 (fun _ -> 10.0))
-                    ItemsView.key (fun (it: Item) -> it.Id)
-                    ItemsView.view (fun (it: Item) -> Border.create [ Border.height it.Height ])
+                    ItemsView.keySelector (fun (it: Item) -> it.Id)
+                    ItemsView.viewSelector (fun (it: Item) -> Border.create [ Border.height it.Height ])
                 ]
             ]
         ])
@@ -190,7 +190,7 @@ let ``scrolling a list to an item moves the page around it only as far as needed
                             ScrollViewer.content (
                                 ItemsView.create [
                                     ItemsView.source [| 0 .. 999 |]
-                                    ItemsView.view (fun (i: int) -> Border.create [ Border.name (string i); Border.height 20.0 ])
+                                    ItemsView.viewSelector (fun (i: int) -> Border.create [ Border.name (string i); Border.height 20.0 ])
                                     ItemsView.scroller list
                                 ])
                         ]
@@ -238,7 +238,7 @@ let ``an item added and scrolled to shows whole, on a page that has to move too`
                             ScrollViewer.content (
                                 ItemsView.create [
                                     ItemsView.source [| 0 .. n - 1 |]
-                                    ItemsView.view (fun (i: int) -> Border.create [ Border.name (string i); Border.height (if i = n - 1 then 40.0 else 20.0) ])
+                                    ItemsView.viewSelector (fun (i: int) -> Border.create [ Border.name (string i); Border.height (if i = n - 1 then 40.0 else 20.0) ])
                                     ItemsView.scroller list
                                 ])
                         ]
@@ -304,7 +304,7 @@ let private styledList (styles: Style list) (theme: Theme voption) (n: int) (row
                     ScrollViewer.content (
                         ItemsView.create [
                             ItemsView.source [| 0 .. n - 1 |]
-                            ItemsView.view row
+                            ItemsView.viewSelector row
                             ItemsView.scroller scroller
                         ])
                 ]
@@ -400,8 +400,8 @@ let ``appending one item to 10,000 allocates little in the ItemsView`` () =
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source source
-                    ItemsView.key (fun (it: Item) -> it.Id)
-                    ItemsView.view (fun (it: Item) -> Border.create [ Border.height it.Height ])
+                    ItemsView.keySelector (fun (it: Item) -> it.Id)
+                    ItemsView.viewSelector (fun (it: Item) -> Border.create [ Border.height it.Height ])
                     ItemsView.scroller scroller
                 ])
         ]
@@ -436,8 +436,8 @@ let private buildSideways (source: int array) (width: int -> float) (layout: Ite
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source src
-                    ItemsView.key id
-                    ItemsView.view (fun (i: int) ->
+                    ItemsView.keySelector id
+                    ItemsView.viewSelector (fun (i: int) ->
                         Border.create [
                             Border.name (string i)
                             Border.height 20.0
@@ -544,3 +544,21 @@ let ``scrolling to an item or an offset leaves a sideways scrolled stack where i
         let struct (x, y, _, _) = ScrollViewer.viewportOf sv
         Assert.Equal(500.0, x) // was 0
         Assert.Equal(40.0, y, 3)
+
+type Person = { Name: string; Age: int }
+
+/// M8 step 4b, round 2, decision 10: a view selector returning a string shows the text; with none, `string item`.
+[<Fact>]
+let ``a text view selector shows each item's text, and without one an item shows string item`` () =
+    let texts (view: View) =
+        let t = ElementTree(textSystem ())
+        t.Update(view)
+        t.UpdateLayout(Size.Create(300.0, 200.0))
+        [ for c in t.Root.Value.Children -> c.Get TextProps.text ]
+    let people = [| { Name = "Ada"; Age = 36 }; { Name = "Linus"; Age = 54 } |]
+    Assert.Equal<string list>(
+        [ "Ada"; "Linus" ],
+        texts (ItemsView.create [ ItemsView.source people; ItemsView.viewSelector (fun (p: Person) -> p.Name) ])
+    )
+    Assert.Equal<string list>([ "1"; "2"; "3" ], texts (ItemsView.create [ ItemsView.source [ 1; 2; 3 ] ]))
+    Assert.Equal<string list>([ "Monday"; "Friday" ], texts (ItemsView.create [ ItemsView.source [ DayOfWeek.Monday; DayOfWeek.Friday ] ]))

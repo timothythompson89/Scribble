@@ -700,8 +700,8 @@ module internal Views =
             // Only the rows in view exist (M8 step 3a+): every row is 22 DIPs, so positions are exact.
             ItemsView.create [
                 ItemsView.source (p.State.Rows())
-                ItemsView.key rowKey
-                ItemsView.view (row p.State)
+                ItemsView.keySelector rowKey
+                ItemsView.viewSelector (row p.State)
                 ItemsView.layout (ItemsLayout.fixedStack 22.0)
                 ItemsView.scroller p.State.TreeScroller
             ])

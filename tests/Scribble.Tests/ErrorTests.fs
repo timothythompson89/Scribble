@@ -203,8 +203,8 @@ let ``an ItemsView item whose view throws is left out; the others show`` () =
     let items =
         ItemsView.create [
             ItemsView.source [| 1..5 |]
-            ItemsView.key (fun (i: int) -> i)
-            ItemsView.view (fun (i: int) -> if i = 3 then invalidOp "item failed" else TextBlock.create [ TextBlock.text ("item " + string i) ])
+            ItemsView.keySelector (fun (i: int) -> i)
+            ItemsView.viewSelector (fun (i: int) -> if i = 3 then invalidOp "item failed" else TextBlock.create [ TextBlock.text ("item " + string i) ])
         ]
     let w, _, app = start [ App.view items; App.onError errors.Add ]
     settle w

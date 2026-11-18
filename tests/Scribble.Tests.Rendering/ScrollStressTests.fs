@@ -79,8 +79,8 @@ type ScrollStressTests(fixture: TextFixture) =
                 ScrollViewer.content (
                     ItemsView.create [
                         ItemsView.source rows
-                        ItemsView.key (fun (struct (id, _): struct (int * string)) -> id)
-                        ItemsView.view (fun (struct (id, text): struct (int * string)) ->
+                        ItemsView.keySelector (fun (struct (id, _): struct (int * string)) -> id)
+                        ItemsView.viewSelector (fun (struct (id, text): struct (int * string)) ->
                             Border.create [
                                 Border.name (string id)
                                 Border.padding 8.0

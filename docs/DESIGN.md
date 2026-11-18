@@ -3107,6 +3107,84 @@ Decision (Tim): **runtime-only**. Kept from 1g:
 - Rendering tests: 76, pixels unchanged.
 - Timing tests: 6.
 
+
+### 4b: ListBox and RadioButton (grilling, 2026-11-18)
+
+Facts: `ItemsView` takes `source`, `key` (a function from item to key) and `view`, and scrolls to an index or a
+key; the semantics roles `List`, `ListItem`, `TabList` and `Tab` exist, no radio roles; states come from
+`States.define` and `RefreshStates()`; decision 8 says a control's value is controlled when the view gives it. 4c's
+ComboBox will likely show a ListBox in its flyout.
+
+**Round 1 (Tim: yes to all, Q2 amended):**
+1. **ListBox extends ItemsView:** `source`, the key, `view` and `layout` inherited, selection added, each realized
+   item wrapped in a `ListBoxItem`. It virtualizes, and ComboBox can reuse it.
+2. **The selection is held as item keys** (the index when no key is given), not indices or items: keys survive
+   inserts, sorting and filtering, and are what `ScrollTo key` takes. Tim: the key setting is named
+   **`keySelector`** (round 2, decisions 9 and 10).
+3. **Selection modes None, Single and Multiple now** (`ListBox.selectionMode`): Ctrl+click toggles, Shift+click
+   selects a range over the source's indices (items never realized included), Ctrl+A selects all.
+4. **Keyboard:** one Tab stop; focus lands on the selected item, else the first. Up/Down, Home/End and
+   PageUp/PageDown move focus, realizing and scrolling to the target only. Single: selection follows focus.
+   Multiple: arrows move focus, Space toggles, Shift+arrows extend. Typeahead waits for M9.
+5. **`RadioGroup` owns the radios' selection:** `RadioGroup.selected v`, `onSelectedChanged`, `RadioButton.value v`
+   on each child; controlled or not; one Tab stop with arrow keys; a panel (StackPanel by default). The value is a
+   `'T` with equality, read back through the handler's type.
+6. **`ListBoxItem` is a public element type** (extends Border; `ListBoxItem.style`) with a `selected` state beside
+   hover, pressed and focused; the theme gives the selected item an accent background. **RadioButton is a
+   ToggleButton** like CheckBox, with the `checked` state and a round mark.
+7. **Semantics:** `List`/`ListItem` with `isSelected` and a multi-select flag; new roles `RadioGroup` and
+   `RadioButton` (checked).
+8. **Gallery and tests:** a Lists page (a 10,000-item ListBox per mode showing the selection, a RadioGroup for its
+   options, a small templated list); unit tests for selection per mode, controlled and not, the keyboard, a Shift
+   range over unrealized items, selection kept through inserts and sorting, the same elements realized for 100 and
+   10,000 items; screenshot tests of their states in both themes.
+
+**Round 2 (Tim: yes to all, 2026-11-18).** Fact: every view already has a `key` (a plain value the differ matches
+children by: `TextBlock.key todo.Id`), so `ItemsView.key` meant a second thing under the same name.
+9. **`ItemsView.key` becomes `ItemsView.keySelector`** (14 uses; no alias, nothing is published). `key` is always a
+   value, `keySelector` how to get one from an item.
+10. **`ItemsView.view` becomes `ItemsView.viewSelector`, with two overloads,** `'T -> View` and `'T -> string` (Tim:
+    "what is displayed for each item", e.g. `fun p -> p.Name`). F# picks the overload by the lambda's return type
+    (tried in a script: lambdas, named functions and `string` all resolve, through `ListBox.` too). Both live on
+    ItemsView (a derived type can't add an overload to an inherited static). The text form is a themed TextBlock
+    and the item's accessible name; the view form's name comes from its own semantics; with neither, `string item`.
+    A view item has no separate text; typeahead (M9) or ComboBox (4c) adds one if they need it. Considered: a
+    `valueSelector` meaning WPF's `SelectedValuePath` (a value that sets the selection must pick one item, so it is
+    a key), and a separate `textSelector` beside `view` (two settings for one job). The selection speaks in keys,
+    and its change event carries the selected items too.
+11. **A selected key that leaves the source:** uncontrolled, the ListBox drops it and raises `onSelectedChanged`;
+    controlled, it leaves the app's list alone, shows nothing selected for it and raises nothing. A key that comes
+    back is selected again if still in the list.
+12. **Clicks and invoking:** in Single mode clicking the selected item keeps it, Ctrl+click deselects; in None mode
+    items take focus and can be invoked, not selected. **`ListBox.onItemInvoked`** (double-click, Enter, a tap in
+    None mode) gives the item and its key; ComboBox will close its flyout on it.
+13. **RadioGroup extends StackPanel** (vertical, `orientation` and `spacing` inherited). Arrows in both directions
+    move the selection and wrap; Tab lands on the checked radio, else the first; disabled radios are skipped;
+    radios may sit anywhere below the group (found in tree order).
+
+**Round 3 (Tim: yes to all, 2026-11-18).**
+14. **One selection pair for every mode:** `ListBox.selected (keys: 'K list)` (empty: none) and
+    `ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<'T, 'K>) -> ...)` with `Keys`, `Items`, `Added`,
+    `Removed`, and `Key`/`Item` (`voption`, for Single). `'K` comes from `keySelector`, else `int` (the index).
+15. **ListBox's look (WinUI's ListView):** borderless, transparent; items padded 8 × 12, a subtle background on
+    hover, darker pressed; selected: an accent-tinted background and a 3-DIP accent bar at the left edge; the focus
+    ring for keyboard focus only.
+16. **RadioButton's look follows CheckBox:** an 18-DIP circle, 1.5-DIP outline, text to the right; checked: accent
+    outline and an 8-DIP accent dot growing in with CheckBox's timing; hover, pressed and disabled as CheckBox;
+    aligned left.
+17. **One step, tried before 4c:** the renames first as their own commit, then ListBox, RadioGroup and
+    RadioButton, the Lists page and the tests; screenshot references of the page and the states at 1× and the
+    phone pass at 390 DIPs.
+18. **GLOSSARY:** selection, key selector, view selector, invoke, item container (avoid `SelectedIndex`, "value
+    member", "display member").
+19. **Invoking an item** (Tim asked how it works): selecting picks an item, invoking acts on it ("open this").
+    A double-click or Enter invokes in every mode; in None mode a click, tap or Space invokes; in Single a
+    double-click selects, then invokes; in Multiple Space toggles. On touch a tap selects in Single and Multiple
+    (a list that opens things on a phone uses None, or a button in each item). `ListBox.onItemInvoked (fun (e:
+    ItemInvokedEventArgs<'T, 'K>) -> ...)` gives the item and its key; it is the `ListItem`'s default action for
+    screen readers; ComboBox (4c) selects and invokes on a click or Enter and closes on the invoke.
+
+Status: **agreed (Tim, 2026-11-18: "yes, record it and build").**
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 
 Status: **agreed (Tim, 2026-11-18: "yes to all, do the spike now")**. Decision 11 changes: the spike comes now, before M8 step 4b. The spike is built (as built below); Win32 stays the default until Tim judges it.

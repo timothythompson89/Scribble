@@ -64,8 +64,8 @@ let private messages =
                         ItemsView.create [
                             ItemsView.name "messages"
                             ItemsView.source all.Current
-                            ItemsView.key (fun (m: Message) -> m.Id)
-                            ItemsView.view (fun (m: Message) ->
+                            ItemsView.keySelector (fun (m: Message) -> m.Id)
+                            ItemsView.viewSelector (fun (m: Message) ->
                                 Border.create [
                                     Border.padding (10.0, 6.0)
                                     Border.background (if m.Id % 2 = 0 then Palette.surface else rowAlt)

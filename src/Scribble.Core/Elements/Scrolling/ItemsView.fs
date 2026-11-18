@@ -50,15 +50,19 @@ type internal Anchor = { Key: obj; Into: float; Height: float; Next: obj[] }
 
 module ItemsViewProps =
     let internal source = Prop.define "Source" ItemsSource.Empty Affects.Measure |> AppState.mark
-    let internal key = Prop.define "Key function" (TypedKeyFunc<obj, obj>(id) :> KeyFunc) Affects.Nothing |> AppState.mark
-    let internal view = Prop.define "View function" (ItemsFunc<View voption>(fun _ -> ValueNone)) Affects.Measure |> AppState.mark
+    let internal keySelector = Prop.define "Key selector" (TypedKeyFunc<obj, obj>(id) :> KeyFunc) Affects.Nothing |> AppState.mark
+    let internal viewSelector =
+        // Without one, an item shows `string item` (strings, numbers, enums). Not unions or records: their
+        // ToString prints with %A, which NativeAOT can't run; give them a view selector.
+        Prop.define "View selector" (ItemsFunc<View voption>(fun item -> ValueSome(TextBlock.create [ TextBlock.text (string item) ]))) Affects.Measure
+        |> AppState.mark
     let layout = Prop.define "Layout" ItemsLayout.Stack Affects.Measure
     let scroller = Prop.define "Scroller" (ValueNone: Scroller voption) Affects.Measure |> AppState.mark
     let internal state = Prop.local "ItemsState" (null: ItemsState)
 
 /// Shows many items, realizing only the ones the ScrollViewers around it show (plus a little more),
 /// so a list of 10,000 costs about what a list of 40 does. Items are data: `source` (an array, a
-/// list, or any `IReadOnlyList`), `key` (identifies an item across updates), `view` (called only
+/// list, or any `IReadOnlyList`), `keySelector` (identifies an item across updates), `viewSelector` (called only
 /// for realized items), and `layout`. Put it inside a ScrollViewer (anywhere inside: headers above
 /// it scroll with it); outside any, it realizes everything. Items scrolled out are recycled, and a
 /// component inside one loses its state (keep what must survive in the model, by key); the item
@@ -66,8 +70,8 @@ module ItemsViewProps =
 ///
 ///     ItemsView.create [
 ///         ItemsView.source model.Messages
-///         ItemsView.key (fun (m: Message) -> m.Id)
-///         ItemsView.view (fun (m: Message) -> TextBlock.create [ TextBlock.text m.Text ])
+///         ItemsView.keySelector (fun (m: Message) -> m.Id)
+///         ItemsView.viewSelector (fun (m: Message) -> TextBlock.create [ TextBlock.text m.Text ])
 ///     ]
 [<AbstractClass>]
 type ItemsView =
@@ -87,12 +91,18 @@ type ItemsView =
                 let array = lazy (Seq.toArray other)
                 ItemsSource(other, (fun () -> array.Value.Length), (fun i -> box array.Value[i]), (fun () -> box array.Value))
         Setting.create ItemsViewProps.source source
-    /// What identifies an item across updates (default: the item itself).
-    static member key<'k, 'T, 'K when 'k :> ItemsView and 'K: equality>(f: 'T -> 'K) : Setting<'k> =
-        Setting.create ItemsViewProps.key (TypedKeyFunc<'T, 'K>(f) :> KeyFunc)
+    /// How to get the key that identifies an item across updates (default: the item itself).
+    static member keySelector<'k, 'T, 'K when 'k :> ItemsView and 'K: equality>(f: 'T -> 'K) : Setting<'k> =
+        Setting.create ItemsViewProps.keySelector (TypedKeyFunc<'T, 'K>(f) :> KeyFunc)
     /// The view for one item; called only for items being realized (or when the items change).
-    static member view<'k, 'T when 'k :> ItemsView>(f: 'T -> View) : Setting<'k> =
-        Setting.create ItemsViewProps.view (ItemsFunc<View voption>(fun item -> ValueSome(f (unbox<'T> item))))
+    static member viewSelector<'k, 'T when 'k :> ItemsView>(f: 'T -> View) : Setting<'k> =
+        Setting.create ItemsViewProps.viewSelector (ItemsFunc<View voption>(fun item -> ValueSome(f (unbox<'T> item))))
+    /// The text for one item, shown as a TextBlock (and its name for screen readers):
+    /// `viewSelector (fun (p: Person) -> p.Name)`. Without a view selector, an item shows `string item`
+    /// (fine for strings, numbers and enums; a union's or record's ToString needs %A, which NativeAOT can't run).
+    static member viewSelector<'k, 'T when 'k :> ItemsView>(f: 'T -> string) : Setting<'k> =
+        Setting.create ItemsViewProps.viewSelector (ItemsFunc<View voption>(fun item -> ValueSome(ItemsView.textView (f (unbox<'T> item)))))
+    static member internal textView(text: string) = TextBlock.create [ TextBlock.text text ]
     /// `ItemsLayout.stack` (default), `fixedStack height`, `wrap width height` or `grid columns`.
     static member layout<'k when 'k :> ItemsView>(layout: ItemsLayout) : Setting<'k> = Setting.create ItemsViewProps.layout layout
     /// A scroller to scroll to items from code (`ctx.useScroller ()`, then `scroller.ScrollTo key`).
@@ -222,7 +232,7 @@ module ItemsView =
     /// on realization; new sources", decision 3).
     let private sourceChanged (e: Element) (s: ItemsState) (source: ItemsSource) =
         s.Source <- source
-        s.Store <- s.Store.Update(source, e.Get ItemsViewProps.key)
+        s.Store <- s.Store.Update(source, e.Get ItemsViewProps.keySelector)
         s.Version <- s.Version + 1
 
     let private widthChanged (s: ItemsState) (width: float) =
@@ -369,7 +379,7 @@ module ItemsView =
     let private realizeRange (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) (top: float) (bottom: float) =
         let t0 = stamp ()
         let n = s.Store.Count
-        let viewFn = e.Get ItemsViewProps.view
+        let viewFn = e.Get ItemsViewProps.viewSelector
         let keep = HashSet<obj>()
         let mutable first = n
         let mutable last = -1
@@ -427,7 +437,7 @@ module ItemsView =
         Rect.Create(x, y, 0.0, height)
 
     let private jumpTo (e: Element) (s: ItemsState) (layout: ItemsLayout) (width: float) (i: int) (align: ScrollAlign) (animate: bool) (extra: float) =
-        let viewFn = e.Get ItemsViewProps.view
+        let viewFn = e.Get ItemsViewProps.viewSelector
         match realize e s viewFn i with
         | ValueSome item -> measureItem layout s width item |> ignore
         | ValueNone -> ()
@@ -500,7 +510,7 @@ module ItemsView =
         let s = stateOf e
         let layout = ctx.Get ItemsViewProps.layout
         let source = ctx.Get ItemsViewProps.source
-        let view = box (ctx.Get ItemsViewProps.view)
+        let view = box (ctx.Get ItemsViewProps.viewSelector)
         if not (obj.ReferenceEquals(view, s.LastView)) then
             s.LastView <- view
             s.Version <- s.Version + 1
@@ -557,7 +567,7 @@ module ItemsView =
                 | ValueSome(struct (i, a)) ->
                     // Measure the anchor first: its real height decides where the view goes (after a
                     // width change every height is new, and one measured row can move the average).
-                    (match realize e s (e.Get ItemsViewProps.view) i with
+                    (match realize e s (e.Get ItemsViewProps.viewSelector) i with
                      | ValueSome item -> measureItem layout s width item |> ignore
                      | ValueNone -> ())
                     // Where the anchor should be: the same distance into it (after a width change,

@@ -118,6 +118,26 @@ _Avoid_: pinned item, sticky item
 The controller an app uses to scroll a scroll viewer or items view as an action (`ctx.useScroller ()`).
 _Avoid_: scroll state, scroll position (for the controller)
 
+**Key selector**:
+The function an items view gets a key from each item with (`keySelector`); without one, an item's key is its index. A view's `key` is a plain value instead.
+_Avoid_: key (for the function), id path
+
+**View selector**:
+The function an items view makes each item's view with (`viewSelector`), or its text: a function returning a string shows the text.
+_Avoid_: item template, display member, value member
+
+**Item container**:
+The element an items control wraps each realized item in, so it can show and handle that item's state (`ListBoxItem`).
+_Avoid_: item wrapper, row (for the container)
+
+**Selection**:
+The keys of a list's selected items; it survives inserts, sorting and filtering, and is what the app gives and gets back.
+_Avoid_: SelectedIndex, selected value
+
+**Invoke**:
+Acting on an item ("open this") as opposed to selecting it: a double-click or Enter, or a click in a list without selection.
+_Avoid_: activate, execute (for this)
+
 **Element tree**:
 The elements realized from one root view, with their layout, focus and pending work.
 _Avoid_: visual tree, DOM

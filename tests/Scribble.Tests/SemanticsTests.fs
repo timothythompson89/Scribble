@@ -290,7 +290,7 @@ let private longList () =
         ScrollViewer.content (
             ItemsView.create [
                 ItemsView.source [| 0 .. 9999 |]
-                ItemsView.view (fun (i: int) -> TextBlock.create [ TextBlock.text ("Item " + string i); TextBlock.height 20.0 ])
+                ItemsView.viewSelector (fun (i: int) -> TextBlock.create [ TextBlock.text ("Item " + string i); TextBlock.height 20.0 ])
             ]
         )
     ]

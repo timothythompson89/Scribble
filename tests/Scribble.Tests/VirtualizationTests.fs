@@ -37,8 +37,8 @@ type private Harness(initial: Row[], ?width: float, ?height: float) =
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source rows
-                    ItemsView.key (fun (r: Row) -> r.Id)
-                    ItemsView.view (fun (r: Row) ->
+                    ItemsView.keySelector (fun (r: Row) -> r.Id)
+                    ItemsView.viewSelector (fun (r: Row) ->
                         if r.Text <> "" then
                             TextBlock.create [ TextBlock.name (string r.Id); TextBlock.text r.Text; TextBlock.textWrapping Wrap ]
                         else

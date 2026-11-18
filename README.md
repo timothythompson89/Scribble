@@ -655,8 +655,8 @@ let messages =
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source items                          // array, list, ResizeArray, any seq
-                    ItemsView.key (fun (m: Message) -> m.Id)        // identifies an item across updates
-                    ItemsView.view (fun (m: Message) -> TextBlock.create [ TextBlock.text m.Text ])
+                    ItemsView.keySelector (fun (m: Message) -> m.Id)        // identifies an item across updates
+                    ItemsView.viewSelector (fun (m: Message) -> TextBlock.create [ TextBlock.text m.Text ])
                     ItemsView.scroller scroller                     // scroller.ScrollTo(id, ScrollAlign.Start)
                 ])
         ])
@@ -685,7 +685,10 @@ let messages =
   `scroller.FirstVisible` (key and offset, to come back exactly), `ScrollAlign.Nearest` (default: no move when
   already visible), `Start`, `Center`, `End`. From Elmish: `Cmd.scrollTo "messages" key align` finds the
   ItemsView or ScrollViewer by its `name`. A key added in the same handler or update works (requests apply at the
-  next layout). `ItemsView.view` needs the item type written (`fun (m: Message) -> ...`): F# can't infer it from
+  next layout).
+- **Item text:** a view selector returning a string shows it as a TextBlock (`viewSelector (fun (p: Person) ->
+  p.Name)`); with no view selector an item shows `string item` (strings, numbers, enums; unions and records print
+  with `%A`, which NativeAOT can't run). A view selector needs the item type written (`fun (m: Message) -> ...`): F# can't infer it from
   `source` across settings.
 
 ### Inspector

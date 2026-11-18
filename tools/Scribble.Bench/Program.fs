@@ -66,8 +66,8 @@ type private Bench(text: TextSystem, themed: bool, rowView: Message -> View, ite
             ScrollViewer.content (
                 ItemsView.create [
                     ItemsView.source ms
-                    ItemsView.key (fun (m: Message) -> m.Id)
-                    ItemsView.view rowView
+                    ItemsView.keySelector (fun (m: Message) -> m.Id)
+                    ItemsView.viewSelector rowView
                     ItemsView.scroller scroller
                 ])
         ]
