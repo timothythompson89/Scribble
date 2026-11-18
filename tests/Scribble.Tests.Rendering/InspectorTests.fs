@@ -82,6 +82,71 @@ type InspectorTests(fixture: TextFixture) =
         | Some error -> Assert.Fail error
         | None -> ()
 
+    /// M8 step 3b (f) 7: an ImageView picked, its IMAGES section with the thumbnail.
+    [<Fact>]
+    member _.``the inspector's IMAGES section``() =
+        ImageCache.DecodeInlineOnThisThread <- true
+        // Custom states are process-wide; the Gallery's ("chosen") show in STATES whichever test ran first.
+        Scribble.Samples.Gallery.StylesPage.view () |> ignore
+        let pixels: PixelSize = { Width = 900; Height = 720 }
+        let size = Size.Create(900.0, 720.0)
+        let host = ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text []
+        // A 96 × 64 gradient with a ring, at density 2 (48 × 32 DIPs).
+        let w, h = 96, 64
+        let rgba = Array.zeroCreate<byte> (w * h * 4)
+        for y in 0 .. h - 1 do
+            for x in 0 .. w - 1 do
+                let i = (y * w + x) * 4
+                let d = sqrt ((float x - 48.0) ** 2.0 + (float y - 32.0) ** 2.0)
+                let ring = d > 18.0 && d < 24.0
+                rgba[i] <- if ring then 250uy else byte (60 + x * 2)
+                rgba[i + 1] <- if ring then 240uy else byte (40 + y * 2)
+                rgba[i + 2] <- if ring then 200uy else 170uy
+                rgba[i + 3] <- 255uy
+        let image = Image.fromPixels ("inspector-images", w, h, rgba) [ Image.density 2.0 ]
+        host.Update(
+            Border.create [
+                Border.padding 40.0
+                Border.child (
+                    ImageView.create [
+                        ImageView.image image
+                        ImageView.horizontalAlignment HorizontalAlignment.Left
+                        ImageView.verticalAlignment VerticalAlignment.Top
+                    ]
+                )
+            ]
+        )
+        Inspector.attach (host, []) |> ignore
+        let layout () =
+            for _ in 1..3 do
+                for l in host.Layers do
+                    l.Tree.UpdateLayout size
+                    l.Tree.RunAfterFrame()
+        let send e = host.HandleEvent e |> ignore
+        layout ()
+        Assert.True(host.HandleEvent(KeyDown(Key.Char 'c', Modifiers.Control ||| Modifiers.Shift, false)), "key")
+        layout ()
+        let at: PixelPoint = { X = 60.0; Y = 50.0 }
+        send (PointerMoved(Mouse, 0, at, Modifiers.None))
+        send (PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+        send (PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+        layout ()
+        // The properties scrolled to their end, where IMAGES is (then layout again: scrolling animates).
+        send (PointerMoved(Mouse, 0, { X = 700.0; Y = 620.0 }, Modifiers.None))
+        send (PointerWheel({ X = 700.0; Y = 620.0 }, 0.0, -20.0, Modifiers.None))
+        for _ in 1..40 do
+            for l in host.Layers do
+                l.Tree.Time <- l.Tree.Time + TimeSpan.FromMilliseconds 16.0
+            layout ()
+        let shot =
+            fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
+                f.Clear(Color.Hex 0x181825)
+                for l in host.Layers do
+                    l.Tree.Render f.DrawList)
+        match Snapshot.check "inspector-images@1x" shot with
+        | Some error -> Assert.Fail error
+        | None -> ()
+
     [<Fact>]
     member _.``a floating inspector, dragged over the app``() =
         let pixels: PixelSize = { Width = 900; Height = 520 }

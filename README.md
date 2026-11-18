@@ -882,6 +882,21 @@ Border.create [ Border.cursor picker; ... ]
 - Made for the window's scale, and again when the window moves to a screen with another scale. Equal settings make
   equal cursors, so platforms make each once and keep the 32 used last (Win32 `CreateIconIndirect`; in the browser a PNG in CSS `cursor`,
   sharp through `image-set` where the browser takes it). Phones have no cursor.
+
+**Cursors from images:** `Cursor.fromImage image [ ... ]` works the same way with any `Image` (a resource, bytes,
+pixels, a file or a URL):
+
+```fsharp
+let potion = Cursor.fromImage potionImage [ Cursor.size 32.0; Cursor.scaling ImageScaling.Pixelated; Cursor.hotspot (16.0, 3.0) ]
+```
+
+- Its own size in DIPs (pixels ÷ density) unless `Cursor.size` gives the width; at most 128 DIPs a side (browsers
+  ignore larger cursors; larger ones shrink, with a debug warning). Pointing at its centre unless `Cursor.hotspot`.
+- Resampled on the CPU for each window scale, so every platform shows the same pixels; `Cursor.scaling` picks smooth
+  (default) or pixelated enlarging.
+- The element using it holds the image while it's in the tree, so it's usually decoded before the pointer arrives.
+  Until it's ready the arrow shows, then the cursor changes (no frame drawn); a picture that fails is reported once
+  to `App.onError`. `Cursor.fill` and `outline` are for icons only.
 - Not yet: following the Windows cursor-size setting; cursors from bitmaps (with Image, M8).
 
 ### Elements and layout

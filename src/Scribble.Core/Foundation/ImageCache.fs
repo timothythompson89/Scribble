@@ -352,6 +352,9 @@ type internal ImageCache(poolLimit: int64) =
     member _.StateOf(entry: ImageEntry) = lock sync (fun () -> entry.State)
     member _.InfoOf(entry: ImageEntry) = lock sync (fun () -> entry.Info)
 
+    /// Its state, size as the file gives it, and how many elements hold it, read together (the inspector).
+    member _.Describe(entry: ImageEntry) = lock sync (fun () -> struct (entry.State, entry.Info, entry.Holders))
+
 /// An image couldn't be loaded: which one, and why (the decoder's message, a missing resource or file, an HTTP
 /// status, a timeout).
 and ImageLoadException(key: string, message: string, inner: exn) =
@@ -362,7 +365,30 @@ and ImageLoadException(key: string, message: string, inner: exn) =
 /// An element's hold on one picture (`Element.HoldImage`): asked for since the last render, and whether it waits
 /// for loading to end. UI thread only.
 [<Sealed; AllowNullLiteral>]
-type internal ImageHold(entry: ImageEntry) =
+type internal ImageHold(entry: ImageEntry, image: Image) =
     member _.Entry = entry
+    /// The image last asked for under this key (its density may differ between asks).
+    member val Image = image with get, set
     member val Touched = true with get, set
     member val Waiting = false with get, set
+    /// Waiting for it to show as a cursor (DESIGN.md, "M8 step 3b", (f) 1).
+    member val CursorWaiting = false with get, set
+
+/// How far along an image is (`Element.HeldImages`).
+[<RequireQualifiedAccess>]
+type ImageStatus =
+    | Loading
+    | Ready
+    | Failed of error: exn
+
+/// One image an element holds, as the inspector shows it (DESIGN.md, "M8 step 3b", (f) 7).
+type HeldImage =
+    { Image: Image
+      Status: ImageStatus
+      /// Its size in pixels as the file gives it, once known.
+      PixelWidth: int
+      PixelHeight: int
+      /// The decoded picture while it's ready: smaller than the file's when it was over `DecodedImage.MaxSize`.
+      Decoded: Scribble.Imaging.DecodedImage voption
+      /// How many elements hold it (each element counts once, whatever it uses it for).
+      Holders: int }

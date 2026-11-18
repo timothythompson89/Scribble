@@ -61,10 +61,10 @@ docs), and the semantics stage (roles, names, states and actions for every eleme
 SEMANTICS section), and M8 step 3b part (a): the Counter sample became the Gallery, plus a new one-file Counter;
 part (b), the PNG decoder (`Scribble.Imaging`); part (c), images on the GPU (`DrawList.DrawImage`, image atlas pages,
 mip levels); part (d), the `Image` value, its process-wide cache and pool, decoding off the UI thread, `ImageView`,
-and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`.
+and the Gallery's Images page; part (e), `Image.fromFile` and `Image.fromUrl`; part (f), `Cursor.fromImage` and the
+inspector's IMAGES section. M8 step 3b is complete.
 
-Next: the rest of M8 step 3b (section "M8 step 3b: images, and the Counter becomes the Gallery"): (f) cursors and the
-inspector. Then step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
+Next: M8 step 4 (RadioButton, ListBox, ComboBox, Dialog, Toast, tooltips, the
 "show this in a layer" element). Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
@@ -2524,6 +2524,74 @@ does from (d). Choices made while building:
    - **What they cover:** the limit of 6, cancelling, 404, oversized responses, the timeout, re-measuring when a
      size arrives, and a 10,000-row scroll downloading only what's shown.
    - **Files** go in a temp folder. No real network: the Wikimedia picture is on the checklist.
+
+**(f) decisions (grilled in one round; Tim: yes to all, 2026-11-17):** image cursors (decision 21) and the inspector
+(decision 22).
+
+1. **An element holds its image cursor's image** while it's in the tree, like an ImageView, so decoding starts on
+   realization (any source, URLs too). If the pointer gets there first, the arrow shows, then the cursor changes
+   when the picture is ready: a cursor change, no frame.
+2. **Failures** are reported once through `App.onError` (the same `ImageLoadException`, once per image); the arrow
+   shows.
+3. **Size:** the image's own size in DIPs (pixels ÷ density) unless `Cursor.size` gives the width (the aspect ratio
+   kept). Each window scale gets a bitmap resampled to whole pixels on the CPU (our code: the same pixels
+   everywhere); `Cursor.scaling` (`ImageScaling`, default Smooth) picks smooth or nearest. When the size in pixels
+   already matches, the pixels are used as they are.
+4. **The hotspot** defaults to the centre, as `fromIcon` does.
+5. **One settings type:** `Cursor.fill`, `outline` and `outlineWidth` don't apply to an image cursor; using them warns
+   once (`DebugWarnings`).
+6. **At most 128 DIPs** a side (browsers ignore larger cursor images): larger ones shrink to fit, with a debug warning.
+7. **Inspector:** an **IMAGES** section for any selected element holding images (ImageView, image cursors, custom
+   elements using `ctx.Image`): per image its source, pixel size, density and DIP size, loading / ready / failed
+   (with the error), "reduced from W × H", how many elements hold it and whether it's pooled, and a thumbnail up to
+   96 DIPs. An `Image` property shows its source; an image cursor shows as `image <source>`. "In the atlas" is
+   dropped: atlas places belong to each GPU device, which Core doesn't see.
+8. **Gallery:** an "Image cursors" section on the Images page: the potion at 32 DIPs, pixelated, pointing from the
+   bottle's mouth, and a target made with `Image.fromPixels`, smooth, pointing at its centre.
+9. **Tests:** the resampled bitmaps byte for byte (1×, 1.5×, 2×; smooth and pixelated), default and given sizes, the
+   hotspot, the 128 cap, the element holding its cursor's image, the arrow until ready then the change, one report
+   for a failure, the inspector's IMAGES lines; a screenshot of the inspector showing the section.
+
+**(f) as built (2026-11-17):**
+- **`Cursor.fs`:**
+  - `Cursor.fromImage` and the `Cursor.scaling` setting. The cursor options gained `SizeSet`, `Scaling` and
+    `IconOnlySet` (fill, outline and outlineWidth set it; an image cursor warns once in Debug).
+  - Each image cursor's picture and settings (`ImageCursorSpec`) are found from its `CursorImage` through a
+    `ConditionalWeakTable`, by reference. The spec keeps the decoded picture once an element has seen it ready, so
+    the platform can ask for a bitmap again later (another scale) without the cache.
+  - Resampling is ours (`ImageCursor.weights`/`resample`), separable, in doubles, rounded once:
+    - pixels used as they are when the size matches;
+    - nearest when enlarging pixelated, bilinear when enlarging smooth;
+    - the area each pixel covers when shrinking (smooth either way, as `DrawList.DrawImage` does).
+  - The key is "image|<image key>|density|size|hotspot|scaling".
+- **Holding:**
+  - An element whose `cursor` is an image cursor holds its picture in `RenderShown` (decoding starts on
+    realization), and reports a failed picture then, not only on hover.
+  - Pointer input (`InputRouter.updateCursor`) checks the picture is ready. If it isn't, it shows the arrow and
+    waits on the image (`ImageHold.CursorWaiting`), then shows the mouse's cursor again: no frame drawn (a test
+    checks).
+  - Changing only an element's cursor draws no frame (power rule), so the old picture is let go at the element's
+    next render, not at once.
+- **Inspector:**
+  - `Element.HeldImages` (public; `HeldImage`, `ImageStatus`) gives the source image, the status, the pixel size,
+    the decoded picture and the number of holders.
+  - IMAGES (after PROPERTIES) shows source, size in pixels and DIPs, state (failed in red, with the message),
+    "reduced to", "held by", and a thumbnail. The thumbnail is drawn from the decoded picture without holding it, so
+    the count stays true.
+  - **"Pooled" is left out:** the pool only has images nothing holds, so for a held image it would always say no.
+  - An `Image` value and an image cursor show by their source key.
+- **Gallery:** "Image cursors" on the Images page, with the potion (32 DIPs, pixelated, hotspot 16, 3) and a 32-pixel
+  target from `Image.fromPixels`.
+- **Checked in Chrome:** both cursors show as 32 × 32 CSS cursor images with the right hotspots, and there are no
+  console errors.
+- **Tests:**
+  - 13 new unit tests (12 in `ImageCursorTests.fs` and the downloaded-cursor test in `ImageLoadingTests.fs`): the
+    bitmaps byte for byte at 1×, 1.5× and 2×, the sizes, the hotspot, the cap, the icon-only warning, equality,
+    holding and letting go, one report for a failure, the arrow until a download arrives, and the IMAGES lines with
+    the thumbnail.
+  - The `inspector-images` screenshot; Vulkan matches. It loads the Gallery's styles page first: custom states are
+    process-wide, and the STATES row showed "chosen" only when another test had run first.
+  - The Images page screenshot is taller (1560) for the new section.
 
 **(e) as built (2026-11-17):**
 - **`Image.fs`:**

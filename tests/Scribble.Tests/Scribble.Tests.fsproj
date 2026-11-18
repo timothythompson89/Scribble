@@ -41,6 +41,7 @@
     <Compile Include="ImageAtlasTests.fs" />
     <Compile Include="ImageViewTests.fs" />
     <Compile Include="ImageLoadingTests.fs" />
+    <Compile Include="ImageCursorTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <!-- PngSuite (Willem van Schaik, free to use: PngSuite/PngSuite.LICENSE) and the WIC references made by

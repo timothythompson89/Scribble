@@ -133,10 +133,14 @@ module internal Format =
         | Cursor.ResizeDiagonal -> "resize diagonal"
         | Cursor.NotAllowed -> "not allowed"
         | Cursor.Wait -> "wait"
-        // Cursor.fromIcon's key starts "icon|<the icon's description>|...".
+        // Cursor.fromIcon's key starts "icon|<the icon's description>|...", Cursor.fromImage's "image|<the image's key>|...".
         | Cursor.Image image ->
             let parts = image.Key.Split('|', 3)
-            if parts.Length > 1 && parts[0] = "icon" then "icon " + parts[1] else "image"
+            if parts.Length > 1 && (parts[0] = "icon" || parts[0] = "image") then parts[0] + " " + parts[1] else "image"
+
+    /// An image by its key ("resource:Assembly/name", "url:...", ...), and its density when not 1.
+    let image (i: Image) =
+        if i.Density = 1.0 then i.Key else i.Key + " at density " + number i.Density
 
     let private shadow (s: BoxShadow) =
         "blur " + number s.Blur + " at " + number s.OffsetX + ", " + number s.OffsetY
@@ -180,6 +184,8 @@ module internal Format =
             | :? TextTrimming as t -> (match t with NoTrimming -> "none" | CharacterEllipsis -> "ellipsis")
             | :? TextAlignment as a -> (match a with TextAlignment.Start -> "start" | TextAlignment.Center -> "center" | TextAlignment.End -> "end")
             | :? Font as f -> f.Name
+            | :? Image as i -> image i
+            | :? (Image voption) as i -> (match i with ValueSome x -> image x | ValueNone -> "none")
             | :? Icon as i -> Icon.describe i
             | :? (Icon voption) as i -> (match i with ValueSome x -> Icon.describe x | ValueNone -> "none")
             | :? Style as s -> s.Description

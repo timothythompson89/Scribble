@@ -1379,9 +1379,10 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             for h in heldImages do
                 if isNull hold && h.Entry.Key = image.Key then hold <- h
             if isNull hold then
-                hold <- ImageHold(ImageCache.Shared.Acquire image)
+                hold <- ImageHold(ImageCache.Shared.Acquire image, image)
                 heldImages.Add hold
             hold.Touched <- true
+            hold.Image <- image
             hold
 
     /// While `hold` decodes: asks to be told when it ends, then measures again (its size wasn't known) or redraws.
@@ -1432,6 +1433,40 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | ValueSome i -> ValueSome(Size.Create(float i.Width / image.Density, float i.Height / image.Density))
             | ValueNone -> ValueNone
 
+    /// Its image cursor's picture, if its cursor is one (`Cursor.fromImage`).
+    member private this.CursorSpec : ImageCursorSpec voption =
+        match this.Get LayoutProps.cursor with
+        | ValueSome(Cursor.Image c) -> ImageCursors.Find c
+        | _ -> ValueNone
+
+    /// Whether the image cursor `spec` can show: holds its picture, and once it's ready says so (`spec.Decoded`).
+    /// While it loads, `ready` runs (on the UI thread) when it ends; a failure is reported once ((f) 1, 2).
+    member internal this.CursorImageReady(spec: ImageCursorSpec, ready: unit -> unit) : bool =
+        match this.HoldImage spec.Image with
+        | null -> false
+        | hold ->
+            match ImageCache.Shared.StateOf hold.Entry with
+            | ImageState.Ready d ->
+                spec.Decoded <- ValueSome d
+                true
+            | ImageState.Failed e ->
+                this.ReportImageFailure(hold, e)
+                false
+            | ImageState.Loading ->
+                if not hold.CursorWaiting then
+                    match root with
+                    | ValueSome r ->
+                        match r.Dispatcher with
+                        | ValueSome d ->
+                            hold.CursorWaiting <- true
+                            let ended () =
+                                hold.CursorWaiting <- false
+                                ready ()
+                            if not (ImageCache.Shared.AddWaiter(hold.Entry, fun () -> d.Post ended)) then d.Post ended
+                        | ValueNone -> ()
+                    | ValueNone -> ()
+                false
+
     /// Lets go of every picture (`all`: leaving its tree), or of those this render didn't ask for.
     member private this.LetGoOfImages(all: bool) =
         if not (isNull heldImages) then
@@ -1446,6 +1481,24 @@ and [<Sealed>] Element internal (elementType: ElementType) =
 
     /// How many pictures it holds (tests).
     member internal _.HeldImageCount = if isNull heldImages then 0 else heldImages.Count
+
+    /// The images it holds (what it draws, and its image cursor's picture), as the inspector shows them.
+    member _.HeldImages: HeldImage list =
+        if isNull heldImages then []
+        else
+            [ for h in heldImages do
+                  let struct (state, info, holders) = ImageCache.Shared.Describe h.Entry
+                  let w, height = match info with ValueSome i -> i.Width, i.Height | ValueNone -> 0, 0
+                  { Image = h.Image
+                    Status =
+                      match state with
+                      | ImageState.Loading -> ImageStatus.Loading
+                      | ImageState.Ready _ -> ImageStatus.Ready
+                      | ImageState.Failed e -> ImageStatus.Failed e
+                    PixelWidth = w
+                    PixelHeight = height
+                    Decoded = (match state with ImageState.Ready d -> ValueSome d | _ -> ValueNone)
+                    Holders = holders } ]
 
     // --- Layout ----------------------------------------------------------------------------------
 
@@ -1586,6 +1639,17 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                     list.PushTransform(f (RenderContext this))
                     true
                 | ValueNone -> false
+            // An image cursor's picture is held while the element shows, so it's ready before the pointer comes ((f) 1).
+            // A failure is reported now, not only when the pointer comes ((f) 2).
+            match this.CursorSpec with
+            | ValueSome spec ->
+                match this.HoldImage spec.Image with
+                | null -> ()
+                | hold ->
+                    match ImageCache.Shared.StateOf hold.Entry with
+                    | ImageState.Failed e -> this.ReportImageFailure(hold, e)
+                    | _ -> ()
+            | ValueNone -> ()
             elementType.Render (RenderContext this) list
             if not (isNull heldImages) then this.LetGoOfImages false
             if children.Length > 0 then

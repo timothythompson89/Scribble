@@ -1,5 +1,5 @@
 /// The Images page (M8 step 3b (d) and (e)): ImageView's stretch modes and directions, smooth against pixelated, a round
-/// avatar and a 2× picture, an image made from pixels, two from URLs (one missing), and a broken one reporting its
+/// avatar and a 2× picture, an image made from pixels, image cursors, two from URLs (one missing), and a broken one reporting its
 /// error. The embedded pictures are drawn by tools/MakeGalleryImages.fsx and embedded in the Gallery (Images/*.png).
 module Scribble.Samples.Gallery.ImagesPage
 
@@ -54,6 +54,51 @@ let private pattern (size: int) (phase: float) =
             // Fades out at the edge of a circle: straight alpha, premultiplied by Image.fromPixels.
             px[i + 3] <- byte (255.0 * Math.Clamp((0.5 - d) * 20.0, 0.0, 1.0))
     px
+
+/// A 32-pixel target, straight RGBA: red and white rings, transparent outside, a dark dot in the middle.
+let private targetPixels =
+    let n = 32
+    let px = Array.zeroCreate<byte> (n * n * 4)
+    for y in 0 .. n - 1 do
+        for x in 0 .. n - 1 do
+            let d = sqrt ((float x + 0.5 - 16.0) ** 2.0 + (float y + 0.5 - 16.0) ** 2.0)
+            let i = (y * n + x) * 4
+            let r, g, b =
+                if d < 2.5 then 30.0, 20.0, 40.0
+                elif int (d / 3.5) % 2 = 0 then 235.0, 60.0, 70.0
+                else 250.0, 250.0, 250.0
+            px[i] <- byte r
+            px[i + 1] <- byte g
+            px[i + 2] <- byte b
+            px[i + 3] <- byte (255.0 * Math.Clamp(15.5 - d, 0.0, 1.0))
+    px
+
+/// The potion at 32 DIPs (twice its pixels), square pixels, pointing from the bottle's mouth; the target at its own
+/// 32 DIPs, smooth, pointing at its middle (DESIGN.md, "M8 step 3b", (f) 8). Defined once, as values.
+let private potionCursor =
+    Cursor.fromImage potion [ Cursor.size 32.0; Cursor.scaling ImageScaling.Pixelated; Cursor.hotspot (16.0, 3.0) ]
+let private targetCursor = Cursor.fromImage (Image.fromPixels ("cursor-target", 32, 32, targetPixels) []) []
+
+/// A box to hover for `cursor`.
+let private hoverBox (label: string) (cursor: Cursor) =
+    Border.create [
+        Border.width 150.0
+        Border.height 90.0
+        Border.background subtle
+        Border.borderBrush line
+        Border.borderThickness 1.0
+        Border.cornerRadius 6.0
+        Border.cursor cursor
+        Border.child (
+            TextBlock.create [
+                TextBlock.text label
+                TextBlock.fontSize 12.0
+                TextBlock.foreground Palette.textDim
+                TextBlock.horizontalAlignment HorizontalAlignment.Center
+                TextBlock.verticalAlignment VerticalAlignment.Center
+            ]
+        )
+    ]
 
 /// A public-domain picture on Wikimedia Commons (172 × 178), sent with Access-Control-Allow-Origin so the browser
 /// may show it, and an address there that gives 404.
@@ -140,7 +185,12 @@ let private images =
                             ]
                         ]
                     ])
-                section "From a URL" "Downloaded when shown, at their own size once they arrive (0 × 0 until then). The second gives 404: one toast. Needs the internet; nothing is asked for until you press the button." (
+                section "Image cursors" "Cursor.fromImage: hover the boxes. The potion is enlarged to 32 DIPs with square pixels; the target, made with Image.fromPixels, is smooth at its own size." (
+                    wrap [
+                        hoverBox "Potion" potionCursor
+                        hoverBox "Target" targetCursor
+                    ])
+                section "From a URL""Downloaded when shown, at their own size once they arrive (0 × 0 until then). The second gives 404: one toast. Needs the internet; nothing is asked for until you press the button." (
                     StackPanel.create [
                         StackPanel.spacing 8.0
                         StackPanel.children [

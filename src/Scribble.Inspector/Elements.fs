@@ -61,3 +61,25 @@ module internal Grip =
         ]
 
     let create (settings: Setting<Grip> list) = View.Create(Type, settings)
+
+module internal ThumbnailProps =
+    let decoded: Prop<Scribble.Imaging.DecodedImage voption> = Prop.define "Decoded" ValueNone Affects.Render
+
+/// A held image, drawn without holding it (so the inspector doesn't change the count it shows). Sized by the view.
+[<AbstractClass>]
+type internal Thumbnail =
+    inherit Layoutable
+    static member decoded<'k when 'k :> Thumbnail>(value: Scribble.Imaging.DecodedImage) : Setting<'k> =
+        Setting.create ThumbnailProps.decoded (ValueSome value)
+
+module internal Thumbnail =
+    let Type =
+        Element.define "InspectorThumbnail" [
+            Element.render (fun ctx list ->
+                match ctx.Get ThumbnailProps.decoded with
+                // Released once nothing holds it: the next refresh drops the thumbnail.
+                | ValueSome d when not d.IsReleased -> list.DrawImage(Rect.Create(0.0, 0.0, ctx.Size.Width, ctx.Size.Height), d)
+                | _ -> ())
+        ]
+
+    let create (settings: Setting<Thumbnail> list) = View.Create(Type, settings)

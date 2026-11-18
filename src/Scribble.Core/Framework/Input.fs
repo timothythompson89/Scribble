@@ -153,10 +153,24 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         let struct (previewHandler, _) = routedWith route preview normal (fun _ -> ValueNone) args
         previewHandler
 
-    let updateCursor (over: Element list) =
+    /// The cursor of the deepest element under the pointer that has one. An image cursor whose picture isn't ready
+    /// shows the arrow until it is, then changes (DESIGN.md, "M8 step 3b", (f) 1).
+    let rec updateCursor (over: Element list) =
         let cursor =
-            over |> List.tryPick (fun e -> match e.Get LayoutProps.cursor with ValueSome c -> Some c | ValueNone -> None)
-        setCursor (defaultArg cursor Cursor.Default)
+            match over |> List.tryPick (fun e -> match e.Get LayoutProps.cursor with ValueSome c -> Some(e, c) | ValueNone -> None) with
+            | Some(e, (Cursor.Image image as c)) ->
+                match ImageCursors.Find image with
+                | ValueSome spec when spec.Decoded.IsNone ->
+                    if e.CursorImageReady(spec, cursorImageArrived) then c else Cursor.Default
+                | _ -> c
+            | Some(_, c) -> c
+            | None -> Cursor.Default
+        setCursor cursor
+
+    /// An image cursor's picture finished loading: the mouse shows what it's over again.
+    and cursorImageArrived () =
+        for s in List.ofSeq pointers.Values do
+            if s.Kind = PointerKind.Mouse && s.Position.IsSome then updateCursor s.Over
 
     /// Moves the pointer's "over" chain to `next`: leave on elements it left (deepest first), enter on
     /// the ones it entered (outermost first), and the same for the pressed states.

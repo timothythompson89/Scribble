@@ -280,3 +280,55 @@ let ``10,000 rows of downloaded avatars ask only for the realized rows, also aft
     for i in 100..8900 do
         Assert.DoesNotContain(urlOf i, asked)
     Assert.Empty s.Errors
+
+// --- Image cursors (M8 step 3b (f) 1) ------------------------------------------------------------------
+
+[<Fact>]
+let ``an image cursor shows the arrow until its picture arrives, then changes without a frame`` () =
+    let url = "https://example.test/" + unique "cursor" + ".png"
+    let http = new FakeHttp(fun _ -> ValueNone)
+    ImageHttp.Handler <- http
+    let platform, device = new Scribble.Tests.AppTests.FakePlatform(), new Scribble.Tests.AppTests.FakeDevice()
+    let errors = List<exn>()
+    let cursor = Cursor.fromImage (Image.fromUrl url []) []
+    let view =
+        Border.create [
+            Border.width 100.0
+            Border.height 100.0
+            Border.horizontalAlignment HorizontalAlignment.Left
+            Border.verticalAlignment VerticalAlignment.Top
+            Border.cursor cursor
+        ]
+    let app = App.start (platform, device, new FixedShaper(), [ App.view view; App.onError errors.Add ])
+    let w = platform.Window.Value
+    let host = app :?> ElementHost
+    try
+        w.DeliverFrame() |> ignore
+        // The first frame asked for it: the download started before any pointer.
+        let deadline = DateTime.UtcNow.AddSeconds 5.0
+        while http.Requests.IsEmpty && DateTime.UtcNow < deadline do
+            Thread.Yield() |> ignore
+        Assert.Equal<string list>([ url ], http.Requests)
+        w.Send(Scribble.Platform.PointerMoved(Scribble.Platform.Mouse, 0, { X = 50.0; Y = 50.0 }, Scribble.Platform.Modifiers.None))
+        Assert.Equal(Cursor.Default, w.Cursor)
+        // Hovering may redraw (element states); that frame is drawn before the picture comes.
+        w.DeliverFrame() |> ignore
+        Assert.False(w.FrameRequested)
+        let frames = device.Frames
+        http.Answer(url, ok pngBytes)
+        let deadline = DateTime.UtcNow.AddSeconds 5.0
+        while w.Cursor = Cursor.Default && DateTime.UtcNow < deadline do
+            platform.RunWake()
+            Thread.Yield() |> ignore
+        Assert.Equal(cursor, w.Cursor)
+        // A 32 × 32 picture: its bitmap at 1×.
+        match w.Cursor with
+        | Cursor.Image image -> Assert.Equal(32, (image.Render 1.0).Width)
+        | _ -> ()
+        Assert.False(w.FrameRequested)
+        Assert.Equal(frames, device.Frames)
+        Assert.Empty errors
+    finally
+        host.App.Update(Border.create [])
+        w.DeliverFrame() |> ignore
+        ImageHttp.Handler <- null

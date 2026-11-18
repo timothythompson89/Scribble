@@ -69,6 +69,7 @@ module internal Views =
     let private forcedColor = Color.Hex 0x1F7A70
     let private forcedTextColor = Color.Hex 0x5CC8B8
     let private hintColor = Color.Hex 0xB8B8C8
+    let private errorColor = Color.Hex 0xF28B82
     let private indentStep = 12.0
 
     /// Re-runs the component whenever the state says it changed.
@@ -581,6 +582,46 @@ module internal Views =
               if isSemantics v.Prop && v.Source <> ValueSource.Default then
                   yield line v.Prop.Name (SemanticText.value v.Value) Color.White (sourceText v.Source) ]
 
+    /// IMAGES: what the element holds (an ImageView's picture, an image cursor's, a custom element's `ctx.Image`):
+    /// its source, sizes, state, how many elements hold it, and a thumbnail (DESIGN.md, "M8 step 3b", (f) 7).
+    let private imageLines (e: Element) =
+        let n = Format.number
+        match e.HeldImages with
+        | [] -> []
+        | images ->
+            [ yield heading "IMAGES"
+              for h in images do
+                  yield wrappingLine "source" (Format.image h.Image) Color.White
+                  if h.PixelWidth > 0 then
+                      let density = h.Image.Density
+                      let pixels = string h.PixelWidth + " × " + string h.PixelHeight + " px"
+                      let dips = n (float h.PixelWidth / density) + " × " + n (float h.PixelHeight / density) + " DIPs"
+                      yield line "size" (pixels + ", " + dips) Color.White ""
+                  match h.Status with
+                  | ImageStatus.Loading -> yield line "state" "loading" hintColor ""
+                  | ImageStatus.Ready -> yield line "state" "ready" Color.White ""
+                  | ImageStatus.Failed ex -> yield wrappingLine "state" ("failed: " + ex.Message) errorColor
+                  match h.Decoded with
+                  | ValueSome d when d.Reduced ->
+                      yield line "reduced to" (string d.Width + " × " + string d.Height + " px") hintColor ""
+                  | _ -> ()
+                  yield line "held by" (if h.Holders = 1 then "1 element" else string h.Holders + " elements") hintColor ""
+                  match h.Decoded with
+                  | ValueSome d ->
+                      // Its own size in DIPs, shrunk to fit 96.
+                      let w = float h.PixelWidth / h.Image.Density
+                      let ht = float h.PixelHeight / h.Image.Density
+                      let k = min 1.0 (96.0 / max w ht)
+                      yield
+                          Thumbnail.create [
+                              Thumbnail.decoded d
+                              Thumbnail.width (w * k)
+                              Thumbnail.height (ht * k)
+                              Thumbnail.horizontalAlignment HorizontalAlignment.Left
+                              Thumbnail.margin (Thickness.Create(138.0, 2.0, 10.0, 6.0))
+                          ]
+                  | ValueNone -> () ]
+
     let private properties (state: InspectorState) =
         match state.Selected with
         | ValueNone ->
@@ -650,6 +691,7 @@ module internal Views =
                               TextBlock.foreground dim
                               TextBlock.textWrapping Wrap
                           ]
+              yield! imageLines e
               yield! semanticsLines state e all
               if not hooks.IsEmpty then
                   yield heading "HOOKS"
