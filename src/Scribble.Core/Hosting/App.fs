@@ -39,6 +39,7 @@ type AppConfig<'Msg> internal () =
     member val internal OnFrame: (FrameTime -> 'Msg option) list = [] with get, set
     member val internal OnError: (exn -> unit) voption = ValueNone with get, set
     member val internal Layers: LayerSetting list list = [] with get, set
+    member val internal Toasters: Toaster list = [] with get, set
     member val internal Styles: Style list = [] with get, set
     member val internal OnStart: (AppContext -> unit) list = [] with get, set
     member val internal Values: (AppValues -> unit) list = [] with get, set
@@ -146,6 +147,10 @@ type App =
     /// `Layer.modal true`. Its view is fixed (components inside keep their own state); see `Layer`.
     static member layer<'Msg>(settings: LayerSetting list) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Layers <- c.Layers @ [ settings ])
+
+    /// The app's toasts: `let toaster = Toaster()`, `App.toaster toaster`, then `toaster.Show "Saved"` from anywhere
+    /// (a handler, `update`, `App.onError`, another thread). They show in a layer of their own above dialogs and flyouts.
+    static member toaster<'Msg>(value: Toaster) : AppSetting<'Msg> = AppSetting(fun c -> c.Toasters <- c.Toasters @ [ value ])
 
     /// An app value's starting value (`AppValue.define`): `App.value compactMode true`.
     static member value<'Msg, 'T> (value: AppValue<'T>) (start: 'T) : AppSetting<'Msg> =
@@ -282,6 +287,8 @@ type App =
         |> ignore
         for layer in config.Layers do
             h.AddLayer layer |> ignore
+        for toaster in config.Toasters do
+            h.AddToaster toaster
         for handler in config.OnStart do
             handler (AppContext(h, platform))
         Console.WriteLine($"Scribble: {device.Description}, {shaper.Name} shaping, {platform.Name}")

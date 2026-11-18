@@ -559,6 +559,17 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         addLayer layer
         layer
 
+    /// Gives a Toaster its layer (above dialogs and flyouts, below the inspector; a press in it never takes the
+    /// keyboard) and this host's UI thread. `App.toaster` calls it; a custom host calls it itself. Needs a
+    /// dispatcher (`ElementHost.dispatcher`).
+    member _.AddToaster(toaster: Toaster) =
+        match options.Dispatcher with
+        | ValueSome dispatcher ->
+            let layer = Layer.Create(text, [ Layer.name "Toasts"; Layer.order toastOrder; Layer.keyboard false ], window.SetCursor)
+            addLayer layer
+            toaster.Bind(dispatcher, layer.Update)
+        | ValueNone -> invalidOp "A Toaster needs the host's dispatcher (ElementHost.dispatcher)."
+
     /// Takes a layer away (its elements leave the tree, so components stop). Not the app's.
     member _.RemoveLayer(layer: Layer) =
         if same layer app then invalidOp "The app's layer can't be removed."
@@ -733,7 +744,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 let layer = targetFor s id p
                 if s.Buttons = 0 then
                     s.Capture <- ValueSome layer
-                    pressedLayer <- ValueSome layer
+                    if layer.TakesKeyboard then pressedLayer <- ValueSome layer
                     updateKeyboardOwner ()
                 s.Buttons <- s.Buttons + 1
                 layer.Input.PointerPressed(kind, id, p, button, mods)

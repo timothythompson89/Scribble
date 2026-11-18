@@ -41,6 +41,9 @@ type private OffscreenOnly(device: IRenderDevice) =
         member _.RenderOffscreenAsync(size, scale, draw) = device.RenderOffscreenAsync(size, scale, draw)
         member _.Dispose() = ()
 
+/// With the other classes that use the process's image cache: run one after another, they can't find a picture another
+/// class's thread has only begun to decode (seen once the test run grew: the Images page drawn with empty boxes).
+[<Collection("Shared image cache")>]
 type InspectorTests(fixture: TextFixture) =
     interface IClassFixture<TextFixture>
 

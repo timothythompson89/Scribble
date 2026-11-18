@@ -9,7 +9,7 @@
 /// - ControlsPage.fs: CheckBox, Switch, ToggleButton and Slider (M8 step 3a),
 /// - ScrollingPage.fs: 10,000 messages in an ItemsView, jumped through with a scroller (M8 step 1),
 /// - ListsPage.fs: ListBox in each selection mode (10,000 items), RadioGroup, a view per item (M8 step 4b),
-/// - LayersPage.fs: toasts and a modal dialog (layers, M6),
+/// - LayersPage.fs: toasts, dialogs, flyouts and tooltips (M8 step 4),
 /// - StylesPage.fs: classes, state blocks and scoped styles (M7),
 /// - ImagesPage.fs: ImageView: stretching, pixelated, round, 2×, from pixels, a broken image (M8 step 3b); saving
 ///   as PNG: a captured card, and the Gallery itself rendered with no window,
@@ -107,8 +107,7 @@ let app: AppSetting<unit> list =
       // The Images page renders the Gallery itself into a picture (ViewImage).
       App.value wholeGallery (ValueSome(fun () -> gallery ()))
       // An error from app code (a broken image on the Images page) shows as a toast instead of ending the app.
+      App.toaster toaster
       App.onError (fun e ->
           System.Console.WriteLine("Gallery: " + string e)
-          LayersPage.toast e.Message)
-      App.layer [ Layer.name "Toasts"; Layer.view (LayersPage.toasts ()) ]
-      App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (LayersPage.dialog ()) ] ]
+          toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]) ]

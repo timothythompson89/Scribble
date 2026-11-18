@@ -34,7 +34,7 @@ type Role =
     | Group
     /// Content over everything else that takes all input until it closes, named by its title.
     | Dialog
-    /// A short message that shows by itself (a toast), named by its text.
+    /// A short message that shows by itself (a toast), named by its label.
     | Alert
 
     // Written out: a union's generated ToString uses %A, which NativeAOT can't run.

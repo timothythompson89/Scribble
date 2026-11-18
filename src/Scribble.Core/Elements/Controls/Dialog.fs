@@ -50,7 +50,8 @@ module internal DialogAnchor =
     let Type =
         Element.define "DialogAnchor" [
             Element.measure (fun _ _ -> Size.Create(0.0, 0.0))
-            Element.defaults [ Layoutable.isHitTestVisible false; Layoutable.horizontalAlignment HorizontalAlignment.Left; Layoutable.verticalAlignment VerticalAlignment.Top ]
+            // Not visible: panels give it no room and no gap. It is still in the tree, which is what the host looks at.
+            Element.defaults [ Layoutable.isVisible false ]
         ]
 
 /// Content shown over a scrim, in its own layer, taking all input until it closes (DESIGN.md, "4d:

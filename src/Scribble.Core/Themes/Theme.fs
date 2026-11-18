@@ -9,6 +9,8 @@ open Scribble.Rendering
 module internal ThemeLooks =
     /// How long hover and pressed tints fade.
     let private tintTime = TimeSpan.FromMilliseconds 100.0
+    /// How long a toast takes to fade in or out (it slides for as long: `ToastPresenter`).
+    let private moveTime = TimeSpan.FromMilliseconds 150.0
     /// How long a dialog takes to fade in.
     let private fadeTime = TimeSpan.FromMilliseconds 120.0
     /// How long a press takes to sink in and spring back.
@@ -158,6 +160,21 @@ module internal ThemeLooks =
               Dialog.cornerRadius Palette.cornerRadius
               Dialog.padding 20.0
               Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.dialogShadow
+          ]
+          // Toasts (M8 step 4d): the surface colour with a line and a floating shadow; an error in the danger colour.
+          ToastPresenter.style [] [
+              ToastPresenter.background Palette.surface
+              ToastPresenter.borderBrush Palette.border
+              ToastPresenter.borderThickness 1.0
+              ToastPresenter.cornerRadius Palette.cornerRadius
+              ToastPresenter.foreground Palette.text
+              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
+              Style.transition LayoutProps.opacity moveTime
+          ]
+          ToastPresenter.style [ Style.cls "error" ] [
+              ToastPresenter.background Palette.danger
+              ToastPresenter.borderBrush Palette.danger
+              ToastPresenter.foreground Palette.onAccent
           ]
           TooltipPresenter.style [] [
               TooltipPresenter.background Palette.surface

@@ -56,6 +56,8 @@ type private Log() =
 /// A button "open" above a button "below", and a Dialog between them in the view with OK and Cancel.
 let private app (log: Log) (isOpen: bool) (extra: Setting<Dialog> list) =
     StackPanel.create [
+        // The gap is between the two buttons only: a Dialog standing between them gets none.
+        StackPanel.spacing 10.0
         StackPanel.children [
             Button.create [ Button.name "open"; Button.text "Open"; Button.height 30.0; Button.onClick (fun _ -> log.Add "open") ]
             Dialog.create (
@@ -80,7 +82,7 @@ let ``closed, it shows nothing and takes no space; open, its box is in the middl
     let log = Log()
     let w, host = show (app log false [])
     Assert.False(isOpen host)
-    Assert.Equal(30.0, (named host "below").PositionInTree.Y)
+    Assert.Equal(40.0, (named host "below").PositionInTree.Y)
     host.Update(app log true [])
     settle w
     let layer = (dialogLayer host).Value
@@ -94,7 +96,7 @@ let ``closed, it shows nothing and takes no space; open, its box is in the middl
     Assert.InRange(p.X * 2.0 + box.Bounds.Width, 399.0, 401.0)
     Assert.InRange(p.Y * 2.0 + box.Bounds.Height, 299.0, 301.0)
     // The app's own layout didn't move.
-    Assert.Equal(30.0, (named host "below").PositionInTree.Y)
+    Assert.Equal(40.0, (named host "below").PositionInTree.Y)
     host.Update(app log false [])
     settle w
     Assert.False(isOpen host)

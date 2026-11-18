@@ -8,6 +8,9 @@ open Scribble.Platform
 open Scribble.Rendering
 open Scribble.Core
 
+/// With the other classes that use the process's image cache: run one after another, they can't find a picture another
+/// class's thread has only begun to decode (seen once the test run grew: the Images page drawn with empty boxes).
+[<Collection("Shared image cache")>]
 type ImageViewTests(fixture: TextRenderingTests.TextFixture) =
     interface IClassFixture<TextRenderingTests.TextFixture>
 

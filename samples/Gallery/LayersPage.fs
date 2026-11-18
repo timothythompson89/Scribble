@@ -1,9 +1,8 @@
-/// The Layers page: a toast layer and a modal dialog layer. The app adds the two layers (`toasts`, `dialog`); the
-/// page asks them to show something.
+/// The Layers page: toasts (the Gallery's `toaster`, which also shows the app's errors), dialogs, flyouts and
+/// tooltips. Each shows in a layer of its own above the app; the page only says what and when.
 module Scribble.Samples.Gallery.LayersPage
 
 open System
-open System.Threading.Tasks
 open Scribble.Core.FlyoutProps
 open Scribble.Rendering
 open Scribble.Text
@@ -12,85 +11,24 @@ open Scribble.Accessibility
 open Scribble.Samples
 open Scribble.Samples.Gallery.Common
 
-// The page asks the layers to show something through these events. (Until M8 brings an element
-// that shows view content in a layer, a layer's view is fixed, so it listens instead.)
-let private toastRequests = Event<string>()
+/// The dialogs' buttons, at the right.
+let private buttonRow (buttons: View list) =
+    StackPanel.create [
+        StackPanel.orientation Horizontal
+        StackPanel.spacing 8.0
+        StackPanel.horizontalAlignment HorizontalAlignment.Right
+        StackPanel.children buttons
+    ]
 
-/// Shows `text` in a toast (the app's errors use it: GalleryApp's `App.onError`).
-let toast (text: string) = toastRequests.Trigger text
-let private dialogRequests = Event<unit>()
-let private toastIds = ref 0
-
-/// A layer at the bottom right: each toast stays 2.5 seconds. The pointer falls through
-/// everywhere else, so the app stays usable.
-let toasts =
-    Component.define "Toasts" (fun ctx () ->
-        let shown = ctx.useState<(int * string) list> []
-        ctx.useSubscription((), fun () ->
-            toastRequests.Publish.Subscribe(fun text ->
-                toastIds.Value <- toastIds.Value + 1
-                let id = toastIds.Value
-                shown.Update(fun ts -> ts @ [ id, text ])
-                // From a timer thread: Update queues itself onto the UI thread.
-                Task.Delay(2500).ContinueWith(fun (_: Task) -> shown.Update(List.filter (fun (i, _) -> i <> id))) |> ignore))
-        StackPanel.create [
-            StackPanel.horizontalAlignment HorizontalAlignment.Right
-            StackPanel.verticalAlignment VerticalAlignment.Bottom
-            StackPanel.margin 16.0
-            StackPanel.spacing 8.0
-            StackPanel.items shown.Current fst (fun (_, text) ->
-                Border.create [
-                    Border.padding (14.0, 10.0)
-                    Border.cornerRadius 8.0
-                    Border.background Palette.accent
-                    Border.shadow floatShadow
-                    Border.content (TextBlock.create [ TextBlock.text text; TextBlock.foreground Palette.onAccent ])
-                ])
-        ])
-
-/// A modal layer: while the dialog shows, the app below gets no pointer or keyboard input. Hidden,
-/// it shows nothing and so blocks nothing.
-let dialog =
-    Component.define "Dialog" (fun ctx () ->
-        let isOpen = ctx.useState false
-        ctx.useSubscription((), fun () -> dialogRequests.Publish.Subscribe(fun () -> isOpen.Set true))
-        Border.create [
-            Border.isVisible isOpen.Current
-            Border.background scrim
-            Border.content (
-                Border.create [
-                    Border.width 340.0
-                    Border.horizontalAlignment HorizontalAlignment.Center
-                    Border.verticalAlignment VerticalAlignment.Center
-                    Border.padding 20.0
-                    Border.cornerRadius 10.0
-                    Border.background Palette.surface
-                    Border.shadow dialogShadow
-                    Border.content (
-                        StackPanel.create [
-                            StackPanel.spacing 14.0
-                            StackPanel.children [
-                                TextBlock.create [ TextBlock.text "A modal layer"; TextBlock.fontSize 18.0 ]
-                                TextBlock.create [
-                                    TextBlock.text "Until this closes, the app below can't be clicked, scrolled or reached with Tab: Tab stays in here."
-                                    TextBlock.textWrapping TextWrapping.Wrap
-                                    TextBlock.foreground Palette.textDim
-                                ]
-                                StackPanel.create [
-                                    StackPanel.orientation Horizontal
-                                    StackPanel.spacing 8.0
-                                    StackPanel.horizontalAlignment HorizontalAlignment.Right
-                                    StackPanel.children [
-                                        Button.create [ Button.text "Toast"; Button.onClick (fun _ -> toastRequests.Trigger "From the dialog") ]
-                                        Button.create [ Button.text "Close"; Button.onClick (fun _ -> isOpen.Set false) ]
-                                    ]
-                                ]
-                            ]
-                        ]
-                    )
-                ]
-            )
-        ])
+/// Some text over a row of buttons.
+let private dialogBody (text: string) (buttons: View list) =
+    StackPanel.create [
+        StackPanel.spacing 16.0
+        StackPanel.children [
+            TextBlock.create [ TextBlock.text text; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.foreground Palette.textDim ]
+            buttonRow buttons
+        ]
+    ]
 
 /// One row of a menu: text on the left, transparent until hovered.
 let private menuItem (text: string) (onClick: unit -> unit) =
@@ -108,7 +46,7 @@ let private menuItem (text: string) (onClick: unit -> unit) =
 let private actionsMenu (isOpen: State<bool>) : Setting<Flyout> list =
     let choose (text: string) () =
         isOpen.Set false
-        toastRequests.Trigger("Chose " + text)
+        toaster.Show("Chose " + text)
     [
         Flyout.isOpen isOpen.Current
         Flyout.onOpenChanged isOpen.Set
@@ -158,18 +96,72 @@ let private pinnedSettings =
 let view =
     Component.define "LayersPage" (fun ctx () ->
         let actionsOpen = ctx.useState false
-        page "Layers" "Element trees above the app, each with its own focus: toasts the pointer falls through, and a modal dialog that blocks everything below." [
-            section "A pass-through layer" "Toasts stack at the bottom right for 2.5 seconds; the app keeps working everywhere but on a toast." (
-                Button.create [
-                    Button.horizontalAlignment HorizontalAlignment.Left
-                    Button.text "Show a toast"
-                    Button.onClick (fun _ -> toastRequests.Trigger("Toast at " + DateTime.Now.ToString "HH:mm:ss"))
+        let dialogOpen = ctx.useState false
+        let questionOpen = ctx.useState false
+        let answer = ctx.useState "Not asked yet"
+        page "Layers" "Content above the app, each in a layer of its own: toasts that never take the keyboard, dialogs that take everything until they close, flyouts and tooltips." [
+            section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds and waits while the pointer is on it; an error stays until closed. The app keeps working everywhere but on a toast." (
+                WrapPanel.create [
+                    WrapPanel.spacing 8.0
+                    WrapPanel.lineSpacing 8.0
+                    WrapPanel.children [
+                        Button.create [ Button.text "Show a toast"; Button.onClick (fun _ -> toaster.Show("Toast at " + DateTime.Now.ToString "HH:mm:ss")) ]
+                        Button.create [
+                            Button.text "Show an error"
+                            Button.onClick (fun _ -> toaster.Show [ Toast.kind ToastKind.Error; Toast.text "Couldn't reach the server" ])
+                        ]
+                        Button.create [
+                            Button.text "With an action"
+                            Button.onClick (fun _ -> toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> toaster.Show "Message restored") ])
+                        ]
+                    ]
                 ])
-            section "A modal layer" "The window dims; nothing below reacts to the pointer, the wheel or the keyboard, and Tab stays in the dialog." (
-                Button.create [
-                    Button.horizontalAlignment HorizontalAlignment.Left
-                    Button.text "Open a modal layer"
-                    Button.onClick (fun _ -> dialogRequests.Trigger())
+            section "Dialog" "The window dims; nothing below reacts to the pointer, the wheel or the keyboard, and Tab stays in the dialog. Escape closes the first; the second must be answered." (
+                StackPanel.create [
+                    StackPanel.spacing 8.0
+                    StackPanel.children [
+                        WrapPanel.create [
+                            WrapPanel.spacing 8.0
+                            WrapPanel.lineSpacing 8.0
+                            WrapPanel.children [
+                                Button.create [ Button.text "Open a dialog"; Button.onClick (fun _ -> dialogOpen.Set true) ]
+                                Button.create [ Button.text "Ask a question"; Button.onClick (fun _ -> questionOpen.Set true) ]
+                            ]
+                        ]
+                        TextBlock.create [ TextBlock.text answer.Current; TextBlock.foreground Palette.textDim ]
+                        // Dialogs stand anywhere in the view and take no space there.
+                        Dialog.create [
+                            Dialog.isOpen dialogOpen.Current
+                            Dialog.onOpenChanged dialogOpen.Set
+                            Dialog.lightDismiss true
+                            Dialog.title "A dialog"
+                            Dialog.content (
+                                dialogBody "Until this closes, the app below can't be clicked, scrolled or reached with Tab. Escape or a click outside closes it; a toast still shows above it." [
+                                    Button.create [ Button.text "Toast"; Button.onClick (fun _ -> toaster.Show "From the dialog") ]
+                                    Button.create [ Button.text "Close"; Button.onClick (fun _ -> dialogOpen.Set false) ]
+                                ])
+                        ]
+                        Dialog.create [
+                            Dialog.isOpen questionOpen.Current
+                            Dialog.closeOnEscape false
+                            Dialog.title "Delete the draft?"
+                            Dialog.content (
+                                dialogBody "This one must be answered: Escape and clicks outside do nothing." [
+                                    Button.create [
+                                        Button.text "Keep"
+                                        Button.onClick (fun _ ->
+                                            answer.Set "Kept the draft"
+                                            questionOpen.Set false)
+                                    ]
+                                    Button.create [
+                                        Button.text "Delete"
+                                        Button.onClick (fun _ ->
+                                            answer.Set "Deleted the draft"
+                                            questionOpen.Set false)
+                                    ]
+                                ])
+                        ]
+                    ]
                 ])
             section "Flyout" "Content in its own layer next to a button. Escape or a click elsewhere closes it (that click does nothing else); focus moves in, and back when it closes. The menu is controlled: choosing an item closes it." (
                 Button.create [

@@ -23,7 +23,7 @@ questions", as paragraphs starting with the name given here.
 | M6 | Layers, ScrollViewer, the inspector | "Decisions for M6", "… M6 step 2b", "… M6 step 3" |
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
-| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" (4a flyouts, 4b ListBox and RadioButton, 4c ComboBox) |
+| M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" (4a flyouts, 4b ListBox and RadioButton, 4c ComboBox, 4d Dialog and Toast) |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
@@ -72,7 +72,9 @@ each in its own layer, light dismiss, placement) and tooltips. Rendering to an i
 
 Tim tried M8 step 4b on the desktop and passed it (2026-11-18), with Tab order as view order and `Dock.Fill`. Tim passed M8 step 4c too (2026-11-18, the whole checklist, the browser pass included): `ComboBox` (a box showing one item picked from a ListBox in its flyout; `source`, `keySelector`, `viewSelector`, `selected`, `placeholder`; both keyboards) and the Controls page's ComboBox section.
 
-Next: M8 step 4d Dialog and Toast. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+M8 step 4d (2026-11-18), built and waiting for Tim: `Dialog` (an element in the view whose box shows over a scrim in its own modal layer; `isOpen`, `onOpenChanged`, `title`) and toasts (`Toaster`, `App.toaster`, `toaster.Show`); the Gallery's Layers page and `App.onError` use them. That completes M8 step 4.
+
+Next: Tim tries M8 step 4d (section "4d: Dialog and Toast"). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -148,7 +150,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, Dialog, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -3321,7 +3323,7 @@ Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18. Passed by 
   reach the ComboBox section (it's below the fold): not covered by a picture at 390 DIPs. Unit: 1,081 passed plus
   6 timing skipped. Rendering: 90. Timing: 6.
 
-### 4d: Dialog and Toast (planned 2026-11-18)
+### 4d: Dialog and Toast (planned and built 2026-11-18)
 
 Facts: a modal layer already blocks pointer and keyboard below it, has its own focus and Tab order and hides the
 layers below from the semantic tree; step 4's decision 4 gives each dialog its own layer in opening order and the
@@ -3369,7 +3371,61 @@ toasts with `Task.Delay` (against "time comes from the platform").
 18. **GLOSSARY:** Dialog, Toast, Toaster, Scrim.
 19. **Two commits** (Dialog, then toasts), one checking pass.
 
-Status: **agreed (Tim, 2026-11-18: "yes to all").**
+Status: **agreed (Tim, 2026-11-18: "yes to all").** Built 2026-11-18.
+
+**As built (2026-11-18):**
+- **Dialog rides on the flyout machinery.** `Dialog.create settings` makes a `DialogAnchor` (not visible, so
+  panels give it neither room nor a gap) whose `flyout` is the Dialog box, built from the settings; `isOpen` and
+  `onOpenChanged` are Flyout's own properties. The host sees the anchor's type and, for a dialog, makes the layer
+  modal at the dialogs' order, wraps the box in a `Scrim` instead of placing it by an anchor, never closes it for
+  an anchor "scrolled out of view", and reads `closeOnEscape` for Escape and `lightDismiss` for a press that lands
+  on the scrim itself. Focus in and back, restyling "as if inside its element" and closing when it leaves the view
+  come with the flyout code.
+- **`Elements/Controls/Dialog.fs`** (Controls, not Basic: the title needs StackPanel and TextBlock): `Scrim`
+  (measures and centres the box, confined to its own size, on whole DIPs), `DialogAnchor`, `Dialog`. The box has
+  `maxWidth 560` and `margin 16`; `Dialog.title` becomes an 18-DIP heading stacked over the content.
+- **The fade** (decision 6): the scrim's first view has opacity 0; after its first layout the host gives it
+  opacity 1, and the theme's 120 ms transition on the scrim's opacity does the rest. No fade out.
+- **Layer orders:** dialogs `MaxValue - 5`, flyouts `- 4` (were `- 2`), toasts `- 3`; the inspector's highlight
+  and panel stay above.
+- **`Toaster`** (`Hosting/Toaster.fs`; `ToastPresenter` and `ToastPanel` in `Elements/Controls/Toast.fs`, so the
+  theme can style them): a list of toasts with a stage each (waiting, coming, shown, going), all on the UI thread;
+  `Show` posts to the dispatcher (or queues until `ElementHost.AddToaster`/`App.toaster` binds it). Its layer's
+  view is built from the list and patched on every change. A toast comes in clear and 12 DIPs low, then the next
+  posted turn shows it: the theme's 150 ms transition fades it and `ToastPresenter`'s transform slides it
+  (`ctx.Animate`). Going is the same backwards, then it's removed and a waiting one takes the place. Timers are
+  `Dispatcher.PostAfter` with a generation number, so a hover or a close makes an old timer stale. Nothing asks
+  for frames while a toast waits (tested).
+- **`Layer.keyboard false`** (new): a press in such a layer doesn't bring the keyboard to it. The toasts' layer
+  uses it, and the toast's buttons aren't focusable, so a click on Close leaves focus and Tab where they were.
+- **`ToastPanel`** passes the pointer through except on its toasts, stacks them from the bottom up, 16 DIPs from
+  the edges and 8 apart; at most 360 wide, or the window's width less the edges under 480 DIPs.
+- **The toast's buttons** (the action, then Close) sit in one StackPanel docked `Right`: two children docked Right
+  stand in the opposite order to the one they're written in (the same lesson as Bottom strips, in "Tab order is
+  view order").
+- **Semantics:** `Role.Dialog` named by the title; `Role.Alert` named by the toast's text through a label (named
+  by content, the Close button's name joined it: "Offline Close"). A toast given only `Toast.content` has no name:
+  give it `Toast.text` too.
+- **Theme:** `Palette.scrim` (`Theme.scrim`; 55% black, 30% in the light theme), `Scrim`, `Dialog` (surface, line,
+  corners, 20 DIPs of padding, a deep shadow) and `ToastPresenter` (surface, line, floating shadow; `error` class:
+  the danger colour with `onAccent` text).
+- **Gallery:** the Layers page has a Toasts section (a toast, an error, one with Undo) and a Dialog section (one
+  that Escape or a click outside closes and that can show a toast above itself, one that must be answered, with
+  the answer shown on the page). `Common.toaster` is the Gallery's; `App.onError` and the Images page show Error
+  toasts through it. The two `App.layer` lines, the F# events, `Task.Delay` and the Gallery's own scrim and dialog
+  shadow values are gone.
+- **Found along the way:** the rendering tests' Images page came out with empty boxes in 2 runs of 5 once the run
+  had more classes: the classes that use the process's image cache ran in parallel, and one could find a picture
+  another's thread had only begun to decode. `ImageViewTests`, `ImageOutTests` and `InspectorTests` now share an
+  xunit collection (one after another); six runs clean.
+- **Tests:** 22 unit tests (Dialog 9: layer and scrim, size, blocking, focus, Escape, the scrim press, a flyout
+  inside, following the view, semantics; toasts 13: showing and going, no frames while waiting, before start,
+  another thread, errors, durations, three at a time, hover, the action, the keyboard staying, narrow and wide,
+  pass-through, stacking and semantics). 2 new screenshots: `dialog-toasts@1x` and `dialog-toasts-light@1x`.
+  `gallery-phone-layers@3x` changed (the page's new sections; looked at). Unit: 1,103 passed plus 6 timing
+  skipped. Rendering: 92. Timing: 6.
+- **Not done:** no fade when a dialog closes; no keyboard way to a toast's action (decision 14's gap); toasts
+  aren't announced (waits for the first bridge).
 
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 

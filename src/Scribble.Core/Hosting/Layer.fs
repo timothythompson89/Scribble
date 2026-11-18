@@ -10,7 +10,8 @@ type internal LayerOptions =
       Modal: bool
       View: View voption
       AppStyles: bool
-      WheelThrough: bool }
+      WheelThrough: bool
+      Keyboard: bool }
 
 /// One setting for a layer: `Layer.order 100`, `Layer.modal true`, `Layer.view (toasts ())`.
 [<Struct>]
@@ -57,9 +58,14 @@ type Layer internal (text: TextSystem, options: LayerOptions, setCursor: Cursor 
     /// Default: false. A modal layer that shows something takes the wheel anyway.
     static member letWheelThrough(value: bool) = LayerSetting(fun o -> { o with WheelThrough = value })
 
+    /// False: a press in this layer doesn't bring the keyboard to it, so keys stay where they were (toasts).
+    /// Default: true.
+    static member keyboard(value: bool) = LayerSetting(fun o -> { o with Keyboard = value })
+
     member _.Name = options.Name
     member internal _.UsesAppStyles = options.AppStyles
     member internal _.LetsWheelThrough = options.WheelThrough
+    member internal _.TakesKeyboard = options.Keyboard
     member _.Order = options.Order
     member _.IsModal = options.Modal
     member _.Tree = tree
@@ -78,7 +84,7 @@ type Layer internal (text: TextSystem, options: LayerOptions, setCursor: Cursor 
     member internal _.InitialView = options.View
 
     static member internal Create(text: TextSystem, settings: LayerSetting list, setCursor: Cursor -> unit) =
-        let defaults = { Name = "Layer"; Order = 100; Modal = false; View = ValueNone; AppStyles = true; WheelThrough = false }
+        let defaults = { Name = "Layer"; Order = 100; Modal = false; View = ValueNone; AppStyles = true; WheelThrough = false; Keyboard = true }
         let options = settings |> List.fold (fun o (LayerSetting apply) -> apply o) defaults
         Layer(text, options, setCursor)
 

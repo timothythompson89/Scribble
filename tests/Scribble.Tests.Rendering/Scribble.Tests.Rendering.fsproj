@@ -29,6 +29,7 @@
     <Compile Include="ImageViewTests.fs" />
     <Compile Include="FlyoutTests.fs" />
     <Compile Include="ComboBoxTests.fs" />
+    <Compile Include="DialogToastTests.fs" />
     <Compile Include="ImageOutTests.fs" />
     <Compile Include="BackendTests.fs" />
   </ItemGroup>

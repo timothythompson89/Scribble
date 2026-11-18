@@ -20,6 +20,9 @@ let private straight (image: Image) =
 /// A rendered image as a Bitmap through its PNG (what a saved file holds).
 let private throughPng (image: Image) : Bitmap = Png.decode (Image.toPng image).Result
 
+/// With the other classes that use the process's image cache: run one after another, they can't find a picture another
+/// class's thread has only begun to decode (seen once the test run grew: the Images page drawn with empty boxes).
+[<Collection("Shared image cache")>]
 type ImageOutTests(fixture: TextFixture) =
     // This class is the only one in the rendering tests that renders through ViewImage or Capture, and its tests run
     // one at a time, so the process-wide environment is this fixture's while each runs.

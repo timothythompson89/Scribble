@@ -4,7 +4,7 @@ A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.m
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Status** (2026-11-17): milestones 0–7b done; M8 (core controls) under way: scrolling and virtualized lists, Grid,
-DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox. Apps are F# view
+DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox, Dialog, toasts. Apps are F# view
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
@@ -184,11 +184,14 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      "Random" put that message at the top; "Add message" adds one at the end and scrolls to it. The bar: drag the
      thumb, click the track to page; it widens under the pointer. After a click in the list, arrows, PageUp/Down
      and Home/End scroll it.
-   - "Show a toast" puts a blue toast at the bottom right for 2.5 seconds; several stack up. The app keeps
-     working everywhere except on the toast itself (a toast over the list or a button blocks only its own area).
-   - "Open a modal layer" dims the window and shows a dialog. Nothing below reacts: no hover, no clicks, no wheel,
-     and Tab cycles only through the dialog's two buttons (the app's focus ring goes away and comes back after).
-     "Toast" in the dialog shows a toast under the dimming; Close brings the app back exactly as it was.
+   - Toasts: "Show a toast" puts one at the bottom right for 4 seconds (it waits while the pointer is on it);
+     "Show an error" stays until its × is clicked; "With an action" has an Undo button. Three show at a time,
+     newest lowest. The app keeps working everywhere except on a toast itself, and a click on a toast never
+     moves keyboard focus.
+   - Dialog: "Open a dialog" dims the window and shows a box. Nothing below reacts: no hover, no clicks, no wheel,
+     and Tab cycles only through the dialog's buttons (the app's focus ring goes away and comes back after).
+     "Toast" in the dialog shows a toast above the dimming; Escape, a click outside or Close brings the app back
+     exactly as it was. "Ask a question" opens one that must be answered.
    - Hover a button, then open the dialog without moving the mouse: the button stops looking hovered.
 9. The Styles page (M7 step 1, verified on Windows and in the browser 2026-11-16):
    - Primary is blue and Danger red (classes); the selected tab's blue comes from a style too.
@@ -552,12 +555,12 @@ match square with
 
 ### Layers
 
-Toasts, popups, dialogs and the inspector go in layers: element trees drawn above the app, each filling the
+Dialogs, flyouts, toasts and the inspector go in layers: element trees drawn above the app, each filling the
 window and laid out on its own (a layer never moves the app).
 
 ```fsharp
-App.layer [ Layer.name "Toasts"; Layer.view (toasts ()) ]
-App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (dialog ()) ]
+App.layer [ Layer.name "Status"; Layer.view (statusOverlay ()) ]
+App.layer [ Layer.name "Lock"; Layer.order 200; Layer.modal true; Layer.view (lockScreen ()) ]
 ```
 
 - **Pointer:** goes to the topmost layer with an element under it and falls through everywhere else, so give a
@@ -567,12 +570,67 @@ App.layer [ Layer.name "Dialog"; Layer.order 200; Layer.modal true; Layer.view (
 - **Modal:** `Layer.modal true` takes all pointer and keyboard input while the layer shows something; showing
   nothing (hidden content), it blocks nothing, so a dialog layer can stay in place.
 - **Keyboard:** each layer has its own focus and Tab order. Keys go to the layer last clicked, unless a modal layer
-  is above it; the other layers' focus rings hide until they get the keyboard back.
+  is above it; the other layers' focus rings hide until they get the keyboard back. `Layer.keyboard false` keeps
+  the keyboard out of a layer: a press in it leaves keys where they were (the toasts' layer).
 - **Order:** the app is 0, `Layer.order` defaults to 100; equal orders stack in the order added.
 - **Wheel:** `Layer.letWheelThrough true` sends the wheel on to the layers below even where this one has an
   element: an overlay that takes clicks but shouldn't stop scrolling (the inspector's pick mode uses it).
 - **At run time:** `host.AddLayer [ ... ]` returns the `Layer` (`Update view`, `Focused`, `MoveFocus`), and
-  `host.RemoveLayer layer` takes it away (its components stop). Dialog and Toast come with M8 step 4d.
+  `host.RemoveLayer layer` takes it away (its components stop). For dialogs and toasts, use `Dialog` and a `Toaster` (below) rather than layers of your own.
+
+**Dialogs** (M8 step 4d): a `Dialog` stands anywhere in the view, takes no space there, and shows its box over a
+scrim in its own modal layer while the view says it's open:
+
+```fsharp
+Dialog.create [
+    Dialog.isOpen model.Confirming
+    Dialog.onOpenChanged (fun isOpen -> if not isOpen then dispatch Cancel)   // Escape asks; the view decides
+    Dialog.title "Delete the file?"
+    Dialog.content (
+        StackPanel.create [
+            StackPanel.children [
+                TextBlock.create [ TextBlock.text "It can't be brought back." ]
+                Button.create [ Button.text "Delete"; Button.onClick (fun _ -> dispatch Delete) ]
+            ]
+        ])
+]
+```
+
+- It is always controlled: `isOpen` shows it, and Escape only calls `onOpenChanged false`.
+  `Dialog.closeOnEscape false` is for a dialog that must be answered; `Dialog.lightDismiss true` lets a press on
+  the scrim ask too.
+- Opening, focus goes to the first Tab stop inside and Tab stays inside; closing, it goes back to what had it.
+- The Dialog is also the box: surface colour, a line, rounded corners, padding and a shadow from the theme, in
+  the middle of the window, at most 560 DIPs wide and 16 DIPs from the window's edges. `Dialog.style [] [ ... ]`
+  restyles every dialog, `Scrim.style` and `Theme.scrim` the dimming. Content too tall scrolls if you put it in a
+  ScrollViewer.
+- A flyout opened inside a dialog shows above it.
+
+**Toasts** (M8 step 4d): short messages at the window's edge, shown as an action from anywhere. Make a `Toaster`,
+give it to the app, and call `Show`, on any thread:
+
+```fsharp
+let toaster = Toaster()
+
+App.run [
+    App.toaster toaster
+    App.onError (fun e -> toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ])
+    ...
+]
+
+toaster.Show "Saved"                                                              // in a handler, update, a task
+toaster.Show [ Toast.text "Message deleted"; Toast.action ("Undo", fun () -> dispatch Undo) ]
+```
+
+- A toast stays 4 seconds (`Toast.duration`), waits while the pointer is on it, and has a close button. A
+  `ToastKind.Error` stays until closed. Three show at a time, newest lowest; the rest wait their turn.
+- They sit at the bottom right, or across the bottom of a window narrower than 480 DIPs, above dialogs and
+  flyouts, so an error stays in sight and can be closed while a dialog is open.
+- They never take the keyboard: a click on one leaves focus where it was, and Tab doesn't reach them. A toast's
+  action is pointer-only for now.
+- `Toast.content view` replaces the text (give `Toast.text` too: it is the toast's name for screen readers).
+  `ToastPresenter.style [] [ ... ]` restyles them, `ToastPresenter.style [ Style.cls "error" ] [ ... ]` the errors.
+- A custom host gives a Toaster its layer with `host.AddToaster toaster`.
 
 **Flyouts** (M8 step 4a): any element can have one. A flyout is content shown in its own layer next to the
 element, from wherever the view declares it. Give `flyout` the content alone, or the Flyout's settings when it needs

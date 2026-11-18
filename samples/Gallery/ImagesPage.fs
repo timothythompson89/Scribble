@@ -127,14 +127,14 @@ let private saving =
                 try
                     do! work ()
                 with e ->
-                    LayersPage.toast e.Message
+                    toaster.Show [ Toast.kind ToastKind.Error; Toast.text e.Message ]
             }
             |> ignore
         let save (name: string) (image: Image) =
             task {
                 let! png = Image.toPng image
                 let! saved = Files.save name png
-                LayersPage.toast (if saved then $"Saved {name} ({png.Length / 1024} KB)" else "Not saved")
+                toaster.Show(if saved then $"Saved {name} ({png.Length / 1024} KB)" else "Not saved")
             }
         let export () =
             run (fun () ->
@@ -151,7 +151,7 @@ let private saving =
                         // A fresh Gallery: its first tab, nothing hovered, in the window's theme.
                         let! image = ViewImage.render (gallery ()) [ ViewImage.size renderSize; ViewImage.scale 2.0 ]
                         rendered.Set(ValueSome image)
-                    | ValueNone -> LayersPage.toast "Nothing to render: the Gallery sets wholeGallery when it starts."
+                    | ValueNone -> toaster.Show "Nothing to render: the Gallery sets wholeGallery when it starts."
                 })
         let w, h = renderSize
         StackPanel.create [
