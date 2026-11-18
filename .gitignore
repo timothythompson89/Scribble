@@ -13,3 +13,7 @@ artifacts/
 
 # Test run output (hang dumps can be gigabytes)
 TestResults/
+
+# Local issue tracker (docs/agents/issue-tracker.md) and logs from running the samples
+.scratch/
+*.log
