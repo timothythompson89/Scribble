@@ -20,6 +20,7 @@ type internal ElementHostOptions =
       BeforeFrame: unit -> unit
       Styles: Style list
       Theme: Theme voption
+      Toasts: ToastPlacement voption
       AppValues: AppValues voption
       /// Time since some fixed start (the platform's `Elapsed`); a stopwatch when not set.
       Clock: (unit -> System.TimeSpan) voption }
@@ -76,6 +77,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     let mutable currentBackground = options.Background
     let sharedValues = match options.AppValues with ValueSome v -> v | ValueNone -> AppValues()
     do options.Theme |> ValueOption.iter (fun t -> sharedValues.Set(Theme.current, t))
+    do options.Toasts |> ValueOption.iter (fun p -> sharedValues.Set(Toasts.placement, p))
     /// What this host offers its trees' components and its program's commands (its toasts and dialogs).
     let services = HostServices()
     do sharedValues.Services <- box services
@@ -390,7 +392,9 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             let dispatcher = uiDispatcher "Toasts"
             let layer = Layer.Create(text, [ Layer.name "Toasts"; Layer.order toastOrder; Layer.keyboard false ], window.SetCursor)
             addLayer layer
-            let s = ToastStack(dispatcher, layer.Update)
+            let s = ToastStack(dispatcher, layer.Update, fun () -> sharedValues.Get Toasts.placement)
+            // The placement is an app value: when it changes, the toasts move.
+            sharedValues.Subscribe(Toasts.placement.Id, fun () -> s.Refresh()) |> ignore
             toastStack <- ValueSome s
             s
 
@@ -566,6 +570,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// The starting window theme (`Theme.current` in its app values), for every layer except those
     /// with `Layer.appStyles false`; `App.theme` sets it. Default: `Theme.dark []`.
     static member theme(value: Theme) = ElementHostSetting(fun o -> { o with Theme = ValueSome value })
+
+    /// Where the toasts stack at the start: `ElementHost.toasts [ Toasts.verticalAlignment VerticalAlignment.Top ]`
+    /// (it is the starting value of `Toasts.placement`, an app value).
+    static member toasts(settings: ToastsSetting list) = ElementHostSetting(fun o -> { o with Toasts = ValueSome(Toasts.From settings) })
 
     /// The app values its layers share (`App.run` gives the app's, shared by its windows). Default: its own.
     static member appValues(value: AppValues) = ElementHostSetting(fun o -> { o with AppValues = ValueSome value })
@@ -874,6 +882,6 @@ module ElementHost =
     /// A host for `window`, drawing with `device` and `text`:
     /// `ElementHost.create window device text [ ElementHost.background (Color.Hex 0x181825) ]`.
     let create (window: IWindow) (device: IRenderDevice) (text: TextSystem) (settings: ElementHostSetting list) =
-        let defaults = { Background = ValueNone; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = []; Theme = ValueNone; AppValues = ValueNone; Clock = ValueNone }
+        let defaults = { Background = ValueNone; Dispatcher = ValueNone; BeforeFrame = ignore; Styles = []; Theme = ValueNone; Toasts = ValueNone; AppValues = ValueNone; Clock = ValueNone }
         let options = settings |> List.fold (fun o (ElementHostSetting apply) -> apply o) defaults
         new ElementHost(window, device, text, options)

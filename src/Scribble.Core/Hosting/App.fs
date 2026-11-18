@@ -148,6 +148,13 @@ type App =
     static member theme<'Msg>(value: Theme) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(Theme.current, value) ])
 
+    /// Where the window's toasts stack at the start (the default is the bottom right):
+    /// `App.toasts [ Toasts.horizontalAlignment HorizontalAlignment.Center; Toasts.verticalAlignment VerticalAlignment.Top ]`.
+    /// It is the starting value of `Toasts.placement`, an app value: change it while running with
+    /// `ctx.useAppValue Toasts.placement` or `Cmd.setAppValue Toasts.placement p`.
+    static member toasts<'Msg>(settings: ToastsSetting list) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(Toasts.placement, Toasts.From settings) ])
+
     /// A layer above the app: `App.layer [ Layer.view (toasts ()) ]`, or a modal one with
     /// `Layer.modal true`. Its view is fixed (components inside keep their own state); see `Layer`.
     static member layer<'Msg>(settings: LayerSetting list) : AppSetting<'Msg> =

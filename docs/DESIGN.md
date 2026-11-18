@@ -3714,6 +3714,35 @@ stand in that order, newest lowest, now that places aren't given strictly oldest
 Tests: a repeat counted and its time starting over, what doesn't merge, forty errors as one toast, the line and
 Close all, Critical first, the limit of fifty keeping an early error. New screenshot `toasts-many@1x`. The Gallery
 has "Many at once". Unit: 1,141 passed plus 6 timing skipped (three runs). Rendering: 95. Timing: 6.
+
+**Two changes after Tim's look (2026-11-18).** (1) A toast now goes *upwards* as it leaves: it comes up from 12
+DIPs below its place and carries on 12 DIPs above it while it fades (it went back down before). (2) The "+N more"
+line is at the *bottom* of the stack, under the newest toast (decision 53 said above). Tests: the offset's sign on
+leaving; the line under the toasts. `toasts-many@1x` regenerated. Also: `VirtualizationTests`' trace collector
+kept its lines in an unguarded list that other tests' threads write to (trace listeners are the process's); it
+failed once here and now locks. Unit: 1,142.
+
+**Where the toasts stack (Tim, 2026-11-18: "default to bottom right but allow us to set .horizontalAlignment and
+.verticalAlignment"; all five, "and make it an app value").**
+56. **`App.toasts [ Toasts.horizontalAlignment ...; Toasts.verticalAlignment ... ]`** gives the starting place
+    (`ElementHost.toasts` for a custom host). Not a hook or something on the Toaster: it's one choice per window,
+    and two components could disagree.
+57. **It is an app value, `Toasts.placement`** (a `ToastPlacement` record), so an app can change it while running:
+    `ctx.useAppValue Toasts.placement`, `Cmd.setAppValue Toasts.placement p`. Toasts showing move at once.
+58. **Horizontal: Left, Center, Right (default) or Stretch; vertical: Top or Bottom (default).** Vertical Center and
+    Stretch count as Bottom, with a Debug warning: toasts in the middle of the window would cover what they're about.
+59. **At the top everything mirrors:** the newest toast is topmost, the "+N more" line above it at the edge, and
+    toasts come down from above and leave downwards. One rule for both edges: new things arrive at the edge, the
+    waiting line stands at the edge, and a toast leaves the way it was going.
+60. **A narrow window** (under 480 DIPs) shows them across its width whatever the horizontal alignment says; the
+    vertical one still applies.
+As built: `ToastPlacement` and `ToastPanel`'s props beside the panel (`Elements/Controls/Toast.fs`); `Toasts`
+(the settings and the app value, made lazily like `Theme.current`) in `Hosting/Toaster.fs`. The panel's children
+are now in the order they stand in, top to bottom, and `ToastStack` builds that order for the edge. The host
+subscribes to the value once its toasts exist and shows the stack again when it changes. The Gallery's Toasts
+section has a ComboBox of eight places. Tests: each place, the mirror at the top (order, the line, the exit's
+direction), the value changing while a toast shows (the same element, moved), a narrow window. Unit: 1,146 passed
+plus 6 timing skipped. Rendering: 95. `gallery-phone-layers@3x` changed (the ComboBox).
 ## Tab order is view order; `Dock.Fill` (grilling and built 2026-11-18)
 
 Found driving the Gallery's Lists page with a real keyboard: Tab went from the Reverse order button to the swatches

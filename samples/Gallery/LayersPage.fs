@@ -92,11 +92,18 @@ let private pinnedSettings =
         ]
     ]
 
+/// The places the page offers for the toasts.
+let private placements =
+    [| for vName, v in [ "Bottom", VerticalAlignment.Bottom; "Top", VerticalAlignment.Top ] do
+           for hName, h in [ "right", HorizontalAlignment.Right; "centre", HorizontalAlignment.Center; "left", HorizontalAlignment.Left; "across", HorizontalAlignment.Stretch ] ->
+               vName + " " + hName, { Horizontal = h; Vertical = v } |]
+
 /// The page: a component, so it can keep whether the Actions menu is open.
 let view =
     Component.define "LayersPage" (fun ctx () ->
         // This window's toasts.
         let toaster = ctx.useToaster ()
+        let placement = ctx.useAppValue Toasts.placement
         let actionsOpen = ctx.useState false
         let modalOpen = ctx.useState false
         let answer = ctx.useState "Nothing asked yet"
@@ -158,11 +165,22 @@ let view =
                 Inform.onClosed (fun () -> answer.Set "Was informed")
             ]
         page "Layers" "Content above the app, each in a layer of its own: toasts that never take the keyboard, modals and dialogs that take everything until they close, flyouts and tooltips." [
-            section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds (a warning 8) and waits while the pointer is on it; a critical one stays until closed. The same toast again is counted, not stacked; what waits shows as \"+N more\" with Close all. The app keeps working everywhere but on a toast." (
+            section "Toasts" "At the bottom right (across the bottom of a narrow window), newest lowest, three at a time. One stays 4 seconds (a warning 8) and waits while the pointer is on it; a critical one stays until closed. The same toast again is counted, not stacked; what waits shows as \"+N more\" with Close all. The box chooses where they stack. The app keeps working everywhere but on a toast." (
                 WrapPanel.create [
                     WrapPanel.spacing 8.0
                     WrapPanel.lineSpacing 8.0
                     WrapPanel.children [
+                        // Where the toasts stack: an app value, so the page can change it while toasts show.
+                        ComboBox.create [
+                            Semantics.label "Toast placement"
+                            ComboBox.width 170.0
+                            ComboBox.source placements
+                            ComboBox.keySelector (fun (name: string, _: ToastPlacement) -> name)
+                            ComboBox.viewSelector (fun (name: string, _: ToastPlacement) -> name)
+                            ComboBox.selected (placements |> Array.tryFind (fun (_, p) -> p = placement.Current) |> Option.map fst |> ValueOption.ofOption)
+                            ComboBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<string * ToastPlacement, string>) ->
+                                e.Item |> ValueOption.iter (fun (_, p) -> placement.Set p))
+                        ]
                         Button.create [ Button.text "Show a toast"; Button.onClick (fun _ -> toaster.Show("Toast at " + DateTime.Now.ToString "HH:mm:ss")) ]
                         Button.create [
                             Button.text "Show a warning"

@@ -722,10 +722,22 @@ App.onError (fun app e -> app.Toaster.Show [ Toast.severity Severity.Critical; T
   `Toast.severity Severity.Warning` one is in the warning colour and stays 8 seconds; a `Severity.Critical` one is in
   the danger colour and stays until closed. Three show at a time, newest lowest; the rest wait their turn.
 - The same toast shown again while it shows or waits is one toast with a count ("Couldn't reach the server ×5"),
-  and its time starts over. While toasts wait for a place, a line above the stack says "+N more" with a
+  and its time starts over. While toasts wait for a place, a line under the stack says "+N more" with a
   "Close all" button; a waiting Critical one gets the next place first; at most 50 wait.
-- They sit at the bottom right, or across the bottom of a window narrower than 480 DIPs, above modals, dialogs and
-  flyouts, so an error stays in sight and can be closed while a modal or a dialog is open.
+- They stack at the bottom right, above modals, dialogs and flyouts, so an error stays in sight and can be closed
+  while a modal or a dialog is open. **To put them elsewhere:**
+
+```fsharp
+App.toasts [ Toasts.horizontalAlignment HorizontalAlignment.Center; Toasts.verticalAlignment VerticalAlignment.Top ]
+
+// while running: it's an app value
+let placement = ctx.useAppValue Toasts.placement
+placement.Set { Horizontal = HorizontalAlignment.Left; Vertical = VerticalAlignment.Bottom }
+```
+
+  Horizontal is `Left`, `Center`, `Right` or `Stretch` (the window's width); vertical is `Top` or `Bottom`. At the
+  top everything mirrors: the newest toast is topmost and they come down from above. A window narrower than 480
+  DIPs shows them across its width whatever the horizontal alignment says.
 - They never take the keyboard: a click on one leaves focus where it was, and Tab doesn't reach them. A toast's
   action is pointer-only for now.
 - `Toast.content view` replaces the text (give `Toast.text` too: it is the toast's name for screen readers).

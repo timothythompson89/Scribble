@@ -405,7 +405,7 @@ let ``an error that keeps happening is one toast, not a full stack`` () =
 let private real (host: ElementHost) = toasts host
 
 [<Fact>]
-let ``when toasts wait, a line above the stack says how many, and Close all clears everything`` () =
+let ``when toasts wait, a line under the stack says how many, and Close all clears everything`` () =
     let w, host = show []
     for i in 1..5 do
         host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text ("Error " + string i) ]
@@ -413,8 +413,8 @@ let ``when toasts wait, a line above the stack says how many, and Close all clea
     Assert.Equal<string list>([ "Error 1"; "Error 2"; "Error 3" ], real host |> List.map textOf)
     let line = (more host).Value
     Assert.Equal("+2 more Close all", textOf line)
-    // It stands above the toasts.
-    Assert.True(line.PositionInTree.Y < (real host).Head.PositionInTree.Y)
+    // It stands under the toasts.
+    Assert.True(line.PositionInTree.Y > (real host |> List.last).PositionInTree.Y)
     // Closing one lets the next in, and the line counts down.
     clickOn w host (buttons (real host).Head |> List.last)
     advance w host 200.0
@@ -457,3 +457,98 @@ let ``at most fifty wait: past that the oldest that aren't Critical go first`` (
     clickOn w host (buttons (real host).Head |> List.last)
     advance w host 200.0
     Assert.Contains("An early error", real host |> List.map textOf)
+
+[<Fact>]
+let ``a toast comes up from below its place and goes on upwards as it leaves`` () =
+    let w, host = show []
+    host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text "Here" ]
+    // Asked for, not yet shown: clear, below its place.
+    host.Dispatcher.Value.RunPending()
+    pump w host
+    let toast () = (toasts host).Head
+    Assert.Equal(0.0, (toast ()).Get ToastProps.offset)
+    Assert.Equal(1.0, (toast ()).Get LayoutProps.opacity)
+    // Its close button, without the frames after (it's gone 150 ms later).
+    let close = buttons (toast ()) |> List.last
+    let at: PixelPoint = { X = close.PositionInTree.X + 5.0; Y = close.PositionInTree.Y + 5.0 }
+    w.Send(PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    w.Send(PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    // Going: above its place this time (its fade has only begun).
+    Assert.True((toast ()).Get ToastProps.offset < 0.0)
+
+// --- Placement (Tim, 2026-11-18): Toasts.placement, an app value -----------------------------------
+
+/// A host 900 × 600 (wide), with the app's settings.
+let private wide (extra: AppSetting<unit> list) =
+    let w, _, a = start ([ App.view app ] @ extra)
+    let host = a :?> ElementHost
+    w.Size <- { Width = 900; Height = 600 }
+    w.Send(Resized w.Size)
+    pump w host
+    w, host
+
+let private rect (e: Element) = e.PositionInTree.X, e.PositionInTree.Y, e.Bounds.Width, e.Bounds.Height
+
+[<Fact>]
+let ``toasts stack at the bottom right by default, and App.toasts puts them elsewhere`` () =
+    let at (settings: ToastsSetting list) =
+        let w, host = wide [ if not settings.IsEmpty then App.toasts settings ]
+        host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text "Here" ]
+        pump w host
+        let x, y, width, height = rect (toasts host).Head
+        x, y, x + width, y + height
+    let _, _, right, bottom = at []
+    Assert.Equal((884.0, 584.0), (right, bottom))
+    let left, _, _, bottom = at [ Toasts.horizontalAlignment HorizontalAlignment.Left ]
+    Assert.Equal((16.0, 584.0), (left, bottom))
+    let left, top, right, _ = at [ Toasts.horizontalAlignment HorizontalAlignment.Center; Toasts.verticalAlignment VerticalAlignment.Top ]
+    Assert.Equal(16.0, top)
+    Assert.InRange(left + right, 899.0, 901.0)
+    let left, top, right, _ = at [ Toasts.horizontalAlignment HorizontalAlignment.Stretch; Toasts.verticalAlignment VerticalAlignment.Top ]
+    Assert.Equal((16.0, 16.0, 884.0), (left, top, right))
+    // Vertical Center isn't a place for toasts: the bottom.
+    let _, _, _, bottom = at [ Toasts.verticalAlignment VerticalAlignment.Center ]
+    Assert.Equal(584.0, bottom)
+
+[<Fact>]
+let ``at the top it all mirrors: the newest toast is topmost, under the waiting line, and they come down from above`` () =
+    let w, host = wide [ App.toasts [ Toasts.verticalAlignment VerticalAlignment.Top ] ]
+    for i in 1..5 do
+        host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text ("Error " + string i) ]
+    pump w host
+    let byY = boxes host |> List.sortBy (fun e -> e.PositionInTree.Y) |> List.map textOf
+    Assert.Equal<string list>([ "+2 more Close all"; "Error 3"; "Error 2"; "Error 1" ], byY)
+    Assert.Equal(16.0, (more host).Value.PositionInTree.Y)
+    // Going: on downwards, away from the edge it came from.
+    let oldest = toasts host |> List.find (fun e -> textOf e = "Error 1")
+    let close = buttons oldest |> List.last
+    let at: PixelPoint = { X = close.PositionInTree.X + 5.0; Y = close.PositionInTree.Y + 5.0 }
+    w.Send(PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    w.Send(PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None))
+    Assert.True(oldest.Get ToastProps.offset > 0.0)
+
+[<Fact>]
+let ``the placement is an app value: setting it while toasts show moves them`` () =
+    let w, host = wide []
+    host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text "Here" ]
+    pump w host
+    let toast = (toasts host).Head
+    Assert.Equal(584.0, toast.PositionInTree.Y + toast.Bounds.Height)
+    host.AppValues.Set(Toasts.placement, { Horizontal = HorizontalAlignment.Left; Vertical = VerticalAlignment.Top })
+    pump w host
+    // The same toast, moved.
+    Assert.True(obj.ReferenceEquals(toast, (toasts host).Head))
+    Assert.Equal((16.0, 16.0), (toast.PositionInTree.X, toast.PositionInTree.Y))
+    // A component sets it the same way.
+    Assert.Equal(VerticalAlignment.Top, (host.AppValues.Get Toasts.placement).Vertical)
+
+[<Fact>]
+let ``a narrow window shows toasts across its width whatever the horizontal alignment, at the edge the vertical one says`` () =
+    let w, _, a = start [ App.view app; App.toasts [ Toasts.horizontalAlignment HorizontalAlignment.Left; Toasts.verticalAlignment VerticalAlignment.Top ] ]
+    let host = a :?> ElementHost
+    pump w host
+    host.Toaster.Show [ Toast.severity Severity.Critical; Toast.text "Here" ]
+    pump w host
+    // 400 DIPs wide.
+    let x, y, width, _ = rect (toasts host).Head
+    Assert.Equal((16.0, 16.0, 368.0), (x, y, width))

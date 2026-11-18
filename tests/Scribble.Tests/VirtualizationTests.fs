@@ -343,12 +343,15 @@ let ``a width change re-wraps every row and keeps the first visible row at the t
 
 // --- h. Zero-height and hidden rows -------------------------------------------------------------
 
-/// A trace listener that keeps what's written (the debug-build warnings).
+/// A trace listener that keeps what's written (the debug-build warnings). Trace listeners are the process's:
+/// tests running beside this one write here too, from their own threads, so the list is kept under a lock (an
+/// unguarded one failed this test once in some sixty runs, 2026-11-18).
 type private Collector() =
     inherit TraceListener()
-    member val Lines = Collections.Generic.List<string>()
-    override this.Write(message: string) = this.Lines.Add message
-    override this.WriteLine(message: string) = this.Lines.Add message
+    let lines = Collections.Generic.List<string>()
+    member _.Lines = lock lines (fun () -> lines.ToArray())
+    override _.Write(message: string) = lock lines (fun () -> lines.Add message)
+    override _.WriteLine(message: string) = lock lines (fun () -> lines.Add message)
 
 /// Decided in M8 step 1b (Tim, option A): a long run of zero-height rows is realized all at once
 /// (each starts above the viewport's bottom); hidden items belong out of the source. Debug builds

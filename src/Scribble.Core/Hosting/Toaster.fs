@@ -63,6 +63,35 @@ type Toast =
     /// `Toast.style [ Style.cls "critical" ] [ Border.background c ]`.
     static member style (parts: SelectorPart list) (settings: Setting<ToastPresenter> list) : Style = ToastPresenter.style parts settings
 
+/// One setting for `App.toasts [ ... ]`.
+[<Struct>]
+type ToastsSetting = internal ToastsSetting of (ToastPlacement -> ToastPlacement)
+
+module internal ToastsValues =
+    /// Made on first use (an app value's definition is shared state: `Theme.current` does the same).
+    let placement = lazy (AppValue.define "Toasts.placement" ToastPlacement.Default)
+
+/// Where a window's toasts stack. At the start: `App.toasts [ Toasts.horizontalAlignment
+/// HorizontalAlignment.Center; Toasts.verticalAlignment VerticalAlignment.Top ]`. While running, it's an app
+/// value: `let placement = ctx.useAppValue Toasts.placement`, then `placement.Set { placement.Current with
+/// Vertical = VerticalAlignment.Top }` (or `Cmd.setAppValue Toasts.placement p`). The default is the bottom right.
+///
+/// At the bottom the newest toast is lowest and toasts come up from below; at the top it all mirrors: the
+/// newest is topmost and they come down from above. A window narrower than 480 DIPs shows them across its
+/// width whatever the horizontal alignment says.
+[<AbstractClass; Sealed>]
+type Toasts =
+    /// Left, Center, Right (default), or Stretch for the window's width.
+    static member horizontalAlignment(value: HorizontalAlignment) = ToastsSetting(fun p -> { p with Horizontal = value })
+    /// Bottom (default) or Top. Center and Stretch count as Bottom: toasts in the middle of the window would
+    /// cover what they're about.
+    static member verticalAlignment(value: VerticalAlignment) = ToastsSetting(fun p -> { p with Vertical = value })
+    /// Where the window's toasts stack, as an app value (see the type's comment).
+    static member placement: AppValue<ToastPlacement> = ToastsValues.placement.Value
+    /// The placement a settings list gives, from the default.
+    static member internal From(settings: ToastsSetting list) : ToastPlacement =
+        settings |> List.fold (fun p (ToastsSetting apply) -> apply p) ToastPlacement.Default
+
 /// What the Toaster's toasts share.
 module internal ToastLooks =
     let defaultDuration = TimeSpan.FromSeconds 4.0
@@ -93,7 +122,7 @@ type internal ToastItem(id: int, options: ToastOptions) =
 
 /// One host's toasts: the list, their timers and the view of their layer. The UI thread only.
 [<Sealed>]
-type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
+type internal ToastStack(dispatcher: Dispatcher, update: View -> unit, placement: unit -> ToastPlacement) =
     let items = List<ToastItem>()
     let mutable nextId = 0
     let mutable nextOrder = 0
@@ -102,6 +131,15 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
     member _.Count = items.Count
 
     member private this.View() : View =
+        let where = placement ()
+        // Top, or anything else as Bottom (Center and Stretch would put toasts over what they're about).
+        let atTop = where.Vertical = VerticalAlignment.Top
+#if DEBUG
+        if where.Vertical = VerticalAlignment.Center || where.Vertical = VerticalAlignment.Stretch then
+            DebugWarnings.Once("toasts-vertical", "Toasts.placement: vertical Center and Stretch aren't supported; the toasts show at the bottom.")
+#endif
+        /// How far towards its edge a toast starts: below its place at the bottom, above it at the top.
+        let toEdge = if atTop then -ToastLooks.slide else ToastLooks.slide
         let quiet (severity: Severity) : Setting<Button> list =
             [ Button.background Color.Transparent
               Button.borderThickness 0.0
@@ -125,7 +163,9 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                     | Severity.Critical -> "critical"
                 ]
                 ToastPresenter.opacity (if here then 1.0 else 0.0)
-                Setting.create ToastProps.offset (if here then 0.0 else ToastLooks.slide)
+                // It comes in from the edge (from below at the bottom, from above at the top) and goes on the same way
+                // as it leaves.
+                Setting.create ToastProps.offset (if here then 0.0 elif item.Stage = 3 then -toEdge else toEdge)
                 ToastPresenter.onPointerEnter (fun _ -> this.Hover(item, true))
                 ToastPresenter.onPointerLeave (fun _ -> this.Hover(item, false))
                 ToastPresenter.content (
@@ -177,7 +217,7 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                     ]
                 )
             ]
-        // What waits has no place yet, so it would be out of sight: a line above the stack says how many, and
+        // What waits has no place yet, so it would be out of sight: a line under the stack says how many, and
         // "Close all" clears everything at once (an error that keeps happening is one click, not one each).
         let waiting = items |> Seq.filter (fun i -> i.Stage = 0) |> Seq.sumBy (fun i -> i.Count)
         let more =
@@ -202,10 +242,17 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
                     ]
                 )
             ]
-        let shown = items |> Seq.filter (fun i -> i.Stage > 0) |> Seq.sortBy (fun i -> i.Order)
-        View.Create(ToastPanel.Type, [ Setting.create PanelProps.children [ if waiting > 0 then yield more
-                                                                            for item in shown do
-                                                                                yield toast item ] ])
+        let shown = items |> Seq.filter (fun i -> i.Stage > 0) |> Seq.sortBy (fun i -> i.Order) |> List.ofSeq
+        // The panel's children are in the order they stand in, top to bottom. At the bottom: oldest first, the
+        // newest lowest, then the waiting line at the edge. At the top it mirrors: the line, the newest, the rest.
+        let children =
+            if atTop then [ (if waiting > 0 then [ more ] else []); shown |> List.rev |> List.map toast ] |> List.concat
+            else [ shown |> List.map toast; (if waiting > 0 then [ more ] else []) ] |> List.concat
+        View.Create(
+            ToastPanel.Type,
+            [ Setting.create ToastPanelProps.horizontal where.Horizontal
+              Setting.create ToastPanelProps.atTop atTop
+              Setting.create PanelProps.children children ])
 
     member this.Refresh() = update (this.View())
 
@@ -293,7 +340,7 @@ type internal ToastStack(dispatcher: Dispatcher, update: View -> unit) =
         if over then item.Generation <- item.Generation + 1
         elif item.Stage = 2 then this.StartTimer item
 
-    /// The toast goes: it fades and slides away, then the next waiting one takes its place.
+    /// The toast goes: it fades as it slides on upwards, then the next waiting one takes its place.
     member private this.Dismiss(item: ToastItem) =
         if item.Stage <> 3 && items.Contains item then
             item.Stage <- 3
