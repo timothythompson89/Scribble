@@ -523,7 +523,9 @@ App.run [ App.value compactMode true; ... ]                      // optional sta
   starts; `ctx.useAppValue WindowTitle.current` then `.Set "Counter – Styles"` (or `AppContext.Set`,
   `Cmd.setAppValue`) renames the window. `App.showStats` adds its numbers after the current title.
 - Code outside components can watch a value: `values.Subscribe(compactMode, fun v -> ...)` (dispose the result to
-  stop).
+  stop). A listener that throws goes to `App.onError`; the others still hear the change.
+- Read a value on the UI thread (a Debug build warns once per value when it's read from another); `Set` and
+  `Update` are safe from any thread.
 
 ### Async
 

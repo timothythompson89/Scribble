@@ -2,11 +2,6 @@ namespace Scribble.Core
 
 open System
 open System.Collections.Generic
-open System.Threading
-
-module internal AppValueIds =
-    let private counter = ref 0
-    let next () = Interlocked.Increment(&counter.contents)
 
 /// A piece of app-wide state, declared once and used anywhere: `let compactMode = AppValue.define
 /// "CompactMode" false`. Components read and set it with `ctx.useAppValue compactMode`; code outside
@@ -18,7 +13,7 @@ module internal AppValueIds =
 /// data belongs in its Elmish model; the two can be used together.
 [<Sealed>]
 type AppValue<'T> internal (name: string, defaultValue: 'T) =
-    let id = AppValueIds.next ()
+    let id = Ids.NextAppValue()
     /// The name shown by the inspector.
     member _.Name = name
     /// The value until something sets it.
@@ -56,7 +51,15 @@ type AppValues() =
         | true, existing when (match existing.TryGetTarget() with | true, s -> obj.ReferenceEquals(s, scroller) | _ -> false) -> ()
         | _ -> this.NamedScrollers[name] <- WeakReference<Scroller>(scroller)
 
-    member _.Get<'T>(value: AppValue<'T>) : 'T =
+    member this.Get<'T>(value: AppValue<'T>) : 'T =
+#if DEBUG
+        match this.Dispatcher with
+        | ValueSome d when not (d.CheckAccess()) ->
+            DebugWarnings.Once(
+                "AppValues.Get " + value.Name,
+                "The app value " + value.Name + " was read off the UI thread, where it may be changing: read it on the UI thread (Set and Update are safe from any thread).")
+        | _ -> ()
+#endif
         match values.TryGetValue value.Id with
         | true, v -> unbox<'T> v
         | _ -> value.Default
@@ -66,8 +69,19 @@ type AppValues() =
             values[value.Id] <- box next
             match listeners.TryGetValue value.Id with
             | true, l ->
+                // A listener may be app code (`Subscribe`): one that throws doesn't stop the others. Its error goes
+                // to App.onError; without a dispatcher (a bare tree) the first is thrown once all have run.
+                let mutable failed: exn voption = ValueNone
                 for listener in l.ToArray() do
-                    listener ()
+                    try
+                        listener ()
+                    with e ->
+                        match this.Dispatcher with
+                        | ValueSome d -> d.ReportError e
+                        | ValueNone -> if failed.IsNone then failed <- ValueSome e
+                match failed with
+                | ValueSome e -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw e
+                | ValueNone -> ()
             | _ -> ()
 
     member private this.OnUiThread(action: unit -> unit) =
@@ -94,15 +108,26 @@ type AppValues() =
         { new IDisposable with
             member _.Dispose() = l.Remove listener |> ignore }
 
+    /// How many listen for `value`'s changes (components using it, hosts, `Subscribe`). For tests.
+    member internal _.ListenerCount<'T>(value: AppValue<'T>) : int =
+        match listeners.TryGetValue value.Id with
+        | true, l -> l.Count
+        | _ -> 0
+
     /// Calls `listener` with the new value whenever it changes (on the UI thread), until the result
     /// is disposed. For code outside components (components use `ctx.useAppValue`).
     member this.Subscribe<'T>(value: AppValue<'T>, listener: 'T -> unit) : IDisposable =
         this.Subscribe(value.Id, fun () -> listener (this.Get value))
 
+module internal WindowTitleValues =
+    /// Made on first use (an app value's definition is shared state: `Theme.current` does the same).
+    let current = lazy (AppValue.define "WindowTitle" "Scribble")
+
 /// The window's title (the tab's title in the browser), an app value.
-module WindowTitle =
+[<AbstractClass; Sealed>]
+type WindowTitle =
     /// The window's title: `App.title "Counter"` sets its starting value (default "Scribble");
     /// change it from anywhere with `ctx.useAppValue WindowTitle.current` (`.Set "Counter – Styles"`),
     /// `AppContext.Set(WindowTitle.current, t)` or `Cmd.setAppValue WindowTitle.current t`.
     /// `App.showStats` adds its numbers after it.
-    let current: AppValue<string> = AppValue.define "WindowTitle" "Scribble"
+    static member current: AppValue<string> = WindowTitleValues.current.Value

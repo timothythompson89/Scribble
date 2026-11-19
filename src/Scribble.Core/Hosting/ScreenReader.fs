@@ -13,7 +13,8 @@ module internal ScreenReaderValues =
 /// something asks the window what is in it.
 [<AbstractClass; Sealed>]
 type ScreenReader =
-    /// Whether the app's windows get a bridge (`App.screenReader` starts it; default true).
+    /// Whether the app's windows get a bridge (`App.screenReader` sets it; default true). Read when a window
+    /// opens (`attach`): setting it later changes nothing for windows already open.
     static member enabled: AppValue<bool> = ScreenReaderValues.enabled.Value
 
     /// What makes a bridge for a host's window, before that window is first shown: the package that runs the app

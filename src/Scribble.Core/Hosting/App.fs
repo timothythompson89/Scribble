@@ -166,7 +166,8 @@ type App =
 
     /// False: the app's windows get no screen-reader bridge (DESIGN.md, "AccessKit: the screen-reader bridge").
     /// Default: true; a bridge does nothing until a screen reader, or another tool that reads windows, asks.
-    /// It is the starting value of `ScreenReader.enabled`, an app value.
+    /// It sets `ScreenReader.enabled`, an app value read when a window opens (changing it later does nothing for
+    /// windows already open).
     static member screenReader<'Msg>(value: bool) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(ScreenReader.enabled, value) ])
 

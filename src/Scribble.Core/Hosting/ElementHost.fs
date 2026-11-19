@@ -609,6 +609,8 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
 
     /// Their state, made (with its layer) the first time something asks for it.
     let mutable toastStack: ToastStack voption = ValueNone
+    /// Listening for `Toasts.placement` once the host has toasts; it stops when the host is disposed.
+    let mutable placementSubscription: System.IDisposable voption = ValueNone
     let mutable dialogQueue: DialogQueue voption = ValueNone
 
     let uiDispatcher (what: string) =
@@ -625,7 +627,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             addLayer layer
             let s = ToastStack(dispatcher, layer.Update, fun () -> sharedValues.Get Toasts.placement)
             // The placement is an app value: when it changes, the toasts move.
-            sharedValues.Subscribe(Toasts.placement.Id, fun () -> s.Refresh()) |> ignore
+            placementSubscription <- ValueSome(sharedValues.Subscribe(Toasts.placement.Id, fun () -> s.Refresh()))
             toastStack <- ValueSome s
             s
 
@@ -1175,6 +1177,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     interface System.IDisposable with
         member _.Dispose() =
             themeSubscription.Dispose()
+            placementSubscription |> ValueOption.iter (fun s -> s.Dispose())
             surface.Dispose()
 
 module ElementHost =

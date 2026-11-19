@@ -231,3 +231,76 @@ let ``the Gallery's title names the selected page`` () =
     (tab.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
     Assert.Equal("Gallery – Styles", w.TitleText)
     app.Dispose()
+
+[<Fact>]
+let ``a listener that throws goes to App.onError, and the listeners after it still hear the change`` () =
+    let runs = List<string>()
+    let reader = reader runs
+    let errors = List<exn>()
+    let heard = List<bool>()
+    let platform, device = new FakePlatform(), new FakeDevice()
+    use app =
+        App.start (platform, device, new FixedShaper(), [ App.view (reader "app"); App.onError (fun _ e -> errors.Add e) ])
+    let w = platform.Window.Value
+    let host = app :?> ElementHost
+    // Before the first frame, so it comes before the component in the list of listeners.
+    use _ = host.AppValues.Subscribe(lightMode, fun _ -> invalidOp "listener failed")
+    use _ = host.AppValues.Subscribe(lightMode, fun v -> heard.Add v)
+    w.DeliverFrame() |> ignore
+    host.AppValues.Set(lightMode, true)
+    w.DeliverFrame() |> ignore
+    Assert.Equal("listener failed", (Assert.Single errors).Message)
+    Assert.Equal<bool list>([ true ], List.ofSeq heard)
+    Assert.Equal<string list>([ "app light" ], texts host.Tree.Root.Value)
+
+[<Fact>]
+let ``without a dispatcher a listener that throws is thrown to the setter, once every listener has run`` () =
+    let values = AppValues()
+    let heard = List<bool>()
+    use _ = values.Subscribe(lightMode, fun _ -> invalidOp "listener failed")
+    use _ = values.Subscribe(lightMode, fun v -> heard.Add v)
+    let error = Assert.Throws<InvalidOperationException>(fun () -> values.Set(lightMode, true))
+    Assert.Equal("listener failed", error.Message)
+    Assert.Equal<bool list>([ true ], List.ofSeq heard)
+    Assert.True(values.Get lightMode)
+
+[<Fact>]
+let ``Update sets a value from its current one, and a disposed subscription hears no more`` () =
+    let values = AppValues()
+    let heard = List<string>()
+    let subscription = values.Subscribe(userName, fun v -> heard.Add v)
+    values.Update(userName, fun name -> name + "!")
+    values.Update(userName, fun name -> name + "!")
+    Assert.Equal<string list>([ "nobody!"; "nobody!!" ], List.ofSeq heard)
+    // An equal value: nobody is told.
+    values.Update(userName, id)
+    Assert.Equal(2, heard.Count)
+    subscription.Dispose()
+    values.Set(userName, "Tim")
+    Assert.Equal(2, heard.Count)
+    Assert.Equal(0, values.ListenerCount userName)
+
+[<Fact>]
+let ``reading an app value off the UI thread warns in a Debug build`` () =
+    let offThread = AppValue.define "ReadOffThread" 1
+    let warnings = List<string>()
+    let listener = Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
+    DebugWarnings.Listener <- listener
+    // (The listener is one for the whole process: another test running beside this one may take it.)
+    let mutable heard = true
+    try
+        let platform, device = new FakePlatform(), new FakeDevice()
+        use app = App.start (platform, device, new FixedShaper(), [ App.view (Border.create []) ])
+        let host = app :?> ElementHost
+        // On the UI thread: nothing to say.
+        Assert.Equal(1, host.AppValues.Get offThread)
+        Assert.Empty(lock warnings (fun () -> warnings |> Seq.filter (fun m -> m.Contains "ReadOffThread") |> List.ofSeq))
+        let other = Thread(fun () -> host.AppValues.Get offThread |> ignore)
+        other.Start()
+        other.Join()
+        heard <- obj.ReferenceEquals(DebugWarnings.Listener, listener)
+    finally
+        DebugWarnings.Listener <- null
+#if DEBUG
+    if heard then Assert.Contains(List.ofSeq warnings, fun m -> m.Contains "ReadOffThread" && m.Contains "off the UI thread")
+#endif

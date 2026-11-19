@@ -552,3 +552,13 @@ let ``a narrow window shows toasts across its width whatever the horizontal alig
     // 400 DIPs wide.
     let x, y, width, _ = rect (toasts host).Head
     Assert.Equal((16.0, 16.0, 368.0), (x, y, width))
+
+[<Fact>]
+let ``a host stops listening for the placement when it is disposed`` () =
+    let w, host = wide []
+    let before = host.AppValues.ListenerCount Toasts.placement
+    host.Toaster.Show "Here"
+    pump w host
+    Assert.Equal(before + 1, host.AppValues.ListenerCount Toasts.placement)
+    (host :> System.IDisposable).Dispose()
+    Assert.Equal(before, host.AppValues.ListenerCount Toasts.placement)

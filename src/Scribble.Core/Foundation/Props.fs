@@ -69,6 +69,8 @@ module internal Interpolation =
 type internal Ids private () =
     [<DefaultValue>] static val mutable private themeKey: int
     [<DefaultValue>] static val mutable private prop: int
+    [<DefaultValue>] static val mutable private appValue: int
+    static member NextAppValue() = lock typeof<Ids> (fun () -> Ids.appValue <- Ids.appValue + 1; Ids.appValue)
     static member NextThemeKey() = lock typeof<Ids> (fun () -> Ids.themeKey <- Ids.themeKey + 1; Ids.themeKey)
     static member NextProp() = lock typeof<Ids> (fun () -> Ids.prop <- Ids.prop + 1; Ids.prop)
 
