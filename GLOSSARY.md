@@ -279,9 +279,13 @@ One element as assistive technology sees it; elements with nothing to say (layou
 _Avoid_: accessibility node, automation peer
 
 **Semantic tree**:
-The semantic nodes of a window's layers, built from the element trees when asked for (never per frame).
+The semantic nodes of a window's layers, built from the element trees only while something asks for it: a tool, a test, or a connected screen reader.
 _Avoid_: accessibility tree (for ours; that's the platform's)
 
 **Semantic action**:
 Something assistive technology can ask a semantic node to do (click, increment, decrement, focus, scroll into view); it takes the same path as the matching input.
 _Avoid_: automation pattern, command
+
+**Screen-reader bridge**:
+What carries a window's semantic tree to a platform's assistive technology, and that technology's actions back.
+_Avoid_: adapter (AccessKit's word for its own per-platform part), provider, accessibility backend

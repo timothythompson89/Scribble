@@ -1,0 +1,34 @@
+<Project>
+  <!--
+    Supplies the AccessKit library (screen readers) to any executable project that imports this file (DESIGN.md,
+    "AccessKit: the screen-reader bridge"). The version is pinned: the F# bindings in
+    Scribble.Accessibility.AccessKit are checked against its accesskit.h.
+
+    Windows: the official accesskit-c release zip (one for every platform, 68 MB) is downloaded once into native/
+    (git-ignored); only the Windows x64 DLL and the licences are unpacked, and the DLL is copied to the output folder.
+    Other platforms: decided with the Mac and Linux builds.
+  -->
+  <PropertyGroup>
+    <AccessKitVersion>0.23.2</AccessKitVersion>
+    <AccessKitRoot>$(RepositoryRoot)native/accesskit-c-$(AccessKitVersion)/</AccessKitRoot>
+    <AccessKitZip>accesskit-c-$(AccessKitVersion).zip</AccessKitZip>
+    <AccessKitWinDll>$(AccessKitRoot)accesskit-c-$(AccessKitVersion)/lib/windows/x86_64/msvc/shared/accesskit.dll</AccessKitWinDll>
+  </PropertyGroup>
+
+  <Target Name="ScribbleFetchAccessKit"
+          BeforeTargets="ResolveReferences"
+          Condition="$([MSBuild]::IsOSPlatform('Windows')) And !Exists('$(AccessKitWinDll)')">
+    <Message Importance="high" Text="Scribble: downloading accesskit-c $(AccessKitVersion) ..." />
+    <DownloadFile SourceUrl="https://github.com/AccessKit/accesskit-c/releases/download/$(AccessKitVersion)/$(AccessKitZip)"
+                  DestinationFolder="$(AccessKitRoot)" />
+    <Unzip SourceFiles="$(AccessKitRoot)$(AccessKitZip)" DestinationFolder="$(AccessKitRoot)"
+           Include="**/lib/windows/x86_64/msvc/shared/accesskit.dll;**/LICENSE*;**/include/accesskit.h" />
+  </Target>
+
+  <Target Name="ScribbleCopyAccessKit" AfterTargets="ScribbleFetchAccessKit" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <None Include="$(AccessKitWinDll)" Condition="Exists('$(AccessKitWinDll)')"
+            Link="accesskit.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+</Project>

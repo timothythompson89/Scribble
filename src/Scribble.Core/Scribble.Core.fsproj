@@ -67,6 +67,7 @@
     <Compile Include="Hosting/Layer.fs" />
     <Compile Include="Hosting/ElementHost.fs" />
     <Compile Include="Hosting/SemanticTree.fs" />
+    <Compile Include="Hosting/ScreenReader.fs" />
     <Compile Include="Hosting/App.fs" />
     <Compile Include="Hosting/ViewImage.fs" />
     <Compile Include="Hosting/Files.fs" />

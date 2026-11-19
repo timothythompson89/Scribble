@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsScribbleLibrary>true</IsScribbleLibrary>
+    <Description>A screen-reader bridge for Scribble through AccessKit: a window's semantic tree to the platform's assistive technology, and its actions back (DESIGN.md, "AccessKit: the screen-reader bridge").</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Native.fs" />
+    <Compile Include="Translation.fs" />
+    <Compile Include="Bridge.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scribble.Tests" />
+  </ItemGroup>
+</Project>

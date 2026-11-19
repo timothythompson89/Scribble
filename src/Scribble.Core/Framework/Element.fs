@@ -58,6 +58,14 @@ type IElementRoot =
     /// again. The layer never takes the keyboard. Does nothing in a tree without a host (DESIGN.md, "9g").
     abstract ElementLayer: element: obj * content: (unit -> obj) -> unit
 
+/// Numbers for elements that a screen-reader bridge names (DESIGN.md, "AccessKit: the screen-reader bridge",
+/// decision 8): one counter for every thread, since trees on different threads may share a bridge's id space.
+[<AbstractClass; Sealed>]
+type internal SemanticIds =
+    [<DefaultValue>]
+    static val mutable private last: int64
+    static member Next() : uint64 = lock typeof<SemanticIds> (fun () -> SemanticIds.last <- SemanticIds.last + 1L; uint64 SemanticIds.last)
+
 [<AutoOpen>]
 module internal StyleMarks =
     /// Put before a theme style's selector text by the style engine, so `Values` can say `Theme`.
@@ -406,6 +414,7 @@ and View internal (elementType: ElementType, settings: struct (Prop * obj)[]) =
 /// types. Change one with `Set` (the next update from a view wins again).
 and [<Sealed>] Element internal (elementType: ElementType) =
     static let empty: Element[] = [||]
+    let mutable semanticId = 0UL
     static let clamp (value: float) (low: float) (high: float) = max low (min value high)
     // Counts shared by all trees (forced states, the theme epoch) live in `ElementCounts`: a
     // `static let mutable` here would be shared across threads (see CLAUDE.md).
@@ -607,6 +616,14 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                 // Ties broken by position keep view order among equal values.
                 ordered <- Array.init children.Length id |> Array.sortWith (fun a b -> match compare orderedKeys[a] orderedKeys[b] with 0 -> compare a b | c -> c) |> Array.map (fun i -> children[i])
             ordered
+    /// A number that is this element's alone, given the first time it is asked for (a semantic node's id is made
+    /// from it; an element nobody asks costs nothing).
+    member internal _.SemanticId : uint64 =
+        if semanticId = 0UL then semanticId <- SemanticIds.Next()
+        semanticId
+    /// Counts the times the element was taken from a pool to show something else (a list's recycled item): it and
+    /// what is inside it are then other things to a screen reader, with other ids.
+    member val internal SemanticGeneration = 0 with get, set
     /// Size wanted after the last measure, margin included.
     member _.DesiredSize: Size = desiredSize
     /// Position and size after the last arrange, relative to the parent (margin excluded).

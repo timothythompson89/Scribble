@@ -78,6 +78,8 @@ type SemanticNode
     internal
     (
         element: Element,
+        id: uint64,
+        isMultiline: bool,
         role: Role,
         name: string,
         nameSource: NameSource,
@@ -100,6 +102,12 @@ type SemanticNode
         children: SemanticNode list
     ) =
     let childList = List<SemanticNode>(children) :> IReadOnlyList<SemanticNode>
+    /// A number that stays this node's from one semantic tree to the next, for as long as its element shows the
+    /// same thing: what a screen-reader bridge knows it by. A list's recycled item has another once it shows
+    /// another item. Never 0 or 1.
+    member _.Id = id
+    /// Its text value may hold several lines.
+    member _.IsMultiline = isMultiline
     member _.Role = role
     /// What a screen reader calls it ("" when it has no name).
     member _.Name = name
@@ -182,6 +190,24 @@ type SemanticNode
 [<Sealed>]
 type SemanticTree internal (nodes: SemanticNode list) =
     let childList = List<SemanticNode>(nodes) :> IReadOnlyList<SemanticNode>
+    /// Every node by its element, made the first time `NodeAround` is asked.
+    let mutable byElement: Dictionary<Element, SemanticNode> = null
+
+    /// The node of `element`, or of the nearest element around it that has one (a focused element whose text
+    /// became its control's name): where a screen reader's focus goes for it.
+    member this.NodeAround(element: Element) : SemanticNode voption =
+        if isNull byElement then
+            byElement <- Dictionary<Element, SemanticNode>(HashIdentity.Reference)
+            for n in this.Nodes do
+                byElement[n.Element] <- n
+        let mutable e = ValueSome element
+        let mutable found = ValueNone
+        while found.IsNone && e.IsSome do
+            match byElement.TryGetValue e.Value with
+            | true, n -> found <- ValueSome n
+            | _ -> e <- e.Value.Parent
+        found
+
     /// The top-level nodes, in order (bottom layer first).
     member _.Children = childList
 
@@ -285,9 +311,11 @@ module internal SemanticBuilder =
         labels
 
     /// The nodes `e` gives: its own, or (without a role) those of what's inside it. `labels`: `labelsIn` its tree.
-    let rec build (labels: Dictionary<Element, string>) (e: Element) (position: SemanticPosition voption) : SemanticNode list =
+    let rec build (labels: Dictionary<Element, string>) (generation: int) (e: Element) (position: SemanticPosition voption) : SemanticNode list =
         if not e.IsVisible then []
         else
+            // How often it, or something around it, was recycled to show something else: part of its node's id.
+            let generation = generation + e.SemanticGeneration
             let computed = computedOf e
             if valueOf computed e SemanticsProps.hidden then []
             else
@@ -307,7 +335,7 @@ module internal SemanticBuilder =
                                       e.ReportError ex
                                       ValueNone
                               | ValueNone -> ValueNone
-                          yield! build labels c p ]
+                          yield! build labels generation c p ]
                 let kids =
                     if itemPosition.IsSome then
                         kids |> List.sortBy (fun n -> match n.Position with ValueSome p -> p.Index | ValueNone -> Int32.MaxValue)
@@ -346,6 +374,8 @@ module internal SemanticBuilder =
                         let at = e.PositionInTree
                         [ SemanticNode(
                               e,
+                              (e.SemanticId <<< 20) ||| uint64 (generation &&& 0xFFFFF),
+                              read computed e SemanticsProps.multiline,
                               role,
                               name,
                               source,
@@ -370,7 +400,7 @@ module internal SemanticBuilder =
 
     let ofTree (tree: ElementTree) =
         match tree.Root with
-        | ValueSome root -> build (labelsIn root) root ValueNone
+        | ValueSome root -> build (labelsIn root) 0 root ValueNone
         | ValueNone -> []
 
     /// The layers a reader can reach: from the top modal one showing something up (as input).
@@ -405,7 +435,7 @@ module internal SemanticBuilder =
             match why e with
             | ValueSome reason -> Error reason
             | ValueNone ->
-                match find e (build (labelsIn (top e)) (top e) ValueNone) with
+                match find e (build (labelsIn (top e)) 0 (top e) ValueNone) with
                 | Some n -> Ok n
                 | None ->
                     let computed = computedOf e

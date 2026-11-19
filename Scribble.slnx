@@ -4,8 +4,10 @@
     <File Path="global.json" />
     <File Path="build/WgpuNative.targets" />
     <File Path="build/Sdl3.targets" />
+    <File Path="build/AccessKit.targets" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Scribble.Accessibility.AccessKit/Scribble.Accessibility.AccessKit.fsproj" />
     <Project Path="src/Scribble.Browser/Scribble.Browser.fsproj" />
     <Project Path="src/Scribble.Core/Scribble.Core.fsproj" />
     <Project Path="src/Scribble.Desktop/Scribble.Desktop.fsproj" />

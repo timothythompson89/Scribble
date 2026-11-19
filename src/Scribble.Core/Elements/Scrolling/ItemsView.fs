@@ -337,6 +337,8 @@ module ItemsView =
                     match s.Pool.TryGetValue v.Type with
                     | true, stack when stack.Count > 0 ->
                         let el = stack.Pop()
+                        // Another item now: another thing to a screen reader.
+                        el.SemanticGeneration <- el.SemanticGeneration + 1
                         if ItemsProfile.On then ItemsProfile.Reused <- ItemsProfile.Reused + 1
                         attach el
                         patch el v

@@ -51,6 +51,7 @@
     <Compile Include="ToastTests.fs" />
     <Compile Include="DialogsTests.fs" />
     <Compile Include="SemanticsTests.fs" />
+    <Compile Include="AccessKitTests.fs" />
     <Compile Include="PngTests.fs" />
     <Compile Include="ImagingVectorTests.fs" />
     <Compile Include="ImageAtlasTests.fs" />
@@ -72,6 +73,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../../src/Scribble.Accessibility.AccessKit/Scribble.Accessibility.AccessKit.fsproj" />
     <ProjectReference Include="../../src/Scribble.Imaging/Scribble.Imaging.fsproj" />
     <ProjectReference Include="../../samples/Gallery/Gallery.fsproj" />
     <ProjectReference Include="../../samples/Hello/Hello.fsproj" />

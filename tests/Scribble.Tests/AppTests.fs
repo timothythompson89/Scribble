@@ -37,6 +37,8 @@ type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
     member _.Time = time
     member val FrameRequested = false with get, set
     member val Closed = false with get, set
+    /// `Show` has been called (a screen-reader bridge must be attached before).
+    member val Shown = false with get, set
     member val TitleText = "" with get, set
     member val Cursor = Cursor.Default with get, set
     member val Claimed: (Key * Modifiers) list = [] with get, set
@@ -70,7 +72,7 @@ type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
         member this.Title with get () = this.TitleText and set v = this.TitleText <- v
         member _.Surface = BrowserCanvas "test"
         member this.IsClosed = this.Closed
-        member _.Show() = ()
+        member this.Show() = this.Shown <- true
         member this.Close() = this.Closed <- true
         member this.RequestFrame() = this.FrameRequested <- true
         member this.SetCursor c = this.Cursor <- c

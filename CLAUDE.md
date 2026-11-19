@@ -13,7 +13,7 @@ decision. Read Part 1 before planning work; this file is how we work and what bi
 - Claude writes the code; Tim tests in **Rider on Windows** (and Chrome/Edge for the browser) and gives feedback.
 - **F# only**: no C# projects.
 - Low level by intent: rendering, layout, text, styles and controls are our own code. Borrowed: WebGPU (wgpu-native),
-  HarfBuzz, SDL3 (desktop windows and input) and, later, AccessKit (screen readers). The browser platform is ours.
+  HarfBuzz, SDL3 (desktop windows and input) and AccessKit (screen readers). The browser platform is ours.
   Image decoding is ours (`Scribble.Imaging`).
 - **Frame work proportional to what's visible, not to what exists**, with tests (same elements realized for 100
   and 10,000 items; scroll to item 9,000 without realizing those between).
@@ -48,7 +48,7 @@ dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through 
 dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if a picture changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-18: 1,281 unit tests plus 7
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-19: 1,291 unit tests plus 8
   timing tests skipped; 106 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and
@@ -56,6 +56,8 @@ dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if
   (`SCRIBBLE_UPDATE_SNAPSHOTS=1`; actual output in `bin/snapshots`). `BackendTests` requires D3D12 and Vulkan to
   agree (one written exception: `dashes@2x`). Shader maths must match on every backend: no built-in whose precision
   WGSL leaves open (`atan2` is a polynomial), colours rounded to 8 bits in the shader (`exact8`).
+- `SCRIBBLE_LOG_ACCESSIBILITY=1` writes to the console when something first asks a window for its accessibility
+  tree, and each tree the screen-reader bridge builds after that (none while nothing asks, none while idle).
 - `SCRIBBLE_LOG_TEXT=1` writes what SDL says of text input (typed text, an input method's composing steps, the
   caret's place) to the console: for finding out what an input method sends on a machine. It prints what is typed.
 - `SCRIBBLE_GPU_BACKEND=d3d12|vulkan` forces a backend (apps and the test fixture). Default on Windows: D3D12,
@@ -63,6 +65,8 @@ dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if
   (`GpuLifetime.Lock`): in parallel they deadlocked NVIDIA's driver.
 - wgpu-native v29.0.1.1 is downloaded on first build into `native/` (git-ignored) by `build/WgpuNative.targets`.
   SDL 3.4.20 likewise, by `build/Sdl3.targets` (the desktop platform, `Scribble.Platform.SDL3`; our own bindings).
+  accesskit-c 0.23.2 likewise, by `build/AccessKit.targets` (`Scribble.Accessibility.AccessKit`; our own bindings;
+  one 68 MB zip, of which only the Windows x64 DLL is unpacked).
 - **Performance:** measure Release at steady state (warm up, then best of N; a cold run once read 3.5 ms for
   under 1). Judge "fast enough" on Tim's phone with an AOT publish (`tools/Scribble.Serve -- --aot`).
 

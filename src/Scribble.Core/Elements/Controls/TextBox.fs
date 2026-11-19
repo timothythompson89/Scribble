@@ -1872,6 +1872,9 @@ module TextBox =
                     Read([| TextBoxProps.text; TextBoxProps.isPassword |], fun e -> if e.Get TextBoxProps.isPassword then ValueNone else ValueSome(e.Get TextBoxProps.text)))
                 Setting.create SemanticsProps.isProtected (Read([| TextBoxProps.isPassword |], fun e -> e.Get TextBoxProps.isPassword))
                 Semantics.readOnlyFrom TextBoxProps.isReadOnly
+                // (A password is one line whatever `multiline` says.)
+                Setting.create SemanticsProps.multiline (
+                    Read([| TextBoxProps.multiline; TextBoxProps.isPassword |], fun e -> e.Get TextBoxProps.multiline && not (e.Get TextBoxProps.isPassword)))
                 Layoutable.foreground (Color.Hex 0xE6E6F0)
                 Border.background (Color.Hex 0x24243A)
                 Border.borderBrush (Color.Hex 0x4A4A68)

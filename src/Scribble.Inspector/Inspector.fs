@@ -100,6 +100,8 @@ type Inspector =
                 popHost.Value <- ValueSome h
                 h.Update(Views.panel { State = state; IsPoppedOut = true })
                 popped.Value <- ValueSome(h, h.AddKeyPreview state.OnKey)
+                // Readable by a screen reader as the app's own window is (before it is first shown).
+                ScreenReader.attach (host, h)
                 window.Show()
                 window.RequestFrame()
             | _ -> ()

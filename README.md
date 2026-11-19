@@ -1486,9 +1486,12 @@ scrolled in may show the own value of the item it was made for before.
 
 Every element can say what it is to a screen reader: a **role** (button, checkbox, slider, tab, list item, ...),
 a **name**, a value, states (checked, selected, disabled, focused) and the actions it supports. The built-in
-elements fill this in themselves; a Button or CheckBox is named by the text inside it. No screen reader is
-connected yet (that comes later); for now the semantic tree is something to check and test. It lives in its
-own namespace, so it stays out of autocomplete until you open it:
+elements fill this in themselves; a Button or CheckBox is named by the text inside it. On Windows a desktop app's
+windows are readable by screen readers (Narrator, NVDA) through AccessKit with nothing to set up: `App.run` gives
+each window a screen-reader bridge, which does nothing until something asks the window what is in it.
+`App.screenReader false` leaves it out. A screen reader can read what is there, follow the focus and press, toggle,
+select, scroll and step things; following the caret in a TextBox and announcing toasts come next. The semantic
+tree lives in its own namespace, so it stays out of autocomplete until you open it:
 
 ```fsharp
 open Scribble.Accessibility
@@ -1524,6 +1527,7 @@ Border.create [ Semantics.role Role.Switch; Semantics.label "Wi-Fi"; Semantics.i
 | `src/Scribble.Browser` | `App.run` in the browser: the browser equivalents, plus a default page (`build/page`) |
 | `src/Scribble.Platform` | Window, event, DPI and frame-clock abstractions |
 | `src/Scribble.Platform.SDL3` | The desktop platform: windows, input and cursors through SDL3 (our own F# bindings) |
+| `src/Scribble.Accessibility.AccessKit` | The screen-reader bridge on the desktop, through AccessKit (our own F# bindings) |
 | `src/Scribble.Rendering` | Backend-neutral rendering interfaces |
 | `src/Scribble.Rendering.WebGPU` | WebGPU backend over `webgpu.h` (wgpu-native) |
 | `src/Scribble.Text` | Font parsing, glyph rasterizer, glyph cache, text drawing, measuring, wrapping and trimming; Inter |

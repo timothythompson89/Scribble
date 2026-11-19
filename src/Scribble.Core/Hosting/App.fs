@@ -164,6 +164,12 @@ type App =
     static member value<'Msg, 'T> (value: AppValue<'T>) (start: 'T) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(value, start) ])
 
+    /// False: the app's windows get no screen-reader bridge (DESIGN.md, "AccessKit: the screen-reader bridge").
+    /// Default: true; a bridge does nothing until a screen reader, or another tool that reads windows, asks.
+    /// It is the starting value of `ScreenReader.enabled`, an app value.
+    static member screenReader<'Msg>(value: bool) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(ScreenReader.enabled, value) ])
+
     /// Runs once the window and its host exist (layers added, before the first frame): for
     /// packages that plug into the host, such as `Inspector.enable`.
     static member onStart<'Msg>(handler: AppContext -> unit) : AppSetting<'Msg> =

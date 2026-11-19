@@ -219,6 +219,8 @@ module internal SemanticsProps =
     let readOnly: Prop<SemanticSource<bool>> = define "readOnly" (Fixed false)
     /// What it holds is hidden (a password).
     let isProtected: Prop<SemanticSource<bool>> = define "protected" (Fixed false)
+    /// Its text value may hold several lines.
+    let multiline: Prop<SemanticSource<bool>> = define "multiline" (Fixed false)
     let position: Prop<SemanticPosition voption> = define "position" ValueNone
     let actions: Prop<SemanticAction list> = define "actions" []
     let onAction: Prop<(InputContext -> SemanticAction -> bool) voption> = define "onAction" ValueNone
@@ -294,6 +296,10 @@ type Semantics =
     static member isReadOnly<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create SemanticsProps.readOnly (Fixed value)
     static member readOnlyFrom<'k when 'k :> Layoutable>(prop: Prop<bool>) : Setting<'k> =
         Setting.create SemanticsProps.readOnly (Read([| prop |], fun e -> e.Get prop))
+    /// Its text value may hold several lines (a text box of your own that takes Enter).
+    static member isMultiline<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create SemanticsProps.multiline (Fixed value)
+    static member multilineFrom<'k when 'k :> Layoutable>(prop: Prop<bool>) : Setting<'k> =
+        Setting.create SemanticsProps.multiline (Read([| prop |], fun e -> e.Get prop))
     static member position<'k when 'k :> Layoutable>(index: int, count: int) : Setting<'k> =
         Setting.create SemanticsProps.position (ValueSome { Index = index; Count = count })
     /// Actions it supports beyond the ones it gets by itself (click when it has one, focus when

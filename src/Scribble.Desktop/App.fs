@@ -5,6 +5,7 @@ namespace Scribble.Core
 open System
 open Scribble.Platform
 open Scribble.Platform.SDL3
+open Scribble.Accessibility.AccessKit
 open Scribble.Rendering
 open Scribble.Rendering.WebGPU
 open Scribble.Text
@@ -15,7 +16,8 @@ module DesktopApp =
     type App with
         /// Runs an app in a desktop window and returns when the window closes (use it as main's
         /// result). Picks the platform, the GPU renderer (SCRIBBLE_GPU_BACKEND chooses a backend)
-        /// and HarfBuzz shaping. The same call runs an app in the browser with Scribble.Browser.
+        /// and HarfBuzz shaping, and makes the window readable by screen readers (`App.screenReader false`: not).
+        /// The same call runs an app in the browser with Scribble.Browser.
         static member run<'Msg>(settings: AppSetting<'Msg> list) : int =
             if not (OperatingSystem.IsWindows()) then
                 Console.Error.WriteLine "Scribble runs on Windows for now (macOS and Linux are planned); the browser build runs anywhere."
@@ -26,6 +28,13 @@ module DesktopApp =
                     WebGpuDevice.Create [ WebGpuDevice.backend (WebGpuDevice.BackendFromEnvironment()) ]
                     :> IRenderDevice
                 use shaper = new HarfBuzzShaper() :> IShaper
+                // Every window gets a screen-reader bridge, before it is first shown (DESIGN.md, "AccessKit: the
+                // screen-reader bridge", decision 2). The app's own settings come after: `App.screenReader false`
+                // leaves it out.
+                let settings =
+                    [ App.value ScreenReader.bridge (ValueSome AccessKitBridge.attach)
+                      App.onStart (fun app -> ScreenReader.attach app.Host) ]
+                    @ settings
                 use app = App.start (platform, device, shaper, settings)
                 // `await` in app code resumes on this (the UI) thread.
                 (app :?> ElementHost).Dispatcher |> ValueOption.iter _.Install()

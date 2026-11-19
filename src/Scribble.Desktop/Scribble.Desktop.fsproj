@@ -1,16 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Brings the wgpu-native library and SDL3 along to every app that references this package. -->
+  <!-- Brings the wgpu-native library, SDL3 and AccessKit along to every app that references this package. -->
   <Import Project="$(RepositoryRoot)build/WgpuNative.targets" />
   <Import Project="$(RepositoryRoot)build/Sdl3.targets" />
+  <Import Project="$(RepositoryRoot)build/AccessKit.targets" />
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
-    <Description>Runs a Scribble app on the desktop: App.run picks the platform (SDL3), the WebGPU renderer and HarfBuzz shaping.</Description>
+    <Description>Runs a Scribble app on the desktop: App.run picks the platform (SDL3), the WebGPU renderer, HarfBuzz shaping and the screen-reader bridge (AccessKit).</Description>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="App.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />
+    <ProjectReference Include="../Scribble.Accessibility.AccessKit/Scribble.Accessibility.AccessKit.fsproj" />
     <ProjectReference Include="../Scribble.Platform.SDL3/Scribble.Platform.SDL3.fsproj" />
     <ProjectReference Include="../Scribble.Rendering.WebGPU/Scribble.Rendering.WebGPU.fsproj" />
     <ProjectReference Include="../Scribble.Text.HarfBuzz/Scribble.Text.HarfBuzz.fsproj" />
