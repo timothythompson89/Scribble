@@ -85,7 +85,10 @@ And **step 9e** (section "9e: what waited for M9": `submitOnEnter`, typeahead in
 element, a TextBox's text for screen readers; checked by Tim, 2026-11-18). The NativeAOT Gallery, with all of M9 and
 the vectorised PNG decoder in it, was published and walked through by Tim the same day: it passes.
 
-Next: selection by touch with the Menu control, which ends M9's TextBox work. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+And **step 9f, the Menu** (section "9f: the Menu": Menu and MenuItem, `contextMenu` on any element, the TextBox's
+built-in menu; built 2026-11-18, waiting for Tim's pass).
+
+Next: step 9g, selection by touch (long press, drag handles, the copy/paste bubble), which ends M9's TextBox work. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -161,7 +164,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, Label, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Modal, dialogs, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Label, Menu and MenuItem (as a flyout or a context menu; 9f), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -4299,6 +4302,81 @@ Status: **agreed (Tim, 2026-11-18: "Yes to all").**
 - **Tests:** 11 new unit tests (`TypeaheadAndLabelTests.fs`), one of them reaching item 9,000 of 10,000 with at
   most 60 items realized. Regenerated after looking: `gallery-phone-controls@3x` (a longer page). Totals: 1,252
   unit (+7 timing), 100 rendering, 7 timing.
+
+### 9f: the Menu (planned 2026-11-18)
+
+Facts at the start. Flyouts do the hard part already (their own layer, placement that flips to stay in the window,
+closing on a press outside or Escape), and menus and context menus were the reason the flyout became a value (M8
+step 4, round 1b). The Gallery's Layers page fakes a menu from a StackPanel of buttons, with no arrow keys. Missing:
+a flyout placed at the pointer; anything that opens on a right-click, a long press or the Menu key; Menu and
+MenuItem roles. In the browser the canvas already stops the browser's own right-click menu.
+
+**Round 7 (Tim, 2026-11-18: yes to all but 71, which he reshaped).**
+69. **Two steps:** **9f** the Menu, context menus and the TextBox's right-click menu; **9g** selection by touch
+    (long press, drag handles, the copy/paste bubble), which reuses 9f's menu.
+70. **No submenus in 9f:** items, separators and check marks. Submenus come with a menu bar; `MenuItem.items` can
+    be added then without changing what exists.
+71. **`flyout` and `contextMenu`** (Tim: "what would a programmer using this library prefer? maybe .flyout and
+    .contextMenu?"). A Menu is a kind of flyout: `Button.flyout (Menu.create [ Menu.items [ ... ] ])` opens it on a
+    click, as any flyout; `TextBox.contextMenu (Menu.create [ ... ])` opens it at the pointer. One name for each
+    thing, and the names FuncUI and Avalonia use. Considered: `menu` beside `flyout` (two settings for what a
+    click opens), `menu` as another name for `flyout`'s slot (two ways to say one thing), and `contextFlyout`
+    (general, but nobody calls it that).
+72. **The shortcut text is only text:** `MenuItem.shortcut "Ctrl+C"` shows at the item's right and registers no key.
+73. **What opens a context menu:** a right-click, the Menu key or Shift+F10 (at the focused element), and a long
+    press with a finger (half a second without moving).
+74. **Inside a menu:** ↑/↓ move through the items and wrap, Home/End go to the ends, disabled items are skipped;
+    Enter or Space invokes; a typed letter goes to the item starting with it; Escape or Tab closes it and gives
+    the focus back; a click on an item invokes it and closes the menu; a press outside closes it. Opened by the
+    keyboard the first item is highlighted; by the mouse, none.
+75. **The TextBox's menu is built in and replaceable:** Undo, Redo, Cut, Copy, Paste, Select all, each enabled only
+    when it applies. A `contextMenu` the app sets on the box replaces it.
+76. **Its six labels can be translated:** they live in one app value an app can replace.
+77. **Paste from the menu in a browser may ask permission** (a click is not a paste key: 9b, decision 23). Chrome
+    asks once; where the browser refuses, Paste does nothing. Ctrl+V keeps working everywhere.
+
+Status: **agreed (Tim, 2026-11-18); built the same day, waiting for Tim's pass.**
+
+**As built (2026-11-18):**
+
+- **A Menu's items are its `children`**, not `Menu.items` as decision 71's example has it: Menu is a StackPanel,
+  and Panel already has `items source key view` (the same name with other arguments is an error in F#, FS0816).
+  So `Menu.create [ Menu.children [ MenuItem.create [ ... ]; Menu.separator ] ]`, and `Menu.items` makes items
+  from a list as for any panel.
+- **Menu and MenuItem** (`Elements/Controls/Menu.fs`). A MenuItem is a Border that draws itself: an icon or a
+  check mark, the text, the shortcut text at the right in the theme's dim colour. When any item of a menu has an
+  icon or can be checked, every item leaves room for one, so the texts line up. `MenuItem.isChecked value` makes
+  an item one that is on or off; the click handler changes the app's value. A click runs `onClick`, then the menu
+  closes: the item asks the flyout whose layer it is in to close (`ElementTree.Owner`), so it works the same in a
+  button's flyout and a context menu, controlled or not. MenuItems are Tab stops, because a flyout gives the
+  focus to its first Tab stop when it opens; Tab itself closes the menu.
+- **`contextMenu` is a setting on every element** (`Layoutable.contextMenu view`; any view, usually a Menu), and
+  an element type can give one of its own (`Element.contextMenu`, what the TextBox uses). The host looks from the
+  element under the pointer outward for the first that has either; the app's setting wins over the type's.
+- **A context menu stands in a layer of its own**, as the flyout of a 1 × 1 element placed at the pointer (or at
+  the caret, or the focused element's bottom-left, for the Menu key and Shift+F10). So the flyout's placement,
+  flipping, light dismiss and focus are reused whole. Two consequences: a style or a `theme` set around the target
+  element does not reach its context menu (the window's theme does), unlike `flyout`; and the focus goes back to
+  where it was when the menu closes, because that layer never took the keyboard from the app's.
+- **A right-click opens it on release**; the right press itself still reaches the element (a TextBox moves the
+  caret there unless the press is inside the selection, and takes the focus).
+- **Long press:** 500 ms within 8 DIPs, touch and pen. The press is cancelled (no click on lift) and the rest of
+  that touch is swallowed. A pan that starts first cancels the wait.
+- **`Key.Menu`** is new in the platform contract (SDL scancode 101, the browser's `ContextMenu`).
+- **Roles** `Menu` and `MenuItem`; a checkable item reports its check state.
+- **The TextBox's menu** is built on each open from the box's state: Undo, Redo | Cut, Copy, Paste | Select all,
+  with the shortcut texts. A password box offers no Cut or Copy; a read-only one only Copy and Select all. The
+  labels are the app value `TextBoxMenu.labels` (a `TextBoxMenuLabels` record; `TextBoxMenuLabels.English` is the
+  default). The key handlers and the menu call the same commands. The box keeps its selection on show while its
+  menu is open with no extra state: focus is per layer.
+- **Tests:** 11 unit tests (`MenuTests.fs`: keys, wrap, skipping disabled items, typeahead, checked items,
+  closing, right-click, Menu key, long press, the TextBox's menu and its enabled states, replaced labels); two
+  screenshots (`menu@1x`, `menu-light@1x`). Regenerated after looking: `gallery-phone-layers@3x` (the Layers page
+  is longer, so the scrollbar's thumb is shorter). Totals: 1,264 unit (+7 timing), 102 rendering, 7 timing.
+  `ImageViewTests` "the Gallery's Images page finds its embedded pictures" failed once in six full runs and
+  passed alone; not looked into yet.
+- **Not checked by a test:** how a right-click and the menus feel in a real window, the Menu key on a real
+  keyboard, Paste from the menu in a browser, a long press on a phone.
 
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 

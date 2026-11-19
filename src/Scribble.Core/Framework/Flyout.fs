@@ -30,6 +30,8 @@ module FlyoutProps =
     // On any element.
     let tooltip = Prop<string>("Tooltip", "", Affects.Nothing, PropKind.Value)
     let tooltipView = Prop<View voption>("TooltipView", ValueNone, Affects.Nothing, PropKind.Value)
+    /// On any element: what opens at the pointer on a right-click, the Menu key or a long press (a Menu).
+    let contextMenu = Prop<View voption>("ContextMenu", ValueNone, Affects.Nothing, PropKind.Value)
     /// An uncontrolled flyout's open state, kept by its anchor.
     let internal ownOpen = Prop.local "FlyoutOwnOpen" false
 
@@ -37,7 +39,7 @@ module FlyoutProps =
         // The host hears when the view gives an element another flyout (opened or closed, say).
         flyout.Watched <- true
         // App state: styles can't give an element its flyout or tooltip, or open one (round 1f).
-        for p in [ flyout :> Prop; isOpen; tooltip; tooltipView ] do
+        for p in [ flyout :> Prop; isOpen; tooltip; tooltipView; contextMenu ] do
             p.IsAppState <- true
 
 /// Opening and closing a flyout from its anchor (the host shows it).

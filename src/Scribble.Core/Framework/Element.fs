@@ -145,6 +145,9 @@ type ElementType =
       /// What an input method is composing (not typed yet): to the first type from the focused element up that
       /// has this.
       TextComposition: (InputContext -> TextCompositionEventArgs -> unit) voption
+      /// The type's own context menu, made when it is asked for (so it can say what applies now); an element's
+      /// `contextMenu` setting comes before it.
+      ContextMenu: (InputContext -> View voption) voption
       /// The element got keyboard focus (true) or lost it (false); the second value says Tab brought it (not a
       /// press or code), which is when a TextBox selects all its text.
       FocusChanged: (InputContext -> bool -> bool -> unit) voption
@@ -176,6 +179,7 @@ type ElementType =
           KeyDown = ValueNone
           TextInput = ValueNone
           TextComposition = ValueNone
+          ContextMenu = ValueNone
           FocusChanged = ValueNone
           Click = ValueNone
           ClipChildren = ValueNone
@@ -1899,6 +1903,11 @@ module Element =
     /// comes through `textInput`). A text editor draws it at the caret. Goes to the first type from the focused
     /// element up that has this; call `ctx.SetTextInput` so the input method knows where the caret is.
     let textComposition (f: InputContext -> TextCompositionEventArgs -> unit) = ElementPart(fun t -> { t with TextComposition = ValueSome f })
+
+    /// The type's own context menu (a TextBox's Cut, Copy, Paste): called when one is asked for (a right-click, the
+    /// Menu key, a long press), so the Menu it gives can say what applies now; none: no menu of its own. An
+    /// element's `contextMenu` setting replaces it.
+    let contextMenu (f: InputContext -> View voption) = ElementPart(fun t -> { t with ContextMenu = ValueSome f })
 
     /// The type's own reaction to getting keyboard focus (`f ctx true byTab`) and losing it (`f ctx false false`):
     /// `byTab` is true when Tab or Shift+Tab brought the focus, false for a press or `element.Focus()`.

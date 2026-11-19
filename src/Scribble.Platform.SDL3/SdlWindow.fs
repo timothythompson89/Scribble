@@ -93,6 +93,8 @@ type SdlWindow
             | 80 -> Key.Left
             | 81 -> Key.Down
             | 82 -> Key.Up
+            // SDL_SCANCODE_APPLICATION.
+            | 101 -> Key.Menu
             | 224 | 228 -> Key.Control
             | 225 | 229 -> Key.Shift
             | 226 | 230 -> Key.Alt

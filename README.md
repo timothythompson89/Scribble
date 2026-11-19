@@ -4,7 +4,7 @@ A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.m
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Status** (2026-11-17): milestones 0–7b done; M8 (core controls) under way: scrolling and virtualized lists, Grid,
-DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox, TextBox (one line so far), Modal, dialogs, toasts. Apps are F# view
+DockPanel, Canvas, WrapPanel, toggles, CheckBox, Switch, Slider, TabControl, ListBox, RadioButton, ComboBox, TextBox, Label, Menu and context menus, Modal, dialogs, toasts. Apps are F# view
 functions: `App.run` starts one, on the desktop or in the browser; views are built from settings lists
 (`StackPanel.create [ ... ]`), and on each update Scribble diffs the new view against the last one and patches only
 what changed. There are pointer and keyboard input with focus, components with hooks, async, layers, a
@@ -789,6 +789,38 @@ The settings list is a value like any other: keep one in a `let` and give it to 
   Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]                           // every ComboBox's list
   ```
   A `theme` around the element is the flyout's theme too. Tooltips are styled the same way.
+
+**Menus** (M9 step 9f): a Menu is a list of commands, shown as an element's flyout or as its context menu.
+
+```fsharp
+let menu =
+    Menu.create [
+        Menu.children [
+            MenuItem.create [ MenuItem.text "Copy"; MenuItem.shortcut "Ctrl+C"; MenuItem.onClick (fun _ -> dispatch Copy) ]
+            MenuItem.create [ MenuItem.text "Word wrap"; MenuItem.isChecked model.Wrap; MenuItem.onClick (fun _ -> dispatch ToggleWrap) ]
+            Menu.separator
+            MenuItem.create [ MenuItem.text "Delete"; MenuItem.isEnabled model.CanDelete; MenuItem.onClick (fun _ -> dispatch Delete) ]
+        ]
+    ]
+
+Button.create [ Button.text "Actions"; Button.flyout menu ]            // opens on a click, as any flyout
+Border.create [ Border.contextMenu menu; Border.content document ]     // opens at the pointer
+```
+
+- **Items:** `text`, `icon`, `shortcut` (text shown at the right: it registers no key), `isEnabled`, and
+  `isChecked value` for one that is on or off (a check mark shows while it is on; `onClick` changes your value).
+  Choosing an item runs its `onClick` and closes the menu. No submenus yet.
+- **`contextMenu`** is a setting on every element and takes any view. It opens on a right-click (at the pointer),
+  on the Menu key or Shift+F10 (at the focused element), and on a long press with a finger. The nearest element
+  around the pointer that has one shows its own.
+- **Keys:** ↑/↓ move through the items and wrap, skipping disabled ones; Home and End; Enter or Space chooses; a
+  typed letter goes to the item that starts with it; Escape or Tab closes with nothing chosen.
+- **A TextBox has a menu already:** Undo, Redo, Cut, Copy, Paste and Select all, each enabled when it applies.
+  `TextBox.contextMenu yours` replaces it. Its labels are an app value: set `TextBoxMenu.labels` to a
+  `TextBoxMenuLabels` record in another language. In a browser, Paste from the menu may ask for permission (Ctrl+V
+  never does).
+- **Look:** `MenuItem.style [ States.hover ] [ ... ]`, `MenuItem.highlight` (the item the keyboard is on),
+  `MenuItem.shortcutForeground`. A context menu takes the window's theme, not one set around its element.
 
 **Tooltips:** `Button.tooltip "Save (Ctrl+S)"` (any element), or `tooltipView view` for any content.
 - **Showing:** after the mouse rests on the element for 500 ms. Moving straight on to another element with one

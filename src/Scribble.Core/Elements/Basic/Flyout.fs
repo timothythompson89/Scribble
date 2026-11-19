@@ -87,6 +87,11 @@ module FlyoutSettings =
         /// Its flyout, from the Flyout's settings: `Button.flyout [ Flyout.placement Placement.Right; Flyout.content menu ]`.
         static member flyout<'k when 'k :> Layoutable>(settings: Setting<Flyout> list) : Setting<'k> =
             Setting.create FlyoutProps.flyout (ValueSome(Flyout.create settings))
+        /// Its context menu: `TextBlock.contextMenu (Menu.create [ Menu.children [ ... ] ])`. It opens at the pointer on
+        /// a right-click, at the element on the Menu key or Shift+F10 while it (or something inside it) has the
+        /// focus, and on a long press with a finger; Escape, a press elsewhere or choosing an item closes it. The
+        /// nearest element with one, from what was clicked outward, shows its own.
+        static member contextMenu<'k when 'k :> Layoutable>(menu: View) : Setting<'k> = Setting.create FlyoutProps.contextMenu (ValueSome menu)
 
 /// What a tooltip's text or view sits in (`TooltipPresenter.style` restyles it).
 [<AbstractClass>]

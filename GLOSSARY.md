@@ -162,6 +162,14 @@ _Avoid_: popup, portal, overlay
 Content shown in its own layer, anchored to an element (`Button.flyout menu`); it closes when you press elsewhere or press Escape. The Flyout is also the box its content sits in, and is styled as if inside its element.
 _Avoid_: popup, dropdown (for the mechanism; a ComboBox's list is its flyout)
 
+**Menu**:
+A list of commands (menu items, separators) the user chooses one from; shown as an element's flyout or as its context menu.
+_Avoid_: dropdown, popup menu
+
+**Context menu**:
+A view (usually a Menu) an element shows at the pointer on a right-click, a long press, the Menu key or Shift+F10 (`contextMenu`).
+_Avoid_: right-click menu, context flyout
+
 **Tooltip**:
 A short hint shown near the pointer after it rests on an element; never focused, never clicked.
 

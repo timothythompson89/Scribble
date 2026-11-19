@@ -53,6 +53,8 @@ type Key =
     | Alt
     | Meta
     | CapsLock
+    /// The key that opens a context menu (beside the right Control on many keyboards).
+    | Menu
     /// Anything else, by name (the browser's `key` name, or SDL's key name on the desktop).
     | Other of name: string
 

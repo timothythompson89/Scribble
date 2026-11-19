@@ -26,6 +26,9 @@ type Role =
     | TabPanel
     | List
     | ListItem
+    /// A list of commands (a Menu), and one of them.
+    | Menu
+    | MenuItem
     | ScrollArea
     /// Text on its own (a TextBlock), named by its text.
     | Text
@@ -55,6 +58,8 @@ type Role =
         | TabPanel -> "TabPanel"
         | List -> "List"
         | ListItem -> "ListItem"
+        | Menu -> "Menu"
+        | MenuItem -> "MenuItem"
         | ScrollArea -> "ScrollArea"
         | Text -> "Text"
         | Image -> "Image"

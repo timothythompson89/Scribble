@@ -45,6 +45,7 @@
     <Compile Include="TextBoxLinesTests.fs" />
     <Compile Include="TextBoxInputMethodTests.fs" />
     <Compile Include="TypeaheadAndLabelTests.fs" />
+    <Compile Include="MenuTests.fs" />
     <Compile Include="ModalTests.fs" />
     <Compile Include="ToastTests.fs" />
     <Compile Include="DialogsTests.fs" />

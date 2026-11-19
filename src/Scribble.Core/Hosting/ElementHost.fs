@@ -58,6 +58,8 @@ type internal OpenFlyout(anchor: Element, anchorLayer: Layer, layer: Layer, retu
     member val IsModal = false with get, set
     /// A modal's scrim starts clear and fades in once it has been laid out.
     member val Entered = false with get, set
+    /// Where the keyboard and the focus go when it closes, when that isn't its anchor's layer (a context menu).
+    member val ReturnTo: struct (Layer * Element voption) voption = ValueNone with get, set
 
 /// Connects element trees to a window: lays them out at the window's size and scale, draws them
 /// on every Frame, and asks for a frame whenever something in them changes. `App.start` makes
@@ -308,14 +310,24 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             | ValueNone -> ()
         else Flyouts.request a false
 
+    /// A context menu's anchor stands in a layer of its own: the layer that asked for the menu, and what had the
+    /// focus there, which get the keyboard and the focus back when it closes.
+    let mutable contextReturn: struct (Layer * Element voption) voption = ValueNone
+    /// The layer context menus' anchors stand in (made with the first one; see "Context menus" below).
+    let mutable contextLayer: Layer voption = ValueNone
+
     let closeFlyout (f: OpenFlyout) =
         let hadKeys = same (keyboardLayer ()) f.Layer
         openFlyouts.Remove f |> ignore
         removeLayer f.Layer
-        if hadKeys && isIn f.AnchorLayer then
-            pressedLayer <- ValueSome f.AnchorLayer
-            match f.ReturnFocus with
-            | ValueSome e when e.Root.IsSome -> f.AnchorLayer.Input.Restore(e, f.Layer.Input.KeyboardMode)
+        let struct (returnLayer, returnFocus) =
+            match f.ReturnTo with
+            | ValueSome back -> back
+            | ValueNone -> struct (f.AnchorLayer, f.ReturnFocus)
+        if hadKeys && isIn returnLayer then
+            pressedLayer <- ValueSome returnLayer
+            match returnFocus with
+            | ValueSome e when e.Root.IsSome -> returnLayer.Input.Restore(e, f.Layer.Input.KeyboardMode)
             | _ -> ()
 
     /// Opens and closes the flyouts whose anchors changed.
@@ -344,6 +356,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                     layer.Tree.Owner <- ValueSome anchor
                     let f = OpenFlyout(anchor, anchorLayer, layer, anchorLayer.Focused)
                     f.IsModal <- isModal
+                    // A context menu: its anchor's layer is only where it stands.
+                    match contextLayer with
+                    | ValueSome c when same c anchorLayer -> f.ReturnTo <- contextReturn
+                    | _ -> ()
                     // The Flyout is the layer's root, placed beside the anchor where it is now (the tree lays out its root every
                     // frame, and the anchor moving brings one).
                     if not isModal then
@@ -414,6 +430,109 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 dismiss f
                 true
             | None -> false
+
+    // --- Context menus (DESIGN.md, "9f", decisions 71 and 73) --------------------------------------
+
+    /// Where a context menu's anchor stands: a layer of its own that shows nothing and never takes the keyboard,
+    /// holding a one-DIP element at the pointer whose flyout is the menu (as a dialog's Modal stands in the
+    /// Dialogs layer). So a context menu is placed, kept in the window, closed and styled as any flyout is.
+    let emptyContext = Canvas.create [ Canvas.isHitTestVisible false ]
+
+    let closeContext () =
+        match contextLayer with
+        | ValueSome layer -> layer.Update emptyContext
+        | ValueNone -> ()
+
+    /// Shows `menu` at `p` (window DIPs). The keyboard and the focus go back to `from` when it closes.
+    let openContext (from: Layer) (menu: View) (p: Point) =
+        let layer =
+            match contextLayer with
+            | ValueSome layer -> layer
+            | ValueNone ->
+                let layer = Layer.Create(text, [ Layer.name "Context menu"; Layer.keyboard false ], window.SetCursor)
+                addLayer layer
+                contextLayer <- ValueSome layer
+                layer
+        contextReturn <- ValueSome(struct (from, from.Focused))
+        layer.Update(
+            Canvas.create [
+                Canvas.isHitTestVisible false
+                Canvas.children [
+                    Border.create [
+                        Canvas.left p.X
+                        Canvas.top p.Y
+                        Border.width 1.0
+                        Border.height 1.0
+                        Border.isHitTestVisible false
+                        Border.flyout [
+                            Flyout.isOpen true
+                            Flyout.onOpenChanged (fun isOpen -> if not isOpen then closeContext ())
+                            Flyout.content menu
+                        ]
+                    ]
+                ]
+            ]
+        )
+        window.RequestFrame()
+
+    /// The context menu of the nearest element that has one, from `start` outward: its `contextMenu` setting, else
+    /// its type's own (a TextBox's).
+    let contextMenuOf (start: Element) : View voption =
+        let rec find (e: Element) =
+            let own =
+                if not e.IsEnabled then ValueNone
+                else
+                    match e.Get FlyoutProps.contextMenu with
+                    | ValueSome menu -> ValueSome menu
+                    | ValueNone ->
+                        match e.Type.ContextMenu with
+                        | ValueSome f ->
+                            try
+                                f (InputContext e)
+                            with ex ->
+                                e.ReportError ex
+                                ValueNone
+                        | ValueNone -> ValueNone
+            match own, e.Parent with
+            | ValueSome menu, _ -> ValueSome menu
+            | ValueNone, ValueSome parent -> find parent
+            | ValueNone, ValueNone -> ValueNone
+        find start
+
+    /// A right-click or a long press at `p` in `layer`: the menu of what is there, if it has one. True if it opened.
+    let contextAt (layer: Layer) (p: Point) =
+        match layer.Tree.HitTest(p.X, p.Y) |> ValueOption.bind contextMenuOf with
+        | ValueSome menu ->
+            openContext layer menu p
+            true
+        | ValueNone -> false
+
+    /// The Menu key or Shift+F10: the menu of the focused element, at its caret if it has said where that is (a
+    /// TextBox), else just inside its bottom left corner.
+    let contextForFocus () =
+        let layer = keyboardLayer ()
+        match layer.Focused with
+        | ValueSome e ->
+            match contextMenuOf e with
+            | ValueSome menu ->
+                let origin = e.PositionInTree
+                let p =
+                    match layer.Tree.TextArea with
+                    | ValueSome(struct (element, rect, _, _)) when obj.ReferenceEquals(element, e) ->
+                        Point(origin.X + rect.X, origin.Y + rect.Y + rect.Height)
+                    | _ -> Point(origin.X + min 8.0 e.Bounds.Width, origin.Y + max 0.0 (e.Bounds.Height - 4.0))
+                openContext layer menu p
+                true
+            | ValueNone -> false
+        | ValueNone -> false
+
+    /// A finger held still this long asks for the context menu of what it is on.
+    let longPressTime = System.TimeSpan.FromMilliseconds 500.0
+    /// It may move this far (DIPs) and still be a long press.
+    let longPressSlop = 8.0
+    /// The finger being timed: its pointer, where it went down, and a number that a later press or a move changes.
+    let mutable longPress: struct (int * Point * int) voption = ValueNone
+    let mutable longPressGeneration = 0
 
     // --- Toasts and dialogs (DESIGN.md, "4d", round 3): this window's own -------------------
 
@@ -858,6 +977,11 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             false
         | PointerMoved(kind, id, p, mods) ->
             let p = dips p
+            // A finger that moves is no long press.
+            match longPress with
+            | ValueSome(struct (pressed, at, _)) when pressed = id && (abs (p.X - at.X) > longPressSlop || abs (p.Y - at.Y) > longPressSlop) ->
+                longPress <- ValueNone
+            | _ -> ()
             let s = pointerFor kind id
             s.Position <- ValueSome p
             s.Modifiers <- mods
@@ -880,6 +1004,28 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                     updateKeyboardOwner ()
                 s.Buttons <- s.Buttons + 1
                 layer.Input.PointerPressed(kind, id, p, button, mods)
+                // A finger that stays where it went down asks for a context menu (DESIGN.md, "9f", decision 73).
+                if kind = PointerKind.Touch then
+                    longPressGeneration <- longPressGeneration + 1
+                    let generation = longPressGeneration
+                    longPress <- ValueSome(struct (id, p, generation))
+                    match options.Dispatcher with
+                    | ValueSome d ->
+                        d.PostAfter(
+                            longPressTime,
+                            fun () ->
+                                match longPress with
+                                | ValueSome(struct (pressed, at, g)) when g = generation && pressed = id ->
+                                    longPress <- ValueNone
+                                    if isIn layer && contextAt layer at then
+                                        // The menu took the press: no click when the finger lifts.
+                                        layer.Input.PointerCanceled(kind, id)
+                                        s.Buttons <- 0
+                                        s.Capture <- ValueNone
+                                        swallowed.Add id |> ignore
+                                | _ -> ()
+                        )
+                    | ValueNone -> ()
             false
         | PointerReleased(_, id, p, _, mods) when swallowed.Contains id && pointers[id].Buttons = 0 ->
             swallowed.Remove id |> ignore
@@ -895,9 +1041,12 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             let layer = targetFor s id p
             s.Buttons <- max 0 (s.Buttons - 1)
             if s.Buttons = 0 then s.Capture <- ValueNone
+            longPress <- ValueNone
             layer.Input.PointerReleased(kind, id, p, button, mods)
             // Released over another layer: that one has the pointer now.
             reassign id s
+            // A right-click: the context menu of what is under it.
+            if kind = PointerKind.Mouse && button = MouseButton.Right && isIn layer then contextAt layer p |> ignore
             false
         | PointerExited(kind, id) ->
             if kind = PointerKind.Mouse then hideTip ()
@@ -912,6 +1061,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 if kind <> PointerKind.Mouse then pointers.Remove id |> ignore
             false
         | PointerCanceled(kind, id) ->
+            longPress <- ValueNone
             let s = pointerFor kind id
             match s.Capture, s.Over with
             | ValueSome l, _
@@ -930,7 +1080,11 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             let mutable taken = false
             for preview in keyPreviews.ToArray() do
                 if not taken then taken <- preview key mods
-            taken || (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat) || (key = Key.Escape && dismissTopFlyout ())
+            taken
+            || (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat)
+            || (key = Key.Escape && dismissTopFlyout ())
+            // The Menu key or Shift+F10 that nothing used: the focused element's context menu.
+            || ((key = Key.Menu || (key = Key.F 10 && mods = Modifiers.Shift)) && not isRepeat && contextForFocus ())
         | KeyUp(key, mods) -> (keyboardLayer ()).Input.KeyUp(key, mods)
         | TextInput text -> (keyboardLayer ()).Input.TextInput text
         | TextComposition(text, caret) -> (keyboardLayer ()).Input.TextComposition(text, caret)

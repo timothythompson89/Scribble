@@ -272,6 +272,7 @@ type BrowserPlatform private () =
         | "Alt" | "AltGraph" -> Key.Alt
         | "Meta" | "OS" -> Key.Meta
         | "CapsLock" -> Key.CapsLock
+        | "ContextMenu" -> Key.Menu
         | n when n.Length = 1 -> Key.Char(Char.ToLowerInvariant n[0])
         | n when n.Length >= 2 && n.Length <= 3 && n[0] = 'F' && Char.IsDigit n[1] ->
             match Int32.TryParse(n.Substring 1) with

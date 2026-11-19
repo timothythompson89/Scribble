@@ -113,6 +113,17 @@ module internal ThemeLooks =
               Style.on States.pressed [ ListBoxItem.overlay Palette.pressTint ]
               Style.on States.disabled [ ListBoxItem.overlay Color.Transparent; ListBoxItem.opacity 0.5 ]
           ]
+          // Menu items (M9 step 9f): as list items under the pointer; the one the keyboard is on has the same tint.
+          MenuItem.style [] [
+              MenuItem.background Color.Transparent
+              MenuItem.foreground Palette.text
+              MenuItem.shortcutForeground Palette.textDim
+              MenuItem.highlight Palette.hoverTint
+              Style.transition BorderProps.overlay tintTime
+              Style.on States.hover [ MenuItem.overlay Palette.hoverTint ]
+              Style.on States.pressed [ MenuItem.overlay Palette.pressTint ]
+              Style.on States.disabled [ MenuItem.overlay Color.Transparent; MenuItem.opacity 0.5 ]
+          ]
           // A field (M8 step 4c, decision 10): the surface colour and a line that takes the accent while it has focus
           // or its list is open.
           ComboBox.style [] [

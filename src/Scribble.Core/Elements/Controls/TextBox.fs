@@ -211,6 +211,35 @@ type internal TextBoxState() =
               Anchor = caret
               Caret = caret }
 
+/// The words of a TextBox's own menu (DESIGN.md, "9f", decision 76): an app in another language replaces them,
+/// `App.value TextBoxMenu.labels { TextBoxMenuLabels.English with Cut = "Couper"; ... }`.
+type TextBoxMenuLabels =
+    { Undo: string
+      Redo: string
+      Cut: string
+      Copy: string
+      Paste: string
+      SelectAll: string }
+
+    static member English =
+        { Undo = "Undo"
+          Redo = "Redo"
+          Cut = "Cut"
+          Copy = "Copy"
+          Paste = "Paste"
+          SelectAll = "Select all" }
+
+module internal TextBoxMenuValues =
+    /// Made on first use (an app value's definition is shared state: `Theme.current` does the same).
+    let labels = lazy (AppValue.define "TextBoxMenu.labels" TextBoxMenuLabels.English)
+
+/// A TextBox's own context menu: Undo, Redo, Cut, Copy, Paste, Select all, each enabled when it applies. A
+/// `contextMenu` set on a box replaces it.
+[<AbstractClass; Sealed>]
+type TextBoxMenu =
+    /// The app value holding the menu's words, for every TextBox in the app.
+    static member labels: AppValue<TextBoxMenuLabels> = TextBoxMenuValues.labels.Value
+
 module TextBoxProps =
     /// The text. Given by the view: controlled; otherwise the control's own value.
     let text = Prop.define "Text" "" Affects.Measure |> AppState.mark
@@ -571,13 +600,101 @@ module TextBox =
                 let next = inserted e text s.Edit
                 if next <> s.Edit then applyEdit e s EditKind.Single next
 
-    /// Pastes `text` over the selection (a step of its own), if the box can still take it.
-    let private paste (e: Element) (text: string) =
-        if e.Root.IsSome && e.IsFocused && not (e.Get TextBoxProps.isReadOnly) then
+    /// Pastes `text` over the selection (a step of its own), if the box can still take it. `whileFocused`: only if
+    /// it still has the focus (an answer that came late, after the user moved on, is dropped).
+    let private paste (e: Element) (whileFocused: bool) (text: string) =
+        if e.Root.IsSome && (e.IsFocused || not whileFocused) && not (e.Get TextBoxProps.isReadOnly) then
             let s = stateOf e
             adopt e s
             let next = inserted e text s.Edit
             if next <> s.Edit then applyEdit e s EditKind.Single next
+
+    // ---- What the keys and the box's own menu both do (DESIGN.md, "9b", decision 26) ----
+
+    /// There is something to copy: a selection, in a box that isn't a password's (which never leaves the box).
+    let private canCopy (e: Element) = (stateOf e).Edit.HasSelection && not (e.Get TextBoxProps.isPassword)
+    let private canCut (e: Element) = canCopy e && not (e.Get TextBoxProps.isReadOnly)
+    let private canChange (e: Element) = not (e.Get TextBoxProps.isReadOnly)
+
+    let private copy (e: Element) =
+        if canCopy e then Clipboard().SetText (stateOf e).Edit.SelectedText
+
+    let private cut (e: Element) =
+        if canCut e then
+            let s = stateOf e
+            Clipboard().SetText s.Edit.SelectedText
+            applyEdit e s EditKind.Single (TextEdit.deleteSelection s.Edit)
+
+    /// Pastes the clipboard's text. `fromMenu`: asked by the box's menu, while the menu has the focus, so an
+    /// answer that is there at once is taken though the box isn't focused.
+    let private pasteClipboard (e: Element) (fromMenu: bool) =
+        if canChange e then
+            // The desktop answers at once; the browser after its paste event (or after asking, from a menu).
+            let reading = Clipboard().GetText()
+            if reading.IsCompletedSuccessfully then paste e (not fromMenu) reading.Result
+            else
+                reading.ContinueWith(
+                    (fun (t: Task<string>) ->
+                        try
+                            if t.IsCompletedSuccessfully then paste e true t.Result
+                        with error ->
+                            match e.Root with
+                            | ValueSome root -> root.ReportError error
+                            | ValueNone -> ()),
+                    TaskContinuationOptions.ExecuteSynchronously
+                )
+                |> ignore
+
+    /// Undo or redo (`take`): true if there was a step to take.
+    let private stepHistory (e: Element) (take: EditHistory -> struct (EditState * EditHistory) voption) =
+        let s = stateOf e
+        if canChange e then
+            match take s.History with
+            | ValueSome(struct (state, history)) ->
+                s.History <- history
+                applyWith e s ValueNone (TextEdit.normalize state)
+                true
+            | ValueNone -> false
+        else false
+
+    let private selectEverything (e: Element) =
+        let s = stateOf e
+        let next = TextEdit.selectAll s.Edit
+        if next <> s.Edit then apply e s next
+
+    /// The box's own menu (DESIGN.md, "9f", decision 75), made when it is asked for: each item is enabled when it
+    /// applies now. Its words are an app value (`TextBoxMenu.labels`).
+    let private contextMenu (ctx: InputContext) : View voption =
+        let e = ctx.Element
+        let s = stateOf e
+        adopt e s
+        // (The menu is in a layer of its own: the box keeps its focus and its selection stays on show.)
+        let labels =
+            match e.Root with
+            | ValueSome root -> root.AppValues.Get TextBoxMenu.labels
+            | ValueNone -> TextBoxMenuLabels.English
+        let item (text: string) (shortcut: string) (enabled: bool) (run: unit -> unit) =
+            MenuItem.create [
+                MenuItem.text text
+                MenuItem.shortcut shortcut
+                MenuItem.isEnabled enabled
+                MenuItem.onClick (fun _ -> if e.Root.IsSome then run ())
+            ]
+        let canChange = canChange e
+        ValueSome(
+            Menu.create [
+                Menu.children [
+                    item labels.Undo "Ctrl+Z" (canChange && not s.History.Undo.IsEmpty) (fun () -> stepHistory e TextHistory.undo |> ignore)
+                    item labels.Redo "Ctrl+Y" (canChange && not s.History.Redo.IsEmpty) (fun () -> stepHistory e TextHistory.redo |> ignore)
+                    Menu.separator
+                    item labels.Cut "Ctrl+X" (canCut e) (fun () -> cut e)
+                    item labels.Copy "Ctrl+C" (canCopy e) (fun () -> copy e)
+                    item labels.Paste "Ctrl+V" canChange (fun () -> pasteClipboard e true)
+                    Menu.separator
+                    item labels.SelectAll "Ctrl+A" (s.Edit.Text.Length > 0) (fun () -> selectEverything e)
+                ]
+            ]
+        )
 
     /// A drag reached the point (x, y): the selection runs to the caret place there (by whole words after a
     /// double-click).
@@ -654,6 +771,17 @@ module TextBox =
 
     let private pointerDown (ctx: InputContext) (args: PointerEventArgs) =
         let e = ctx.Element
+        if args.Button = ValueSome MouseButton.Right && args.PointerKind = PointerKind.Mouse then
+            // A right press, before the menu: the box takes the focus, and the caret goes to the press unless that
+            // is inside the selection (which the menu's Cut and Copy are then about).
+            let s = stateOf e
+            adopt e s
+            commitComposition e s
+            if not e.IsFocused then e.Focus()
+            let struct (index, atEnd) = pointAt e s ctx.Size args.LocalPosition.X args.LocalPosition.Y
+            if not (s.Edit.HasSelection && index >= s.Edit.Start && index <= s.Edit.End) then
+                apply e s (TextEdit.moveTo index false s.Edit)
+                s.AtLineEnd <- atEnd
         if args.Button = ValueSome MouseButton.Left then
             let s = stateOf e
             adopt e s
@@ -820,42 +948,19 @@ module TextBox =
                 args.Handle()
                 let next = inserted e text edit
                 if next <> edit then applyEdit e s kind next else restartBlink e s
-            let password = e.Get TextBoxProps.isPassword
-            // A password never leaves the box (DESIGN.md, "9b", decision 26).
+            // The keys do what the box's menu does.
             let copy () =
                 args.Handle()
-                if edit.HasSelection && not password then ctx.Clipboard.SetText edit.SelectedText
+                copy e
             let cut () =
                 args.Handle()
-                if edit.HasSelection && not password && not readOnly then
-                    ctx.Clipboard.SetText edit.SelectedText
-                    applyEdit e s EditKind.Single (TextEdit.deleteSelection edit)
+                cut e
             let pasteNow () =
                 args.Handle()
-                if not readOnly then
-                    // The desktop answers at once; the browser after its paste event.
-                    let reading = ctx.Clipboard.GetText()
-                    if reading.IsCompletedSuccessfully then paste e reading.Result
-                    else
-                        reading.ContinueWith(
-                            (fun (t: Task<string>) ->
-                                try
-                                    if t.IsCompletedSuccessfully then paste e t.Result
-                                with error ->
-                                    match e.Root with
-                                    | ValueSome root -> root.ReportError error
-                                    | ValueNone -> ()),
-                            TaskContinuationOptions.ExecuteSynchronously
-                        )
-                        |> ignore
+                pasteClipboard e false
             let step (take: EditHistory -> struct (EditState * EditHistory) voption) =
                 args.Handle()
-                if not readOnly then
-                    match take s.History with
-                    | ValueSome(struct (state, history)) ->
-                        s.History <- history
-                        applyWith e s ValueNone (TextEdit.normalize state)
-                    | ValueNone -> restartBlink e s
+                if not (stepHistory e take) then restartBlink e s
             // Several lines: up or down by `delta` lines, keeping to the x the first of a run of such moves
             // started from. Past the first line: the text's start; past the last: its end.
             let vertical (delta: int) =
@@ -1200,6 +1305,7 @@ module TextBox =
             Element.keyDown keyDown
             Element.textInput textInput
             Element.textComposition textComposition
+            Element.contextMenu contextMenu
             Element.focusChanged focusChanged
             // The dark base look (also without a theme); the theme adds the state looks.
             Element.defaults [

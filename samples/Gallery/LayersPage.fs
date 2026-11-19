@@ -105,6 +105,21 @@ let view =
         let toaster = ctx.useToaster ()
         let placement = ctx.useAppValue Toasts.placement
         let actionsOpen = ctx.useState false
+        let wordWrap = ctx.useState true
+        // One Menu, shown two ways: as the button's flyout and as the text's context menu.
+        let editMenu =
+            let choose (text: string) = fun (_: ClickEventArgs) -> toaster.Show("Chose " + text)
+            Menu.create [
+                Menu.children [
+                    MenuItem.create [ MenuItem.text "Copy"; MenuItem.shortcut "Ctrl+C"; MenuItem.onClick (choose "Copy") ]
+                    MenuItem.create [ MenuItem.text "Duplicate"; MenuItem.shortcut "Ctrl+D"; MenuItem.onClick (choose "Duplicate") ]
+                    MenuItem.create [ MenuItem.text "Rename"; MenuItem.isEnabled false; MenuItem.onClick (choose "Rename") ]
+                    Menu.separator
+                    MenuItem.create [ MenuItem.text "Word wrap"; MenuItem.isChecked wordWrap.Current; MenuItem.onClick (fun _ -> wordWrap.Set(not wordWrap.Current)) ]
+                    Menu.separator
+                    MenuItem.create [ MenuItem.text "Delete"; MenuItem.shortcut "Del"; MenuItem.onClick (choose "Delete") ]
+                ]
+            ]
         let modalOpen = ctx.useState false
         let answer = ctx.useState "Nothing asked yet"
         // Dialogs: each is declared here with what its answers do, and opened from a button below.
@@ -272,6 +287,23 @@ let view =
                     Button.horizontalAlignment HorizontalAlignment.Left
                     Button.text "Actions"
                     Button.flyout (actionsMenu toaster actionsOpen)
+                ])
+            section "Menu" "A Menu as a button's flyout, and the same one as a context menu: right-click the box (or press the Menu key or Shift+F10 with the button focused, or long-press on a phone). ↑/↓ move, Enter chooses, a letter jumps, Escape closes. \"Word wrap\" is checked or not; \"Rename\" is disabled. A TextBox has a menu of its own (Controls page)." (
+                StackPanel.create [
+                    StackPanel.orientation Horizontal
+                    StackPanel.spacing 12.0
+                    StackPanel.children [
+                        Button.create [ Button.name "edit menu"; Button.text "Edit"; Button.flyout editMenu; Button.contextMenu editMenu ]
+                        Border.create [
+                            Border.name "context area"
+                            Border.padding (16.0, 10.0)
+                            Border.cornerRadius 6.0
+                            Border.borderThickness 1.0
+                            Border.borderBrush Palette.border
+                            Border.contextMenu editMenu
+                            Border.content (TextBlock.create [ TextBlock.text ("Right-click here. Word wrap is " + (if wordWrap.Current then "on." else "off.")) ])
+                        ]
+                    ]
                 ])
             section "Placement" "Each side, lined up at the start, centre or end; one that doesn't fit flips to the other side and stays in the window (make the window short, or scroll the button to the bottom edge). A style on the panel around them gives their flyouts square corners." (
                 WrapPanel.create [
