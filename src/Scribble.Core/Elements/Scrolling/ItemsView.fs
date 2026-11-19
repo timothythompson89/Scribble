@@ -95,7 +95,8 @@ type ItemsView =
                 let array = lazy (Seq.toArray other)
                 ItemsSource(other, (fun () -> array.Value.Length), (fun i -> box array.Value[i]), (fun () -> box array.Value))
         Setting.create ItemsViewProps.source source
-    /// How to get the key that identifies an item across updates (default: the item itself).
+    /// How to get the key that identifies an item across updates (default: the item itself). Keys must be
+    /// unique: of two items with one key only one is shown (a Debug build warns).
     static member keySelector<'k, 'T, 'K when 'k :> ItemsView and 'K: equality>(f: 'T -> 'K) : Setting<'k> =
         Setting.create ItemsViewProps.keySelector (TypedKeyFunc<'T, 'K>(f) :> KeyFunc)
     /// The view for one item; called only for items being realized (or when the items change).
@@ -243,6 +244,18 @@ module ItemsView =
         s.Source <- source
         s.Store <- s.Store.Update(source, e.Get ItemsViewProps.keySelector)
         s.Version <- s.Version + 1
+#if DEBUG
+        // Items are realized, found and selected by key, so two items with one key show as one.
+        match s.Store.FirstDuplicate() with
+        | ValueSome(struct (key, first, second)) ->
+            let text = match key with null -> "null" | k -> k.ToString()
+            DebugWarnings.Once(
+                "items-duplicate-key:" + e.Type.Name + ":" + text,
+                e.Type.Name + ": items " + string first + " and " + string second + " have the same key (" + text
+                + "). Keys must be unique: only one of the items is shown, found and selected. Give a keySelector that tells them apart."
+            )
+        | ValueNone -> ()
+#endif
 
     let private widthChanged (s: ItemsState) (width: float) =
         s.Fallback <- average s

@@ -130,6 +130,9 @@ type internal KeyStore() =
     /// Takes a new source's keys; returns the store to use from now on (this one, or a new one if
     /// the key function's types changed).
     abstract Update: source: ItemsSource * keyFn: KeyFunc -> KeyStore
+    /// A key two items share, with the first two positions it is at (ValueNone: every key is its own).
+    /// O(items): for the debug warning, not for layout.
+    abstract FirstDuplicate: unit -> struct (obj * int * int) voption
 
 /// The `key` setting's function, typed; it makes the store that holds its keys.
 and [<AbstractClass>] internal KeyFunc() =
@@ -157,6 +160,8 @@ and [<Sealed>] internal TypedKeyStore<'T, 'K when 'K: equality>() =
     let mutable maxDirty = false
     /// Keys that left a position in an update (removed or moved), reused between updates.
     let left = List<'K>()
+    /// The keys seen while looking for a duplicate (`FirstDuplicate`), reused between calls.
+    let mutable seen: HashSet<'K> = null
 
     let buildIndex () =
         index <- Dictionary<'K, int>(n)
@@ -287,6 +292,20 @@ and [<Sealed>] internal TypedKeyStore<'T, 'K when 'K: equality>() =
             maxDirty <- false
         maxWidth
     override _.Prefix(i) = sums.Prefix i
+    override _.FirstDuplicate() =
+        // Kept between calls (made on the first, so only where the check runs): a new source allocates nothing here.
+        if isNull seen then seen <- HashSet<'K>(n)
+        seen.Clear()
+        let mutable found = ValueNone
+        let mutable i = 0
+        while found.IsNone && i < n do
+            if not (seen.Add keys[i]) then
+                let mutable first = 0
+                while not (comparer.Equals(keys[first], keys[i])) do
+                    first <- first + 1
+                found <- ValueSome(struct (box keys[i], first, i))
+            i <- i + 1
+        found
     override this.Update(source, keyFn) =
         match keyFn with
         | :? TypedKeyFunc<'T, 'K> as typed ->

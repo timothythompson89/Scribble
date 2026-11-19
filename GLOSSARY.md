@@ -135,7 +135,7 @@ The controller an app uses to scroll a scroll viewer or items view as an action 
 _Avoid_: scroll state, scroll position (for the controller)
 
 **Key selector**:
-The function an items view gets a key from each item with (`keySelector`); without one, an item's key is its index. A view's `key` is a plain value instead.
+The function an items view gets a key from each item with (`keySelector`); without one, an item's key is the item itself. Keys are unique within a source. A view's `key` is a plain value instead.
 _Avoid_: key (for the function), id path
 
 **View selector**:

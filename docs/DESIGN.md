@@ -3248,6 +3248,12 @@ Status: **agreed (Tim, 2026-11-18: "yes, record it and build").** Built 2026-11-
   now names both.
 - **Keys:** without `keySelector` the key is the index (`int`), as decided; the screenshot test selects
   `[ 1; 4; 5 ]` that way.
+  *Corrected 2026-11-19:* that was never so. Without `keySelector` the key is the item itself (`ItemsViewProps.keySelector`
+  defaults to `id`); the screenshot test's source is the numbers 0 to n - 1, so its items are its indices. Keys must be
+  unique within a source: realized items, the index and the selection are all by key, so of two items with one key only
+  one is shown, found and selected. Not made to work (a key that isn't unique isn't a key); a Debug build says so once
+  per key through `DebugWarnings.Once`, naming the key and the two positions (`KeyStore.FirstDuplicate`, a pass over the
+  keys per new source with a set kept between calls, so it allocates nothing at steady state).
 - **Double-clicks are the ListBox's own:** the input layer has no click count, so two clicks on the same item
   within 500 ms of platform time (`IElementRoot.Time`) make one. A Shift or Ctrl click never counts.
 - **Tab target:** the item last focused, else the first selected item that is realized, else the first realized.

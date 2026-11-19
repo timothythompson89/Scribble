@@ -562,3 +562,30 @@ let ``a text view selector shows each item's text, and without one an item shows
     )
     Assert.Equal<string list>([ "1"; "2"; "3" ], texts (ItemsView.create [ ItemsView.source [ 1; 2; 3 ] ]))
     Assert.Equal<string list>([ "Monday"; "Friday" ], texts (ItemsView.create [ ItemsView.source [ DayOfWeek.Monday; DayOfWeek.Friday ] ]))
+
+/// Items are realized, found and selected by key, so a key two items share is the app's mistake: said once.
+[<Fact>]
+let ``two items with one key warn once in Debug builds, naming the key and where`` () =
+    let heard = List<string>()
+    let listener = Action<string>(fun m -> if m.Contains "dup-pear" || m.Contains "dup-fig" then lock heard (fun () -> heard.Add m))
+    DebugWarnings.Listener <- Delegate.Combine(DebugWarnings.Listener, listener) :?> Action<string>
+    try
+        let t = ElementTree(textSystem ())
+        let show (source: string array) =
+            t.Update(ItemsView.create [ ItemsView.source source ])
+            t.UpdateLayout(Size.Create(300.0, 200.0))
+        show [| "dup-fig"; "dup-plum" |]                          // every key its own: nothing said
+        Assert.Empty(lock heard (fun () -> List.ofSeq heard))
+        show [| "dup-apple"; "dup-pear"; "dup-plum"; "dup-pear" |]
+        show [| "dup-pear"; "dup-pear" |]                         // the same key again: not said twice
+#if DEBUG
+        let message = Assert.Single(lock heard (fun () -> List.ofSeq heard))
+        Assert.Equal(
+            "ItemsView: items 1 and 3 have the same key (dup-pear). Keys must be unique: only one of the items is shown, found and selected. Give a keySelector that tells them apart.",
+            message
+        )
+#else
+        Assert.Empty(lock heard (fun () -> List.ofSeq heard))
+#endif
+    finally
+        DebugWarnings.Listener <- Delegate.Remove(DebugWarnings.Listener, listener) :?> Action<string>
