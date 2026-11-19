@@ -145,7 +145,7 @@ type SemanticNode
         match value with
         | ValueSome v ->
             // A line: long text is cut, line breaks shown as "\n".
-            let shown = (if v.Length > 40 then v.Substring(0, 40) + "…" else v).Replace("\n", "\\n")
+            let shown = (if v.Length > 40 then v.Substring(0, 40) + "…" else v).Replace("\r", "\\r").Replace("\n", "\\n")
             sb.Append(" value \"").Append(shown).Append('"') |> ignore
         | ValueNone -> ()
         if isProtected then sb.Append(" password") |> ignore

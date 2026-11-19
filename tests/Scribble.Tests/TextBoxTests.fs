@@ -673,3 +673,49 @@ let ``the Icons sample's search shows names its way, scrolls to the first match,
     Assert.Equal("", textOf host)
     Assert.Equal(plainBorder, box.Get BorderProps.borderBrush)
     Assert.True(box.IsFocused)
+
+[<Fact>]
+let ``a one-line box draws a line break the app gave as a space and leaves the text alone`` () =
+    let changes = ResizeArray<string>()
+    let view =
+        Component.define "Host" (fun ctx () ->
+            let text = ctx.useState "ab\ncd\r\nef"
+            page [
+                TextBox.text text.Current
+                TextBox.onTextChanged (fun t ->
+                    changes.Add t
+                    text.Set t)
+            ])
+    let w, host = show (view ())
+    let s = TextBox.stateOf (boxOf host)
+    // Drawn on one line, a space for each character of a break; nothing is drawn below and clipped away.
+    Assert.Equal("ab cd  ef", s.Display)
+    Assert.Equal("ab\ncd\r\nef", textOf host)
+    Assert.Equal<float[]>([| 0.0; 10.0; 20.0; 30.0; 40.0; 50.0; 60.0; 70.0; 80.0; 90.0 |], s.Stops)
+    // The caret steps over a break as one character ("\r\n" is one), and a click lands by what is drawn.
+    clickAt w (xOf 2)
+    Assert.Equal((2, 2), selection host)
+    key w Key.Right
+    Assert.Equal((3, 3), selection host)
+    key w Key.Right
+    key w Key.Right
+    key w Key.Right
+    Assert.Equal((7, 7), selection host)
+    clickAt w (xOf 8)
+    Assert.Equal((8, 8), selection host)
+    // Typing changes only what is typed: the breaks the app gave are still there.
+    typeText w "x"
+    Assert.Equal("ab\ncd\r\nexf", textOf host)
+    Assert.Equal<string list>([ "ab\ncd\r\nexf" ], List.ofSeq changes)
+    Assert.Equal("ab cd  exf", s.Display)
+    // Backspace over a break takes it whole.
+    key w Key.Home
+    key w Key.Right
+    key w Key.Right
+    key w Key.Right
+    key w Key.Backspace
+    Assert.Equal("abcd\r\nexf", textOf host)
+    // A screen reader hears the text as it is.
+    let node = host.SemanticTree().Nodes |> Seq.find (fun n -> n.Role = Role.TextBox)
+    Assert.Equal(ValueSome "abcd\r\nexf", node.Value)
+    Assert.Contains("value \"abcd\\r\\nexf\"", node.Describe())

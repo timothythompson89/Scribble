@@ -27,8 +27,9 @@ decision. Read Part 1 before planning work; this file is how we work and what bi
   area, how to run at the top; keep items finished but not yet checked, updated), and report what changed, results
   (tests, pixel checks, timings), what couldn't be verified, and what to try. "The checklist" means that file.
 - **A checklist holds only what tests can't verify** (a real window, keyboard, pointer or device, and how things
-  feel): what could be tested gets a test instead. Browser checks are appended to **`docs/CHECKLIST-BROWSER.md`**
-  (git-ignored, never overwritten), for one pass once desktop development is stable.
+  feel): what could be tested gets a test instead. Browser checks (on the PC) are appended to
+  **`docs/CHECKLIST-BROWSER.md`** and phone checks to **`docs/CHECKLIST-PHONE.md`** (both git-ignored, never
+  overwritten), each for a pass of its own once desktop development is stable.
 
 ## Build, run, test (Windows)
 
@@ -47,7 +48,7 @@ dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through 
 dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if a picture changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-18: 1,252 unit tests plus 7
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-18: 1,253 unit tests plus 7
   timing tests skipped; 100 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and

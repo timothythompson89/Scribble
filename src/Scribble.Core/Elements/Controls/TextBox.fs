@@ -416,8 +416,12 @@ module TextBox =
                 s.Display <- display
                 s.Stops <- stops
             else
-                s.Display <- text
-                s.Stops <- e.TextSystem.CaretStops(text, font, size)
+                // One line: a line break in text the app gave is drawn as a space (what is typed or pasted has
+                // none: `TextEdit.clean`). The text itself is left alone, and the caret steps over the break as
+                // one character.
+                let display = if text.AsSpan().IndexOfAny('\n', '\r') >= 0 then text.Replace('\n', ' ').Replace('\r', ' ') else text
+                s.Display <- display
+                s.Stops <- e.TextSystem.CaretStops(display, font, size)
 
     /// The text wrapped at `width`, laid out again only when the text, the font, its size or the width changed
     /// (and then only the paragraphs that did).

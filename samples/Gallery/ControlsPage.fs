@@ -246,7 +246,9 @@ let private controls =
                             ]
                             Button.create [ Button.text "Send"; Button.verticalAlignment VerticalAlignment.Bottom; Button.onClick (fun _ -> send ()) ]
                         ]
-                        TextBlock.create [ TextBlock.text (if sent.Current = "" then "Nothing sent yet." else "Sent: " + sent.Current.Replace("\n", " ⏎ ")) ]
+                        // A line break shows as ↵ (U+21B5), which Inter has; the usual return symbol (U+23CE) it has
+                        // not, and that drew as a missing-glyph box.
+                        TextBlock.create [ TextBlock.text (if sent.Current = "" then "Nothing sent yet." else "Sent: " + sent.Current.Replace("\n", " ↵ ")) ]
                         TextBox.create [
                             TextBox.multiline true
                             TextBox.acceptsTab true

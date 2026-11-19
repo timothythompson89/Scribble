@@ -8,6 +8,7 @@ native/
 # The current "what to check" list (rewritten after each piece of work; local only)
 docs/CHECKLIST.md
 docs/CHECKLIST-BROWSER.md
+docs/CHECKLIST-PHONE.md
 
 # Published samples and certificates made by tools/Scribble.Serve
 artifacts/

@@ -82,7 +82,8 @@ checked by Tim on the desktop and on his Android phone, 2026-11-18; no iPhone tr
 missing-glyph boxes until fonts for other scripts are decided).
 
 And **step 9e** (section "9e: what waited for M9": `submitOnEnter`, typeahead in ListBox and ComboBox, the Label
-element, a TextBox's text for screen readers; checked by Tim, 2026-11-18).
+element, a TextBox's text for screen readers; checked by Tim, 2026-11-18). The NativeAOT Gallery, with all of M9 and
+the vectorised PNG decoder in it, was published and walked through by Tim the same day: it passes.
 
 Next: selection by touch with the Menu control, which ends M9's TextBox work. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
@@ -4286,7 +4287,15 @@ Status: **agreed (Tim, 2026-11-18: "Yes to all").**
   as a press on any text does; typeahead on a closed ComboBox keeps Space as a letter while letters build up, so
   it doesn't open the list then.
 - **Gallery:** a message box with `submitOnEnter` and a Send button on the Controls page; the Layout page's form
-  uses Labels, and its Email field asks for the email keyboard.
+  uses Labels, and its Email field asks for the email keyboard. The "Sent:" line shows a line break as ↵
+  (U+21B5): Inter has it, and not the return symbol U+23CE first used there, which drew as a missing-glyph box
+  (Tim saw it in the NativeAOT run).
+- **A line break in a one-line box (Tim, 2026-11-18: "do it now").** What is typed or pasted has none (they become
+  spaces on the way in), but text the app gives is never altered, and a one-line box drew what followed a break on
+  a second, clipped line with the caret placed as if on one. Now a one-line box draws `\n` and `\r` as spaces
+  (`\r\n` as two); the text is untouched, and the caret steps over a break as one character. Considered and not
+  done: stripping breaks from the value (an HTML input does; it changes the app's text behind its back) and
+  showing only the first line (WPF does; it hides text).
 - **Tests:** 11 new unit tests (`TypeaheadAndLabelTests.fs`), one of them reaching item 9,000 of 10,000 with at
   most 60 items realized. Regenerated after looking: `gallery-phone-controls@3x` (a longer page). Totals: 1,252
   unit (+7 timing), 100 rendering, 7 timing.
