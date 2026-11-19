@@ -86,7 +86,7 @@ element, a TextBox's text for screen readers; checked by Tim, 2026-11-18). The N
 the vectorised PNG decoder in it, was published and walked through by Tim the same day: it passes.
 
 And **step 9f, the Menu** (section "9f: the Menu": Menu and MenuItem, `contextMenu` on any element, the TextBox's
-built-in menu; built 2026-11-18, waiting for Tim's pass).
+built-in menu; checked by Tim, 2026-11-18).
 
 Next: step 9g, selection by touch (long press, drag handles, the copy/paste bubble), which ends M9's TextBox work. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
@@ -4335,7 +4335,7 @@ MenuItem roles. In the browser the canvas already stops the browser's own right-
 77. **Paste from the menu in a browser may ask permission** (a click is not a paste key: 9b, decision 23). Chrome
     asks once; where the browser refuses, Paste does nothing. Ctrl+V keeps working everywhere.
 
-Status: **agreed (Tim, 2026-11-18); built the same day, waiting for Tim's pass.**
+Status: **agreed (Tim, 2026-11-18); built and checked by Tim the same day.**
 
 **As built (2026-11-18):**
 
