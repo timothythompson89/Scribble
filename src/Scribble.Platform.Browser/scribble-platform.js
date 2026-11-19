@@ -228,6 +228,12 @@ function ensureField() {
     if ((e.inputType === "insertText" || e.inputType === "insertReplacementText") && e.data) pushText(Kind.TextInput, e.data);
     field.value = "";
   });
+  // Something else took the focus while text is still wanted (a long press gives it to the canvas: no mousedown
+  // comes to prevent, as after a tap): the field takes it back at once, before the phone's keyboard goes down and
+  // comes up again (DESIGN.md, "9g"). Not when the blur is ours, nor when the whole page lost the focus.
+  field.addEventListener("blur", () => {
+    if (textOn && !dropComposed && document.hasFocus()) field.focus({ preventScroll: true });
+  });
 }
 
 // The page behind the canvas takes the app's background colour. A phone's browser can show a strip of the page
@@ -449,6 +455,9 @@ export function createCanvas(id) {
   // The mousedown that follows a press would give the canvas the focus: not while the hidden field has it. (.NET
   // has heard of the press by now, in the microtask after pointerdown, and turned text input on if it is wanted.)
   canvas.addEventListener("mousedown", (e) => { if (textOn) e.preventDefault(); });
+  // A long press gives the canvas the focus with no mousedown to prevent (a phone, DESIGN.md "9g"): while text is
+  // wanted it goes straight back to the hidden field (whose own blur listener does the same, where that is enough).
+  canvas.addEventListener("focus", () => { if (textOn && field) field.focus({ preventScroll: true }); });
   // The browser's own bars come and go (with the keyboard, with scrolling), and each says so its own way.
   window.addEventListener("resize", fitToKeyboard);
   if (window.visualViewport) {

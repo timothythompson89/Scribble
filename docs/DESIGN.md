@@ -4506,6 +4506,12 @@ Status: **agreed (Tim, 2026-11-18); built the same day; waiting for Tim's check 
   row's placement, a Menu as a row); four screenshots (`textbox-touch@1x`, `-light@1x`, `@2x`,
   `textbox-touch-caret@1x`). One 9d test moved its finger away from the caret's new handle. Totals: 1,281 unit
   (+7 timing), 106 rendering, 7 timing.
+- **The keyboard on a long press** (Tim on his phone, 2026-11-19: it closed and reopened). Not measured, reasoned: a
+  long press moves the DOM focus from the hidden text field to the canvas with no `mousedown` to prevent (a tap has
+  one), and the next frame's `setTextInput` took it back, the keyboard going down and up between. Now the field
+  takes the focus back at once in its own `blur` (unless the blur is ours or the page lost the focus), and the
+  canvas hands it over in its `focus`, while text is wanted. Checked in a desktop browser (focus stays with the
+  field; typing and leaving the box work); the phone has to confirm it.
 - **Not built:** a magnifier (decision 90); the row's show and hide are not animated; selection by touch in a
   TextBlock (decision 78).
 - **Not checked by a test:** all of it under a real finger: whether 44 DIPs is easy to take, whether the handles
