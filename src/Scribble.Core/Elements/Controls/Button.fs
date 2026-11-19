@@ -112,13 +112,14 @@ module Button =
             // The dark base look (also without a theme); the theme adds the state looks.
             Element.defaults [
                 Semantics.role Role.Button
-                Layoutable.foreground (Color.Hex 0xE6E6F0)
-                Border.background (Color.Hex 0x3A3A55)
-                Border.borderBrush (Color.Hex 0x4A4A68)
+                // Its look at rest, by theme value (the theme's styles add the state looks).
+                Layoutable.foreground Palette.text
+                Border.background Palette.control
+                Border.borderBrush Palette.border
                 Border.borderThickness 1.0
-                Border.cornerRadius 6.0
+                Border.cornerRadius Palette.cornerRadius
                 Border.padding (14.0, 7.0)
-                Border.shadow { Blur = 3.0; OffsetX = 0.0; OffsetY = 1.0; Spread = 0.0; Color = Color.Rgba(0.0f, 0.0f, 0.0f, 0.35f) }
+                Border.shadow Palette.shadow
                 Layoutable.cursor Cursor.Hand
                 Layoutable.focusable true
             ]

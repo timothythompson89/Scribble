@@ -52,6 +52,14 @@ _Avoid_: attached property (the setting is what's attached, not the property)
 What an element currently has for a property, together with where it came from (own, inline, style, theme, inherited, default).
 _Avoid_: property (for the value), effective value
 
+**Property default**:
+The value a property has when nothing else gives one.
+_Avoid_: fallback, initial value
+
+**Type default**:
+The value an element type gives a property for all its elements, in place of the property default.
+_Avoid_: per-type default, element default
+
 **Controlled**:
 Said of a control whose value the view gives (`CheckBox.isChecked model.Done`): it shows exactly that and only reports changes, which take effect when the view gives the new value.
 _Avoid_: bound, two-way
@@ -73,6 +81,14 @@ _Avoid_: skin, palette (for the whole theme)
 **Theme value**:
 A named, typed value a theme supplies (`Palette.accent`), which settings can take in place of a fixed value and which is read from the nearest theme.
 _Avoid_: token, theme token, resource
+
+**Built-in look**:
+How an element type appears at rest and in each visual state, before any style of the app's.
+_Avoid_: theme style, default style
+
+**Base value**:
+What a theme gives an inherited property at the top of its tree (text colour, font, font size).
+_Avoid_: root value, theme default
 
 **App value**:
 A named, typed value with one current value per app (`Theme.current`, `WindowTitle.current`), shared by all its windows and layers.

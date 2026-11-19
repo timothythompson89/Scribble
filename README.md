@@ -1023,7 +1023,8 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
   the right. Its real value doesn't change. (A TabControl's underline is the TabControl's: a forced `selected`
   header changes only the header's own look.)
 
-**Themes** (M7 step 2a). The built-in looks are styles made by a theme, matched below every other style:
+**Themes** (M7 step 2a). A control's look at rest is its type's defaults, written with theme values; its looks in
+each state (hover, pressed, disabled, checked) are styles made by the theme, matched below every other style:
 
 ```fsharp
 let theme = Theme.dark [ Theme.accent (Color.Hex 0x3D59A1); Theme.cornerRadius 8.0 ]   // Theme.dark [] is the default
@@ -1033,7 +1034,8 @@ Button.style [ Style.cls "primary" ] [ Button.background Palette.accent ]  // a 
 ```
 
 - **Precedence:** own value > inline blocks > styles > `App.styles` > the theme > type defaults. Hosts made by hand
-  (`ElementHost.create`) get `Theme.dark []` too; a bare `ElementTree` has none (types' base looks, no state looks).
+  (`ElementHost.create`) get `Theme.dark []` too; a bare `ElementTree` has none (the dark look at rest, since a theme value without a theme is its default; no
+  state looks).
 - **State looks are general settings**, so app styles can change them:
   - `Border.overlay`: a translucent color laid over the whole box (background and border), used for hover and
     press. The theme lightens on hover (white at 8%) and darkens on press (black at 20%) this way, so the look

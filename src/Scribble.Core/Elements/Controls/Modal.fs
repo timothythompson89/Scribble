@@ -41,7 +41,7 @@ module Scrim =
         Element.extend Border.Type "Scrim" [
             Element.measure measure
             Element.arrange arrange
-            Element.defaults [ Border.background (Color.Black.WithAlpha 0.55f) ]
+            Element.defaults [ Border.background Palette.scrim ]
         ]
     let internal create (settings: Setting<Scrim> list) = View.Create(Type, settings)
     let style parts (settings: Setting<Scrim> list) = Style.forType Type parts settings
@@ -105,10 +105,13 @@ module Modal =
                 Semantics.labelFrom ModalProps.title
                 Layoutable.maxWidth maxWidth
                 Layoutable.margin edge
-                // The dark base look (also without a theme).
-                Border.background (Color.Hex 0x24243A)
-                Border.cornerRadius 6.0
+                // Its look at rest, by theme value: the surface colour, a line, the theme's corners, a wide shadow.
+                Border.background Palette.surface
+                Border.borderBrush Palette.border
+                Border.borderThickness 1.0
+                Border.cornerRadius Palette.cornerRadius
                 Border.padding 20.0
+                Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.modalShadow
             ]
         ]
 

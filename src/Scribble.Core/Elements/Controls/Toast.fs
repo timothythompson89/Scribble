@@ -24,11 +24,14 @@ module ToastPresenter =
             Element.transform (fun ctx -> Transform.Translate(0.0, ctx.Animate("slide", ctx.Get ToastProps.offset, moveTime)))
             Element.defaults [
                 Semantics.role Role.Alert
-                // The dark base look (also without a theme).
-                Layoutable.foreground (Color.Hex 0xE6E6F0)
-                Border.background (Color.Hex 0x24243A)
-                Border.cornerRadius 6.0
+                // Its look at rest, by theme value: the surface colour with a line and a floating shadow.
+                Layoutable.foreground Palette.text
+                Border.background Palette.surface
+                Border.borderBrush Palette.border
+                Border.borderThickness 1.0
+                Border.cornerRadius Palette.cornerRadius
                 Border.padding (10.0, 8.0)
+                Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
             ]
         ]
     let internal create (settings: Setting<ToastPresenter> list) = View.Create(Type, settings)

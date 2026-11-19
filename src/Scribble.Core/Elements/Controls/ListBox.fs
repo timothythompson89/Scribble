@@ -54,7 +54,7 @@ module ListBoxProps =
 
 module ListBoxItemProps =
     /// The bar at the left edge of a selected item.
-    let indicator = Prop.define "Indicator" (Color.Hex 0x3D59A1) Affects.Render
+    let indicator = Prop.define "Indicator" Color.Transparent Affects.Render
     /// The key of the item it holds (set by the ListBox).
     let internal key: Prop<obj> = Prop.define "ItemKey" null Affects.Nothing
 
@@ -321,6 +321,7 @@ module ListBoxItem =
                 Layoutable.focusable true
                 Layoutable.isTabStop false
                 Border.padding (12.0, 8.0)
+                ListBoxItem.indicator Palette.accent
                 Semantics.role Role.ListItem
                 Semantics.selectedFrom TabHeaderProps.isSelected
             ]

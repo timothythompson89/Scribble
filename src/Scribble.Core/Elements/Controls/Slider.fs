@@ -15,12 +15,12 @@ module SliderProps =
     let onValueChanged: Prop<(float -> unit) voption> = Prop.define "OnValueChanged" ValueNone Affects.Nothing
     let onValueCommitted: Prop<(float -> unit) voption> = Prop.define "OnValueCommitted" ValueNone Affects.Nothing
     /// The track's empty part.
-    let track = Prop.define "Track" (Color.Hex 0x3A3A55) Affects.Render
+    let track = Prop.define "Track" Color.Transparent Affects.Render
     /// The track from the minimum up to the value.
-    let fill = Prop.define "Fill" (Color.Hex 0x3D59A1) Affects.Render
-    let thumb = Prop.define "Thumb" Color.White Affects.Render
+    let fill = Prop.define "Fill" Color.Transparent Affects.Render
+    let thumb = Prop.define "Thumb" Color.Transparent Affects.Render
     /// The thumb's edge.
-    let thumbBorder = Prop.define "ThumbBorder" (Color.Hex 0x4A4A68) Affects.Render
+    let thumbBorder = Prop.define "ThumbBorder" Color.Transparent Affects.Render
     let thumbShadow: Prop<BoxShadow voption> = Prop.define "ThumbShadow" ValueNone Affects.Render
     /// Laid over the thumb: the theme tints it on hover and while pressed.
     let overlay = Prop.define "Overlay" Color.Transparent Affects.Render
@@ -244,6 +244,12 @@ module Slider =
             Element.defaults [
                 Layoutable.focusable true
                 Layoutable.cursor Cursor.Hand
+                // Its look at rest, by theme value.
+                Slider.track Palette.control
+                Slider.fill Palette.accent
+                Slider.thumb Palette.onAccent
+                Slider.thumbBorder Palette.border
+                Slider.thumbShadow Palette.shadow
                 Semantics.role Role.Slider
                 Semantics.rangeFrom (SliderProps.value, SliderProps.minimum, SliderProps.maximum, SliderProps.step)
                 Semantics.orientationFrom SliderProps.orientation

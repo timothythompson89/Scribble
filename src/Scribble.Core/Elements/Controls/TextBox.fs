@@ -309,7 +309,7 @@ module TextBoxProps =
     let onSubmitted: Prop<(string -> unit) voption> = Prop.define "OnSubmitted" ValueNone Affects.Nothing
     /// Shown, dim, while the text is empty.
     let placeholder = Prop.define "Placeholder" "" Affects.Render
-    let placeholderForeground = Prop.define "PlaceholderForeground" (Color.Hex 0x9A9AB0) Affects.Render
+    let placeholderForeground = Prop.define "PlaceholderForeground" Color.Transparent Affects.Render
     /// The text can be selected and copied but not changed.
     let isReadOnly = Prop.define "IsReadOnly" false Affects.Render
     /// The most grapheme clusters the user can enter; 0: no limit.
@@ -317,7 +317,7 @@ module TextBoxProps =
     /// Bullets are shown in place of the characters.
     let isPassword = Prop.define "IsPassword" false Affects.Measure
     /// Behind the selected text.
-    let selection = Prop.define "Selection" ((Color.Hex 0x3D59A1).WithAlpha 0.5f) Affects.Render
+    let selection = Prop.define "Selection" Color.Transparent Affects.Render
     /// Several lines: the text wraps, and Enter makes a new line.
     let multiline = Prop.define "Multiline" false Affects.Measure
     /// The fewest and the most lines a multi-line box asks to be high (0: no most).
@@ -2037,11 +2037,14 @@ module TextBox =
                 // (A password is one line whatever `multiline` says.)
                 Setting.create SemanticsProps.multiline (
                     Read([| TextBoxProps.multiline; TextBoxProps.isPassword |], fun e -> e.Get TextBoxProps.multiline && not (e.Get TextBoxProps.isPassword)))
-                Layoutable.foreground (Color.Hex 0xE6E6F0)
-                Border.background (Color.Hex 0x24243A)
-                Border.borderBrush (Color.Hex 0x4A4A68)
+                // Its look at rest, by theme value; the selection is the accent, tinted.
+                Layoutable.foreground Palette.text
+                Border.background Palette.surface
+                Border.borderBrush Palette.border
                 Border.borderThickness 1.0
-                Border.cornerRadius 6.0
+                Border.cornerRadius Palette.cornerRadius
+                TextBox.placeholderForeground Palette.textDim
+                Setting.fromThemeWith TextBoxProps.selection Palette.accent ThemeConvert.textSelectionTint
                 Border.padding (12.0, 7.0)
                 Layoutable.cursor Cursor.Text
                 Layoutable.focusable true

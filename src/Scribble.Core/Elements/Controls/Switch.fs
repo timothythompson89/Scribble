@@ -41,7 +41,7 @@ module Switch =
             Element.render render
             Element.defaults (
                 ToggleButton.labeledDefaults
-                @ [ ToggleButton.markColor (Color.Hex 0x9A9AB0)
+                @ [ ToggleButton.markColor Palette.textDim
                     Semantics.role Role.Switch
                     Semantics.checkedFrom ToggleButtonProps.isChecked ])
         ]

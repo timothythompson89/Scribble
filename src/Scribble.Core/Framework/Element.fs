@@ -1977,4 +1977,6 @@ module Element =
         ElementPart(fun t ->
             let replaced = settings |> List.map (fun s -> s.Prop.Id) |> set
             let kept = t.Defaults |> Array.filter (fun struct (p, _) -> not (replaced.Contains p.Id))
-            { t with Defaults = Array.append kept [| for s in settings -> struct (s.Prop, s.Value) |] })
+            // A property given twice in one list (a shared list with one changed after it): the later one wins.
+            let last = settings |> List.rev |> List.distinctBy (fun s -> s.Prop.Id) |> List.rev
+            { t with Defaults = Array.append kept [| for s in last -> struct (s.Prop, s.Value) |] })

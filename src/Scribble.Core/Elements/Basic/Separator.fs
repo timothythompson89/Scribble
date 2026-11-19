@@ -11,7 +11,7 @@ module SeparatorProps =
     /// Solid (default), dashed or dotted.
     let lineStyle = Prop.define "LineStyle" LineStyle.Solid Affects.Render
     /// The line's color (the theme's `Palette.border`).
-    let color = Prop.define "Color" (Color.Hex 0x4A4A68) Affects.Render
+    let color = Prop.define "Color" Color.Transparent Affects.Render
     /// Set by a Menu shown as a row: the line stands upright between its items, whatever `orientation` says.
     let internal upright = Prop.local "SeparatorUpright" false
 
@@ -30,7 +30,7 @@ type Separator =
 module Separator =
     let Type =
         Element.define "Separator" [
-            Element.defaults [ Semantics.role Role.Separator ]
+            Element.defaults [ Semantics.role Role.Separator; Separator.color Palette.border ]
             Element.measure (fun ctx _ ->
                 let t = ctx.Get SeparatorProps.thickness
                 match (if ctx.Get SeparatorProps.upright then Vertical else ctx.Get SeparatorProps.orientation) with

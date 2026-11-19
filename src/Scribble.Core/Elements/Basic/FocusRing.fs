@@ -11,7 +11,7 @@ open Scribble.Rendering
 /// A 2 DIP ring, 2 DIPs outside the element, in the `focusRingColor` (inherited; the theme sets it).
 module FocusRing =
     /// The default ring color.
-    let color = Color.Hex 0x7AA2F7
+    let color = Palette.focusRing.Default
 
     /// The ring's color (inherited: the theme gives its base value).
     let colorProp =

@@ -15,7 +15,7 @@ type SelectionHandleKind =
 
 module SelectionHandleProps =
     let kind = Prop.define "SelectionHandleKind" SelectionHandleKind.Caret Affects.Measure
-    let fill = Prop.define "SelectionHandleFill" (Color.Hex 0x3D59A1) Affects.Render
+    let fill = Prop.define "SelectionHandleFill" Color.Transparent Affects.Render
     /// A pointer took the handle (0), moved with it (1), let go (2) or was taken away (3); with where the pointer is
     /// in the window (DIPs).
     let internal onDrag: Prop<(int -> Point -> unit) voption> = Prop.define "SelectionHandleOnDrag" ValueNone Affects.Nothing
@@ -78,6 +78,7 @@ module SelectionHandle =
 
     let Type =
         Element.define "SelectionHandle" [
+            Element.defaults [ SelectionHandle.fill Palette.accent ]
             Element.measure (fun _ _ -> Size.Create(grab, grab))
             Element.render render
             Element.pointerDown (fun ctx args ->

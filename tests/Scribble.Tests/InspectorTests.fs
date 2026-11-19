@@ -462,8 +462,7 @@ let ``the properties show the selection's values and sources, defaults only when
     Assert.Equal(("100px", "view"), shownFor panel "width")
     Assert.Equal(("left", "view"), shownFor panel "horizontalAlignment")
     Assert.Equal(("handler", "view"), shownFor panel "onClick")
-    Assert.Equal(("#3A3A55", "theme"), shownFor panel "background") // the theme's Button look
-    Assert.Contains("from Button", texts panel)
+    Assert.Equal(("#3A3A55", "type"), shownFor panel "background") // Button's look at rest: a type default
     Assert.Contains("Palette.control", texts panel) // the theme value it reads, under the value
     // What the theme can set shows even at its default (with no line under it until a theme style applies).
     Assert.Equal(("transparent", "default"), shownFor panel "overlay")

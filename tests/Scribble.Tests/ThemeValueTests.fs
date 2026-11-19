@@ -151,3 +151,47 @@ let ``the remembered nearest theme follows changes above it and new elements`` (
     t.Theme <- ValueSome light
     show t (view ValueNone ValueNone true) |> ignore
     Assert.Equal(light.Get Palette.surface, surface "b" root)
+
+/// An element type whose type defaults are theme values ("Where defaults live", decision 3).
+[<AbstractClass>]
+type private Chip =
+    inherit Border
+
+module private Chip =
+    let Type =
+        Element.extend Border.Type "TestChip" [
+            Element.defaults [ Border.background Palette.control; Layoutable.foreground Palette.text; Border.cornerRadius Palette.cornerRadius ]
+        ]
+    let create (settings: Setting<Chip> list) = View.Create(Type, settings)
+
+[<Fact>]
+let ``a type default can be a theme value: it reads the nearest theme and is inherited`` () =
+    let light = Theme.light [ Theme.cornerRadius 2.0 ]
+    let dark = Theme.dark []
+    let t = ElementTree(textSystem ())
+    let chip (name: string) =
+        Chip.create [ Border.name name; Border.content (TextBlock.create [ TextBlock.name (name + "-text"); TextBlock.text "Hi" ]) ]
+    let view = StackPanel.create [ StackPanel.children [ chip "out"; Border.create [ Border.theme light; Border.content (chip "in") ] ] ]
+    // No theme: the theme values' defaults (the dark look).
+    let root = show t view
+    Assert.Equal(Palette.control.Default, (find "out" root).Get BorderProps.background)
+    Assert.Equal(CornerRadius.Uniform Palette.cornerRadius.Default, (find "out" root).Get BorderProps.cornerRadius)
+    Assert.Equal(Palette.text.Default, (find "out-text" root).Get InheritedProps.foreground)
+    // A light panel: what's inside reads its theme, the text inside the chip too.
+    Assert.Equal(light.Get Palette.control, (find "in" root).Get BorderProps.background)
+    Assert.Equal(CornerRadius.Uniform 2.0, (find "in" root).Get BorderProps.cornerRadius)
+    Assert.Equal(light.Get Palette.text, (find "in-text" root).Get InheritedProps.foreground)
+    // The tree's theme changes: what has no theme of its own follows.
+    t.Theme <- ValueSome(Theme.light [])
+    layout t
+    Assert.Equal((Theme.light []).Get Palette.control, (find "out" root).Get BorderProps.background)
+    Assert.Equal((Theme.light []).Get Palette.text, (find "out-text" root).Get InheritedProps.foreground)
+    t.Theme <- ValueSome dark
+    layout t
+    Assert.Equal(dark.Get Palette.control, (find "out" root).Get BorderProps.background)
+    Assert.Equal(light.Get Palette.control, (find "in" root).Get BorderProps.background)
+    // Tools see where it came from and which theme value it is.
+    let value = (find "out" root).Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, BorderProps.background))
+    Assert.Equal(ValueSource.TypeDefault, value.Source)
+    Assert.Equal("Palette.control", value.ThemeValue)
+    Assert.Equal(box (dark.Get Palette.control), value.Value)

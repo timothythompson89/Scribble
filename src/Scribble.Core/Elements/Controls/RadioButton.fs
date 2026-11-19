@@ -106,9 +106,9 @@ module RadioButton =
             Element.click (fun ctx _ -> RadioLogic.choose ctx.Element)
             Element.defaults (
                 ToggleButton.labeledDefaults
-                @ [ Border.borderThickness 1.5
-                    ToggleButton.markColor (Color.Hex 0x3D59A1)
-                    Setting.create RadioButtonProps.isRadio true
+                // The ring and the dot are the shared ones, as a CheckBox's box and tick (the dot reads on the accent a
+                // chosen radio fills with).
+                @ [ Setting.create RadioButtonProps.isRadio true
                     Semantics.role Role.RadioButton
                     Semantics.checkedFrom ToggleButtonProps.isChecked ]
             )

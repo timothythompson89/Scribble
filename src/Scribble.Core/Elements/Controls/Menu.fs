@@ -11,9 +11,9 @@ module MenuItemProps =
     let shortcut = Prop.define "MenuItemShortcut" "" Affects.Measure
     /// Given: the item can be checked, and shows a check mark while it is.
     let isChecked: Prop<bool voption> = Prop.define "MenuItemChecked" ValueNone Affects.Render |> AppState.mark
-    let shortcutForeground = Prop.define "MenuItemShortcutForeground" (Color.Hex 0x9A9AB0) Affects.Render
+    let shortcutForeground = Prop.define "MenuItemShortcutForeground" Color.Transparent Affects.Render
     /// Behind the item the keyboard is on.
-    let highlight = Prop.define "MenuItemHighlight" (Color.White.WithAlpha 0.08f) Affects.Render
+    let highlight = Prop.define "MenuItemHighlight" Color.Transparent Affects.Render
     /// Set by the Menu: some item has an icon or a check mark, so every item leaves room for one.
     let internal leading = Prop.local "MenuItemLeading" false
     /// Set by the Menu: it is a row (`Menu.orientation Horizontal`), so the item shows its text alone.
@@ -146,7 +146,11 @@ module MenuItem =
                 // Tab stops, so the focus goes to the first when the menu opens (Tab itself closes the menu).
                 Layoutable.focusable true
                 Border.padding (10.0, 6.0)
-                Border.cornerRadius 4.0
+                // Half the theme's corners, as other small parts (a CheckBox's box).
+                Setting.fromThemeWith BorderProps.cornerRadius Palette.cornerRadius ThemeConvert.halfCorners
+                Layoutable.foreground Palette.text
+                MenuItem.shortcutForeground Palette.textDim
+                MenuItem.highlight Palette.hoverTint
                 Semantics.role Role.MenuItem
                 Semantics.labelFrom TextProps.text
                 Setting.create SemanticsProps.isChecked (

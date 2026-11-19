@@ -71,7 +71,15 @@ type Flyout =
     static member matchAnchorWidth<'k when 'k :> Flyout>(value: bool) : Setting<'k> = Setting.create FlyoutProps.matchAnchorWidth value
 
 module Flyout =
-    let Type = Element.extend Border.Type "Flyout" []
+    /// A floating box's look at rest, by theme value: the surface colour, a line, the theme's corners, a wide shadow.
+    let internal floating<'k when 'k :> Border> : Setting<'k> list =
+        [ Border.background Palette.surface
+          Border.borderBrush Palette.border
+          Border.borderThickness 1.0
+          Border.cornerRadius Palette.cornerRadius
+          Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow ]
+
+    let Type = Element.extend Border.Type "Flyout" [ Element.defaults (floating<Flyout> @ [ Border.padding 4.0 ]) ]
     /// Internal: apps give `flyout` the settings list (a Flyout given as content would sit inside another).
     let internal create (settings: Setting<Flyout> list) = View.Create(Type, settings)
     let style parts (settings: Setting<Flyout> list) = Style.forType Type parts settings
@@ -99,6 +107,8 @@ type TooltipPresenter =
     inherit Border
 
 module TooltipPresenter =
-    let Type = Element.extend Border.Type "TooltipPresenter" [ Element.defaults [ Layoutable.isHitTestVisible false ] ]
+    let Type = Element.extend Border.Type "TooltipPresenter" [
+            Element.defaults (Flyout.floating<TooltipPresenter> @ [ Border.padding (8.0, 4.0); Layoutable.isHitTestVisible false ])
+        ]
     let create (settings: Setting<TooltipPresenter> list) = View.Create(Type, settings)
     let style parts (settings: Setting<TooltipPresenter> list) = Style.forType Type parts settings

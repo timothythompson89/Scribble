@@ -19,11 +19,11 @@ module ComboBoxProps =
     let selected: Prop<obj voption> = Prop.define "Selected" ValueNone Affects.Measure |> AppState.mark
     /// Shown in the box while nothing is selected.
     let placeholder = Prop.define "Placeholder" "" Affects.Measure
-    let placeholderForeground = Prop.define "PlaceholderForeground" (Color.Hex 0x9A9AB0) Affects.Measure
+    let placeholderForeground = Prop.define "PlaceholderForeground" Color.Transparent Affects.Measure
     /// The most its list's height can be, in DIPs; more items scroll.
     let maxListHeight = Prop.define "MaxListHeight" 320.0 Affects.Measure
     /// The chevron at the right of the box.
-    let chevron = Prop.define "Chevron" (Color.Hex 0x9A9AB0) Affects.Render
+    let chevron = Prop.define "Chevron" Color.Transparent Affects.Render
     /// (keys, items, added, removed), boxed; the setting unboxes them for the app's handler.
     let internal onSelectedChanged: Prop<(obj list -> obj list -> obj list -> obj list -> unit) voption> =
         Prop.define "OnSelectedChanged" ValueNone Affects.Nothing
@@ -330,11 +330,14 @@ module ComboBox =
                 Semantics.expandedFrom ComboBoxOpenProps.isOpen
                 Semantics.actions [ SemanticAction.Expand; SemanticAction.Collapse ]
                 Semantics.onAction semanticAction
-                Layoutable.foreground (Color.Hex 0xE6E6F0)
-                Border.background (Color.Hex 0x24243A)
-                Border.borderBrush (Color.Hex 0x4A4A68)
+                // Its look at rest, by theme value.
+                Layoutable.foreground Palette.text
+                Border.background Palette.surface
+                Border.borderBrush Palette.border
                 Border.borderThickness 1.0
-                Border.cornerRadius 6.0
+                Border.cornerRadius Palette.cornerRadius
+                ComboBox.chevron Palette.textDim
+                ComboBox.placeholderForeground Palette.textDim
                 Border.padding (12.0, 7.0)
                 Layoutable.cursor Cursor.Hand
                 Layoutable.focusable true

@@ -223,20 +223,35 @@ let ``themed properties list what the theme can set on the type, in any state`` 
     let rules (p: Prop) = themedProps |> List.pick (fun x -> if obj.ReferenceEquals(x.Prop, p) then Some x.Selectors else None)
     Assert.Equal<string list>([ "Button:hover"; "Button:pressed"; "Button:disabled" ], rules BorderProps.overlay)
     Assert.Equal<string list>([ "Button:pressed" ], rules LayoutProps.scale)
-    Assert.Equal<string list>([ "Button" ], rules BorderProps.background)
+    Assert.Equal<string list>([ "Button:pressed"; "Button:disabled" ], rules BorderProps.shadow)
+    // Its colours at rest are type defaults, not the theme's styles.
+    Assert.DoesNotContain(themedProps, fun x -> obj.ReferenceEquals(x.Prop, BorderProps.background))
     // No theme: nothing.
     let bare = ElementTree(textSystem ())
     Assert.Empty((show bare (Button.create [])).ThemedProperties)
 
 [<Fact>]
-let ``Values say whether a style value came from the theme or from the app`` () =
+let ``Values say whether a value came from the type, the theme's styles or the app's`` () =
     let t = themed dark [ Button.style [ Style.cls "red" ] [ Button.background red ] ]
     let root =
-        show t (StackPanel.create [ StackPanel.children [ Button.create [ Button.name "plain" ]; Button.create [ Button.name "red"; Button.classes [ "red" ] ] ] ])
+        show t (
+            StackPanel.create [
+                StackPanel.children [
+                    Button.create [ Button.name "plain" ]
+                    Button.create [ Button.name "off"; Button.isEnabled false ]
+                    Button.create [ Button.name "red"; Button.classes [ "red" ] ]
+                ]
+            ]
+        )
     let background (e: Element) = e.Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, BorderProps.background))
     let plain, styled = background (find "plain" root), background (find "red" root)
-    Assert.Equal(ValueSource.Theme, plain.Source)
-    Assert.Equal("Button", plain.Selector)
+    // At rest: the type default, a theme value.
+    Assert.Equal(ValueSource.TypeDefault, plain.Source)
+    Assert.Equal("Palette.control", plain.ThemeValue)
+    // A state look: the theme's style.
+    let faded = (find "off" root).Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, LayoutProps.opacity))
+    Assert.Equal(ValueSource.Theme, faded.Source)
+    Assert.Equal("Button:disabled", faded.Selector)
     Assert.Equal(ValueSource.Style, styled.Source)
     Assert.Equal("Button.red", styled.Selector)
 

@@ -63,9 +63,10 @@ module TabHeader =
                 Border.background Color.Transparent
                 Border.borderThickness 0.0
                 Setting.create BorderProps.shadow ValueNone
-                Border.cornerRadius { TopLeft = 6.0; TopRight = 6.0; BottomRight = 0.0; BottomLeft = 0.0 }
+                // The theme's corners at the top; square where it meets the line below.
+                Setting.fromThemeWith BorderProps.cornerRadius Palette.cornerRadius ThemeConvert.topCorners
                 Border.padding (14.0, 9.0)
-                Layoutable.foreground (Color.Hex 0x9A9AB0)
+                Layoutable.foreground Palette.textDim
                 Semantics.role Role.Tab
                 Semantics.selectedFrom TabHeaderProps.isSelected
             ]
@@ -81,8 +82,8 @@ module TabControlProps =
     /// The tabs: TabItem views, kept as plain values (the TabControl realizes pages itself).
     let tabs: Prop<View list> = Prop.define "Tabs" [] Affects.Measure |> AppState.mark
     /// The line under the header row and the selected tab's underline.
-    let line = Prop.define "Line" (Color.Hex 0x4A4A68) Affects.Render
-    let underline = Prop.define "Underline" (Color.Hex 0x3D59A1) Affects.Render
+    let line = Prop.define "Line" Color.Transparent Affects.Render
+    let underline = Prop.define "Underline" Color.Transparent Affects.Render
 
 /// What a TabControl keeps between layouts: its header row, its pages (realized on first visit),
 /// and what they were last built from.
@@ -338,6 +339,7 @@ module TabControl =
             Element.arrange arrange
             Element.render render
             Element.renderAfter renderAfter
+            Element.defaults [ TabControl.line Palette.border; TabControl.underline Palette.accent ]
         ]
 
     let create (settings: Setting<TabControl> list) : View = View.Create(Type, settings)

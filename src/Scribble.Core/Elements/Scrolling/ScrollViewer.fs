@@ -72,9 +72,9 @@ type internal ScrollState() =
 module ScrollViewerProps =
     let content = Prop.content "Content"
     /// The scrollbar thumb's color (the theme sets it).
-    let thumb = Prop.define "Thumb" (Color.White.WithAlpha 0.3f) Affects.Render
+    let thumb = Prop.define "Thumb" Color.Transparent Affects.Render
     /// The faint track under a thumb while the pointer is on it (the theme sets it).
-    let track = Prop.define "Track" (Color.White.WithAlpha 0.06f) Affects.Render
+    let track = Prop.define "Track" Color.Transparent Affects.Render
     /// The gutter's width (DIPs; the theme sets it).
     let barSize = Prop.define "BarSize" 12.0 Affects.Measure
     let vertical = Prop.define "Vertical" ScrollBarMode.Auto Affects.Measure
@@ -516,7 +516,13 @@ module ScrollViewer =
                   ScrollToKey = fun _ _ _ _ -> false
                   HasViewport = true }
             // A press inside focuses it (for the keys), but Tab doesn't stop on it.
-            Element.defaults [ Layoutable.clipToBounds true; Layoutable.focusable true; Layoutable.isTabStop false ]
+            Element.defaults [
+                Layoutable.clipToBounds true
+                Layoutable.focusable true
+                Layoutable.isTabStop false
+                ScrollViewer.thumb Palette.scrollThumb
+                ScrollViewer.track Palette.scrollTrack
+            ]
         ]
 
     let create (settings: Setting<ScrollViewer> list) = View.Create(Type, settings)

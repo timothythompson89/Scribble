@@ -4,8 +4,9 @@ open System
 open System.Collections.Generic
 open Scribble.Rendering
 
-/// The built-in looks: ordinary styles that read the theme's values by theme value, so every theme
-/// shares one list (themes differ only in their values).
+/// The built-in looks in each visual state, and their transitions: ordinary styles that read the theme's
+/// values by theme value, so every theme shares one list (themes differ only in their values). How an element
+/// looks at rest is its type's defaults, by theme value too (DESIGN.md, "Where defaults live").
 module internal ThemeLooks =
     /// How long hover and pressed tints fade.
     let private tintTime = TimeSpan.FromMilliseconds 100.0
@@ -18,14 +19,9 @@ module internal ThemeLooks =
     /// The theme's shadow, flat (pressed or disabled).
     let private flat<'k when 'k :> Button> : Setting<'k> = Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.flatShadow
 
-    /// Button's look (ToggleButton shares it): its colors, then hover, pressed, disabled.
+    /// Button's state looks (ToggleButton shares them): hover, pressed, disabled.
     let private buttonLook<'k when 'k :> Button> (whileOn: Setting<'k> list) : Setting<'k> list =
-        [ Button.background Palette.control
-          Button.borderBrush Palette.border
-          Button.cornerRadius Palette.cornerRadius
-          Button.foreground Palette.text
-          Button.shadow Palette.shadow
-          Style.transition BorderProps.overlay tintTime
+        [ Style.transition BorderProps.overlay tintTime
           Style.transition LayoutProps.scale pressTime
           Style.transition BorderProps.shadow pressTime
           yield! whileOn
@@ -35,17 +31,12 @@ module internal ThemeLooks =
           // Last, so it wins over hover and pressed.
           Style.on States.disabled [ Button.overlay Color.Transparent; Button.opacity 0.5; flat ] ]
 
-    /// CheckBox's and Switch's look: the box or track in the control colors, the accent while on,
-    /// the mark (tick, knob) as `markOff` while off; hover and press tint the box or track.
-    let private labeledLook<'k when 'k :> ToggleButton> (markOff: ThemeValue<Color>) (extra: Setting<'k> list) : Setting<'k> list =
-        [ ToggleButton.background Palette.control
-          ToggleButton.borderBrush Palette.border
-          ToggleButton.foreground Palette.text
-          ToggleButton.markColor markOff
-          Style.transition BorderProps.overlay tintTime
+    /// CheckBox's and Switch's state looks: the accent while on, with the mark (tick, knob) in the colour that
+    /// reads on it; hover and press tint the box or track.
+    let private labeledLook<'k when 'k :> ToggleButton> : Setting<'k> list =
+        [ Style.transition BorderProps.overlay tintTime
           Style.transition BorderProps.background tintTime
           Style.transition BorderProps.borderBrush tintTime
-          yield! extra
           Style.on States.isChecked [ ToggleButton.background Palette.accent; ToggleButton.borderBrush Palette.accent; ToggleButton.markColor Palette.onAccent ]
           Style.on States.isIndeterminate [ ToggleButton.background Palette.accent; ToggleButton.borderBrush Palette.accent; ToggleButton.markColor Palette.onAccent ]
           Style.on States.hover [ ToggleButton.overlay Palette.hoverTint ]
@@ -63,36 +54,28 @@ module internal ThemeLooks =
                   ]
               ]
           )
-          CheckBox.style [] (labeledLook Palette.onAccent [ Setting.fromThemeWith BorderProps.cornerRadius Palette.cornerRadius ThemeConvert.halfCorners ])
-          Switch.style [] (labeledLook Palette.textDim [])
-          // A circle in the control colours; chosen, an accent ring and dot (M8 step 4b, decision 18).
+          CheckBox.style [] labeledLook
+          Switch.style [] labeledLook
+          // Chosen, it fills with the accent, as a checked CheckBox does, and its dot reads on it (2026-11-19: an accent
+          // dot on the control colour was hard to see on the dark theme).
           RadioButton.style [] [
-              RadioButton.background Palette.control
-              RadioButton.borderBrush Palette.border
-              RadioButton.foreground Palette.text
-              RadioButton.markColor Palette.accent
               Style.transition BorderProps.overlay tintTime
+              Style.transition BorderProps.background tintTime
               Style.transition BorderProps.borderBrush tintTime
-              Style.on States.isChecked [ RadioButton.borderBrush Palette.accent ]
+              Style.on States.isChecked [ RadioButton.background Palette.accent; RadioButton.borderBrush Palette.accent ]
               Style.on States.hover [ RadioButton.overlay Palette.hoverTint ]
               Style.on States.pressed [ RadioButton.overlay Palette.pressTint ]
               Style.on States.disabled [ RadioButton.overlay Color.Transparent; RadioButton.opacity 0.5 ]
           ]
           Slider.style [] [
-              Slider.track Palette.control
-              Slider.fill Palette.accent
-              Slider.thumb Palette.onAccent
-              Slider.thumbBorder Palette.border
-              Slider.thumbShadow Palette.shadow
               Style.transition SliderProps.overlay tintTime
               // A white thumb doesn't lighten: its edge takes the accent instead.
               Style.on States.hover [ Slider.thumbBorder Palette.accent ]
               Style.on States.pressed [ Slider.overlay Palette.pressTint ]
               Style.on States.disabled [ Slider.overlay Color.Transparent; Slider.opacity 0.5 ]
           ]
-          // Text tabs: dim until selected (the TabControl draws the accent underline) or hovered.
+          // Text tabs: dim (their type default) until selected (the TabControl draws the accent underline) or hovered.
           TabHeader.style [] [
-              TabHeader.foreground Palette.textDim
               Style.transition BorderProps.overlay tintTime
               Style.transition InheritedProps.foreground tintTime
               Style.on States.hover [ TabHeader.overlay Palette.hoverTint; TabHeader.foreground Palette.text ]
@@ -100,12 +83,9 @@ module internal ThemeLooks =
               Style.on States.pressed [ TabHeader.overlay Palette.pressTint ]
               Style.on States.disabled [ TabHeader.overlay Color.Transparent; TabHeader.opacity 0.5 ]
           ]
-          TabControl.style [] [ TabControl.line Palette.border; TabControl.underline Palette.accent ]
-          // List items (M8 step 4b, decision 15): square, transparent; hover and press tint; selected, an accent tint and
+          // List items (M8 step 4b, decision 15): hover and press tint; selected, an accent tint and
           // the accent bar at the left edge.
           ListBoxItem.style [] [
-              ListBoxItem.background Color.Transparent
-              ListBoxItem.indicator Palette.accent
               Style.transition BorderProps.overlay tintTime
               Style.transition BorderProps.background tintTime
               Style.on States.isSelected [ Setting.fromThemeWith BorderProps.background Palette.accent ThemeConvert.selectionTint ]
@@ -115,24 +95,14 @@ module internal ThemeLooks =
           ]
           // Menu items (M9 step 9f): as list items under the pointer; the one the keyboard is on has the same tint.
           MenuItem.style [] [
-              MenuItem.background Color.Transparent
-              MenuItem.foreground Palette.text
-              MenuItem.shortcutForeground Palette.textDim
-              MenuItem.highlight Palette.hoverTint
               Style.transition BorderProps.overlay tintTime
               Style.on States.hover [ MenuItem.overlay Palette.hoverTint ]
               Style.on States.pressed [ MenuItem.overlay Palette.pressTint ]
               Style.on States.disabled [ MenuItem.overlay Color.Transparent; MenuItem.opacity 0.5 ]
           ]
-          // A field (M8 step 4c, decision 10): the surface colour and a line that takes the accent while it has focus
+          // A field (M8 step 4c, decision 10): its line takes the accent while it has focus
           // or its list is open.
           ComboBox.style [] [
-              ComboBox.background Palette.surface
-              ComboBox.borderBrush Palette.border
-              ComboBox.cornerRadius Palette.cornerRadius
-              ComboBox.foreground Palette.text
-              ComboBox.chevron Palette.textDim
-              ComboBox.placeholderForeground Palette.textDim
               Style.transition BorderProps.overlay tintTime
               Style.transition BorderProps.borderBrush tintTime
               Style.on States.hover [ ComboBox.overlay Palette.hoverTint ]
@@ -141,21 +111,12 @@ module internal ThemeLooks =
               Style.on States.isOpen [ ComboBox.borderBrush Palette.accent ]
               Style.on States.disabled [ ComboBox.overlay Color.Transparent; ComboBox.opacity 0.5 ]
           ]
-          // A field to type in (M9 step 9a, decision 17): a ComboBox's look without the hover and press tints; the
-          // selection is the accent, tinted.
+          // A field to type in (M9 step 9a, decision 17): a ComboBox's state looks without the hover and press tints.
           TextBox.style [] [
-              TextBox.background Palette.surface
-              TextBox.borderBrush Palette.border
-              TextBox.cornerRadius Palette.cornerRadius
-              TextBox.foreground Palette.text
-              TextBox.placeholderForeground Palette.textDim
-              Setting.fromThemeWith TextBoxProps.selection Palette.accent ThemeConvert.textSelectionTint
               Style.transition BorderProps.borderBrush tintTime
               Style.on States.focused [ TextBox.borderBrush Palette.accent ]
               Style.on States.disabled [ TextBox.opacity 0.5 ]
           ]
-          // A TextBox's selection handles for a finger (M9 step 9g, decision 99): the accent.
-          SelectionHandle.style [] [ SelectionHandle.fill Palette.accent ]
           TextBlock.style [ Style.inside ComboBox.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
           // A disabled Button fades as a whole: its text doesn't fade twice.
@@ -166,37 +127,10 @@ module internal ThemeLooks =
           TextBlock.style [ Style.inside RadioButton.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside ListBoxItem.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside TabHeader.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
-          ScrollViewer.style [] [ ScrollViewer.thumb Palette.scrollThumb; ScrollViewer.track Palette.scrollTrack ]
-          Separator.style [] [ Separator.color Palette.border ] 
-          // Flyouts and tooltips float: the surface colour, a line, the theme's corners, a wide shadow.
-          Flyout.style [] [
-              Flyout.background Palette.surface
-              Flyout.borderBrush Palette.border
-              Flyout.borderThickness 1.0
-              Flyout.cornerRadius Palette.cornerRadius
-              Flyout.padding 4.0
-              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
-          ]
-          // A modal (M8 step 4d): the scrim dims what's below and fades in with the box on it.
-          Scrim.style [] [ Scrim.background Palette.scrim; Style.transition LayoutProps.opacity fadeTime ]
-          Modal.style [] [
-              Modal.background Palette.surface
-              Modal.borderBrush Palette.border
-              Modal.borderThickness 1.0
-              Modal.cornerRadius Palette.cornerRadius
-              Modal.padding 20.0
-              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.modalShadow
-          ]
-          // Toasts (M8 step 4d): the surface colour with a line and a floating shadow; a warning in the warning colour, a critical one in the danger colour.
-          ToastPresenter.style [] [
-              ToastPresenter.background Palette.surface
-              ToastPresenter.borderBrush Palette.border
-              ToastPresenter.borderThickness 1.0
-              ToastPresenter.cornerRadius Palette.cornerRadius
-              ToastPresenter.foreground Palette.text
-              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
-              Style.transition LayoutProps.opacity moveTime
-          ]
+          // A modal (M8 step 4d): the scrim fades in with the box on it.
+          Scrim.style [] [ Style.transition LayoutProps.opacity fadeTime ]
+          // Toasts (M8 step 4d) fade in and out; a warning in the warning colour, a critical one in the danger colour.
+          ToastPresenter.style [] [ Style.transition LayoutProps.opacity moveTime ]
           ToastPresenter.style [ Style.cls "warning" ] [
               ToastPresenter.background Palette.warning
               ToastPresenter.borderBrush Palette.warning
@@ -206,14 +140,6 @@ module internal ThemeLooks =
               ToastPresenter.background Palette.danger
               ToastPresenter.borderBrush Palette.danger
               ToastPresenter.foreground Palette.onAccent
-          ]
-          TooltipPresenter.style [] [
-              TooltipPresenter.background Palette.surface
-              TooltipPresenter.borderBrush Palette.border
-              TooltipPresenter.borderThickness 1.0
-              TooltipPresenter.cornerRadius Palette.cornerRadius
-              TooltipPresenter.padding (8.0, 4.0)
-              Setting.fromThemeWith BorderProps.shadow Palette.shadow ThemeConvert.floatShadow
           ] ]
 
     /// Inherited properties' base values, by theme value.

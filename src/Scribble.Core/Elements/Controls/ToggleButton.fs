@@ -77,13 +77,13 @@ module ToggleButton =
 
     /// CheckBox's and Switch's base look without a theme (the theme adds the state looks).
     let internal labeledDefaults: Setting<ToggleButton> list =
-        [ Layoutable.foreground (Color.Hex 0xE6E6F0)
-          Border.background (Color.Hex 0x3A3A55)
-          Border.borderBrush (Color.Hex 0x4A4A68)
+        [ Layoutable.foreground Palette.text
+          Border.background Palette.control
+          Border.borderBrush Palette.border
           Border.borderThickness 1.0
           Border.padding Thickness.Zero
           Setting.create BorderProps.shadow ValueNone
-          ToggleButton.markColor Color.White
+          ToggleButton.markColor Palette.onAccent
           // The box and its label only, so the click area doesn't span a row (Buttons stretch; 2026-11-17).
           Layoutable.horizontalAlignment HorizontalAlignment.Left ]
 

@@ -45,7 +45,7 @@ module CheckBox =
             Element.measure (ToggleButton.measureLabeled boxSize boxSize)
             Element.arrange (ToggleButton.arrangeLabeled boxSize)
             Element.render render
-            Element.defaults (ToggleButton.labeledDefaults @ [ Border.cornerRadius 3.0; Semantics.role Role.CheckBox ])
+            Element.defaults (ToggleButton.labeledDefaults @ [ Setting.fromThemeWith BorderProps.cornerRadius Palette.cornerRadius ThemeConvert.halfCorners; Semantics.role Role.CheckBox ])
         ]
 
     let create (settings: Setting<CheckBox> list) : View = View.Create(Type, settings)
