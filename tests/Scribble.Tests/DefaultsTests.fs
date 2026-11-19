@@ -81,3 +81,13 @@ let ``a type default given twice in one list takes the later one`` () =
     Assert.Equal(Thickness.Uniform 4.0, e.Get BorderProps.padding)
     // Without a theme a Switch's knob is its own colour, not the mark colour of the list it shares.
     Assert.Equal(Palette.textDim.Default, (realize ValueNone Switch.Type).Get ToggleButtonProps.markColor)
+
+[<Fact>]
+let ``tools show a toast, a tooltip and a modal by the names an app wrote`` () =
+    // DESIGN.md, "Names an app sees": the boxes the framework makes aren't called presenters where an app can see.
+    Assert.Equal("Toast", ToastPresenter.Type.Name)
+    Assert.Equal("Tooltip", TooltipPresenter.Type.Name)
+    Assert.Equal("Modal", ModalAnchor.Type.Name)
+    // The names styles are written with, and what the inspector says of them.
+    Assert.Equal("Toast.warning", (Toast.style [ Style.cls "warning" ] [ Border.padding 2.0 ]).Description)
+    Assert.Equal("Tooltip", (Tooltip.style [] [ Border.padding 2.0 ]).Description)

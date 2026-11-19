@@ -101,14 +101,22 @@ module FlyoutSettings =
         /// nearest element with one, from what was clicked outward, shows its own.
         static member contextMenu<'k when 'k :> Layoutable>(menu: View) : Setting<'k> = Setting.create FlyoutProps.contextMenu (ValueSome menu)
 
-/// What a tooltip's text or view sits in (`TooltipPresenter.style` restyles it).
+/// The box a tooltip's text or view sits in (the host makes it; `Tooltip.style` restyles it). Tools show it as
+/// "Tooltip": an app names a thing by what it wrote (DESIGN.md, "Names an app sees").
 [<AbstractClass>]
 type TooltipPresenter =
     inherit Border
 
 module TooltipPresenter =
-    let Type = Element.extend Border.Type "TooltipPresenter" [
+    let Type = Element.extend Border.Type "Tooltip" [
             Element.defaults (Flyout.floating<TooltipPresenter> @ [ Border.padding (8.0, 4.0); Layoutable.isHitTestVisible false ])
         ]
-    let create (settings: Setting<TooltipPresenter> list) = View.Create(Type, settings)
-    let style parts (settings: Setting<TooltipPresenter> list) = Style.forType Type parts settings
+    let internal create (settings: Setting<TooltipPresenter> list) = View.Create(Type, settings)
+    let internal style parts (settings: Setting<TooltipPresenter> list) = Style.forType Type parts settings
+
+/// Tooltips (`tooltip "Save"` on any element): `Tooltip.style` restyles the box they show in.
+[<AbstractClass; Sealed>]
+type Tooltip =
+    /// A style for tooltips' boxes: `Tooltip.style [] [ Border.cornerRadius 2.0; Border.padding 6.0 ]` (a tooltip's box is
+    /// a Border underneath).
+    static member style (parts: SelectorPart list) (settings: Setting<TooltipPresenter> list) : Style = TooltipPresenter.style parts settings

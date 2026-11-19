@@ -836,7 +836,7 @@ Border.create [ Border.contextMenu menu; Border.content document ]     // opens 
 - **Placement:** below the pointer, kept inside the window.
 - **Hiding:** a press, the wheel or a key hides it until the pointer leaves the element.
 - **Never in the way:** it takes no focus or clicks, and there are none on touch.
-- **Look:** `TooltipPresenter.style` restyles it.
+- **Look:** `Tooltip.style [] [ Border.padding 6.0 ]` restyles it (its box is a Border underneath).
 
 **ScrollViewer** (M6, completed in M8 step 1): `ScrollViewer.create [ ScrollViewer.height 300.0; ScrollViewer.content list ]`
 scrolls its content when it's bigger than the ScrollViewer. Give it a bounded height.

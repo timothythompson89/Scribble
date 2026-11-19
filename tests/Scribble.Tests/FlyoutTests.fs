@@ -379,7 +379,7 @@ let ``a tooltip shows after the pointer rests half a second, below the pointer``
     settle w
     Assert.Equal(Some "Save", tipText host)
     let presenter = (host.Layers |> Seq.find (fun l -> l.Name = "Tooltip")).Tree.Root.Value
-    Assert.Equal("TooltipPresenter", presenter.Type.Name)
+    Assert.Equal("Tooltip", presenter.Type.Name)
     Assert.Equal(52.0, presenter.PositionInTree.X)
     Assert.Equal(46.0, presenter.PositionInTree.Y)
     // Never in the way: the pointer goes through it.
@@ -524,7 +524,7 @@ let ``a class given to the element while its flyout is open restyles the flyout`
 let ``a tooltip is styled as if inside its element too`` () =
     let view =
         Canvas.create [
-            Canvas.styles [ TooltipPresenter.style [] [ TooltipPresenter.padding 0.0 ] ]
+            Canvas.styles [ Tooltip.style [] [ Border.padding 0.0 ] ]
             Canvas.children [
                 Button.create [ Button.name "b"; Button.width 100.0; Button.height 40.0; Canvas.left 20.0; Canvas.top 20.0; Button.tooltip "Tip" ]
             ]

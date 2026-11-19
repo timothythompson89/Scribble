@@ -189,6 +189,10 @@ _Avoid_: right-click menu, context flyout
 **Tooltip**:
 A short hint shown near the pointer after it rests on an element; never focused, never clicked.
 
+**Presenter**:
+The box the host makes for content an app gave as a setting or as an action's options (a tooltip, a toast); apps style it by the name of what they wrote and never name it.
+_Avoid_: container, host (for the box), popup
+
 **Modal**:
 Content written in the view and shown in its own layer over a scrim, taking all input until it closes; the view says whether it is open. The Modal is also the box its content sits in.
 _Avoid_: dialog (for content written in the view), popup, overlay

@@ -47,10 +47,10 @@ module Scrim =
     let style parts (settings: Setting<Scrim> list) = Style.forType Type parts settings
 
 /// Where a Modal stands in the view: it takes no space and draws nothing; the host shows its modal
-/// in a layer of its own while the view says it's open.
+/// in a layer of its own while the view says it's open. Tools show it as "Modal", the name the app wrote.
 module internal ModalAnchor =
     let Type =
-        Element.define "ModalAnchor" [
+        Element.define "Modal" [
             Element.measure (fun _ _ -> Size.Create(0.0, 0.0))
             // Not visible: panels give it no room and no gap. It is still in the tree, which is what the host looks at.
             Element.defaults [ Layoutable.isVisible false ]

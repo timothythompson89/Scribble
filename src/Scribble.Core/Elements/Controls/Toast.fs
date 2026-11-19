@@ -9,8 +9,8 @@ module internal ToastProps =
     /// as it goes.
     let offset = Prop.define "Offset" 0.0 Affects.Render
 
-/// The box a toast sits in (the Toaster makes them; `ToastPresenter.style [] [ ... ]` restyles them,
-/// `Toast.style [ Style.cls "critical" ] [ ... ]` the critical ones).
+/// The box a toast sits in (the Toaster makes them; `Toast.style [] [ ... ]` restyles them,
+/// `Toast.style [ Style.cls "critical" ] [ ... ]` the critical ones). Tools show it as "Toast".
 [<AbstractClass>]
 type ToastPresenter =
     inherit Border
@@ -20,7 +20,7 @@ module ToastPresenter =
     let internal moveTime = TimeSpan.FromMilliseconds 150.0
 
     let Type =
-        Element.extend Border.Type "ToastPresenter" [
+        Element.extend Border.Type "Toast" [
             Element.transform (fun ctx -> Transform.Translate(0.0, ctx.Animate("slide", ctx.Get ToastProps.offset, moveTime)))
             Element.defaults [
                 Semantics.role Role.Alert
@@ -35,7 +35,7 @@ module ToastPresenter =
             ]
         ]
     let internal create (settings: Setting<ToastPresenter> list) = View.Create(Type, settings)
-    let style parts (settings: Setting<ToastPresenter> list) = Style.forType Type parts settings
+    let internal style parts (settings: Setting<ToastPresenter> list) = Style.forType Type parts settings
 
 /// Where a window's toasts stack: `Toasts.placement` (an app value), set with `App.toasts [ ... ]`.
 type ToastPlacement =

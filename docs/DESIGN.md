@@ -31,8 +31,9 @@ questions", as paragraphs starting with the name given here.
 | Focus | Tab order and reading order are view order; `Dock.Fill` (built 2026-11-18) | Section "Tab order is view order; `Dock.Fill`" |
 | Images out | Rendering a view or an element to an image, PNG, saving (built 2026-11-18) | Section "Rendering to an image and saving it" |
 | Imaging speed | The PNG decoder's row loops and mip levels with `Vector128` (built 2026-11-18) | Section "Vectorising the PNG decoder" |
-| Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 | Defaults | Where each element's defaults live: rest looks as type defaults by theme value (2026-11-19) | Section "Where defaults live" |
+| Names | An app names and styles a thing by what it wrote; presenters are internal (2026-11-19) | Section "Names an app sees" |
+| Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
 
@@ -177,7 +178,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Scrolling:** ScrollViewer (bars, thumb drag, wheel, keys, touch with fling) and ItemsView (virtualized lists
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
-- **Elements:** Border, TextBlock, Label, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
+- **Elements:** Border, TextBlock, Label, IconView, ImageView, Separator, FocusRing, Flyout (and the boxes the host makes for tooltips and toasts); Button, ToggleButton, CheckBox, Switch, Slider,
   TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Label, Menu and MenuItem (as a flyout or a context menu, or a row; 9f), SelectionHandle (a TextBox's, for a finger; 9g), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
@@ -186,11 +187,11 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Styles and themes:** selectors (type, class, name, state, descendant and child), precedence own value over
   style over theme; transitions; dark and light themes with theme values (`Palette.surface`); app values that any
   view can read; visual states that apps can define and tools can force.
-- **Layers:** the app's view and more (dialogs, toasts, the inspector) over it, each with its own tree and focus.
-  An element can ask for a layer of its own above the flyouts (`IElementRoot.ElementLayer`: a TextBox's selection
   An element type's look at rest is its type defaults, colours and shadows by theme value, so a tree without a
   theme shows the dark look at rest; a theme's styles add only the state looks, transitions and class variants
   (section "Where defaults live"; two tests hold the rule).
+- **Layers:** the app's view and more (dialogs, toasts, the inspector) over it, each with its own tree and focus.
+  An element can ask for a layer of its own above the flyouts (`IElementRoot.ElementLayer`: a TextBox's selection
   handles), which never takes the keyboard.
   Flyouts (`flyout content` or `flyout [ ... ]`: content anchored to an element, light dismiss, flip and clamp) and tooltips each show
   in a layer of their own. Section "M8 step 4".
@@ -259,11 +260,10 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 | Scroll only the nearest viewer | When an app nests a list in a scrolling page and wants the page to stay put (the browser's `scrollIntoView({ container: "nearest" })`; DESIGN.md, "Scrolling to an item ...", Tim, 2026-11-17) | `BringRectIntoView` already treats the nearest viewer apart from the ones around it; the scroller's requests carry their options |
 | Tab stops numbered in the Inspector | When a Tab order is hard to see (section "Tab order is view order; `Dock.Fill`", decision 8) | Tab order is one list per layer (`Input`) |
 | A magnifier while dragging a selection handle | When selecting by touch proves hard to aim on a phone (section "9g: selection by touch", decision 90) | A view or an element can be rendered to an image; handles stand in their own layer |
-| Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
-
-| A ModalPresenter, to match ToastPresenter and TooltipPresenter | To be discussed (Tim, 2026-11-19, during the pass on where defaults live) | Modal is today both the setting-holder in the view and the box its content sits in; toasts and tooltips have a presenter type of their own for the box |
 | Density: theme values for metrics (padding, control sizes, disabled opacity, transition times) | When a compact or touch theme is wanted (section "Where defaults live", decisions 5 and 12) | Every metric is a type default or a constant in its element's module; none is in a theme's styles |
 | Element types carrying their own state looks | A round of its own (section "Where defaults live", decisions 6 and 12): third-party controls can't add a built-in look, and "text inside a disabled X doesn't fade twice" needs a line per control | Looks at rest are already type defaults; `ThemeLooks` holds only state blocks, transitions and class variants |
+| Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
+
 ---
 
 # Part 2: history
@@ -5158,6 +5158,134 @@ default limits (8192 pixels a side); app code can't reach the platform.
   filling its frame without the page growing), on D3D12 and Vulkan. Checked in Chrome (before the Gallery
   render): the view images and an exported 504 × 346 RGBA `card.png`.
 
+## Where defaults live (inventory and grilling, 2026-11-19)
+
+Tim asked for a pass on themes and styles: are the defaults of every element and control in the right place? The
+inventory found a value could come from five places (property default, type default, the theme's styles, the
+theme's base values, private constants in an element's module) with no rule for which:
+
+- The dark palette was written out about 45 times outside `Palette`: as type defaults (Button, the ToggleButton
+  family, ComboBox, TextBox, TabHeader, Toast, Modal, Scrim) and as property defaults (Slider, Separator,
+  TabControl, ComboBox, MenuItem, ScrollViewer, ListBoxItem, TextBox, SelectionHandle), and set again by the
+  theme's styles from theme values. Nothing kept the copies equal. (No property was left dark under `Theme.light`.)
+- Padding and border thickness were type defaults for Button, ComboBox, TextBox, ListBoxItem and MenuItem, but
+  came from the theme's styles for Flyout, TooltipPresenter, Modal and ToastPresenter (Modal's padding in both).
+- TabHeader's and MenuItem's corners were fixed numbers that ignored `Theme.cornerRadius`.
+- A bare tree's look was not the themed look at rest (no Slider thumb shadow; no border or shadow on Toast and Modal).
+
+Decisions (Tim took every recommendation; "it's ok for screenshots to change where sensible"):
+
+1. **Words** (GLOSSARY.md): property default, type default, built-in look, base value.
+2. **A bare tree keeps a look:** M7 step 2 decision 6 stands. Without a theme an element has its built-in look at
+   rest, without state looks.
+3. **Rest colours are type defaults, as theme values** (`Border.background Palette.control`): one place says what
+   colour a control is at rest. A theme value's default is the dark value, so a bare tree is unchanged, and under
+   a theme the type default reads the nearest theme. The inspector's source for these reads `type`, with the
+   theme value's name under it.
+4. **Metrics are type defaults, never theme styles:** padding and border thickness for Flyout, TooltipPresenter,
+   Modal and ToastPresenter leave the theme. A theme supplies only values, so they never differed between themes.
+5. **No theme values for metrics yet** (density: a compact or touch theme). Decision 4 puts every metric in one
+   kind of place, which a density round needs.
+6. **Element types carrying their own state looks is a later round.** Only Core can add a built-in look today
+   (`ThemeLooks` is internal; a third-party control ships a style list for `App.styles`). The full fix dissolves
+   `ThemeLooks` into the element files; it changes how styles match and what the inspector reports.
+7. **The built-in look at rest is entirely type defaults:** shadows (Button, Slider's thumb, the floating ones of
+   Flyout, Tooltip, Toast, Modal) and transparent backgrounds (ListBoxItem, MenuItem) too. A theme style holds
+   only state blocks, transitions and class variants (a toast's `warning` and `critical`), and rules about another
+   type's elements inside one (text in a disabled Button).
+8. **Coloured property defaults become neutral** (`Color.Transparent`): a dark colour was wrong under a light
+   theme anyway. Two stay: inherited `foreground` (black; unit tests rely on it) and the focus ring's colour,
+   which is `Palette.focusRing`'s default in place of a second literal.
+9. **Corners follow the theme, small parts at half:** Toast, Modal and TabHeader (top corners) take
+   `Palette.cornerRadius`; MenuItem takes half, as CheckBox does (4 becomes 3). A true concentric corner would
+   need the flyout's padding, which a style can change.
+10. **The inspector always shows a type default that holds a theme value**, as it does what the theme's styles
+    can set.
+11. **Two tests hold the rule:** every built-in element type reads the same at rest on a bare tree and under
+    `Theme.dark []`; no built-in type default or property default is a fixed colour other than transparent
+    (the exceptions of decision 8 listed in the test).
+12. **Left alone:** the nine "text inside a disabled X doesn't fade twice" styles (they need a line per control
+    and miss an app's own element extended from Button; a container saying it fades its own content belongs with
+    decision 6's round), and numbers a theme can't reach (disabled opacity 0.5 and 0.45, transition times, control
+    sizes; they belong with density).
+13. **Order:** a test that a theme value in a type default resolves, follows a theme change and is inherited;
+    colours; metrics and shadows; corners; the inspector; the rule tests.
+14. **Screenshots:** a mismatch these decisions predict is regenerated and listed with its reason; anything else
+    is a bug.
+
+Also noted for a later discussion (Tim): a ModalPresenter, to match ToastPresenter and TooltipPresenter. Discussed
+the same day: section "Names an app sees".
+
+As built (2026-11-19):
+
+- A theme value in a type default needed no new code: `Element.Resolve` already reads one wherever a value comes
+  from, and `Values` reports it as `TypeDefault` with the theme value's name. A test now holds that (nearest theme,
+  a theme change, inherited text inside).
+- Type defaults by theme value: Button, the ToggleButton family (`ToggleButton.labeledDefaults`), Slider, Separator,
+  ScrollViewer, TabControl, TabHeader, ListBoxItem, MenuItem, ComboBox, TextBox, SelectionHandle, Flyout and
+  TooltipPresenter (a shared `Flyout.floating` list), Modal, Scrim, ToastPresenter. Property defaults that were dark
+  colours are transparent (17 of them, and `markColor`, which was white); `FocusRing.color` is
+  `Palette.focusRing.Default`. No colour literal is left in `Elements/`.
+- `ThemeLooks` (Theme.fs) holds state blocks, transitions, a toast's `warning` and `critical`, and the disabled-text
+  rules; the file went from 275 lines to 198. The styles for TabControl, ScrollViewer, Separator, SelectionHandle, Flyout,
+  Modal and TooltipPresenter are gone (nothing left to say).
+- `ThemeConvert.topCorners` for TabHeader; MenuItem uses `halfCorners`.
+- **Found: a property given twice in one `Element.defaults` list took the first.** RadioButton and Switch append
+  their own values to the shared list, so on a bare tree a radio's dot was white and a switch's knob the wrong
+  colour (the theme's styles hid it), and RadioButton's agreed 1.5-DIP ring ("M8 step 4", decision 16) had always
+  drawn at 1. Now the later one wins, with a test. **The ring is 1 DIP, the same as a CheckBox's box** (Tim,
+  2026-11-19, after seeing both: "make the radio button match the check box"; what had bothered him at first was
+  the chosen dot's contrast on the dark theme, below). RadioButton's own thickness is removed and it takes the
+  shared 1. This replaces the 1.5 in "M8 step 4", decision 16.
+- **A chosen RadioButton fills with the accent and its dot is `Palette.onAccent`** (Tim, 2026-11-19; option 1 of
+  accent fill / a dot in the text colour / a lighter accent as a new theme value): an accent dot (`#3D59A1`) on the
+  control colour (`#3A3A55`) was hard to see on the dark theme. It now reads as a checked CheckBox does, on both
+  themes. The fill is a state block in the theme's styles; the dot takes the shared mark colour, so RadioButton has
+  no mark colour of its own. This replaces "accent ring and dot" in "M8 step 4", decision 16. Without a theme a
+  chosen radio shows a white dot on the control colour (no state looks there).
+- **The inspector needed no change** (decision 10): a type default always showed. A Button's `background` reads
+  `type` with `Palette.control` under it; `ThemedProperties` no longer lists rest colours.
+- Screenshots: 5 regenerated. `menu@1x`, `menu-light@1x` (MenuItem's corner 4 to 3: 32 and 56 pixels); `lists@1x`,
+  `lists-light@1x`, `gallery-phone-lists@3x` (the chosen radio's accent fill; its ring is 1 DIP, as it always drew). No other picture changed: none shows a
+  bare-tree Slider, Flyout, Toast or Modal, whose looks at rest gained what the theme used to add.
+- Tests: 1,304 unit tests (4 new: a theme value as a type default; the two rule tests in `DefaultsTests.fs`; later
+  wins) plus 9 timing tests skipped; 106 rendering tests. Three tests changed for the new sources (`type` where
+  `theme` was). Timing: 9 pass; "decoding a 1024 square PNG is fast" failed twice in three runs at about 29 ms
+  (the imaging code is untouched by this pass).
+
+## Names an app sees (discussed and built 2026-11-19)
+
+Tim asked to discuss "bringing back" a ModalPresenter, to match ToastPresenter and TooltipPresenter. There never
+was one: what was removed is FlyoutPresenter ("M8 step 4", 2026-11-17), because with a presenter one flyout's own
+look couldn't be reached (`Flyout.padding 0.0`), only all of them through the presenter's style. Modal was built
+afterwards in the Flyout's shape, for the same reason.
+
+Tim: "I just want consistency for users of the library." Seen from there the boxes were not the inconsistency, the
+names were: a tooltip was styled with `TooltipPresenter.style`, a type no app otherwise writes; a toast had two
+public names for one style function; and the inspector showed `ToastPresenter`, `TooltipPresenter` and
+`ModalAnchor`, none of which an app wrote. A ModalPresenter would have added a third such name and taken
+`Modal.padding` away from a single modal.
+
+Decisions (Tim: "Yes, all four"):
+
+1. **`Tooltip.style`** is how tooltips are restyled (a new `Tooltip` type holding it), so every floating thing is
+   styled as what the app wrote: `Flyout.style`, `Modal.style`, `Dialog.style`, `Toast.style`, `Tooltip.style`.
+2. **One public name each:** `ToastPresenter.style` and `TooltipPresenter.style` (and `TooltipPresenter.create`) are
+   internal. The two types stay public only because they are in `Toast.style`'s and `Tooltip.style`'s signatures;
+   the README and samples don't name them, and their settings are written as Border's
+   (`Tooltip.style [] [ Border.padding 6.0 ]`; "Styling them without the element's name", 2026-11-18).
+3. **Tools show the app's words:** the element types' names are "Toast" and "Tooltip", and a Modal's place in the
+   view is "Modal" (was "ModalAnchor"), so the inspector's tree and selector text (`Toast.warning`) match what was
+   written. Two element types are now named "Modal" (the place in the app's tree, the box in its own layer); styles
+   match a type by reference, so nothing confuses them.
+4. **The rule:** an app names and styles a thing by what it wrote. Where what it wrote is an element (Flyout,
+   Modal), that element is the box its content sits in, so one of them can have its own look. Where it wrote a
+   setting or an action's options (a tooltip, a toast, a dialog), the host makes the box: a presenter, an internal
+   detail (a dialog's is a Modal with the class `dialog`). **No ModalPresenter.**
+
+As built: no screenshot changed (no reference shows these names). Unit tests 1,305 (1 new: the three names and
+the styles' descriptions); the tooltip tests use `Tooltip.style`. 106 rendering tests.
+
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 
 The working summaries kept in CLAUDE.md while each milestone was built, moved here unchanged when CLAUDE.md
@@ -5216,101 +5344,6 @@ when off the UI thread (inline when the tree has no dispatcher, as in bare `Elem
 `ctx.useAsync(deps, fun d ct -> task|async)` → `AsyncValue.Loading|Loaded|Failed` (version counter drops late
 results). Tests drain the fake platform's wakes by hand (`AsyncTests.fs`; use a real `Thread` for "other thread",
 since `Task.Run(...).Wait()` can run inline).
-## Where defaults live (inventory and grilling, 2026-11-19)
-
-Tim asked for a pass on themes and styles: are the defaults of every element and control in the right place? The
-inventory found a value could come from five places (property default, type default, the theme's styles, the
-theme's base values, private constants in an element's module) with no rule for which:
-
-- The dark palette was written out about 45 times outside `Palette`: as type defaults (Button, the ToggleButton
-  family, ComboBox, TextBox, TabHeader, Toast, Modal, Scrim) and as property defaults (Slider, Separator,
-  TabControl, ComboBox, MenuItem, ScrollViewer, ListBoxItem, TextBox, SelectionHandle), and set again by the
-  theme's styles from theme values. Nothing kept the copies equal. (No property was left dark under `Theme.light`.)
-- Padding and border thickness were type defaults for Button, ComboBox, TextBox, ListBoxItem and MenuItem, but
-  came from the theme's styles for Flyout, TooltipPresenter, Modal and ToastPresenter (Modal's padding in both).
-- TabHeader's and MenuItem's corners were fixed numbers that ignored `Theme.cornerRadius`.
-- A bare tree's look was not the themed look at rest (no Slider thumb shadow; no border or shadow on Toast and Modal).
-
-Decisions (Tim took every recommendation; "it's ok for screenshots to change where sensible"):
-
-1. **Words** (GLOSSARY.md): property default, type default, built-in look, base value.
-2. **A bare tree keeps a look:** M7 step 2 decision 6 stands. Without a theme an element has its built-in look at
-   rest, without state looks.
-3. **Rest colours are type defaults, as theme values** (`Border.background Palette.control`): one place says what
-   colour a control is at rest. A theme value's default is the dark value, so a bare tree is unchanged, and under
-   a theme the type default reads the nearest theme. The inspector's source for these reads `type`, with the
-   theme value's name under it.
-4. **Metrics are type defaults, never theme styles:** padding and border thickness for Flyout, TooltipPresenter,
-   Modal and ToastPresenter leave the theme. A theme supplies only values, so they never differed between themes.
-5. **No theme values for metrics yet** (density: a compact or touch theme). Decision 4 puts every metric in one
-   kind of place, which a density round needs.
-6. **Element types carrying their own state looks is a later round.** Only Core can add a built-in look today
-   (`ThemeLooks` is internal; a third-party control ships a style list for `App.styles`). The full fix dissolves
-   `ThemeLooks` into the element files; it changes how styles match and what the inspector reports.
-7. **The built-in look at rest is entirely type defaults:** shadows (Button, Slider's thumb, the floating ones of
-   Flyout, Tooltip, Toast, Modal) and transparent backgrounds (ListBoxItem, MenuItem) too. A theme style holds
-   only state blocks, transitions and class variants (a toast's `warning` and `critical`), and rules about another
-   type's elements inside one (text in a disabled Button).
-8. **Coloured property defaults become neutral** (`Color.Transparent`): a dark colour was wrong under a light
-   theme anyway. Two stay: inherited `foreground` (black; unit tests rely on it) and the focus ring's colour,
-   which is `Palette.focusRing`'s default in place of a second literal.
-9. **Corners follow the theme, small parts at half:** Toast, Modal and TabHeader (top corners) take
-   `Palette.cornerRadius`; MenuItem takes half, as CheckBox does (4 becomes 3). A true concentric corner would
-   need the flyout's padding, which a style can change.
-10. **The inspector always shows a type default that holds a theme value**, as it does what the theme's styles
-    can set.
-11. **Two tests hold the rule:** every built-in element type reads the same at rest on a bare tree and under
-    `Theme.dark []`; no built-in type default or property default is a fixed colour other than transparent
-    (the exceptions of decision 8 listed in the test).
-12. **Left alone:** the nine "text inside a disabled X doesn't fade twice" styles (they need a line per control
-    and miss an app's own element extended from Button; a container saying it fades its own content belongs with
-    decision 6's round), and numbers a theme can't reach (disabled opacity 0.5 and 0.45, transition times, control
-    sizes; they belong with density).
-13. **Order:** a test that a theme value in a type default resolves, follows a theme change and is inherited;
-    colours; metrics and shadows; corners; the inspector; the rule tests.
-14. **Screenshots:** a mismatch these decisions predict is regenerated and listed with its reason; anything else
-    is a bug.
-
-Also noted for a later discussion (Tim): a ModalPresenter, to match ToastPresenter and TooltipPresenter
-(Deferred work).
-
-As built (2026-11-19):
-
-- A theme value in a type default needed no new code: `Element.Resolve` already reads one wherever a value comes
-  from, and `Values` reports it as `TypeDefault` with the theme value's name. A test now holds that (nearest theme,
-  a theme change, inherited text inside).
-- Type defaults by theme value: Button, the ToggleButton family (`ToggleButton.labeledDefaults`), Slider, Separator,
-  ScrollViewer, TabControl, TabHeader, ListBoxItem, MenuItem, ComboBox, TextBox, SelectionHandle, Flyout and
-  TooltipPresenter (a shared `Flyout.floating` list), Modal, Scrim, ToastPresenter. Property defaults that were dark
-  colours are transparent (17 of them, and `markColor`, which was white); `FocusRing.color` is
-  `Palette.focusRing.Default`. No colour literal is left in `Elements/`.
-- `ThemeLooks` (Theme.fs) holds state blocks, transitions, a toast's `warning` and `critical`, and the disabled-text
-  rules; the file went from 275 lines to 198. The styles for TabControl, ScrollViewer, Separator, SelectionHandle, Flyout,
-  Modal and TooltipPresenter are gone (nothing left to say).
-- `ThemeConvert.topCorners` for TabHeader; MenuItem uses `halfCorners`.
-- **Found: a property given twice in one `Element.defaults` list took the first.** RadioButton and Switch append
-  their own values to the shared list, so on a bare tree a radio's dot was white and a switch's knob the wrong
-  colour (the theme's styles hid it), and RadioButton's agreed 1.5-DIP ring ("M8 step 4", decision 16) had always
-  drawn at 1. Now the later one wins, with a test. **The ring is 1 DIP, the same as a CheckBox's box** (Tim,
-  2026-11-19, after seeing both: "make the radio button match the check box"; what had bothered him at first was
-  the chosen dot's contrast on the dark theme, below). RadioButton's own thickness is removed and it takes the
-  shared 1. This replaces the 1.5 in "M8 step 4", decision 16.
-- **A chosen RadioButton fills with the accent and its dot is `Palette.onAccent`** (Tim, 2026-11-19; option 1 of
-  accent fill / a dot in the text colour / a lighter accent as a new theme value): an accent dot (`#3D59A1`) on the
-  control colour (`#3A3A55`) was hard to see on the dark theme. It now reads as a checked CheckBox does, on both
-  themes. The fill is a state block in the theme's styles; the dot takes the shared mark colour, so RadioButton has
-  no mark colour of its own. This replaces "accent ring and dot" in "M8 step 4", decision 16. Without a theme a
-  chosen radio shows a white dot on the control colour (no state looks there).
-- **The inspector needed no change** (decision 10): a type default always showed. A Button's `background` reads
-  `type` with `Palette.control` under it; `ThemedProperties` no longer lists rest colours.
-- Screenshots: 5 regenerated. `menu@1x`, `menu-light@1x` (MenuItem's corner 4 to 3: 32 and 56 pixels); `lists@1x`,
-  `lists-light@1x`, `gallery-phone-lists@3x` (the chosen radio's accent fill; its ring is 1 DIP, as it always drew). No other picture changed: none shows a
-  bare-tree Slider, Flyout, Toast or Modal, whose looks at rest gained what the theme used to add.
-- Tests: 1,304 unit tests (4 new: a theme value as a type default; the two rule tests in `DefaultsTests.fs`; later
-  wins) plus 9 timing tests skipped; 106 rendering tests. Three tests changed for the new sources (`type` where
-  `theme` was). Timing: 9 pass; "decoding a 1024 square PNG is fast" failed twice in three runs at about 29 ms
-  (the imaging code is untouched by this pass).
-
 
 #### M6: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M6")
 
