@@ -199,6 +199,11 @@ let private controls =
                             ]
                             TextBox.create [ TextBox.width 220.0; TextBox.text "Disabled"; TextBox.isEnabled false; Semantics.label "Disabled" ]
                         ]
+                        // On a phone each brings up the keyboard that suits it; nothing is checked.
+                        wrap [
+                            TextBox.create [ TextBox.width 220.0; TextBox.placeholder "A number (digits on a phone)"; TextBox.keyboard KeyboardKind.Number ]
+                            TextBox.create [ TextBox.width 220.0; TextBox.placeholder "An email address"; TextBox.keyboard KeyboardKind.Email ]
+                        ]
                     ])
                 section "TextBox, several lines" "It wraps at its width and grows from three lines to six, then scrolls. Enter makes a new line; ↑/↓, PageUp/PageDown and Home/End move by lines; a triple-click selects a paragraph. The second takes Tab as a character." (
                     column [

@@ -40,6 +40,13 @@ type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
     member val TitleText = "" with get, set
     member val Cursor = Cursor.Default with get, set
     member val Claimed: (Key * Modifiers) list = [] with get, set
+    /// What `SetTextInput` was last told (none: text input is off), how often it was told, and how often a
+    /// composition was dropped.
+    member val TextInput: TextInputRequest voption = ValueNone with get, set
+    member val TextInputCalls = 0 with get, set
+    member val CompositionsCleared = 0 with get, set
+    /// The background colour the window was last told of.
+    member val Background: struct (byte * byte * byte) voption = ValueNone with get, set
     member val Size: PixelSize = { Width = 400; Height = 300 } with get, set
     /// Delivers a requested frame, like the platform's loop does, 16 ms of fake time after the last.
     /// Returns whether one was due.
@@ -68,6 +75,11 @@ type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
         member this.RequestFrame() = this.FrameRequested <- true
         member this.SetCursor c = this.Cursor <- c
         member this.ClaimKey(key, mods) = this.Claimed <- this.Claimed @ [ key, mods ]
+        member this.SetBackground(r, g, b) = this.Background <- ValueSome(struct (r, g, b))
+        member this.SetTextInput request =
+            this.TextInput <- request
+            this.TextInputCalls <- this.TextInputCalls + 1
+        member this.ClearComposition() = this.CompositionsCleared <- this.CompositionsCleared + 1
         member _.Dispose() = ()
 
 type FakePlatform() =

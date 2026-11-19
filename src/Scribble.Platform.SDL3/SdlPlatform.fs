@@ -68,6 +68,9 @@ type SdlPlatform() =
         setHint "SDL_VIDEO_ALLOW_SCREENSAVER" "1"
         // Alt+Space opens the system menu, as in any Windows app (SDL stops it by default).
         setHint "SDL_WINDOWS_ENABLE_MENU_MNEMONICS" "1"
+        // What an input method composes comes to us as events and Scribble draws it in the text (DESIGN.md, "9d",
+        // decision 54); its list of candidates stays the system's own.
+        setHint "SDL_IME_IMPLEMENTED_UI" "composition"
         if SDL_Init SDL_INIT_VIDEO = 0uy then
             raise (InvalidOperationException("SDL_Init failed: " + lastError ()))
 

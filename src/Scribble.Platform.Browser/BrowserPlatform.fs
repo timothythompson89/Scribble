@@ -31,6 +31,9 @@ module internal PlatformJs =
     let setImageCursor = JsFunction(ModuleName, "setImageCursor", T.void', [ T.double ])
     let forgetImageCursor = JsFunction(ModuleName, "forgetImageCursor", T.void', [ T.double ])
     let claimKey = JsFunction(ModuleName, "claimKey", T.void', [ T.string ])
+    let setTextInput = JsFunction(ModuleName, "setTextInput", T.void', [ T.double; T.double; T.double; T.double; T.double; T.double ])
+    let clearComposition = JsFunction(ModuleName, "clearComposition", T.void', [])
+    let setBackground = JsFunction(ModuleName, "setBackground", T.void', [ T.string ])
     let readClipboard = JsFunction(ModuleName, "readClipboard", T.void', [ T.double ])
     let writeClipboard = JsFunction(ModuleName, "writeClipboard", T.void', [ T.string ])
     let createCanvas = JsFunction(ModuleName, "createCanvas", T.doubles, [ T.string ])
@@ -178,6 +181,41 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
             | ValueSome n -> PlatformJs.callString PlatformJs.claimKey (string (int modifiers) + "|" + n) |> ignore
             | ValueNone -> ()
 
+        member _.SetBackground(red: byte, green: byte, blue: byte) =
+            if not closed then
+                PlatformJs.callString PlatformJs.setBackground ("rgb(" + string (int red) + "," + string (int green) + "," + string (int blue) + ")") |> ignore
+
+        member _.SetTextInput(request: TextInputRequest voption) =
+            if not closed then
+                let f = PlatformJs.setTextInput
+                let args = f.Args()
+                match request with
+                | ValueSome r ->
+                    // The index into `inputModes` in scribble-platform.js (declaration order).
+                    let kind =
+                        match r.Keyboard with
+                        | KeyboardKind.Text -> 0
+                        | KeyboardKind.Number -> 1
+                        | KeyboardKind.Decimal -> 2
+                        | KeyboardKind.Email -> 3
+                        | KeyboardKind.Url -> 4
+                        | KeyboardKind.Phone -> 5
+                        | KeyboardKind.Search -> 6
+                        | KeyboardKind.Password -> 7
+                    args[2].ToJS 1.0
+                    args[3].ToJS r.CaretX
+                    args[4].ToJS r.CaretY
+                    args[5].ToJS r.CaretHeight
+                    args[6].ToJS(float kind)
+                    args[7].ToJS(if r.Multiline then 1.0 else 0.0)
+                | ValueNone ->
+                    for i in 2..7 do
+                        args[i].ToJS 0.0
+                f.Invoke args
+
+        member _.ClearComposition() =
+            if not closed then PlatformJs.call0 PlatformJs.clearComposition |> ignore
+
         member this.Dispose() = (this :> IWindow).Close()
 
 /// The browser windowing backend. One window per page for now: a canvas that fills it.
@@ -261,6 +299,10 @@ type BrowserPlatform private () =
             let index = int r[i + 1]
             if index >= 0 && index < texts.Length then Some(TextInput texts[index]) else None
         | 9 -> Some(FocusChanged(r[i + 1] <> 0.0))
+        | 13 ->
+            match textAt texts r[i + 1] with
+            | ValueSome text -> Some(TextComposition(text, int r[i + 2]))
+            | ValueNone -> None
         | _ -> None
 
     /// Clipboard reads the page hasn't answered yet, by id (kind 12 answers one).

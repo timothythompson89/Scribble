@@ -23,6 +23,9 @@ type StillWindow(size: PixelSize) =
         member _.RequestFrame() = ()
         member _.SetCursor _ = ()
         member _.ClaimKey(_, _) = ()
+        member _.SetBackground(_, _, _) = ()
+        member _.SetTextInput _ = ()
+        member _.ClearComposition() = ()
         member _.Dispose() = ()
 
 /// The real device for text and offscreen pictures, with a surface that never draws (the test renders the layers).

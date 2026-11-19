@@ -1367,7 +1367,10 @@ ComboBox.create [
   box with `ComboBox.style [ States.isOpen ] [ ... ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
   its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. An editable ComboBox comes after M9.
 
-- **TextBox**: text to type in, one line or several (input methods are M9's next step). Ctrl+C, Ctrl+X
+- **TextBox**: text to type in, one line or several. Input methods (Japanese, Chinese, Korean and others that
+  compose) work in it: what is being composed shows underlined at the caret and becomes text, and one undo step,
+  when it is committed; `onTextChanged` hears nothing before that. On a phone its keyboard comes up, and
+  `TextBox.keyboard KeyboardKind.Number` (or `Decimal`, `Email`, `Url`, `Phone`, `Search`) picks its layout. Ctrl+C, Ctrl+X
   and Ctrl+V copy, cut and paste (also Ctrl+Insert, Shift+Delete, Shift+Insert; a password is never copied, a
   read-only box only copies); Ctrl+Z undoes and Ctrl+Y or Ctrl+Shift+Z redoes, a run of typing at a time, with
   the selection put back (up to 100 steps; an undo goes through `onTextChanged` like any edit). With `TextBox.text` it is controlled: it shows exactly that and tells `onTextChanged` what the user

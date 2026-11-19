@@ -77,8 +77,11 @@ the desktop, 2026-11-18; its browser checks wait in `docs/CHECKLIST-BROWSER.md`)
 **step 9b, clipboard and undo** (section "9b: clipboard and undo"; checked by Tim, 2026-11-18). And **step 9c,
 the multi-line TextBox** (section "9c: the multi-line TextBox"; checked by Tim, 2026-11-18). Between 9c and 9d the
 PNG decoder got `Vector128` loops (section "Vectorising the PNG decoder"; a 1024² picture in about 13 ms, from 26).
+And **step 9d, IME composition and the phone keyboard** (section "9d: IME composition and the phone keyboard";
+checked by Tim on the desktop and on his Android phone, 2026-11-18; no iPhone tried; Japanese draws as
+missing-glyph boxes until fonts for other scripts are decided).
 
-Next: M9 steps 9d and 9e (IME and the phone keyboard, typeahead and labels). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+Next: M9 step 9e (typeahead, labels and a chat-style Enter for multi-line boxes), then selection by touch with the Menu control. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -154,7 +157,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard and undo; M9 steps 9a to 9c), Modal, dialogs, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -3867,6 +3870,12 @@ semantic nodes, "labelled by another element", and two stand-in fields (the Icon
 
 Status: **agreed (Tim, 2026-11-18: "yes to all").**
 
+**Added to 9e (Tim, 2026-11-18: "let's add that to 9e").** A chat-style Enter for multi-line boxes: a setting that
+makes Enter call `onSubmitted` and Shift+Enter make the new line (today both make a new line and Ctrl+Enter
+submits: 9c, decision 38). It is what people expect of a message box; the name and the details are for 9e's round.
+Noted with it, for the same round: a one-line box outside a dialog with no `onSubmitted` does nothing on Enter and
+nothing tells the app's author.
+
 ### 9a: the single-line TextBox (planned 2026-11-18)
 
 **Round 2 (Tim: yes to all, 2026-11-18).**
@@ -4101,6 +4110,117 @@ Status: **agreed (Tim, 2026-11-18).**
   7 timing.
 - **Left as is:** no sideways scrolling or no-wrap mode in a multi-line box; no tab stops; the placeholder is laid
   out on every frame it shows (shaping is cached).
+
+### 9d: IME composition and the phone keyboard (planned 2026-11-18)
+
+Facts at the start. SDL's text input is on for every window all the time; only committed text is handled (no
+composing event), and SDL is never told where the caret is, so an IME's candidate window can't follow it. In the
+browser typed text comes from each key press's character: an IME, a phone keyboard, swipe typing and some dead keys
+send none, so none of them work; a phone shows its keyboard only for a focused editable DOM element, and the page has
+none. Left for 9d by earlier steps: selection by touch (decision 14) and finger scrolling inside a multi-line box.
+A risk reading can't settle: an iPhone shows the keyboard only when the page focuses its input inside the touch
+handler itself, and our events reach .NET a moment later.
+
+**Round 5 (Tim: yes to all, 2026-11-18).**
+48. **Touch selection moves out of 9d:** long-press to select, drag handles and the copy/paste bubble are a step of
+    their own after 9e, with the Menu control. 9d keeps composition, the phone keyboard and finger scrolling inside
+    a multi-line box.
+49. **A phone spike first:** a throwaway page on Tim's phone (through `tools/Scribble.Serve`) to find a way of
+    focusing a hidden input that brings the keyboard up on iPhone and Android, before the browser design is fixed.
+50. **The window is told when text is wanted:** a call on the window says "text input on, the caret is in this
+    rectangle, this kind of keyboard" or "off"; Core calls it when focus moves and when the caret moves. Desktop:
+    SDL's text input starts and stops with it and the candidate window follows the caret. Browser: a hidden text
+    field is focused and placed at the caret.
+51. **Which elements want text:** the focused element wants text when it, or something around it, listens for
+    typed text (a TextBox, or any element with `onTextInput`).
+52. **Composition is a new event:** besides "text was typed", the platform sends "this text is being composed"
+    (with the IME's caret in it; empty when it ends). Element types get a hook; no app-facing setting.
+53. **In the browser, typed text comes from the hidden field while one is focused:** its input and composition
+    events replace the per-key characters. Autocorrect and predictive text are off in 9d.
+54. **Composing text is drawn in the box, underlined, and isn't part of `text` yet:** it replaces the selection
+    when it starts; `onTextChanged` hears nothing until it is committed; a commit is one undo step; `maxLength` and
+    read-only apply to the commit.
+55. **Keys belong to the IME while it composes:** arrows, Enter, Escape and Backspace act on the composition, not on
+    the box.
+56. **A click elsewhere or losing focus commits what is composed.**
+57. **`TextBox.keyboard`:** Text (default), Number, Decimal, Email, Url, Phone, Search. Only which on-screen
+    keyboard shows; nothing is validated. A password box gets the password keyboard by itself.
+58. **When the phone keyboard shows, the app shrinks to the space above it** and the focused box scrolls into
+    view; a finger drag on an overflowing multi-line box scrolls its text, then the page at its ends.
+59. **Checking it:** the fake platform records the "text wanted" calls and sends composition events, so the
+    TextBox's side is unit tested, with one screenshot of composing text. Tim adds a Japanese keyboard to Windows
+    for the desktop IME, and checks on his phone during this step, not at the later browser pass.
+
+Status: **agreed (Tim, 2026-11-18: "Yes to all").**
+
+**The spike (decision 49; Tim's Android phone, Edge 157, 2026-11-18).** A throwaway page
+(`artifacts/serve/spike`, served by `tools/Scribble.Serve` under `/spike/`, which also takes the page's report)
+tried nine ways of focusing a hidden text field after a tap, and logged what the keyboard sends.
+- Focusing it inside `pointerdown` or `pointerup`, at once or in a microtask (which is where .NET runs), left it
+  **not focused**; from a timeout, an animation frame or `click` it took the focus and the keyboard came up. The
+  early focus isn't refused: the tapped element takes the focus back when the touch's `mousedown` arrives. So the
+  canvas prevents that `mousedown` while text is on, and no longer focuses itself on a press then.
+- Android is lenient about when: even 100 ms after the touch works.
+- With suggestions off, each character is an `input` event (`insertText`); its `keydown` says "Unidentified"
+  (code 229). Backspace and Enter come as ordinary key events, also with the field empty, so the field can stay
+  empty and needs no stand-in character.
+- The keyboard shrinks the visual viewport only (723 to 382 px here); the page's own height stays.
+- **No iPhone was tried.** Safari is stricter about focusing outside the touch's own handler; the microtask after
+  `pointerdown` may or may not count there.
+
+**As built (2026-11-18; checked by Tim the same day on the desktop with the Japanese IME and on his Android phone
+in Edge and Chrome).**
+- **The contract:** `IWindow.SetTextInput (request voption)` (the caret's box in pixels, a `KeyboardKind`,
+  whether Enter makes a line) and `IWindow.ClearComposition ()`; the event `TextComposition (text, caret)`.
+  `KeyboardKind` is Text, Number, Decimal, Email, Url, Phone, Search, Password.
+- **Core:** an element type that takes text says where its caret is with `ctx.SetTextInput` (input and render
+  contexts); `Element.textComposition` is the hook for composing text, routed to the first type from the focused
+  element up that has it. The host tells the window when the focus moves (at once) and after every frame, and
+  only when the request has changed. An element with `onTextInput` and no caret of its own counts as its whole box.
+- **SDL:** text input is no longer on for every window: it starts and stops with the request
+  (`SDL_StartTextInputWithProperties`, `SDL_StopTextInput`), `SDL_SetTextInputArea` places the candidates, and
+  `SDL_HINT_IME_IMPLEMENTED_UI = "composition"` makes SDL send `SDL_EVENT_TEXT_EDITING`, so Scribble draws the
+  composing text and the system draws only its candidate list. Checked against SDL 3.2's headers.
+- **The browser:** a hidden `<textarea>` (made on first use) holds the DOM focus while text is on; its `input`
+  events are the typed text (the per-key characters are used only while it isn't focused), its composition
+  events the composing text, and it is emptied after each. Keys an input method takes (`isComposing`, code 229)
+  aren't sent as keys. `inputmode` and `enterkeyhint` follow the keyboard kind. While text is on and the visual
+  viewport is clearly shorter than the page, the canvas is fitted to it; Core brings the focused element into
+  view when the window resizes with text on.
+- **The TextBox:** what is composing lives beside the text (`TextBoxState.Composition`); `Shown` is the text with
+  it in place of the selection, and is what is measured, wrapped and drawn, with a one-DIP underline. A commit
+  after a composition is an undo step of its own. While composing every key is marked handled and ignored. A
+  press in the box or the focus leaving types what was composing and calls `ClearComposition`.
+- **Touch:** a finger's tap places the caret when it lifts (it used to on the press, which fought a scroll); a
+  finger drag on overflowing lines scrolls them when there is more that way at its start, else it is the page's.
+- **Not in the round, chosen while building:** the composing text's caret is where the input method says on the
+  desktop and at its end in the browser (browsers don't say); a composition in a read-only box is dropped at
+  once; `TextBox.keyboard` is not applied to the desktop (SDL is told, and ignores it there).
+- **Gallery:** two boxes on the Controls page with `TextBox.keyboard` (Number, Email).
+- **Tests:** 12 new unit tests (`TextBoxInputMethodTests.fs`) and two screenshots (`textbox-composing@1x`,
+  `textbox-composing-lines@1x`). Regenerated after looking: `gallery-phone-controls@3x` (a longer page).
+  Totals: 1,240 unit (+7 timing), 100 rendering, 7 timing. The PNG timing test failed one run in three while
+  the Serve tool was running (29 ms against its bound); the other runs passed.
+- **Not verified by any test:** the SDL calls and events, and all of the browser's JavaScript.
+- **The strip above the phone's keyboard (Tim's phone, 2026-11-18).** With the keyboard up, Edge on Android
+  showed about 29 CSS px of the black page below the canvas. A second spike page (`artifacts/serve/spike/viewport.html`)
+  measured every size the page can ask for: with `interactive-widget=resizes-content` they all agree (inner
+  height, visual viewport, a bottom-fixed element, 100%, dvh and svh: 434.7 px), and the screenshot shows 463 px
+  of page: the browser shrinks its bottom bar while the keyboard is up and tells the page nothing. So nothing
+  can size the canvas right there. What was done: the page asks to be resized with the keyboard
+  (`interactive-widget=resizes-content`); the canvas ends at a bottom-fixed probe, not at 100% (which is the
+  page with the browser's bars showing); and the page behind the canvas takes the app's background colour
+  (`IWindow.SetBackground`, told when the clear colour changes; also the page's `theme-color`), so a strip the
+  browser leaves is more background, not a black bar. Chrome on the same phone shows no strip at all (Tim): it is
+  Edge's own, and looks like the space Edge keeps above the keyboard for its autofill suggestions (empty here: the
+  hidden field asks for none).
+- **Tried by Tim (2026-11-18), desktop, Japanese IME:** every composing step, the candidates and the commit
+  arrive (`SCRIBBLE_LOG_TEXT=1` writes what SDL sends to the console). The IME starts in "A" mode, which composes
+  nothing in any app: あ is Alt+` or a click on the taskbar's A.
+- **Known limit, left for later (Tim, 2026-11-18): Japanese draws as missing-glyph boxes.** Scribble draws with
+  the fonts an app bundles; the Gallery has Inter and Twemoji, neither with Japanese. Fonts for other scripts are
+  a topic of their own (which scripts, download size, a font package like the emoji one, or the system's fonts,
+  which would break "same pixels on every platform").
 
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 

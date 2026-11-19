@@ -46,6 +46,12 @@ type IElementRoot =
     /// The element (an `Element`) this tree belongs to, or null: a flyout's or tooltip's tree belongs to its element, and
     /// is styled as if inside it (DESIGN.md, "M8 step 4", round 1c).
     abstract Owner: obj
+    /// An element (an `Element`) that takes typed text says where its caret is (in its own coordinates), which
+    /// on-screen keyboard suits it and whether Enter makes a new line. While it has focus the host passes that to
+    /// the window: an input method's candidates show beside the caret (DESIGN.md, "9d", decision 50).
+    abstract TextInputArea: element: obj * caret: Rect * keyboard: KeyboardKind * multiline: bool -> unit
+    /// Drops what an input method is composing: the element has taken the composing text itself.
+    abstract ClearComposition: unit -> unit
 
 [<AutoOpen>]
 module internal StyleMarks =
@@ -136,6 +142,9 @@ type ElementType =
       /// The type's own use of typed text (a TextBox): runs as the text bubbles from the focused element, after each
       /// element's own `onTextInput`, if nothing handled it yet.
       TextInput: (InputContext -> TextInputEventArgs -> unit) voption
+      /// What an input method is composing (not typed yet): to the first type from the focused element up that
+      /// has this.
+      TextComposition: (InputContext -> TextCompositionEventArgs -> unit) voption
       /// The element got keyboard focus (true) or lost it (false); the second value says Tab brought it (not a
       /// press or code), which is when a TextBox selects all its text.
       FocusChanged: (InputContext -> bool -> bool -> unit) voption
@@ -166,6 +175,7 @@ type ElementType =
           PointerUp = ValueNone
           KeyDown = ValueNone
           TextInput = ValueNone
+          TextComposition = ValueNone
           FocusChanged = ValueNone
           Click = ValueNone
           ClipChildren = ValueNone
@@ -264,6 +274,12 @@ and [<Struct>] RenderContext internal (element: Element) =
     /// An image's size in DIPs (its pixels ÷ its density), once known.
     member _.ImageSize(image: Image) : Size voption = element.ImageSizeOf image
 
+    /// As `InputContext.SetTextInput`: a render function knows exactly where it drew the caret.
+    member _.SetTextInput(caret: Rect, keyboard: KeyboardKind, multiline: bool) =
+        match element.Root with
+        | ValueSome root -> root.TextInputArea(element, caret, keyboard, multiline)
+        | ValueNone -> ()
+
     /// A value that moves to `target` over `duration` whenever the target changes (the first
     /// target is taken at once). Frames keep coming while it moves; nothing else re-runs.
     /// `key` tells this element's animated values apart: `ctx.Animate("press", ...)`.
@@ -298,6 +314,18 @@ and [<Struct>] InputContext internal (element: Element) =
     member _.BringIntoView() = element.BringIntoView()
     /// The system clipboard's text (as `ctx.useClipboard ()` in a component).
     member _.Clipboard = Clipboard()
+    /// Says where the caret is (in the element's own coordinates), which on-screen keyboard suits the text and
+    /// whether Enter makes a new line: while the element has focus, an input method shows its candidates beside
+    /// the caret. An element type that takes text calls it when it gets focus and whenever the caret moves.
+    member _.SetTextInput(caret: Rect, keyboard: KeyboardKind, multiline: bool) =
+        match element.Root with
+        | ValueSome root -> root.TextInputArea(element, caret, keyboard, multiline)
+        | ValueNone -> ()
+    /// Drops what an input method is composing, with no event: the element has taken the composing text itself.
+    member _.ClearComposition() =
+        match element.Root with
+        | ValueSome root -> root.ClearComposition()
+        | ValueNone -> ()
     member internal _.Element = element
 
 /// What a component's input carries (its function and props); equal inputs don't re-run it.
@@ -1865,6 +1893,12 @@ module Element =
     /// The type's own use of typed text (a TextBox): text nothing handled bubbles from the focused element up, and
     /// reaches this after each element's own `onTextInput`. Call `e.Handle()` when it used the text.
     let textInput (f: InputContext -> TextInputEventArgs -> unit) = ElementPart(fun t -> { t with TextInput = ValueSome f })
+
+    /// The type's own handling of text an input method is composing (an IME, a phone's keyboard): `e.Text` is
+    /// not typed yet and replaces what was composing before; empty, the composition has ended (what was committed
+    /// comes through `textInput`). A text editor draws it at the caret. Goes to the first type from the focused
+    /// element up that has this; call `ctx.SetTextInput` so the input method knows where the caret is.
+    let textComposition (f: InputContext -> TextCompositionEventArgs -> unit) = ElementPart(fun t -> { t with TextComposition = ValueSome f })
 
     /// The type's own reaction to getting keyboard focus (`f ctx true byTab`) and losing it (`f ctx false false`):
     /// `byTab` is true when Tab or Shift+Tab brought the focus, false for a press or `element.Focus()`.

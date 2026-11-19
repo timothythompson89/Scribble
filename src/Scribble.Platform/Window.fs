@@ -37,6 +37,21 @@ type IWindow =
     /// key still arrives as usual.
     abstract ClaimKey: key: Key * modifiers: Modifiers -> unit
 
+    /// The colour the app clears its window to (sRGB, 0 to 255): a platform that shows anything around or behind
+    /// the app's drawing shows this (a browser: the page behind the canvas, which a phone's browser can leave a
+    /// strip of when its bars move). Told when it changes.
+    abstract SetBackground: red: byte * green: byte * blue: byte -> unit
+
+    /// Says whether the focused element takes typed text, and where its caret is (DESIGN.md, "9d", decision 50).
+    /// With a request: input methods are on (`TextComposition` events come, candidates show beside the caret) and
+    /// a phone shows its keyboard; called again whenever the caret's box or the keyboard changes. With none: they
+    /// are off, anything being composed is dropped without an event, and a phone's keyboard goes.
+    abstract SetTextInput: request: TextInputRequest voption -> unit
+
+    /// Drops what an input method is composing, without committing it and without an event: the app has taken the
+    /// composing text itself (a click elsewhere in the text). Text input stays on.
+    abstract ClearComposition: unit -> unit
+
 /// Options for creating a window. Sizes are in DIPs, so a window looks the same size at any scaling.
 type WindowOptions =
     { Title: string

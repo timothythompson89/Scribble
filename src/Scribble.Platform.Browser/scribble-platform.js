@@ -21,7 +21,8 @@ const Kind = {
   Focus: 9,           // a = 1 focused / 0 blurred
   PointerExited: 10,  // a = pointer kind, b = pointer id
   PointerCanceled: 11, // a = pointer kind, b = pointer id
-  ClipboardText: 12   // a = the read's id, b = index of the text in takeTexts() (-1: refused)
+  ClipboardText: 12,  // a = the read's id, b = index of the text in takeTexts() (-1: refused)
+  TextComposition: 13 // a = index of the composing text in takeTexts() ("" ends it), b = the caret in it
 };
 
 let events = [];
@@ -171,6 +172,139 @@ export function writeClipboard(text) {
   }
 }
 
+// Text input (DESIGN.md, "9d", decisions 50 and 53). While the focused element takes typed text, a hidden text
+// field has the DOM focus: a phone shows its keyboard for it, and input methods compose into it. What it is given
+// comes to .NET as TextInput and TextComposition, and it is emptied again: Scribble keeps the text.
+//
+// Found on a phone (the 9d spike, Android): the field can be focused from the microtask after a pointer event,
+// as .NET does, but the canvas takes the focus straight back when the touch's mousedown arrives, unless that is
+// prevented. Each character comes as an `input` event (its keydown says "Unidentified"); Backspace and Enter
+// still come as ordinary key events, with the field empty too.
+let field = null;
+let textOn = false;
+let composing = false;
+let dropComposed = false; // the composition is being dropped from here: its end commits nothing
+// Scribble.Platform.KeyboardKind, in declaration order.
+const inputModes = ["text", "numeric", "decimal", "email", "url", "tel", "search", "text"];
+
+function pushText(kind, text, b = 0) {
+  texts.push(text);
+  push(kind, texts.length - 1, b);
+}
+
+function ensureField() {
+  if (field) return;
+  field = document.createElement("textarea");
+  // There, focusable and never seen. 16px: an iPhone zooms the page for smaller text.
+  Object.assign(field.style, {
+    position: "fixed", left: "0", top: "0", width: "2px", height: "20px", opacity: "0", fontSize: "16px",
+    border: "0", padding: "0", margin: "0", resize: "none", outline: "none", background: "transparent",
+    color: "transparent", caretColor: "transparent", pointerEvents: "none", overflow: "hidden", zIndex: "-1"
+  });
+  // Autocorrect and suggestions rewrite words already typed, which this empty field doesn't hold (decision 53).
+  field.autocapitalize = "off";
+  field.autocomplete = "off";
+  field.spellcheck = false;
+  field.setAttribute("autocorrect", "off");
+  field.setAttribute("aria-hidden", "true");
+  field.tabIndex = -1;
+  document.body.appendChild(field);
+
+  field.addEventListener("compositionstart", () => { composing = true; });
+  field.addEventListener("compositionupdate", (e) => {
+    if (!dropComposed) pushText(Kind.TextComposition, e.data || "", (e.data || "").length);
+  });
+  field.addEventListener("compositionend", (e) => {
+    composing = false;
+    if (!dropComposed) {
+      pushText(Kind.TextComposition, "", 0);
+      if (e.data) pushText(Kind.TextInput, e.data);
+    }
+    field.value = "";
+  });
+  field.addEventListener("input", (e) => {
+    // What a composition commits comes with its end; a paste comes from the paste event; Enter as a key.
+    if (composing || e.isComposing || dropComposed) return;
+    if ((e.inputType === "insertText" || e.inputType === "insertReplacementText") && e.data) pushText(Kind.TextInput, e.data);
+    field.value = "";
+  });
+}
+
+// The page behind the canvas takes the app's background colour. A phone's browser can show a strip of the page
+// below the canvas: while its keyboard is up, Edge on Android shows about 29 px more of the page than any of its
+// sizes say (its bottom bar shrinks; found with the 9d viewport spike). In the app's colour the strip is just
+// more background.
+export function setBackground(css) {
+  document.documentElement.style.background = css;
+  document.body.style.background = css;
+  const meta = document.querySelector('meta[name="theme-color"]') || document.head.appendChild(Object.assign(document.createElement("meta"), { name: "theme-color" }));
+  meta.content = css;
+}
+
+// Fits the canvas to what shows of the page (decision 58).
+//
+// Its height can't be left at 100%: on a phone that is the page's height with the browser's bars showing, and when
+// a bar hides (as one does while the keyboard is up) the page gets taller and a strip of it shows below the
+// canvas. An element fixed to the bottom does follow the real edge, so the canvas ends where `bottomProbe` is.
+// Where the keyboard covers the page instead of resizing it (no `interactive-widget=resizes-content`), the
+// visual viewport says what is left: used while text is on and it is clearly shorter (a keyboard, not a zoom).
+let bottomProbe = null;
+function fitToKeyboard() {
+  if (!canvas) return;
+  if (!bottomProbe) {
+    bottomProbe = document.createElement("div");
+    Object.assign(bottomProbe.style, { position: "fixed", left: "0", bottom: "0", width: "1px", height: "0", visibility: "hidden", pointerEvents: "none" });
+    document.body.appendChild(bottomProbe);
+  }
+  let top = 0;
+  let bottom = bottomProbe.getBoundingClientRect().top;
+  const view = window.visualViewport;
+  if (view && textOn && bottom - (view.offsetTop + view.height) > 100) {
+    top = view.offsetTop;
+    bottom = view.offsetTop + view.height;
+  }
+  const height = Math.max(1, bottom - top) + "px";
+  if (canvas.style.height !== height || canvas.style.top !== top + "px") {
+    Object.assign(canvas.style, { top: top + "px", bottom: "auto", height });
+  }
+}
+
+// on: 1 or 0. x, y, height: the caret's box in physical pixels. kind: Scribble.Platform.KeyboardKind's index.
+export function setTextInput(on, x, y, height, kind, multiline) {
+  if (on) {
+    ensureField();
+    const dpr = window.devicePixelRatio || 1;
+    Object.assign(field.style, { left: Math.max(0, x / dpr) + "px", top: Math.max(0, y / dpr) + "px", height: Math.max(1, height / dpr) + "px" });
+    const mode = inputModes[kind] || "text";
+    if (field.inputMode !== mode) field.inputMode = mode;
+    field.enterKeyHint = multiline ? "enter" : kind === 6 ? "search" : "done";
+    textOn = true;
+    if (document.activeElement !== field) field.focus({ preventScroll: true });
+  } else if (textOn) {
+    textOn = false;
+    if (field) {
+      dropComposed = true;
+      field.blur();
+      field.value = "";
+      dropComposed = false;
+      composing = false;
+    }
+    if (canvas) canvas.focus({ preventScroll: true });
+  }
+  fitToKeyboard();
+}
+
+// Drops what is being composed, committing nothing (the app took the text itself). Text input stays on.
+export function clearComposition() {
+  if (!field || !composing) return;
+  dropComposed = true;
+  field.blur();
+  field.value = "";
+  composing = false;
+  if (textOn) field.focus({ preventScroll: true });
+  dropComposed = false;
+}
+
 // Scribble.Platform.Cursor, in declaration order.
 const cursors = ["default", "pointer", "text", "crosshair", "move", "ew-resize", "ns-resize", "not-allowed", "wait", "nwse-resize"];
 
@@ -308,9 +442,20 @@ export function createCanvas(id) {
     down.add(e.pointerId);
     // Capture: moves and the release keep arriving while the pointer is outside the canvas.
     canvas.setPointerCapture(e.pointerId);
-    canvas.focus();
+    // While text is being typed the hidden field keeps the focus (and a phone its keyboard).
+    if (!textOn) canvas.focus();
     push(Kind.PointerPressed, ...pointerArgs(e), e.button, modifiers(e));
   });
+  // The mousedown that follows a press would give the canvas the focus: not while the hidden field has it. (.NET
+  // has heard of the press by now, in the microtask after pointerdown, and turned text input on if it is wanted.)
+  canvas.addEventListener("mousedown", (e) => { if (textOn) e.preventDefault(); });
+  // The browser's own bars come and go (with the keyboard, with scrolling), and each says so its own way.
+  window.addEventListener("resize", fitToKeyboard);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", fitToKeyboard);
+    window.visualViewport.addEventListener("scroll", fitToKeyboard);
+  }
+  fitToKeyboard();
   canvas.addEventListener("pointerup", (e) => {
     if (!down.delete(e.pointerId)) return; // its press was canceled already
     push(Kind.PointerReleased, ...pointerArgs(e), e.button, modifiers(e));
@@ -333,16 +478,22 @@ export function createCanvas(id) {
   }, { passive: false });
 
   window.addEventListener("keydown", (e) => {
+    // A key an input method takes (it composes with it; a phone's keyboard sends these for every character):
+    // what comes of it arrives through the hidden field (decision 55).
+    if (e.isComposing || e.keyCode === 229) return;
+    const typing = textOn && document.activeElement === field;
     // The key's name as the layout gives it ("a", "A", "Enter", "ArrowLeft"); .NET maps it to Key.
     texts.push(e.key);
     push(Kind.KeyDown, texts.length - 1, e.repeat ? 1 : 0, modifiers(e));
     const isChar = [...e.key].length === 1;
-    if (isChar && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // While the hidden field has the focus, typed text comes from its input events.
+    if (isChar && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
       texts.push(e.key);
       push(Kind.TextInput, texts.length - 1);
     }
-    // Keep Space, arrows and Tab for the app instead of scrolling the page.
-    if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key)) e.preventDefault();
+    // Keep Space, arrows and Tab for the app instead of scrolling the page. (Space into the hidden field is
+    // typing: preventing it would lose the character.)
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key) || (e.key === " " && !typing)) e.preventDefault();
     if (claimed.has(modifiers(e) + "|" + e.key.toLowerCase())) e.preventDefault();
     // A paste key: the browser's paste event follows (it is not prevented), and answers the read.
     const key = e.key.toLowerCase();
@@ -360,6 +511,7 @@ export function createCanvas(id) {
     for (const id of waiting) answerClipboard(id, text);
   });
   window.addEventListener("keyup", (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
     texts.push(e.key);
     push(Kind.KeyUp, texts.length - 1, 0, modifiers(e));
   });

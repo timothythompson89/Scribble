@@ -167,8 +167,24 @@ let main argv =
               quietLogging builder
               builder.WebHost.ConfigureKestrel(fun options -> options.ListenAnyIP hubPort) |> ignore
               let app = builder.Build()
+              // Throwaway test pages for a device (a spike): files in `artifacts/serve/spike` are served under
+              // /spike/, and what a page POSTs to /spike/report is added to `report.txt` there.
+              let spike = Path.Combine(artifacts, "spike")
               app.Run(fun context ->
-                  if context.Request.Path.Value = "/scribble-dev-ca.crt" && not selfSigned then
+                  let path = context.Request.Path.Value |> Option.ofObj |> Option.defaultValue "/"
+                  if path = "/spike/report" && context.Request.Method = "POST" then
+                      task {
+                          use reader = new StreamReader(context.Request.Body)
+                          let! body = reader.ReadToEndAsync()
+                          Directory.CreateDirectory spike |> ignore
+                          File.AppendAllText(Path.Combine(spike, "report.txt"), body + "\n")
+                          context.Response.StatusCode <- 204
+                      }
+                      :> Task
+                  elif path = "/spike" || path.StartsWith("/spike/", StringComparison.Ordinal) then
+                      context.Request.Path <- PathString(if path.Length <= 7 then "/" else path.Substring 6)
+                      serveFiles spike context
+                  elif context.Request.Path.Value = "/scribble-dev-ca.crt" && not selfSigned then
                       context.Response.ContentType <- "application/x-x509-ca-cert"
                       context.Response.Headers.ContentDisposition <- "attachment; filename=scribble-dev-ca.crt"
                       context.Response.WriteAsync caPem

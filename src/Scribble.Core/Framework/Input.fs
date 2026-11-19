@@ -292,6 +292,9 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
     /// Tab is moving the focus (MoveFocus): what a type's FocusChanged hears as "by Tab".
     let mutable tabbing = false
 
+    /// Runs after the focus has moved to another element (or to none).
+    let mutable focusMoved: unit -> unit = ignore
+
     let focusHook (e: Element) (isFocused: bool) =
         match e.Type.FocusChanged with
         | ValueSome f ->
@@ -313,6 +316,8 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
             previous |> ValueOption.iter (fun e -> focusHook e false)
             next |> ValueOption.iter (fun e -> focusHook e true)
             next |> ValueOption.iter (fun e -> e.SetFocusState(true, showRing ()))
+            // The host tells the window whether text is wanted now (DESIGN.md, "9d", decision 50).
+            focusMoved ()
 
     /// Focusable elements in view order (parents before children, children in order), skipping
     /// hidden and disabled subtrees.
@@ -556,6 +561,39 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
         let args = TextInputEventArgs text
         routedWith (routeOf target) ValueNone LayoutProps.onTextInput _.TextInput args |> ignore
         args.IsHandled
+
+    /// What an input method is composing: to the first element type from the focused element up that takes it.
+    /// True if one did.
+    member _.TextComposition(text: string, caret: int) : bool =
+        match currentFocus () with
+        | ValueSome focused ->
+            let args = TextCompositionEventArgs((if isNull text then "" else text), caret)
+            for e in routeOf (ValueSome focused) do
+                if not args.IsHandled then
+                    match e.Type.TextComposition with
+                    | ValueSome f ->
+                        try
+                            f (InputContext e) args
+                            args.Handle()
+                        with ex ->
+                            e.ReportError ex
+                    | ValueNone -> ()
+            args.IsHandled
+        | ValueNone -> false
+
+    /// The focused element takes typed text: it, or something around it, listens for it (a TextBox, an element
+    /// with `onTextInput`). The window's text input is on while this holds (DESIGN.md, "9d", decision 51).
+    member _.WantsText : bool =
+        match currentFocus () with
+        | ValueSome focused ->
+            routeOf (ValueSome focused)
+            |> List.exists (fun e -> e.Type.TextInput.IsSome || (e.Get LayoutProps.onTextInput).IsSome)
+        | ValueNone -> false
+
+    /// Runs after the focus has moved to another element (or to none): the host sets it.
+    member _.FocusMoved
+        with get () = focusMoved
+        and set (handler: unit -> unit) = focusMoved <- handler
 
     /// Routes a key up the same way; Space coming up clicks the element it went down on.
     member _.KeyUp(key: Key, modifiers: Modifiers) : bool =

@@ -43,6 +43,7 @@
     <Compile Include="TextBoxTests.fs" />
     <Compile Include="TextBoxClipboardTests.fs" />
     <Compile Include="TextBoxLinesTests.fs" />
+    <Compile Include="TextBoxInputMethodTests.fs" />
     <Compile Include="ModalTests.fs" />
     <Compile Include="ToastTests.fs" />
     <Compile Include="DialogsTests.fs" />

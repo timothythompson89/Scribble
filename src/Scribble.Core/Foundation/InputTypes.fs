@@ -6,6 +6,7 @@ type Key = Scribble.Platform.Key
 type Modifiers = Scribble.Platform.Modifiers
 type MouseButton = Scribble.Platform.MouseButton
 type PointerKind = Scribble.Platform.PointerKind
+type KeyboardKind = Scribble.Platform.KeyboardKind
 
 /// What every routed event tells its handlers.
 ///
@@ -50,13 +51,24 @@ type WheelEventArgs internal (position: Point, deltaX: float, deltaY: float, mod
     inherit InputEventArgs(position, modifiers)
     member _.DeltaX = deltaX
     member _.DeltaY = deltaY
+
 /// Text typed while an element has focus (after the key that made it). Goes to the focused element and bubbles.
-/// A key going down or up. Goes to the focused element (the root when nothing has focus).
 [<Sealed>]
 type TextInputEventArgs internal (text: string) =
     inherit RoutedEventArgs(Modifiers.None)
     /// What was typed: usually one character, more for a paste by the keyboard or an input method.
     member _.Text = text
+
+/// Text an input method (an IME, a phone's keyboard) is composing: not typed yet. Each one replaces the one before;
+/// an empty text ends the composition, and what was committed, if anything, comes as typed text. Goes to the first
+/// element type from the focused element up that takes it (`Element.textComposition`).
+[<Sealed>]
+type TextCompositionEventArgs internal (text: string, caret: int) =
+    inherit RoutedEventArgs(Modifiers.None)
+    /// What is being composed; empty: the composition has ended.
+    member _.Text = text
+    /// Where the input method's caret stands in it (a UTF-16 index, 0 to the text's length).
+    member _.Caret = max 0 (min text.Length caret)
 
 /// A key going down or up. Goes to the focused element (the root when nothing has focus).
 [<Sealed>]

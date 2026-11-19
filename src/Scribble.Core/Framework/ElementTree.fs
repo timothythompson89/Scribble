@@ -94,6 +94,12 @@ type ElementTree(text: TextSystem) =
     member val internal Services: obj = null with get, set
     /// The element this tree belongs to (a flyout's or tooltip's): styled as if inside it.
     member val internal Owner: Element voption = ValueNone with get, set
+    /// What an element that takes text last said of its caret (`IElementRoot.TextInputArea`): the element, the
+    /// caret's box in its coordinates, the keyboard and whether Enter makes a new line. The host reads it for the
+    /// focused element.
+    member val internal TextArea: struct (Element * Rect * KeyboardKind * bool) voption = ValueNone with get, set
+    /// Drops the window's composition (`IElementRoot.ClearComposition`): the host sets it.
+    member val internal ClearCompositionHandler: unit -> unit = ignore with get, set
     /// Where the root goes, from the root (measured: its `DesiredSize`, its settings) and the window's size: a flyout's
     /// or tooltip's tree places its root beside the element it belongs to. ValueNone: the root fills the window.
     member val internal Place: (Element -> Size -> Rect) voption = ValueNone with get, set
@@ -301,6 +307,9 @@ type ElementTree(text: TextSystem) =
             this.WatchHandler(element :?> Element)
             onInvalidated ()
         member this.Owner = (match this.Owner with ValueSome o -> box o | ValueNone -> null)
+        member this.TextInputArea(element, caret, keyboard, multiline) =
+            this.TextArea <- ValueSome(struct (element :?> Element, caret, keyboard, multiline))
+        member this.ClearComposition() = this.ClearCompositionHandler()
         member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)
         member this.RequestRestyle(element, deep, stateChange) =
             this.RestyleHandler(element :?> Element)

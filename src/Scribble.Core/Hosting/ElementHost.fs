@@ -75,6 +75,8 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     let surface = device.CreateSurface(window.Surface, window.ClientSize)
     // ValueNone: the theme's background (see `ClearColor`).
     let mutable currentBackground = options.Background
+    /// The clear colour the window was last told of (`IWindow.SetBackground`).
+    let mutable toldBackground: Color voption = ValueNone
     let sharedValues = match options.AppValues with ValueSome v -> v | ValueNone -> AppValues()
     do options.Theme |> ValueOption.iter (fun t -> sharedValues.Set(Theme.current, t))
     do options.Toasts |> ValueOption.iter (fun p -> sharedValues.Set(Toasts.placement, p))
@@ -130,8 +132,15 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 | ValueSome r -> (f.Layer.Tree :> IElementRoot).RequestRestyle(box r, true, false)
                 | ValueNone -> ()
 
+    /// What the window was last told of text input (`IWindow.SetTextInput`), and the check that tells it again
+    /// when that has changed (set below, once the keyboard's layer can be found).
+    let mutable sentTextInput: TextInputRequest voption = ValueNone
+    let mutable syncTextInput: unit -> unit = ignore
+
     let add (layer: Layer) =
         let tree = layer.Tree
+        tree.ClearCompositionHandler <- fun () -> window.ClearComposition()
+        layer.Input.FocusMoved <- fun () -> syncTextInput ()
         tree.WatchHandler <- fun e -> watched.Add(struct (e, layer))
         tree.RestyleHandler <- restyleOwned
         tree.Scale <- window.Scale
@@ -204,6 +213,36 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             | _ -> app
         let topModal = layers.FindLastIndex(fun l -> isBlocking l)
         if topModal > layers.IndexOf pressed then layers[topModal] else pressed
+
+    // The window is told when the focused element takes typed text, and where its caret is: when the focus moves
+    // (at once: a phone shows its keyboard only from inside the touch that asked for it) and after every frame
+    // (the caret moved). An element that hasn't said where its caret is counts as its whole box (DESIGN.md, "9d",
+    // decisions 50 and 51).
+    do
+        syncTextInput <-
+            fun () ->
+                let layer = keyboardLayer ()
+                let request =
+                    match layer.Focused with
+                    | ValueSome e when layer.Input.WantsText ->
+                        let scale = window.Scale
+                        let origin = e.PositionInTree
+                        let struct (rect, keyboard, multiline) =
+                            match layer.Tree.TextArea with
+                            | ValueSome(struct (element, rect, keyboard, multiline)) when obj.ReferenceEquals(element, e) ->
+                                struct (rect, keyboard, multiline)
+                            | _ -> struct (Rect.Create(0.0, 0.0, e.Bounds.Width, e.Bounds.Height), KeyboardKind.Text, false)
+                        ValueSome
+                            { CaretX = (origin.X + rect.X) * scale
+                              CaretY = (origin.Y + rect.Y) * scale
+                              CaretWidth = rect.Width * scale
+                              CaretHeight = rect.Height * scale
+                              Keyboard = keyboard
+                              Multiline = multiline }
+                    | _ -> ValueNone
+                if request <> sentTextInput then
+                    sentTextInput <- request
+                    window.SetTextInput request
 
     /// Only the keyboard's layer shows its focus as active (ring, held Space); the others look
     /// like an inactive window.
@@ -724,7 +763,13 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         match (if layoutFailed then None else surface.TryBeginFrame scale) with
         | Some frame ->
             use frame = frame
-            frame.Clear this.ClearColor
+            let background = this.ClearColor
+            frame.Clear background
+            // The platform shows the same colour wherever it shows anything of its own around the drawing.
+            if ValueSome background <> toldBackground then
+                toldBackground <- ValueSome background
+                let channel (v: float32) = byte (max 0.0 (min 255.0 (System.Math.Round(float v * 255.0))))
+                window.SetBackground(channel background.R, channel background.G, channel background.B)
             for l in layers do
                 l.Tree.Render frame.DrawList
             stats <-
@@ -765,7 +810,8 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         match event with
         | PointerPressed _
         | KeyDown _
-        | TextInput _ ->
+        | TextInput _
+        | TextComposition _ ->
             let time = now () - started
             for l in layers do
                 l.Tree.Time <- time
@@ -794,9 +840,16 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             for l in layers.ToArray() do
                 l.Tree.RunAfterFrame()
             options.Dispatcher |> ValueOption.iter (fun d -> d.FrameEnded())
+            // The caret may have moved: the window hears where it is now.
+            syncTextInput ()
             frameDrawn.Trigger stats
             false
-        | Resized size -> surface.Resize size; false
+        | Resized size ->
+            surface.Resize size
+            // A phone's keyboard came up or went (the window is what it leaves): what is being typed in stays in
+            // view (DESIGN.md, "9d", decision 58).
+            if sentTextInput.IsSome then (keyboardLayer ()).Focused |> ValueOption.iter (fun e -> e.BringIntoView())
+            false
         | ScaleChanged scale ->
             for l in layers do
                 l.Tree.Scale <- scale
@@ -878,6 +931,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
             taken || (keyboardLayer ()).Input.KeyDown(key, mods, isRepeat) || (key = Key.Escape && dismissTopFlyout ())
         | KeyUp(key, mods) -> (keyboardLayer ()).Input.KeyUp(key, mods)
         | TextInput text -> (keyboardLayer ()).Input.TextInput text
+        | TextComposition(text, caret) -> (keyboardLayer ()).Input.TextComposition(text, caret)
         | FocusChanged active ->
             windowActive <- active
             (keyboardLayer ()).Input.WindowFocusChanged active

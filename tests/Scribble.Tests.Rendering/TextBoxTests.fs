@@ -165,6 +165,62 @@ type TextBoxTests(fixture: TextFixture) =
         | Some error -> Assert.Fail error
         | None -> ()
 
+    /// M9 step 9d: what an input method is composing, underlined, in one line (after typed text) and wrapped over
+    /// two lines.
+    [<Fact>]
+    member _.``composing text is underlined``() =
+        let pixels: PixelSize = { Width = 500; Height = 120 }
+        let dispatcher = Dispatcher(ignore, fun _ _ -> ())
+        let host =
+            ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text [
+                ElementHost.dispatcher dispatcher
+                ElementHost.theme (Theme.dark [])
+            ]
+        let view =
+            StackPanel.create [
+                StackPanel.margin 20.0
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 20.0
+                StackPanel.verticalAlignment VerticalAlignment.Top
+                StackPanel.children [
+                    TextBox.create [ TextBox.name "one"; TextBox.width 220.0; TextBox.verticalAlignment VerticalAlignment.Top ]
+                    TextBox.create [ TextBox.name "several"; TextBox.width 220.0; TextBox.multiline true; TextBox.minLines 2 ]
+                ]
+            ]
+        host.Update view
+        host.HandleEvent Frame |> ignore
+        let draw () =
+            fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
+                f.Clear host.ClearColor
+                for l in host.Layers do
+                    l.Tree.Render f.DrawList)
+        let click (x: float) =
+            let at: PixelPoint = { X = x; Y = 40.0 }
+            host.HandleEvent(PointerPressed(Mouse, 0, at, MouseButton.Left, Modifiers.None)) |> ignore
+            host.HandleEvent(PointerReleased(Mouse, 0, at, MouseButton.Left, Modifiers.None)) |> ignore
+        // The second box first: composing there, then the focus leaves, which types it. Then the first, left composing.
+        click 300.0
+        host.HandleEvent(TextInput "Typed, then ") |> ignore
+        host.HandleEvent(TextComposition("composing over the wrap", 9)) |> ignore
+        host.HandleEvent Frame |> ignore
+        let several = draw ()
+        click 60.0
+        host.HandleEvent(TextInput "Tokyo ") |> ignore
+        host.HandleEvent(TextComposition("nihongo", 4)) |> ignore
+        let one = (find "one" host.Tree.Root.Value).Value
+        Assert.Equal("Tokyo ", (TextBox.editOf one).Text)
+        Assert.Equal("Tokyo nihongo", (TextBox.stateOf one).Shown.Text)
+        // Drawn once so the borders start their fade (to the accent, and back from it), then drawn again well
+        // past it (a frame would put the trees' time back to the clock's).
+        host.HandleEvent Frame |> ignore
+        draw () |> ignore
+        for l in host.Layers do
+            l.Tree.Time <- l.Tree.Time + TimeSpan.FromSeconds 10.0
+        for name, image in [ "textbox-composing-lines@1x", several; "textbox-composing@1x", draw () ] do
+            match Snapshot.check name image with
+            | Some error -> Assert.Fail error
+            | None -> ()
+
     [<Fact>]
     member this.``text boxes of several lines: a selection across lines, one scrolled, dark``() = this.ShootLines(Theme.dark [], "textbox-lines@1x")
 

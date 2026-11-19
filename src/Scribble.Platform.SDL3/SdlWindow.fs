@@ -30,6 +30,12 @@ type SdlWindow
     let mutable minimized = false
     let mutable frameRequested = false
     let mutable pressedButtons = 0
+    /// Text input is on (`SetTextInput` with a request).
+    let mutable textInputOn = false
+    /// SCRIBBLE_LOG_TEXT=1 writes what SDL says of text input to the console: for finding out what an input method
+    /// sends on a machine.
+    let logText = Environment.GetEnvironmentVariable "SCRIBBLE_LOG_TEXT" = "1"
+    let log (message: string) = if logText then Console.WriteLine("[text] " + message)
     /// The pointer is over the window (as far as this window has said: PointerExited sent when it leaves).
     let mutable inside = false
     let mutable cursor = Cursor.Default
@@ -175,9 +181,8 @@ type SdlWindow
     do
         readScale ()
         clientSize <- readPixelSize ()
-        // Typed characters arrive as text input (and the IME works) only while it's on: on for now, as typed
-        // characters always were; M9's TextBox turns it on and off with focus and places the IME's candidates.
-        SDL_StartTextInput handle |> ignore
+        // Typed characters arrive as text input (and input methods work) only while it's on: `SetTextInput` turns
+        // it on while the focused element takes text.
 
     member internal _.Id = id
     member internal _.Handle = handle
@@ -292,12 +297,30 @@ type SdlWindow
             onEvent (PointerWheel(toPixels w.MouseX w.MouseY, float w.X, float w.Y, modifiers ()))
         elif t = SDL_EVENT_KEY_DOWN || t = SDL_EVENT_KEY_UP then
             let k = NativePtr.read (NativePtr.ofNativeInt<SDL_KeyboardEvent> (NativePtr.toNativeInt e))
-            if t = SDL_EVENT_KEY_DOWN then onEvent (KeyDown(keyOf k.Key, modifiersOf k.Mod, k.Repeat <> 0uy))
+            if t = SDL_EVENT_KEY_DOWN then
+                if logText then log ("key " + string (keyOf k.Key))
+                onEvent (KeyDown(keyOf k.Key, modifiersOf k.Mod, k.Repeat <> 0uy))
             else onEvent (KeyUp(keyOf k.Key, modifiersOf k.Mod))
         elif t = SDL_EVENT_TEXT_INPUT then
             let text = readUtf8 (NativePtr.read (NativePtr.ofNativeInt<SDL_TextInputEvent> (NativePtr.toNativeInt e))).Text
+            log ("input \"" + text + "\"")
             // Control characters (backspace, enter, escape) are reported as KeyDown, not text.
             if text.Length > 0 && not (Char.IsControl text[0]) then onEvent (TextInput text)
+        elif t = SDL_EVENT_TEXT_EDITING then
+            let editing = NativePtr.read (NativePtr.ofNativeInt<SDL_TextEditingEvent> (NativePtr.toNativeInt e))
+            let text = readUtf8 editing.Text
+            log ("editing \"" + text + "\" start " + string editing.Start + " length " + string editing.Length)
+            // The method's caret is counted in characters: as a UTF-16 index, the end when it isn't said.
+            let caret =
+                if editing.Start < 0 then text.Length
+                else
+                    let mutable index = 0
+                    let mutable left = editing.Start
+                    while left > 0 && index < text.Length do
+                        index <- index + (if Char.IsHighSurrogate text[index] && index + 1 < text.Length then 2 else 1)
+                        left <- left - 1
+                    index
+            onEvent (TextComposition(text, caret))
 
     interface IWindow with
         member _.ClientSize = clientSize
@@ -320,6 +343,46 @@ type SdlWindow
 
         // On the desktop the platform has no shortcuts of its own on keys an app would claim.
         member _.ClaimKey(_: Key, _: Modifiers) = ()
+
+        // Nothing shows around the app's drawing in a desktop window.
+        member _.SetBackground(_: byte, _: byte, _: byte) = ()
+
+        member _.SetTextInput(request: TextInputRequest voption) =
+            if not closed then
+                match request with
+                | ValueSome r ->
+                    if not textInputOn then
+                        textInputOn <- true
+                        // The kind of text matters where SDL shows an on-screen keyboard; a desktop takes it as told.
+                        let props = SDL_CreateProperties()
+                        let kind =
+                            match r.Keyboard with
+                            | KeyboardKind.Email -> 2L
+                            | KeyboardKind.Password -> 4L
+                            | KeyboardKind.Number | KeyboardKind.Decimal | KeyboardKind.Phone -> 6L
+                            | _ -> 0L
+                        withUtf8 "SDL.textinput.type" (fun name -> SDL_SetNumberProperty(props, name, kind) |> ignore)
+                        withUtf8 "SDL.textinput.multiline" (fun name -> SDL_SetBooleanProperty(props, name, (if r.Multiline then 1uy else 0uy)) |> ignore)
+                        let started = SDL_StartTextInputWithProperties(handle, props)
+                        log ("start: " + (if started <> 0uy then "ok" else "FAILED: " + lastError ()))
+                        SDL_DestroyProperties props
+                    // Where the caret is, in window coordinates: an input method's candidates show beside it.
+                    let mutable rect = SDL_Rect()
+                    rect.X <- int (Math.Floor(r.CaretX / density))
+                    rect.Y <- int (Math.Floor(r.CaretY / density))
+                    rect.W <- max 1 (int (Math.Ceiling(r.CaretWidth / density)))
+                    rect.H <- max 1 (int (Math.Ceiling(r.CaretHeight / density)))
+                    SDL_SetTextInputArea(handle, &&rect, 0) |> ignore
+                    log ("area " + string rect.X + ", " + string rect.Y + ", " + string rect.W + " x " + string rect.H)
+                | ValueNone ->
+                    if textInputOn then
+                        textInputOn <- false
+                        log "stop"
+                        // Stopping also drops what was being composed.
+                        SDL_StopTextInput handle |> ignore
+
+        member _.ClearComposition() =
+            if not closed && textInputOn then SDL_ClearComposition handle |> ignore
 
         member _.Show() =
             if not closed then SDL_ShowWindow handle |> ignore

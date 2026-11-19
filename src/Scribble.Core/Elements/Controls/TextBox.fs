@@ -188,6 +188,28 @@ type internal TextBoxState() =
     member val BarDrag = false with get, set
     member val BarDragStart = 0.0 with get, set
     member val BarDragOffset = 0.0 with get, set
+    // ---- Input methods and touch ----
+    /// What an input method is composing ("": nothing) and where its caret stands in it. It shows in place of
+    /// the selection and isn't part of the text until it is committed (DESIGN.md, "9d", decision 54).
+    member val Composition = "" with get, set
+    member val CompositionCaret = 0 with get, set
+    /// A composition has been shown since the last key: the text typed next is its commit, an undo step of its own.
+    member val Composed = false with get, set
+    /// A finger went down on the box and hasn't lifted or started to scroll: lifting it places the caret.
+    member val TouchDown = false with get, set
+    /// A finger is scrolling the text.
+    member val Panning = false with get, set
+
+    /// What is drawn and measured: the text with what is being composed in place of the selection, the caret
+    /// where the input method has it.
+    member s.Shown : EditState =
+        if s.Composition.Length = 0 then s.Edit
+        else
+            let edit = s.Edit
+            let caret = edit.Start + max 0 (min s.Composition.Length s.CompositionCaret)
+            { Text = edit.Text.Substring(0, edit.Start) + s.Composition + edit.Text.Substring edit.End
+              Anchor = caret
+              Caret = caret }
 
 module TextBoxProps =
     /// The text. Given by the view: controlled; otherwise the control's own value.
@@ -212,6 +234,8 @@ module TextBoxProps =
     let maxLines = Prop.define "MaxLines" 0 Affects.Measure
     /// Tab types a tab character (and pasted tabs are kept).
     let acceptsTab = Prop.define "AcceptsTab" false Affects.Nothing
+    /// Which on-screen keyboard suits the text (a phone).
+    let keyboard = Prop.define "Keyboard" KeyboardKind.Text Affects.Nothing
     let internal state: Prop<TextBoxState> = Prop.local "TextBoxState" null
 
 /// Text to type in, one line or several (DESIGN.md, "M9: TextBox"):
@@ -280,6 +304,10 @@ type TextBox =
     /// True: Tab types a tab character (drawn four spaces wide) and pasted tabs are kept; Shift+Tab still moves
     /// the focus back. False (default): Tab moves the focus and a pasted tab becomes a space.
     static member acceptsTab<'k when 'k :> TextBox>(value: bool) : Setting<'k> = Setting.create TextBoxProps.acceptsTab value
+    /// Which on-screen keyboard a phone shows for it: `KeyboardKind.Text` (default), `Number`, `Decimal`,
+    /// `Email`, `Url`, `Phone` or `Search`. Nothing is checked: a Number box can still be given letters (pasted,
+    /// or from a desktop's keyboard). A password box gets the password keyboard by itself.
+    static member keyboard<'k when 'k :> TextBox>(value: KeyboardKind) : Setting<'k> = Setting.create TextBoxProps.keyboard value
 
 module TextBox =
     /// The width it asks for when nothing stretches it (without its padding), in DIPs.
@@ -353,7 +381,7 @@ module TextBox =
 
     /// What is drawn and where each caret place is, measured once per text, font and size (one line).
     let private measureStops (e: Element) (s: TextBoxState) =
-        let text = s.Edit.Text
+        let text = s.Shown.Text
         let font, size, password = e.Get TextProps.font, e.Get TextProps.fontSize, e.Get TextBoxProps.isPassword
         if not (String.Equals(text, s.StopsText, StringComparison.Ordinal))
            || not (obj.ReferenceEquals(font, s.StopsFont))
@@ -389,7 +417,7 @@ module TextBox =
     let private linesFor (e: Element) (s: TextBoxState) (width: float) =
         let width = max 1.0 width
         let font, size = e.Get TextProps.font, e.Get TextProps.fontSize
-        let text = s.Edit.Text
+        let text = s.Shown.Text
         let current = s.Lines
         if isNull current
            || not (obj.ReferenceEquals(s.LinesText, text) || String.Equals(s.LinesText, text, StringComparison.Ordinal))
@@ -506,6 +534,32 @@ module TextBox =
     let private inserted (e: Element) (text: string) (edit: EditState) =
         TextEdit.insertInto (isMulti e) (e.Get TextBoxProps.acceptsTab) text (e.Get TextBoxProps.maxLength) edit
 
+    /// Which on-screen keyboard suits the box: a password's own, else what `TextBox.keyboard` says.
+    let private keyboardOf (e: Element) = if e.Get TextBoxProps.isPassword then KeyboardKind.Password else e.Get TextBoxProps.keyboard
+
+    /// What is being composed stops showing (it was committed as typed text, cancelled, or is taken below).
+    let private endComposition (e: Element) (s: TextBoxState) =
+        if s.Composition.Length > 0 then
+            s.Composition <- ""
+            s.CompositionCaret <- 0
+            s.Reveal <- true
+            e.InvalidateVisual()
+            if isMulti e then e.InvalidateMeasure()
+
+    /// A click elsewhere or the focus leaving: what is being composed is typed, and the input method is told to
+    /// drop it (DESIGN.md, "9d", decision 56).
+    let private commitComposition (e: Element) (s: TextBoxState) =
+        if s.Composition.Length > 0 then
+            let text = s.Composition
+            endComposition e s
+            s.Composed <- false
+            match e.Root with
+            | ValueSome root -> root.ClearComposition()
+            | ValueNone -> ()
+            if not (e.Get TextBoxProps.isReadOnly) then
+                let next = inserted e text s.Edit
+                if next <> s.Edit then applyEdit e s EditKind.Single next
+
     /// Pastes `text` over the selection (a step of its own), if the box can still take it.
     let private paste (e: Element) (text: string) =
         if e.Root.IsSome && e.IsFocused && not (e.Get TextBoxProps.isReadOnly) then
@@ -592,9 +646,17 @@ module TextBox =
         if args.Button = ValueSome MouseButton.Left then
             let s = stateOf e
             adopt e s
+            commitComposition e s
             let x, y = args.LocalPosition.X, args.LocalPosition.Y
             let size = ctx.Size
-            if args.PointerKind <> PointerKind.Touch && overBar e s size x then
+            if args.PointerKind = PointerKind.Touch then
+                // A finger: lifting it places the caret (see pointerUp), unless it scrolls first. The press isn't
+                // taken, so a finger can still scroll what's around the box. Selecting by touch comes with its
+                // own step (DESIGN.md, "9d", decision 48).
+                s.TouchDown <- true
+                s.PressX <- x
+                s.PressY <- y
+            elif overBar e s size x then
                 // The scrollbar: drag the thumb, or a page towards a press beside it.
                 args.Handle()
                 match thumbOf s size with
@@ -611,47 +673,41 @@ module TextBox =
                 | ValueNone -> ()
             else
                 let struct (index, atEnd) = pointAt e s size x y
-                if args.PointerKind = PointerKind.Touch then
-                    // A tap places the caret; the press isn't taken, so a finger can still scroll what's around the
-                    // box. Selecting by touch comes with the handles (9d).
-                    apply e s (TextEdit.moveTo index false s.Edit)
+                args.Handle()
+                let now = ctx.Time
+                let again =
+                    s.PressCount > 0
+                    && now - s.PressTime <= multiClickTime
+                    && abs (x - s.PressX) <= multiClickDistance
+                    && abs (y - s.PressY) <= multiClickDistance
+                s.PressCount <- if again && s.PressCount < 3 then s.PressCount + 1 else 1
+                s.PressTime <- now
+                s.PressX <- x
+                s.PressY <- y
+                s.LastX <- x
+                s.LastY <- y
+                let shift = args.Modifiers.HasFlag Modifiers.Shift
+                let password = e.Get TextBoxProps.isPassword
+                match s.PressCount with
+                | 2 when not password ->
+                    let next = TextEdit.selectWordAt index s.Edit
+                    s.DragWord <- ValueSome(struct (next.Start, next.End))
+                    s.Dragging <- true
+                    apply e s next
+                | 3 when isMulti e ->
+                    s.DragWord <- ValueNone
+                    s.Dragging <- false
+                    apply e s (TextEdit.selectParagraphAt index s.Edit)
+                | 2
+                | 3 ->
+                    s.DragWord <- ValueNone
+                    s.Dragging <- false
+                    apply e s (TextEdit.selectAll s.Edit)
+                | _ ->
+                    s.DragWord <- ValueNone
+                    s.Dragging <- true
+                    apply e s (TextEdit.moveTo index shift s.Edit)
                     s.AtLineEnd <- atEnd
-                else
-                    args.Handle()
-                    let now = ctx.Time
-                    let again =
-                        s.PressCount > 0
-                        && now - s.PressTime <= multiClickTime
-                        && abs (x - s.PressX) <= multiClickDistance
-                        && abs (y - s.PressY) <= multiClickDistance
-                    s.PressCount <- if again && s.PressCount < 3 then s.PressCount + 1 else 1
-                    s.PressTime <- now
-                    s.PressX <- x
-                    s.PressY <- y
-                    s.LastX <- x
-                    s.LastY <- y
-                    let shift = args.Modifiers.HasFlag Modifiers.Shift
-                    let password = e.Get TextBoxProps.isPassword
-                    match s.PressCount with
-                    | 2 when not password ->
-                        let next = TextEdit.selectWordAt index s.Edit
-                        s.DragWord <- ValueSome(struct (next.Start, next.End))
-                        s.Dragging <- true
-                        apply e s next
-                    | 3 when isMulti e ->
-                        s.DragWord <- ValueNone
-                        s.Dragging <- false
-                        apply e s (TextEdit.selectParagraphAt index s.Edit)
-                    | 2
-                    | 3 ->
-                        s.DragWord <- ValueNone
-                        s.Dragging <- false
-                        apply e s (TextEdit.selectAll s.Edit)
-                    | _ ->
-                        s.DragWord <- ValueNone
-                        s.Dragging <- true
-                        apply e s (TextEdit.moveTo index shift s.Edit)
-                        s.AtLineEnd <- atEnd
 
     let private pointerMove (ctx: InputContext) (args: PointerEventArgs) =
         let e = ctx.Element
@@ -682,6 +738,14 @@ module TextBox =
 
     let private pointerUp (ctx: InputContext) (args: PointerEventArgs) =
         let s = stateOf ctx.Element
+        if s.TouchDown && args.PointerKind = PointerKind.Touch then
+            // A tap: the caret goes where the finger lifted.
+            s.TouchDown <- false
+            let e = ctx.Element
+            adopt e s
+            let struct (index, atEnd) = pointAt e s ctx.Size args.LocalPosition.X args.LocalPosition.Y
+            apply e s (TextEdit.moveTo index false s.Edit)
+            s.AtLineEnd <- atEnd
         if s.BarDrag then
             args.Handle()
             s.BarDrag <- false
@@ -698,12 +762,35 @@ module TextBox =
             let s = stateOf e
             if scrollTo e s (s.ScrollY - args.DeltaY * ScrollViewer.step) then args.Handle()
 
+    /// A finger drags on several lines that overflow: the text follows it. The drag is taken only when there is
+    /// more that way at its start, so at an end it scrolls the page (DESIGN.md, "9d", decision 58).
+    let private pan (ctx: InputContext) (dx: float) (dy: float) =
+        let e = ctx.Element
+        let s = stateOf e
+        if not s.Panning then
+            let canScroll = isMulti e && s.MaxScrollY > 0.0 && abs dy >= abs dx && ((dy > 0.0 && s.ScrollY > 0.0) || (dy < 0.0 && s.ScrollY < s.MaxScrollY))
+            if canScroll then
+                s.Panning <- true
+                s.TouchDown <- false
+        if s.Panning then scrollTo e s (s.ScrollY - dy) |> ignore
+        s.Panning
+
+    let private panEnded (ctx: InputContext) (_: bool) =
+        let s = stateOf ctx.Element
+        s.Panning <- false
+        s.TouchDown <- false
+
     let private keyDown (ctx: InputContext) (args: KeyEventArgs) =
         let e = ctx.Element
         let mods = args.Modifiers
         let ctrl, shift = mods.HasFlag Modifiers.Control, mods.HasFlag Modifiers.Shift
-        if mods &&& (Modifiers.Alt ||| Modifiers.Meta) = Modifiers.None then
+        let composing = (stateOf e).Composition.Length > 0
+        // While an input method composes, keys are its own: arrows move in what it composes, Enter commits it
+        // (DESIGN.md, "9d", decision 55).
+        if composing then args.Handle()
+        elif mods &&& (Modifiers.Alt ||| Modifiers.Meta) = Modifiers.None then
             let s = stateOf e
+            s.Composed <- false
             adopt e s
             let edit = s.Edit
             let readOnly = e.Get TextBoxProps.isReadOnly
@@ -838,8 +925,33 @@ module TextBox =
             args.Handle()
             let s = stateOf e
             adopt e s
+            // What an input method composed is committed as typed text: one undo step (decision 54).
+            let kind = if s.Composed then EditKind.Single else EditKind.Typing
+            s.Composed <- false
+            endComposition e s
             let next = inserted e args.Text s.Edit
-            if next <> s.Edit then applyEdit e s EditKind.Typing next else restartBlink e s
+            if next <> s.Edit then applyEdit e s kind next else restartBlink e s
+
+    /// What an input method is composing: shown at the caret in place of the selection, not typed yet.
+    let private textComposition (ctx: InputContext) (args: TextCompositionEventArgs) =
+        let e = ctx.Element
+        let s = stateOf e
+        if e.Get TextBoxProps.isReadOnly then
+            // Nothing is composed into a box that can't change.
+            if args.Text.Length > 0 then ctx.ClearComposition()
+        elif args.Text.Length = 0 then
+            // Ended: what was committed, if anything, comes as typed text.
+            endComposition e s
+        else
+            adopt e s
+            if s.Composition <> args.Text || s.CompositionCaret <> args.Caret then
+                s.Composition <- args.Text
+                s.CompositionCaret <- args.Caret
+                s.Composed <- true
+                s.Reveal <- true
+                restartBlink e s
+                e.InvalidateVisual()
+                if isMulti e then e.InvalidateMeasure()
 
     let private focusChanged (ctx: InputContext) (isFocused: bool) (byTab: bool) =
         let e = ctx.Element
@@ -852,6 +964,11 @@ module TextBox =
             s.History <- TextHistory.close s.History
             s.Reveal <- true
             restartBlink e s
+            // The window hears at once that text is wanted here and which keyboard suits it (a phone shows its
+            // keyboard from inside the touch that asked); the next frame says exactly where the caret is.
+            let struct (left, _) = textArea e ctx.Size
+            let struct (top, _) = textRows e ctx.Size
+            ctx.SetTextInput(Rect.Create(left, top, 1.0, lineHeightOf e), keyboardOf e, isMulti e)
             // In the browser these keys are the box's, not the browser's (DESIGN.md, "9b", decision 32). Ctrl+V is
             // left to it: its paste event is where the text comes from.
             if not s.Claimed then
@@ -863,8 +980,10 @@ module TextBox =
                     window.ClaimKey(Key.Char 'z', Modifiers.Control ||| Modifiers.Shift)
                 | _ -> ()
         else
+            commitComposition e s
             stopDrag s
             s.BarDrag <- false
+            s.TouchDown <- false
             s.BlinkGeneration <- s.BlinkGeneration + 1
             s.CaretOn <- true
             // Out of focus one line shows its start again; several stay where they were scrolled to.
@@ -912,7 +1031,8 @@ module TextBox =
         let snap (v: float) = Math.Round(v * scale) / scale
         let innerHeight = max 0.0 (size.Height - padding.Vertical - 2.0 * thickness)
         let top = snap (padding.Top + thickness + (innerHeight - lineHeight) / 2.0)
-        let edit = s.Edit
+        // With what an input method is composing in place of the selection.
+        let edit = s.Shown
         let stops = s.Stops
         let focused = ctx.IsFocused
         let caretDips = max caretWidth (1.0 / scale)
@@ -934,10 +1054,17 @@ module TextBox =
                 let x0, x1 = snap (left + stops[edit.Start] - scroll), snap (left + stops[edit.End] - scroll)
                 list.FillRect(Rect.Create(x0, top, x1 - x0, snap lineHeight), ctx.Get TextBoxProps.selection)
             ctx.Text.Draw(list, s.Display, font, fontSize, left - scroll, top, ctx.Get TextProps.foreground)
+            if s.Composition.Length > 0 then
+                // What is being composed is underlined: it isn't typed yet.
+                let from = s.Edit.Start
+                let x0, x1 = snap (left + stops[from] - scroll), snap (left + stops[from + s.Composition.Length] - scroll)
+                list.FillRect(Rect.Create(x0, snap (top + lineHeight) - snap caretDips, x1 - x0, snap caretDips), ctx.Get TextProps.foreground)
+        let caretX = snap (left + stops[edit.Caret] - scroll)
         if focused && s.CaretOn && ctx.IsEnabled && not (ctx.Get TextBoxProps.isReadOnly) then
-            let x = snap (left + stops[edit.Caret] - scroll)
-            list.FillRect(Rect.Create(x, top, snap caretDips, snap lineHeight), ctx.Get TextProps.foreground)
+            list.FillRect(Rect.Create(caretX, top, snap caretDips, snap lineHeight), ctx.Get TextProps.foreground)
         list.PopClip()
+        // Where an input method shows its candidates, and a phone's keyboard knows what is typed.
+        if focused then ctx.SetTextInput(Rect.Create(caretX, top, caretDips, lineHeight), keyboardOf e, false)
 
     /// Several lines: the lines that show, the selection behind them, the caret and the scrollbar.
     let private renderLines (ctx: RenderContext) (list: DrawList) =
@@ -959,7 +1086,10 @@ module TextBox =
         let snap (v: float) = Math.Round(v * scale) / scale
         // Lines are as far apart as a TextBlock's; each lands on a whole pixel.
         let lineHeight = text.LineHeight(font, fontSize)
-        let edit = s.Edit
+        // With what an input method is composing in place of the selection.
+        let edit = s.Shown
+        let composedFrom = s.Edit.Start
+        let composedTo = composedFrom + s.Composition.Length
         let focused = ctx.IsFocused
         let caretDips = max caretWidth (1.0 / scale)
         let struct (caretP, caretL, caretLine) = MultiLine.locate lines edit.Caret s.AtLineEnd
@@ -1013,12 +1143,23 @@ module TextBox =
                         let bottom = snap (top + float (n + 1) * lineHeight - scroll)
                         if x1 > x0 then list.FillRect(Rect.Create(snap (left + x0), y, snap (x1 - x0), bottom - y), selection)
                 if line.Text.Length > 0 then text.Draw(list, line.Text, font, fontSize, left, y, foreground)
+                if composedTo > composedFrom then
+                    // What is being composed is underlined: it isn't typed yet.
+                    let lineStart, lineEnd = lines.Offset p + line.Start, lines.Offset p + line.End
+                    let from, upTo = max composedFrom lineStart, min composedTo lineEnd
+                    if from < upTo then
+                        let stops = MultiLine.stopsOf text lines p l
+                        let x0, x1 = min width stops[from - lineStart], min width stops[upTo - lineStart]
+                        let bottom = snap (top + float (n + 1) * lineHeight - scroll)
+                        list.FillRect(Rect.Create(snap (left + x0), bottom - snap caretDips, snap (x1 - x0), snap caretDips), foreground)
+        // Spaces at a wrap hang past the edge: the caret after them stays at it.
+        let caretX = snap (left + max 0.0 (min (width - caretDips) (MultiLine.caretX text lines caretP caretL edit.Caret)))
+        let caretY = snap (top + float caretLine * lineHeight - scroll)
         if focused && s.CaretOn && ctx.IsEnabled && not (ctx.Get TextBoxProps.isReadOnly) then
-            // Spaces at a wrap hang past the edge: the caret after them stays at it.
-            let x = min (width - caretDips) (MultiLine.caretX text lines caretP caretL edit.Caret)
-            let y = snap (top + float caretLine * lineHeight - scroll)
-            list.FillRect(Rect.Create(snap (left + max 0.0 x), y, snap caretDips, snap lineHeight), ctx.Get TextProps.foreground)
+            list.FillRect(Rect.Create(caretX, caretY, snap caretDips, snap lineHeight), ctx.Get TextProps.foreground)
         list.PopClip()
+        // Where an input method shows its candidates, and a phone's keyboard knows what is typed.
+        if focused then ctx.SetTextInput(Rect.Create(caretX, caretY, caretDips, lineHeight), keyboardOf e, true)
         // The scrollbar, as a ScrollViewer draws its own: thin, wider under the pointer or while dragged.
         match thumbOf s size with
         | ValueSome(struct (length, start)) ->
@@ -1041,8 +1182,11 @@ module TextBox =
             Element.pointerMove pointerMove
             Element.pointerUp pointerUp
             Element.wheel wheel
+            Element.pan pan
+            Element.panEnded panEnded
             Element.keyDown keyDown
             Element.textInput textInput
+            Element.textComposition textComposition
             Element.focusChanged focusChanged
             // The dark base look (also without a theme); the theme adds the state looks.
             Element.defaults [

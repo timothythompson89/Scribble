@@ -201,6 +201,10 @@ _Avoid_: logical line, hard line
 One row of text as drawn; a paragraph that wraps is several.
 _Avoid_: visual line, row
 
+**Composition**:
+Text an input method (an IME, a phone's keyboard) is still working on: shown underlined at the caret, not part of the text until it is committed.
+_Avoid_: preedit, marked text, IME string
+
 **Undo step**:
 What one undo takes back in a TextBox: a run of typing, a run of deleting, or one cut, paste or replaced selection.
 _Avoid_: undo unit, transaction

@@ -43,6 +43,24 @@ type SDL_TextInputEvent =
     [<FieldOffset(16)>] val mutable WindowId: uint32
     [<FieldOffset(24)>] val mutable Text: nativeint
 
+/// SDL_TextEditingEvent: what an input method is composing. `Start` is its caret in the text, in characters
+/// (-1: not said).
+[<Struct; StructLayout(LayoutKind.Explicit, Size = 128)>]
+type SDL_TextEditingEvent =
+    [<FieldOffset(0)>] val mutable Type: uint32
+    [<FieldOffset(16)>] val mutable WindowId: uint32
+    [<FieldOffset(24)>] val mutable Text: nativeint
+    [<FieldOffset(32)>] val mutable Start: int
+    [<FieldOffset(36)>] val mutable Length: int
+
+/// SDL_Rect: whole window coordinates.
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type SDL_Rect =
+    val mutable X: int
+    val mutable Y: int
+    val mutable W: int
+    val mutable H: int
+
 [<Struct; StructLayout(LayoutKind.Explicit, Size = 128)>]
 type SDL_MouseMotionEvent =
     [<FieldOffset(0)>] val mutable Type: uint32
@@ -100,6 +118,7 @@ let SDL_EVENT_WINDOW_FIRST = 0x202u
 let SDL_EVENT_WINDOW_LAST = 0x21Au
 let SDL_EVENT_KEY_DOWN = 0x300u
 let SDL_EVENT_KEY_UP = 0x301u
+let SDL_EVENT_TEXT_EDITING = 0x302u
 let SDL_EVENT_TEXT_INPUT = 0x303u
 let SDL_EVENT_MOUSE_MOTION = 0x400u
 let SDL_EVENT_MOUSE_BUTTON_DOWN = 0x401u
@@ -274,6 +293,34 @@ extern nativeint SDL_GetMouseFocus()
 /// runs on its own thread and the callback comes from there.
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern void SDL_ShowSaveFileDialog(nativeint callback, nativeint userdata, nativeint window, SDL_DialogFileFilter* filters, int nfilters, nativeint defaultLocation)
+
+/// SDL_keyboard.h: text input (typed text and input methods) for a window. While it is on, SDL sends
+/// SDL_EVENT_TEXT_INPUT and SDL_EVENT_TEXT_EDITING, and an input method shows its candidates beside the area.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_StartTextInputWithProperties(nativeint window, uint32 props)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_StopTextInput(nativeint window)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_ClearComposition(nativeint window)
+
+/// `rect`: where text is being typed, in window coordinates; `cursor`: the caret's offset from its left edge.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_SetTextInputArea(nativeint window, SDL_Rect* rect, int cursor)
+
+/// SDL_properties.h.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern uint32 SDL_CreateProperties()
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void SDL_DestroyProperties(uint32 props)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_SetNumberProperty(uint32 props, byte* name, int64 value)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_SetBooleanProperty(uint32 props, byte* name, byte value)
 
 /// SDL_clipboard.h. The text is UTF-8.
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]

@@ -104,6 +104,36 @@ type Cursor =
     /// The app's own image (`Cursor.fromIcon` in Core).
     | Image of CursorImage
 
+/// Which on-screen keyboard suits what is being typed (a phone; a desktop keyboard is what it is). Nothing is
+/// checked: a Number field can still be given letters.
+[<RequireQualifiedAccess>]
+type KeyboardKind =
+    | Text
+    /// Digits only.
+    | Number
+    /// Digits and a decimal separator.
+    | Decimal
+    | Email
+    | Url
+    | Phone
+    /// Text, with a Search key where the platform has one.
+    | Search
+    /// Text that isn't learned or suggested.
+    | Password
+
+/// What a window is told while the focused element takes typed text (`IWindow.SetTextInput`).
+[<Struct>]
+type TextInputRequest =
+    { /// The caret's box in the window, in physical pixels: an input method shows its candidates beside it, and a
+      /// browser's hidden field stands there.
+      CaretX: float
+      CaretY: float
+      CaretWidth: float
+      CaretHeight: float
+      Keyboard: KeyboardKind
+      /// Enter makes a new line (the on-screen keyboard shows that key).
+      Multiline: bool }
+
 /// Events a platform window raises. The core never sees OS messages, only these.
 ///
 /// Positions are in physical pixels; divide by the window's scale to get DIPs.
@@ -135,5 +165,11 @@ type PlatformEvent =
     /// A key went down (or repeats while held: `isRepeat`).
     | KeyDown of key: Key * modifiers: Modifiers * isRepeat: bool
     | KeyUp of key: Key * modifiers: Modifiers
+    /// Text was typed, or an input method committed what it composed.
     | TextInput of text: string
+    /// An input method (an IME, a phone's keyboard) is composing `text`, which isn't typed yet: it replaces what was
+    /// composing before. `caret` is where the method's caret stands in it (a UTF-16 index; the end when the method
+    /// doesn't say). An empty text ends the composition: what was committed, if anything, comes as `TextInput`.
+    /// Only sent while `IWindow.SetTextInput` has text input on.
+    | TextComposition of text: string * caret: int
     | FocusChanged of hasFocus: bool
