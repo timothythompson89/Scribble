@@ -1010,3 +1010,28 @@ let ``a state chip forces the opposite of what it shows, then lets go`` () =
         Assert.Empty(log) // none of it reached the app
     finally
         States.remove always
+
+[<Fact>]
+let ``Element.Hooks names each hook as the component called it`` () =
+    let probeValue = AppValue.define "ProbeValue" 7
+    let probe =
+        Component.define "Probe" (fun ctx () ->
+            ctx.useScroller () |> ignore
+            ctx.useCapture () |> ignore
+            ctx.useClipboard () |> ignore
+            ctx.useToaster () |> ignore
+            ctx.useDialogs () |> ignore
+            ctx.useConfirm [ Confirm.title "Sure?" ] |> ignore
+            ctx.useAsk [ Ask.choice ("Yes", ignore) ] |> ignore
+            ctx.useInform [ Inform.text "Done" ] |> ignore
+            ctx.useDialog (fun (_: unit -> unit) -> [ Dialog.title "Mine" ]) |> ignore
+            ctx.useAppValue probeValue |> ignore
+            Border.create [])
+    let t = ElementTree(Scribble.Tests.TestShaping.textSystem ())
+    t.Update(probe ())
+    let hooks = t.Root.Value.Hooks
+    Assert.Equal<string list>(
+        [ "useScroller"; "useCapture"; "useClipboard"; "useToaster"; "useDialogs"; "useConfirm"; "useAsk"; "useInform"; "useDialog"; "useAppValue ProbeValue" ],
+        hooks |> List.map (fun h -> h.Kind))
+    // The ones that only keep an object have no value to show.
+    Assert.All(hooks |> List.take 8, fun h -> Assert.True(h.Value.IsNone))

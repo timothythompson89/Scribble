@@ -211,3 +211,62 @@ let ``an ItemsView item whose view throws is left out; the others show`` () =
     let shown = texts app
     Assert.Equal<string list>([ "item 1"; "item 2"; "item 4"; "item 5" ], shown)
     Assert.Equal(1, errors.Count)
+
+/// A component whose third run (n = 2) fails after its hooks ran. `hook` calls the hook under test with n and
+/// gives what to show after "n = 2 ".
+let private failsOnThirdRun (name: string) (hook: ComponentContext -> int -> string) =
+    Component.define name (fun ctx () ->
+        let n = ctx.useState 0
+        let shown = hook ctx n.Current
+        if n.Current = 2 then invalidOp "component failed"
+        column [ button "next" (fun _ -> n.Update(fun v -> v + 1)); TextBlock.create [ TextBlock.text ("n = " + string n.Current + " " + shown) ] ])
+
+/// Shows the component and clicks "next" three times: runs with n = 0, 1, 2 (which fails) and 3.
+let private runFourTimes (view: View) =
+    let errors = List<exn>()
+    let w, _, app = start [ App.view view; App.onError (fun _ e -> errors.Add e) ]
+    settle w
+    for _ in 1..3 do
+        click w 50.0 15.0
+        settle w
+    Assert.Equal(1, errors.Count)
+    texts app
+
+[<Fact>]
+let ``an effect whose dependencies changed on a run that failed runs after the next one`` () =
+    let ran = List<int>()
+    let flaky =
+        failsOnThirdRun "FlakyEffect" (fun ctx n ->
+            ctx.useEffect(n / 2, fun (d: int) -> ran.Add d)
+            "")
+    let shown = runFourTimes (flaky ())
+    Assert.Contains("n = 3 ", shown)
+    // Dependencies 0, 0, 1 (failed: nothing runs), 1.
+    Assert.Equal<int list>([ 0; 1 ], List.ofSeq ran)
+
+[<Fact>]
+let ``a subscription whose dependencies changed on a run that failed is replaced after the next one`` () =
+    let log = List<string>()
+    let flaky =
+        failsOnThirdRun "FlakySubscription" (fun ctx n ->
+            ctx.useSubscription(n / 2, fun (d: int) ->
+                log.Add("subscribe " + string d)
+                { new IDisposable with member _.Dispose() = log.Add("dispose " + string d) })
+            "")
+    runFourTimes (flaky ()) |> ignore
+    Assert.Equal<string list>([ "subscribe 0"; "dispose 0"; "subscribe 1" ], List.ofSeq log)
+
+[<Fact>]
+let ``a load cancelled by a run that failed starts again, even with its old dependencies`` () =
+    let loads = List<int>()
+    let flaky =
+        failsOnThirdRun "FlakyLoad" (fun ctx n ->
+            // The failed run asks for 1 (cancelling the load of 0); the run after it asks for 0 again.
+            let value = ctx.useAsync((if n = 2 then 1 else 0), fun d _ -> loads.Add d; System.Threading.Tasks.Task.FromResult(string d))
+            match value with
+            | AsyncValue.Loading -> "loading"
+            | AsyncValue.Loaded v -> "loaded " + v
+            | AsyncValue.Failed e -> "failed " + e.Message)
+    let shown = runFourTimes (flaky ())
+    Assert.Equal<int list>([ 0; 0 ], List.ofSeq loads)
+    Assert.Contains("n = 3 loaded 0", shown)

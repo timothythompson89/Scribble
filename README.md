@@ -483,6 +483,11 @@ StackPanel.items names id counter                                // keyed: state
   - `ctx.useAsync(deps, fun d ct -> task)`: see Async below.
   - `ctx.useAnimated(target, duration, ?easing)`: a `float` or `Color` that moves to each new target; the
     component re-runs every frame while it moves.
+  - Described where they're used: `ctx.useAppValue` (App values, below); `ctx.useScroller ()` (scrolling from
+    code); `ctx.useCapture ()` (an image of an element); `ctx.useClipboard ()`; `ctx.useToaster ()` (toasts);
+    `ctx.useConfirm`, `useAsk`, `useInform`, `useDialog` and `useDialogs` (dialogs).
+  - If a run fails after an effect's, a subscription's or a load's `deps` changed, nothing of it is lost: the
+    next run that succeeds runs it.
 - **For element authors:** `ctx.Animate("key", target, duration, ?easing)` in a render function animates
   without re-running any view, and `Element.transform (fun ctx -> Transform.ScaleAround(...))` changes how an
   element and its children are drawn without touching layout or input. Button uses both to sink while pressed.

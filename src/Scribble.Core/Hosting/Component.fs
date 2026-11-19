@@ -9,7 +9,11 @@ open Scribble.Rendering
 /// One hook's storage in a component, at its position in the hook order.
 [<AbstractClass>]
 type internal HookSlot(kind: string) =
+    /// The hook's name (`useState`): what the order check compares.
     member _.Kind = kind
+    /// What `Element.Hooks` calls it: its name, and for some what they're about (`useAppValue CompactMode`).
+    abstract Label: string
+    default _.Label = kind
     /// The current value and status, for `Element.Hooks`.
     abstract Inspect: now: TimeSpan -> struct (obj voption * string)
     default _.Inspect _ = struct (ValueNone, "")
@@ -20,6 +24,8 @@ type internal ComponentInstance(element: Element, name: string) =
     inherit ComponentState()
     let slots = List<HookSlot>()
     let pending = List<unit -> unit>()
+    /// What to put back if this run fails: see `OnFailedRun`.
+    let undo = List<unit -> unit>()
     let mutable index = 0
     let mutable firstRun = true
     let mutable running = false
@@ -42,7 +48,7 @@ type internal ComponentInstance(element: Element, name: string) =
     override _.Hooks(now: TimeSpan) =
         [ for s in slots ->
               let struct (value, status) = s.Inspect now
-              { Kind = s.Kind; Value = value; Status = status } ]
+              { Kind = s.Label; Value = value; Status = status } ]
     member _.Now = element.Time
 
     /// Runs `action` on the UI thread: now if this is it (or there's no dispatcher, as in bare
@@ -90,7 +96,7 @@ type internal ComponentInstance(element: Element, name: string) =
         index <- index + 1
         if i < slots.Count then
             match slots[i] with
-            | :? 'S as s -> s
+            | :? 'S as s when s.Kind = kind -> s
             | other ->
                 invalidOp $"Component '{name}' called its hooks in a different order: hook {i + 1} was {other.Kind} last time, now {kind}. Call hooks unconditionally, in the same order every time."
         elif firstRun then
@@ -131,6 +137,10 @@ type internal ComponentInstance(element: Element, name: string) =
     /// Runs `action` after the frame that drew this run (effects).
     member _.Queue(action: unit -> unit) = pending.Add action
 
+    /// Runs `action` if this run fails. A failed run's queued effects are dropped, so a hook that remembered
+    /// something on the strength of one (its new dependencies) takes that back here, and the next run queues it again.
+    member _.OnFailedRun(action: unit -> unit) = undo.Add action
+
     member this.Flush() =
         flushScheduled <- false
         if not removed && pending.Count > 0 then
@@ -159,6 +169,7 @@ type internal ComponentInstance(element: Element, name: string) =
         running <- true
         index <- 0
         dirty <- false
+        undo.Clear()
         let slotsBefore = slots.Count
         let pendingBefore = pending.Count
         let result =
@@ -169,6 +180,8 @@ type internal ComponentInstance(element: Element, name: string) =
                         invalidOp $"Component '{name}' called fewer hooks than last time ({index} instead of {slots.Count}). Call hooks unconditionally, in the same order every time."
                     ValueSome view
                 with e ->
+                    for action in undo do
+                        action ()
                     for i in slots.Count - 1 .. -1 .. slotsBefore do
                         match box slots[i] with
                         | :? IDisposable as d -> d.Dispose()
@@ -183,6 +196,7 @@ type internal ComponentInstance(element: Element, name: string) =
                         | ValueNone -> System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw e
                     ValueNone
             finally
+                undo.Clear()
                 running <- false
         match result with
         | ValueSome view ->
@@ -239,9 +253,10 @@ type State<'T> internal (read: unit -> 'T, set: 'T -> unit, onUiThread: (unit ->
 /// so a change before its effects run isn't missed).
 [<Sealed>]
 type internal AppValueSlot<'T>(value: AppValue<'T>, values: AppValues, instance: ComponentInstance) =
-    inherit HookSlot($"useAppValue {value.Name}")
+    inherit HookSlot("useAppValue")
     let subscription = values.Subscribe(value.Id, fun () -> instance.Invalidate())
     member _.Value = value
+    override _.Label = $"useAppValue {value.Name}"
     member val State = State<'T>((fun () -> values.Get value), (fun next -> values.Set(value, next)), instance.OnUiThread)
     override _.Inspect _ = struct (ValueSome(box (values.Get value)), "")
     interface IDisposable with
@@ -262,6 +277,13 @@ type internal LiveDialogSlot(live: LiveDialog) =
     interface IDisposable with
         member _.Dispose() = live.Drop()
 
+/// A hook that keeps one object for as long as the component lives (`useScroller`, `useToaster`): it has no
+/// value to show.
+[<Sealed>]
+type internal HandleSlot<'T>(kind: string, value: 'T) =
+    inherit HookSlot(kind)
+    member _.Value = value
+
 [<Sealed>]
 type internal MemoSlot<'D, 'T>() =
     inherit HookSlot("useMemo")
@@ -276,10 +298,15 @@ type internal EffectSlot<'D>(kind: string) =
     member val Deps = Unchecked.defaultof<'D> with get, set
     member val HasRun = false with get, set
 
-    /// True (and remembers `deps`) the first time and whenever `deps` changed.
-    member this.Changed(deps: 'D) =
+    /// True (and remembers `deps`) the first time and whenever `deps` changed. If the run then fails, what it
+    /// queued on that answer is dropped, so the slot forgets `deps` again and the next run answers true once more.
+    member this.Changed(deps: 'D, instance: ComponentInstance) =
         if this.HasRun && EqualityComparer<'D>.Default.Equals(this.Deps, deps) then false
         else
+            let hadRun, before = this.HasRun, this.Deps
+            instance.OnFailedRun(fun () ->
+                this.HasRun <- hadRun
+                this.Deps <- before)
             this.HasRun <- true
             this.Deps <- deps
             true
@@ -372,7 +399,7 @@ type ComponentContext internal (instance: ComponentInstance) =
     member private _.State<'T>(kind: string, initial: 'T) : State<'T> =
         (instance.Slot(kind, fun () -> StateSlot<'T>(kind, State<'T>.Local(initial, instance)))).State
 
-    /// An app value (`AppValue.define`), shared by every component that uses it: `let light =
+    /// An app value (`AppValue.define`), shared by every component that uses it: `let compact =
     /// ctx.useAppValue compactMode`, then `compact.Current`, `compact.Set true`. The component re-runs
     /// when anything sets it (an equal value changes nothing).
     member _.useAppValue<'T>(value: AppValue<'T>) : State<'T> =
@@ -399,55 +426,42 @@ type ComponentContext internal (instance: ComponentInstance) =
     /// (`ItemsView.scroller scroller`), then call it from handlers (`scroller.ScrollTo key`). The
     /// same scroller for as long as the component lives.
     member _.useScroller() : Scroller =
-        let slot = instance.Slot("useScroller", fun () -> MemoSlot<unit, Scroller>())
-        if not slot.HasValue then
-            slot.Value <- Scroller()
-            slot.HasValue <- true
-        slot.Value
+        (instance.Slot("useScroller", fun () -> HandleSlot<Scroller>("useScroller", Scroller()))).Value
 
     /// A capture, to make an image of an element as it is on screen: give it to the element
     /// (`Border.capture capture`), then ask from handlers (`capture.ToImage []`). The same capture for as long as
     /// the component lives.
     member _.useCapture() : Capture =
-        let slot = instance.Slot("useCapture", fun () -> MemoSlot<unit, Capture>())
-        if not slot.HasValue then
-            slot.Value <- Capture()
-            slot.HasValue <- true
-        slot.Value
+        (instance.Slot("useCapture", fun () -> HandleSlot<Capture>("useCapture", Capture()))).Value
 
     /// The system clipboard's text: `let clipboard = ctx.useClipboard ()`, then in a handler
     /// `clipboard.SetText link` (a Copy button) or `let! text = clipboard.GetText()`. The same clipboard for as
     /// long as the component lives.
     member _.useClipboard() : Clipboard =
-        let slot = instance.Slot("useClipboard", fun () -> MemoSlot<unit, Clipboard>())
-        if not slot.HasValue then
-            slot.Value <- Clipboard()
-            slot.HasValue <- true
-        slot.Value
+        (instance.Slot("useClipboard", fun () -> HandleSlot<Clipboard>("useClipboard", Clipboard()))).Value
 
     /// The toasts of the window this component is in: `let toaster = ctx.useToaster ()`, then in a handler
     /// `toaster.Show "Saved"`. The same toaster for as long as the component lives; safe to call from a task.
     member _.useToaster() : Toaster =
-        let slot = instance.Slot("useToaster", fun () -> MemoSlot<unit, Toaster>())
-        if not slot.HasValue then
-            slot.Value <-
-                Toaster(
-                    (fun () -> instance.Tree |> ValueOption.bind (fun t -> t.Dispatcher)),
-                    fun () -> instance.Services |> ValueOption.bind (fun s -> s.FindToasts()))
-            slot.HasValue <- true
-        slot.Value
+        let create () =
+            Toaster(
+                (fun () -> instance.Tree |> ValueOption.bind (fun t -> t.Dispatcher)),
+                fun () -> instance.Services |> ValueOption.bind (fun s -> s.FindToasts()))
+        (instance.Slot("useToaster", fun () -> HandleSlot<Toaster>("useToaster", create ()))).Value
 
     /// The dialogs of the window this component is in: `let dialogs = ctx.useDialogs ()`, then in a
     /// handler `let! ok = dialogs.Confirm [ Confirm.title "Delete the draft?" ]` (also `Inform` and `Ask`).
-    member _.useDialogs() : Dialogs =
-        let slot = instance.Slot("useDialogs", fun () -> MemoSlot<unit, Dialogs>())
-        if not slot.HasValue then
-            slot.Value <-
-                Dialogs(
-                    (fun () -> instance.Tree |> ValueOption.bind (fun t -> t.Dispatcher)),
-                    fun () -> instance.Services |> ValueOption.bind (fun s -> s.FindDialogs()))
-            slot.HasValue <- true
-        slot.Value
+    member this.useDialogs() : Dialogs = this.Dialogs "useDialogs"
+
+    /// The dialogs of the component's window, found when they're asked for.
+    member private _.NewDialogs() : Dialogs =
+        Dialogs(
+            (fun () -> instance.Tree |> ValueOption.bind (fun t -> t.Dispatcher)),
+            fun () -> instance.Services |> ValueOption.bind (fun s -> s.FindDialogs()))
+
+    /// The window's dialogs, kept under the name of the hook that asked (`useConfirm` keeps its own).
+    member private this.Dialogs(kind: string) : Dialogs =
+        (instance.Slot(kind, fun () -> HandleSlot<Dialogs>(kind, this.NewDialogs()))).Value
 
     /// A dialog with content of your own, declared here and opened from a handler:
     ///
@@ -463,8 +477,7 @@ type ComponentContext internal (instance: ComponentInstance) =
     /// at a time with the window's other dialogs, and closes if the component goes away. For a modal whose
     /// being open belongs in the app's model, write a `Modal` in the view instead.
     member this.useDialog(settingsFor: (unit -> unit) -> DialogSetting list) : unit -> unit =
-        let dialogs = this.useDialogs ()
-        let slot = instance.Slot("useDialog", fun () -> new LiveDialogSlot(LiveDialog dialogs))
+        let slot = instance.Slot("useDialog", fun () -> new LiveDialogSlot(LiveDialog(this.NewDialogs())))
         let live = slot.Live
         live.Settings <- fun () -> settingsFor live.Close
         live.Refresh()
@@ -474,8 +487,7 @@ type ComponentContext internal (instance: ComponentInstance) =
     /// too, and the function it gives takes the value: `let edit = ctx.useDialog (fun (file: File) close -> [ ... ])`,
     /// then `Button.onClick (fun _ -> edit file)`.
     member this.useDialog<'A>(settingsFor: 'A -> (unit -> unit) -> DialogSetting list) : 'A -> unit =
-        let dialogs = this.useDialogs ()
-        let slot = instance.Slot("useDialog", fun () -> new LiveDialogSlot(LiveDialog dialogs))
+        let slot = instance.Slot("useDialog", fun () -> new LiveDialogSlot(LiveDialog(this.NewDialogs())))
         let live = slot.Live
         live.Settings <- fun () -> settingsFor (unbox<'A> live.Argument) live.Close
         live.Refresh()
@@ -495,7 +507,7 @@ type ComponentContext internal (instance: ComponentInstance) =
     /// The settings are this run's, so they can follow the model. It opens in the component's window. For a
     /// sequence of questions, use the task forms of `ctx.useDialogs ()`.
     member this.useConfirm(settings: ConfirmSetting list) : unit -> unit =
-        let dialogs = this.useDialogs ()
+        let dialogs = this.Dialogs "useConfirm"
         fun () -> dialogs.Confirm settings |> ignore
 
     /// A confirmation that depends on what was clicked (a row's item): the settings come from that value, and so
@@ -503,7 +515,7 @@ type ComponentContext internal (instance: ComponentInstance) =
     /// ("Delete " + file.Name + "?"); Confirm.onAccept (fun () -> dispatch (Delete file.Id)) ])`, then
     /// `Button.onClick (fun _ -> confirmDelete file)`.
     member this.useConfirm<'A>(settingsFor: 'A -> ConfirmSetting list) : 'A -> unit =
-        let dialogs = this.useDialogs ()
+        let dialogs = this.Dialogs "useConfirm"
         fun arg -> dialogs.Confirm(settingsFor arg) |> ignore
 
     /// A choice, declared here and opened from a handler; each choice says what it does:
@@ -515,39 +527,39 @@ type ComponentContext internal (instance: ComponentInstance) =
     ///                      Ask.choice ("Cancel", ignore) ]
     ///     Button.onClick (fun _ -> askClose ())
     member this.useAsk(settings: AskSetting<unit -> unit> list) : unit -> unit =
-        let dialogs = this.useDialogs ()
+        let dialogs = this.Dialogs "useAsk"
         fun () -> dialogs.Ask settings |> ignore
 
     /// A choice that depends on what was clicked: `ctx.useAsk (fun (file: File) -> [ ... ])` gives a function
     /// taking the file.
     member this.useAsk<'A>(settingsFor: 'A -> AskSetting<unit -> unit> list) : 'A -> unit =
-        let dialogs = this.useDialogs ()
+        let dialogs = this.Dialogs "useAsk"
         fun arg -> dialogs.Ask(settingsFor arg) |> ignore
 
     /// Something to tell the user, declared here and opened from a handler:
     /// `let sessionExpired = ctx.useInform [ Inform.title "Your session has expired"; Inform.text "Sign in again." ]`,
     /// then `sessionExpired ()`. `Inform.onClosed` runs when it's closed.
     member this.useInform(settings: InformSetting list) : unit -> unit =
-        let dialogs = this.useDialogs ()
+        let dialogs = this.Dialogs "useInform"
         fun () -> dialogs.Inform settings |> ignore
 
     /// Something to tell the user that depends on what happened: `ctx.useInform (fun (e: exn) -> [ Inform.text
     /// e.Message ])` gives a function taking the error.
     member this.useInform<'A>(settingsFor: 'A -> InformSetting list) : 'A -> unit =
-        let dialogs = this.useDialogs ()
+        let dialogs = this.Dialogs "useInform"
         fun arg -> dialogs.Inform(settingsFor arg) |> ignore
 
     /// Runs `effect` after the frame that shows the component, the first time and whenever `deps`
     /// change (F# equality; use a tuple for several values, `()` for "once").
     member _.useEffect<'D>(deps: 'D, effect: 'D -> unit) : unit =
         let slot = instance.Slot("useEffect", fun () -> EffectSlot<'D>("useEffect"))
-        if slot.Changed deps then instance.Queue(fun () -> effect deps)
+        if slot.Changed(deps, instance) then instance.Queue(fun () -> effect deps)
 
     /// Like useEffect for things that must be undone: `subscribe` returns an IDisposable, which
     /// is disposed when `deps` change (before subscribing again) and when the component goes away.
     member _.useSubscription<'D>(deps: 'D, subscribe: 'D -> IDisposable) : unit =
         let slot = instance.Slot("useSubscription", fun () -> new SubscriptionSlot<'D>())
-        if slot.Effect.Changed deps then instance.Queue(fun () -> slot.Replace(fun () -> subscribe deps))
+        if slot.Effect.Changed(deps, instance) then instance.Queue(fun () -> slot.Replace(fun () -> subscribe deps))
 
     /// The Elmish pattern inside a component: `let model, dispatch = ctx.useElmish(init, update)`.
     /// A message that produces an equal model changes nothing.
@@ -569,11 +581,14 @@ type ComponentContext internal (instance: ComponentInstance) =
 
     member private _.Async<'D, 'T>(deps: 'D, start: 'D -> CancellationToken -> Task<'T>) : AsyncValue<'T> =
         let slot = instance.Slot("useAsync", fun () -> new AsyncSlot<'D, 'T>())
-        if slot.Effect.Changed deps then
+        if slot.Effect.Changed(deps, instance) then
             // Cancel the old load and make its result stale now, not when the new one starts after
             // the frame: a host may finish the old load in between.
             slot.Stop()
             slot.Value <- AsyncValue.Loading
+            // If this run fails the new load never starts and the old one is already cancelled: the next run
+            // loads, whatever its dependencies are (the old ones again, too).
+            instance.OnFailedRun(fun () -> slot.Effect.HasRun <- false)
             instance.Queue(fun () ->
                 let struct (token, version) = slot.Start()
                 let work =

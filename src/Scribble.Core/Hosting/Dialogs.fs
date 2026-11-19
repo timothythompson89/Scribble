@@ -190,7 +190,7 @@ type internal DialogQueue(dispatcher: Dispatcher, update: View -> unit) =
 ///     model, Cmd.confirm [ Confirm.title "Delete the draft?" ] DeleteAnswered     // from an Elmish update
 ///
 /// `Inform` tells (one button), `Confirm` asks yes or no, `Ask` offers choices of your own type
-/// (`ctx.useInform ()`, `ctx.useConfirm ()` and `ctx.useAsk ()` give each call on its own). Escape
+/// (`ctx.useInform`, `ctx.useConfirm` and `ctx.useAsk` declare one each and give a function that opens it). Escape
 /// closes an Inform, is cancel for a Confirm and no choice for an Ask; a press outside does nothing.
 /// Two asked at once show one after the other. Safe from any thread. For a dialog whose content
 /// follows the model (a form, a picker), put a `Modal` in the view.

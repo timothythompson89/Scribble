@@ -324,3 +324,39 @@ let ``ctx.Animate moves over its duration, asks for frames while it moves, then 
     draw ()
     t.RunAfterFrame()
     Assert.Equal(0, invalidated)
+
+[<Fact>]
+let ``two hooks that keep the same type of thing still fail when swapped`` () =
+    let flip = ref false
+    let mutable state: State<int> voption = ValueNone
+    let bad =
+        Component.define "Swapper" (fun ctx () ->
+            let s = ctx.useState 0
+            state <- ValueSome s
+            // Both keep an int in the same type of slot: only their names tell them apart.
+            if flip.Value then ctx.useElmish(0, fun (msg: int) model -> model + msg) |> ignore else ctx.useState 0 |> ignore
+            TextBlock.create [ TextBlock.text "" ])
+    let t = tree ()
+    t.Update(bad ())
+    flip.Value <- true
+    state.Value.Set 1
+    let error = Assert.Throws<InvalidOperationException>(fun () -> frame t)
+    Assert.Contains("hook 2 was useState last time, now useElmish", error.Message)
+
+[<Fact>]
+let ``useScroller, useCapture and useClipboard give the same object every run`` () =
+    let seen = List<obj list>()
+    let mutable state: State<int> voption = ValueNone
+    let keeper =
+        Component.define "Keeper" (fun ctx () ->
+            let s = ctx.useState 0
+            state <- ValueSome s
+            seen.Add [ box (ctx.useScroller ()); box (ctx.useCapture ()); box (ctx.useClipboard ()) ]
+            TextBlock.create [ TextBlock.text "" ])
+    let t = tree ()
+    t.Update(keeper ())
+    state.Value.Set 1
+    frame t
+    Assert.Equal(2, seen.Count)
+    for first, second in List.zip seen[0] seen[1] do
+        Assert.Same(first, second)
