@@ -120,6 +120,9 @@ type KeyboardKind =
     | Search
     /// Text that isn't learned or suggested.
     | Password
+    /// No on-screen keyboard and nothing composed: letters from a physical keyboard are all that is wanted (a list
+    /// that jumps to what is typed).
+    | None
 
 /// What a window is told while the focused element takes typed text (`IWindow.SetTextInput`).
 [<Struct>]

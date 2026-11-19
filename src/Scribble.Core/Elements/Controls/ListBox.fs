@@ -66,6 +66,7 @@ type internal ListBoxState() =
     member val Anchor: obj = null with get, set
     member val LastClickKey: obj = null with get, set
     member val LastClickTime = TimeSpan.MinValue with get, set
+    member val Typeahead = TypeaheadState() with get
 
 /// What ListBox and its item containers share: the selection, focus among the items, invoking.
 module internal ListBoxLogic =
@@ -196,6 +197,28 @@ module internal ListBoxLogic =
         | Some(struct (k, _)) -> k
         | None -> (stateOf lb).FocusKey
 
+    let private timeOf (lb: Element) = match lb.Root with ValueSome r -> r.Time | ValueNone -> TimeSpan.Zero
+
+    /// Typed text nothing inside the item used: the list goes to the next item that starts with what has been
+    /// typed (DESIGN.md, "9e", decision 64). One selection follows it; with several, or none, only the focus.
+    let textInput (lb: Element) (args: TextInputEventArgs) =
+        let s = stateOf lb
+        let n = ItemsView.count lb
+        let now = timeOf lb
+        // A space on its own selects (the key); it only searches while letters are building up.
+        if n > 0 && (Typeahead.isActive s.Typeahead now || not (String.IsNullOrWhiteSpace args.Text)) then
+            args.Handle()
+            let key = focusedKey lb
+            let current = (if isNull key then ValueNone else ItemsView.indexOf lb key) |> ValueOption.defaultValue -1
+            match Typeahead.find s.Typeahead now args.Text n current (fun i -> ItemsView.itemText lb (ItemsView.itemAt lb i)) with
+            | ValueSome t ->
+                let tk = ItemsView.keyAt lb t
+                if lb.Get ListBoxProps.selectionMode = SelectionMode.Single then
+                    select lb [ tk ]
+                    s.Anchor <- tk
+                focusIndex lb t
+            | ValueNone -> ()
+
     /// Keys nothing inside the item used: moving focus, selecting, invoking.
     let keyDown (lb: Element) (args: KeyEventArgs) =
         let s = stateOf lb
@@ -239,6 +262,8 @@ module internal ListBoxLogic =
                 | Key.Enter when not ctrl && not shift && current.IsSome ->
                     args.Handle()
                     if not args.IsRepeat then invoke lb key
+                // Letters are building up: Space is one of them (it comes as typed text).
+                | Key.Space when not ctrl && Typeahead.isActive s.Typeahead (timeOf lb) -> args.Handle()
                 | Key.Space when not ctrl && current.IsSome ->
                     args.Handle()
                     if not args.IsRepeat then
@@ -358,7 +383,15 @@ module ListBox =
     let private sync (lb: Element) =
         let selected = lb.Get ListBoxProps.selected
         let target = ListBoxLogic.tabTarget lb
+        // With a text selector, an item's name for screen readers is that text (its view may have none).
+        let named = (lb.Get ItemsViewProps.textSelector).IsSome
         for struct (key, el) in ItemsView.realized lb do
+            if named then
+                match ItemsView.indexOf lb key with
+                | ValueSome i ->
+                    let label = Fixed(ItemsView.itemText lb (ItemsView.itemAt lb i))
+                    if el.Get SemanticsProps.label <> label then el.Set(SemanticsProps.label, label)
+                | ValueNone -> ()
             let isSelected = ListBoxLogic.has selected key
             let isTarget = obj.Equals(key, target)
             let changed = el.Get TabHeaderProps.isSelected <> isSelected || el.Get LayoutProps.isTabStop <> isTarget
@@ -390,6 +423,7 @@ module ListBox =
         Element.extend ItemsView.Type "ListBox" [
             Element.measure measure
             Element.keyDown (fun ctx args -> ListBoxLogic.keyDown ctx.Element args)
+            Element.textInput (fun ctx args -> ListBoxLogic.textInput ctx.Element args)
             Element.defaults [
                 Setting.create ItemsViewProps.container (ValueSome wrap)
                 Semantics.multiSelectableFrom(ListBoxProps.selectionMode, fun m -> m = SelectionMode.Multiple)

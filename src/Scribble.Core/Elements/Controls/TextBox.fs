@@ -236,6 +236,8 @@ module TextBoxProps =
     let acceptsTab = Prop.define "AcceptsTab" false Affects.Nothing
     /// Which on-screen keyboard suits the text (a phone).
     let keyboard = Prop.define "Keyboard" KeyboardKind.Text Affects.Nothing
+    /// Several lines: Enter submits and Shift+Enter makes the new line.
+    let submitOnEnter = Prop.define "SubmitOnEnter" false Affects.Nothing
     let internal state: Prop<TextBoxState> = Prop.local "TextBoxState" null
 
 /// Text to type in, one line or several (DESIGN.md, "M9: TextBox"):
@@ -308,6 +310,11 @@ type TextBox =
     /// `Email`, `Url`, `Phone` or `Search`. Nothing is checked: a Number box can still be given letters (pasted,
     /// or from a desktop's keyboard). A password box gets the password keyboard by itself.
     static member keyboard<'k when 'k :> TextBox>(value: KeyboardKind) : Setting<'k> = Setting.create TextBoxProps.keyboard value
+    /// True, in a multi-line box: Enter calls `onSubmitted` and Shift+Enter makes the new line, as a message box
+    /// does (Ctrl+Enter still submits). False (default): Enter makes the new line and Ctrl+Enter submits. The box
+    /// keeps its text after a submit: give it `text` and clear that in the handler. On a phone the on-screen
+    /// Enter submits too, so a box that should take new lines there needs a Send button and this left off.
+    static member submitOnEnter<'k when 'k :> TextBox>(value: bool) : Setting<'k> = Setting.create TextBoxProps.submitOnEnter value
 
 module TextBox =
     /// The width it asks for when nothing stretches it (without its padding), in DIPs.
@@ -889,7 +896,9 @@ module TextBox =
             | Key.PageDown when multi -> vertical (page ())
             | Key.Home when multi && not ctrl -> lineEdge false
             | Key.End when multi && not ctrl -> lineEdge true
-            // Several lines: Enter (and Shift+Enter) is a line break and a step of its own; Ctrl+Enter submits.
+            // Several lines: Enter (and Shift+Enter) is a line break and a step of its own; Ctrl+Enter submits. With
+            // `submitOnEnter`, Enter alone submits too (DESIGN.md, "9e", decision 60).
+            | Key.Enter when multi && not ctrl && not shift && e.Get TextBoxProps.submitOnEnter -> submit ()
             | Key.Enter when multi && not ctrl -> if not readOnly then typed EditKind.Single "\n"
             | Key.Enter when multi -> submit ()
             | Key.Tab when e.Get TextBoxProps.acceptsTab && not ctrl && not shift && not readOnly -> typed EditKind.Typing "\t"
@@ -1192,6 +1201,11 @@ module TextBox =
             Element.defaults [
                 Semantics.role Role.TextBox
                 Semantics.labelFrom TextBoxProps.placeholder
+                // Its text (a password's is not told), and whether it can be changed.
+                Setting.create SemanticsProps.value (
+                    Read([| TextBoxProps.text; TextBoxProps.isPassword |], fun e -> if e.Get TextBoxProps.isPassword then ValueNone else ValueSome(e.Get TextBoxProps.text)))
+                Setting.create SemanticsProps.isProtected (Read([| TextBoxProps.isPassword |], fun e -> e.Get TextBoxProps.isPassword))
+                Semantics.readOnlyFrom TextBoxProps.isReadOnly
                 Layoutable.foreground (Color.Hex 0xE6E6F0)
                 Border.background (Color.Hex 0x24243A)
                 Border.borderBrush (Color.Hex 0x4A4A68)

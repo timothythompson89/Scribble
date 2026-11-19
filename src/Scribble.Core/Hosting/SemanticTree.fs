@@ -87,6 +87,9 @@ type SemanticNode
         isMultiSelectable: bool,
         range: SemanticRange voption,
         orientation: Orientation voption,
+        value: string voption,
+        isReadOnly: bool,
+        isProtected: bool,
         scroll: SemanticScroll voption,
         position: SemanticPosition voption,
         isDisabled: bool,
@@ -108,6 +111,12 @@ type SemanticNode
     member _.IsMultiSelectable = isMultiSelectable
     member _.Range = range
     member _.Orientation = orientation
+    /// Its text value (what a text box holds); none for other elements, and for a password.
+    member _.Value = value
+    /// Its value can be read but not changed.
+    member _.IsReadOnly = isReadOnly
+    /// What it holds is hidden (a password): `Value` is none.
+    member _.IsProtected = isProtected
     /// What a scroll area shows of what it scrolls over.
     member _.Scroll = scroll
     /// Its place in its set (a tab among the tabs, an item among all of a list's items).
@@ -133,6 +142,14 @@ type SemanticNode
         let n (v: float) = v.ToString("0.###", CultureInfo.InvariantCulture)
         sb.Append(string role) |> ignore
         if name <> "" then sb.Append(" \"").Append(name).Append('"') |> ignore
+        match value with
+        | ValueSome v ->
+            // A line: long text is cut, line breaks shown as "\n".
+            let shown = (if v.Length > 40 then v.Substring(0, 40) + "…" else v).Replace("\n", "\\n")
+            sb.Append(" value \"").Append(shown).Append('"') |> ignore
+        | ValueNone -> ()
+        if isProtected then sb.Append(" password") |> ignore
+        if isReadOnly then sb.Append(" read-only") |> ignore
         match isChecked with
         | ValueSome CheckState.On -> sb.Append(" checked") |> ignore
         | ValueSome CheckState.Mixed -> sb.Append(" mixed") |> ignore
@@ -253,8 +270,22 @@ module internal SemanticBuilder =
         | ValueNone, ValueSome _ -> ValueSome Role.ListItem
         | ValueNone, ValueNone -> ValueNone
 
-    /// The nodes `e` gives: its own, or (without a role) those of what's inside it.
-    let rec build (e: Element) (position: SemanticPosition voption) : SemanticNode list =
+    /// The text of every Label in the tree under `root`, by the element it is for (the first label wins).
+    let labelsIn (root: Element) =
+        let labels = Dictionary<Element, string>(HashIdentity.Reference)
+        let rec walk (e: Element) =
+            if e.IsVisible then
+                if obj.ReferenceEquals(e.Type, Label.Type) then
+                    match Label.findTarget e with
+                    | ValueSome target when not (labels.ContainsKey target) -> labels[target] <- e.Get TextProps.text
+                    | _ -> ()
+                for c in e.Children do
+                    walk c
+        walk root
+        labels
+
+    /// The nodes `e` gives: its own, or (without a role) those of what's inside it. `labels`: `labelsIn` its tree.
+    let rec build (labels: Dictionary<Element, string>) (e: Element) (position: SemanticPosition voption) : SemanticNode list =
         if not e.IsVisible then []
         else
             let computed = computedOf e
@@ -276,7 +307,7 @@ module internal SemanticBuilder =
                                       e.ReportError ex
                                       ValueNone
                               | ValueNone -> ValueNone
-                          yield! build c p ]
+                          yield! build labels c p ]
                 let kids =
                     if itemPosition.IsSome then
                         kids |> List.sortBy (fun n -> match n.Position with ValueSome p -> p.Index | ValueNone -> Int32.MaxValue)
@@ -293,7 +324,13 @@ module internal SemanticBuilder =
 #endif
                     kids
                 | ValueSome role ->
-                    let label = read computed e SemanticsProps.label
+                    // Its own `Semantics.label`, else the Label that is for it, else what its type reads its name
+                    // from (a TextBox's placeholder).
+                    let label =
+                        match valueOf computed e SemanticsProps.label, labels.TryGetValue e with
+                        | Fixed own, _ when own <> "" -> own
+                        | _, (true, text) when text <> "" -> text
+                        | _ -> read computed e SemanticsProps.label
                     let kids, content =
                         if namedByContent role then
                             let names = kids |> List.choose (fun k -> if k.Name <> "" then Some k.Name else None)
@@ -318,6 +355,9 @@ module internal SemanticBuilder =
                               read computed e SemanticsProps.multiSelectable,
                               read computed e SemanticsProps.range,
                               read computed e SemanticsProps.orientation,
+                              read computed e SemanticsProps.value,
+                              read computed e SemanticsProps.readOnly,
+                              read computed e SemanticsProps.isProtected,
                               scroll,
                               position,
                               not e.IsEnabled,
@@ -330,7 +370,7 @@ module internal SemanticBuilder =
 
     let ofTree (tree: ElementTree) =
         match tree.Root with
-        | ValueSome root -> build root ValueNone
+        | ValueSome root -> build (labelsIn root) root ValueNone
         | ValueNone -> []
 
     /// The layers a reader can reach: from the top modal one showing something up (as input).
@@ -365,7 +405,7 @@ module internal SemanticBuilder =
             match why e with
             | ValueSome reason -> Error reason
             | ValueNone ->
-                match find e (build (top e) ValueNone) with
+                match find e (build (labelsIn (top e)) (top e) ValueNone) with
                 | Some n -> Ok n
                 | None ->
                     let computed = computedOf e

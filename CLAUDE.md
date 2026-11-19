@@ -47,7 +47,7 @@ dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through 
 dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if a picture changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-18: 1,241 unit tests plus 7
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-18: 1,252 unit tests plus 7
   timing tests skipped; 100 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and
@@ -55,6 +55,8 @@ dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if
   (`SCRIBBLE_UPDATE_SNAPSHOTS=1`; actual output in `bin/snapshots`). `BackendTests` requires D3D12 and Vulkan to
   agree (one written exception: `dashes@2x`). Shader maths must match on every backend: no built-in whose precision
   WGSL leaves open (`atan2` is a polynomial), colours rounded to 8 bits in the shader (`exact8`).
+- `SCRIBBLE_LOG_TEXT=1` writes what SDL says of text input (typed text, an input method's composing steps, the
+  caret's place) to the console: for finding out what an input method sends on a machine. It prints what is typed.
 - `SCRIBBLE_GPU_BACKEND=d3d12|vulkan` forces a backend (apps and the test fixture). Default on Windows: D3D12,
   presenting through a DirectComposition visual. GPU devices in tests are created and disposed one at a time
   (`GpuLifetime.Lock`): in parallel they deadlocked NVIDIA's driver.

@@ -190,6 +190,11 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
                 let f = PlatformJs.setTextInput
                 let args = f.Args()
                 match request with
+                // Letters only: they come from key presses while the hidden field is not focused, and a phone
+                // shows no keyboard.
+                | ValueSome r when r.Keyboard = KeyboardKind.None ->
+                    for i in 2..7 do
+                        args[i].ToJS 0.0
                 | ValueSome r ->
                     // The index into `inputModes` in scribble-platform.js (declaration order).
                     let kind =
@@ -202,6 +207,7 @@ type internal BrowserWindow(elementId: string, initialSize: PixelSize, onEvent: 
                         | KeyboardKind.Phone -> 5
                         | KeyboardKind.Search -> 6
                         | KeyboardKind.Password -> 7
+                        | KeyboardKind.None -> 0
                     args[2].ToJS 1.0
                     args[3].ToJS r.CaretX
                     args[4].ToJS r.CaretY

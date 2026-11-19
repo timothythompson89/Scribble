@@ -12,8 +12,9 @@ open Scribble.Samples.Gallery.Common
 let private field (placeholder: string) (settings: Setting<TextBox> list) =
     TextBox.create [ yield TextBox.placeholder placeholder; yield! settings ]
 
-let private label (text: string) (row: int) =
-    TextBlock.create [ TextBlock.text text; Grid.row row; TextBlock.verticalAlignment VerticalAlignment.Center ]
+/// The label of the field named `target`: a screen reader calls the field by it, and a click on it focuses the field.
+let private label (text: string) (target: string) (row: int) =
+    Label.create [ Label.text text; Label.target target; Grid.row row; Label.verticalAlignment VerticalAlignment.Center ]
 
 /// Labels in an Auto column, fields in a star column that keeps at least 120 DIPs, small buttons in
 /// another Auto column; the notes span two columns; the last row's buttons sit at the right.
@@ -29,15 +30,16 @@ let private form =
         Grid.columnSpacing 12.0
         Grid.rowSpacing 8.0
         Grid.children [
-            label "Name" 0
-            field "Ada Lovelace" [ Grid.cell (0, 1) ]
+            label "Name" "name" 0
+            field "Ada Lovelace" [ TextBox.name "name"; Grid.cell (0, 1) ]
             Button.create [ Button.text "Check"; Grid.cell (0, 2) ]
-            label "Email" 1
-            field "ada@example.com" [ Grid.cell (1, 1) ]
+            label "Email" "email" 1
+            field "ada@example.com" [ TextBox.name "email"; TextBox.keyboard KeyboardKind.Email; Grid.cell (1, 1) ]
             Button.create [ Button.text "Verify"; Grid.cell (1, 2) ]
-            TextBlock.create [ TextBlock.text "Notes"; Grid.row 2; TextBlock.margin (0.0, 8.0, 0.0, 0.0) ]
+            Label.create [ Label.text "Notes"; Label.target "notes"; Grid.row 2; Label.margin (0.0, 8.0, 0.0, 0.0) ]
             // Several lines: it wraps at the two columns' width and grows from two lines to four, then scrolls.
             field "Spans the field and button columns" [
+                TextBox.name "notes"
                 Grid.cell (2, 1)
                 Grid.columnSpan 2
                 TextBox.multiline true

@@ -61,6 +61,12 @@ let private controls =
         let name = ctx.useState "Ada"
         let submitted = ctx.useState ""
         let notes = ctx.useState "Scribble draws this box itself: the text, the selection and the caret.\nThis is a second paragraph."
+        let message = ctx.useState ""
+        let sent = ctx.useState ""
+        let send () =
+            if message.Current.Trim() <> "" then
+                sent.Set message.Current
+                message.Set ""
         let clipboard = ctx.useClipboard ()
         let greeting = if name.Current = "" then "Hello." else "Hello, " + name.Current + "."
         let some = picked.Current
@@ -224,6 +230,23 @@ let private controls =
                                 + string (System.Globalization.StringInfo(notes.Current).LengthInTextElements)
                                 + " characters")
                         ]
+                        // A message box: Enter sends, Shift+Enter makes a new line. Its text is the page's, which
+                        // the send clears.
+                        wrap [
+                            TextBox.create [
+                                TextBox.multiline true
+                                TextBox.submitOnEnter true
+                                TextBox.minLines 1
+                                TextBox.maxLines 4
+                                TextBox.width 320.0
+                                TextBox.text message.Current
+                                TextBox.placeholder "A message: Enter sends it"
+                                TextBox.onTextChanged message.Set
+                                TextBox.onSubmitted (fun _ -> send ())
+                            ]
+                            Button.create [ Button.text "Send"; Button.verticalAlignment VerticalAlignment.Bottom; Button.onClick (fun _ -> send ()) ]
+                        ]
+                        TextBlock.create [ TextBlock.text (if sent.Current = "" then "Nothing sent yet." else "Sent: " + sent.Current.Replace("\n", " ⏎ ")) ]
                         TextBox.create [
                             TextBox.multiline true
                             TextBox.acceptsTab true

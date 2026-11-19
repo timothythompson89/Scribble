@@ -24,6 +24,44 @@ type internal ItemsSource(original: obj, count: unit -> int, item: int -> obj, i
 [<Sealed>]
 type internal ItemsFunc<'R>(f: obj -> 'R) =
     member _.Invoke(item: obj) = f item
+    /// For a view selector made from text (`viewSelector (fun p -> p.Name)`): that text, which is also what
+    /// typeahead searches.
+    member val Text: (obj -> string) voption = ValueNone with get, set
+
+/// The letters typed into a list so far, and when the last came (DESIGN.md, "9e", decision 64).
+[<Sealed; AllowNullLiteral>]
+type internal TypeaheadState() =
+    member val Text = "" with get, set
+    member val Time = System.TimeSpan.MinValue with get, set
+
+/// Jumping to the item that starts with what is typed.
+module internal Typeahead =
+    /// Letters typed further apart than this start a new search.
+    let pause = System.TimeSpan.FromSeconds 1.0
+
+    /// Letters are building up: more typed now adds to them (and Space is one of them).
+    let isActive (s: TypeaheadState) (now: System.TimeSpan) = s.Text.Length > 0 && now - s.Time <= pause
+
+    /// `typed` arrived at `now` with the item at `current` focused (-1: none): the index to go to, if an item's
+    /// text starts with what has been typed. One letter, or the same letter again, goes to the next such item
+    /// after the current one (round to the first); more letters stay on the current item while it still matches.
+    let find (s: TypeaheadState) (now: System.TimeSpan) (typed: string) (count: int) (current: int) (textAt: int -> string) : int voption =
+        if not (isActive s now) then s.Text <- ""
+        s.Text <- s.Text + typed
+        s.Time <- now
+        let query = s.Text
+        let first = query.Substring(0, 1)
+        let sameLetter = query.Length > 1 && query |> Seq.forall (fun c -> System.String.Equals(string c, first, System.StringComparison.OrdinalIgnoreCase))
+        let needle = if sameLetter then first else query
+        let start = if needle.Length = 1 then current + 1 else max 0 current
+        let mutable found = ValueNone
+        let mutable i = 0
+        while found.IsNone && i < count do
+            let index = ((start + i) % count + count) % count
+            let text = textAt index
+            if not (isNull text) && text.StartsWith(needle, System.StringComparison.OrdinalIgnoreCase) then found <- ValueSome index
+            i <- i + 1
+        found
 
 /// Sums over item indices (heights and counts of measured items) in O(log n). Kept for its whole
 /// capacity, so items appended within it keep what's there (a Fenwick tree's entries past the

@@ -231,7 +231,9 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                             match layer.Tree.TextArea with
                             | ValueSome(struct (element, rect, keyboard, multiline)) when obj.ReferenceEquals(element, e) ->
                                 struct (rect, keyboard, multiline)
-                            | _ -> struct (Rect.Create(0.0, 0.0, e.Bounds.Width, e.Bounds.Height), KeyboardKind.Text, false)
+                            // No caret of its own (a list that jumps to what is typed, an element with
+                            // `onTextInput`): typed letters, but no on-screen keyboard (DESIGN.md, "9e", decision 67).
+                            | _ -> struct (Rect.Create(0.0, 0.0, e.Bounds.Width, e.Bounds.Height), KeyboardKind.None, false)
                         ValueSome
                             { CaretX = (origin.X + rect.X) * scale
                               CaretY = (origin.Y + rect.Y) * scale

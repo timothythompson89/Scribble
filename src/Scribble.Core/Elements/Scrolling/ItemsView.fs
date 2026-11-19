@@ -56,6 +56,8 @@ module ItemsViewProps =
         // ToString prints with %A, which NativeAOT can't run; give them a view selector.
         Prop.define "View selector" (ItemsFunc<View voption>(fun item -> ValueSome(TextBlock.create [ TextBlock.text (string item) ]))) Affects.Measure
         |> AppState.mark
+    /// An item's text, when its view isn't text: what typeahead searches and a screen reader calls it.
+    let internal textSelector: Prop<ItemsFunc<string> voption> = Prop.define "Text selector" ValueNone Affects.Nothing |> AppState.mark
     let layout = Prop.define "Layout" ItemsLayout.Stack Affects.Measure
     let scroller = Prop.define "Scroller" (ValueNone: Scroller voption) Affects.Measure |> AppState.mark
     let internal state = Prop.local "ItemsState" (null: ItemsState)
@@ -103,8 +105,13 @@ type ItemsView =
     /// `viewSelector (fun (p: Person) -> p.Name)`. Without a view selector, an item shows `string item`
     /// (fine for strings, numbers and enums; a union's or record's ToString needs %A, which NativeAOT can't run).
     static member viewSelector<'k, 'T when 'k :> ItemsView>(f: 'T -> string) : Setting<'k> =
-        Setting.create ItemsViewProps.viewSelector (ItemsFunc<View voption>(fun item -> ValueSome(ItemsView.textView (f (unbox<'T> item)))))
+        Setting.create ItemsViewProps.viewSelector (ItemsFunc<View voption>((fun item -> ValueSome(ItemsView.textView (f (unbox<'T> item)))), Text = ValueSome(fun item -> f (unbox<'T> item))))
     static member internal textView(text: string) = TextBlock.create [ TextBlock.text text ]
+    /// An item's text when a view draws it: `textSelector (fun (p: Person) -> p.Name)`. A list jumps to the item
+    /// whose text starts with what is typed (ListBox, ComboBox), and a screen reader calls the item by it. Without
+    /// it: the text form of `viewSelector`, else the item itself if it is a string, a number or an enum.
+    static member textSelector<'k, 'T when 'k :> ItemsView>(f: 'T -> string) : Setting<'k> =
+        Setting.create ItemsViewProps.textSelector (ValueSome(ItemsFunc<string>(fun item -> f (unbox<'T> item))))
     /// `ItemsLayout.stack` (default), `fixedStack height`, `wrap width height` or `grid columns`.
     static member layout<'k when 'k :> ItemsView>(layout: ItemsLayout) : Setting<'k> = Setting.create ItemsViewProps.layout layout
     /// A scroller to scroll to items from code (`ctx.useScroller ()`, then `scroller.ScrollTo key`).
@@ -678,6 +685,25 @@ module ItemsView =
     /// Item `i`'s key and the item.
     let internal keyAt (e: Element) (i: int) = (stateOf e).Store.KeyAt i
     let internal itemAt (e: Element) (i: int) = (stateOf e).Source.Item i
+    /// An item's text (DESIGN.md, "9e", decision 66): `textSelector`'s, else the text a text `viewSelector` shows,
+    /// else the item itself when it is plain (a string, a number, an enum; a record's or union's ToString needs
+    /// %A, which NativeAOT can't run). Read from `e`'s settings, which a ComboBox has too.
+    let internal itemText (e: Element) (item: obj) : string =
+        try
+            match e.Get ItemsViewProps.textSelector with
+            | ValueSome f -> f.Invoke item
+            | ValueNone ->
+                match (e.Get ItemsViewProps.viewSelector).Text with
+                | ValueSome f -> f item
+                | ValueNone ->
+                    match item with
+                    | null -> ""
+                    | :? string as s -> s
+                    | :? IConvertible as c -> c.ToString Globalization.CultureInfo.CurrentCulture
+                    | _ -> ""
+        with ex ->
+            e.ReportError ex
+            ""
     /// Where the item with `key` is (ValueNone: not in the source).
     let internal indexOf (e: Element) (key: obj) = (stateOf e).Store.IndexOf key
     /// The realized items: key and element.

@@ -12,6 +12,7 @@ type internal ComboState() =
     member val Store: KeyStore = TypedKeyStore<obj, obj>() :> KeyStore with get, set
     member val Content: Element voption = ValueNone with get, set
     member val Scroller = Scroller() with get
+    member val Typeahead = TypeaheadState() with get
 
 module ComboBoxProps =
     /// The selected key (none: the placeholder shows). Given by the view: controlled; otherwise its own.
@@ -60,7 +61,11 @@ type ComboBox =
         Setting.create ItemsViewProps.viewSelector (ItemsFunc<View voption>(fun item -> ValueSome(f (unbox<'T> item))))
     /// The text for one item, in the list and in the box (and its name for screen readers).
     static member viewSelector<'k, 'T when 'k :> ComboBox>(f: 'T -> string) : Setting<'k> =
-        Setting.create ItemsViewProps.viewSelector (ItemsFunc<View voption>(fun item -> ValueSome(TextBlock.create [ TextBlock.text (f (unbox<'T> item)) ])))
+        Setting.create ItemsViewProps.viewSelector (ItemsFunc<View voption>((fun item -> ValueSome(TextBlock.create [ TextBlock.text (f (unbox<'T> item)) ])), Text = ValueSome(fun item -> f (unbox<'T> item))))
+    /// An item's text when a view draws it, as a ListBox's `textSelector`: typing picks the item whose text
+    /// starts with what is typed, and a screen reader calls the item by it.
+    static member textSelector<'k, 'T when 'k :> ComboBox>(f: 'T -> string) : Setting<'k> =
+        Setting.create ItemsViewProps.textSelector (ValueSome(ItemsFunc<string>(fun item -> f (unbox<'T> item))))
     /// The selected key, or none (the placeholder shows). Given: controlled (it shows exactly this);
     /// left out: its own selection, starting with none. A key not in the source shows the placeholder.
     static member selected<'k, 'K when 'k :> ComboBox>(key: 'K voption) : Setting<'k> =
@@ -169,6 +174,7 @@ module ComboBox =
                 Setting.create ItemsViewProps.source s.Source
                 Setting.create ItemsViewProps.keySelector (e.Get ItemsViewProps.keySelector)
                 Setting.create ItemsViewProps.viewSelector (e.Get ItemsViewProps.viewSelector)
+                Setting.create ItemsViewProps.textSelector (e.Get ItemsViewProps.textSelector)
                 ListBox.selectionMode SelectionMode.None
                 Setting.create ListBoxProps.selected (e.Get ComboBoxProps.selected |> ValueOption.toList)
                 Setting.create ListBoxProps.onItemInvoked (ValueSome(fun (key: obj) (_: obj) -> commit e key))
@@ -282,7 +288,23 @@ module ComboBox =
         | Key.Up when held = Modifiers.None && n > 0 -> pick (if at < 0 then 0 else at - 1)
         | Key.Home when held = Modifiers.None && n > 0 -> pick 0
         | Key.End when held = Modifiers.None && n > 0 -> pick (n - 1)
+        // Letters are building up: Space is one of them (it comes as typed text), and doesn't open the list.
+        | Key.Space when held = Modifiers.None && Typeahead.isActive s.Typeahead ctx.Time -> args.Handle()
         | _ -> ()
+
+    /// Closed: typing picks the next item whose text starts with what has been typed (DESIGN.md, "9e",
+    /// decision 65). Open, the keys go to its list, which does the same with its highlight.
+    let private textInput (ctx: InputContext) (args: TextInputEventArgs) =
+        let e = ctx.Element
+        let s = stateOf e
+        let n = s.Store.Count
+        let now = ctx.Time
+        if n > 0 && (Typeahead.isActive s.Typeahead now || not (String.IsNullOrWhiteSpace args.Text)) then
+            args.Handle()
+            let at = selectedIndex e s |> ValueOption.defaultValue -1
+            match Typeahead.find s.Typeahead now args.Text n at (fun i -> ItemsView.itemText e (s.Source.Item i)) with
+            | ValueSome i when i <> at -> select e (ValueSome(s.Store.KeyAt i))
+            | _ -> ()
 
     /// A screen reader opening or closing the list.
     let private semanticAction (ctx: InputContext) (action: SemanticAction) =
@@ -301,6 +323,7 @@ module ComboBox =
             Element.arrange arrange
             Element.render render
             Element.keyDown keyDown
+            Element.textInput textInput
             // The dark base look (also without a theme); the theme adds the state looks.
             Element.defaults [
                 Semantics.role Role.ComboBox

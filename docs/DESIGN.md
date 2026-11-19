@@ -81,7 +81,10 @@ And **step 9d, IME composition and the phone keyboard** (section "9d: IME compos
 checked by Tim on the desktop and on his Android phone, 2026-11-18; no iPhone tried; Japanese draws as
 missing-glyph boxes until fonts for other scripts are decided).
 
-Next: M9 step 9e (typeahead, labels and a chat-style Enter for multi-line boxes), then selection by touch with the Menu control. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+And **step 9e** (section "9e: what waited for M9": `submitOnEnter`, typeahead in ListBox and ComboBox, the Label
+element, a TextBox's text for screen readers; checked by Tim, 2026-11-18).
+
+Next: selection by touch with the Menu control, which ends M9's TextBox work. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -156,7 +159,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Scrolling:** ScrollViewer (bars, thumb drag, wheel, keys, touch with fling) and ItemsView (virtualized lists
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
-- **Elements:** Border, TextBlock, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
+- **Elements:** Border, TextBlock, Label, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
   TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
@@ -4217,10 +4220,76 @@ in Edge and Chrome).**
 - **Tried by Tim (2026-11-18), desktop, Japanese IME:** every composing step, the candidates and the commit
   arrive (`SCRIBBLE_LOG_TEXT=1` writes what SDL sends to the console). The IME starts in "A" mode, which composes
   nothing in any app: あ is Alt+` or a click on the taskbar's A.
+- **`SCRIBBLE_LOG_TEXT=1` stays** (Tim asked, 2026-11-18): off unless set, AOT-safe, and the only way to see what an
+  input method sends on a machine. It prints what is typed, passwords included: a developer's switch.
 - **Known limit, left for later (Tim, 2026-11-18): Japanese draws as missing-glyph boxes.** Scribble draws with
   the fonts an app bundles; the Gallery has Inter and Twemoji, neither with Japanese. Fonts for other scripts are
   a topic of their own (which scripts, download size, a font package like the emoji one, or the system's fonts,
   which would break "same pixels on every platform").
+
+### 9e: what waited for M9 (planned 2026-11-18)
+
+Facts at the start. The chat-style Enter was added to this step by Tim (above, after round 1). Typeahead was put
+off twice (M8's ListBox and ComboBox); an item drawn by a view has no text of its own to search. Labels are text
+only (`Semantics.label`). Since 9d the window's text input is on whenever the focused element takes typed text: a
+ListBox taking letters would bring a phone's keyboard up.
+
+**Round 6 (Tim: yes to all, 2026-11-18).**
+60. **`TextBox.submitOnEnter true`:** in a multi-line box Enter calls `onSubmitted` and Shift+Enter makes the new
+    line; Ctrl+Enter still submits. Off by default (9c's behaviour stays).
+61. **The box doesn't clear itself after a submit:** a message box gives its text through `TextBox.text` and clears
+    it in its own state (a failed send keeps the text).
+62. **On a phone the rule is the same:** the on-screen Enter submits; an app that wants new lines there adds a Send
+    button and leaves the setting off.
+63. **No warning for a one-line box without `onSubmitted`:** Enter goes on to whatever is around the box.
+64. **ListBox typeahead:** typed letters move the selection to the next item whose text starts with them. They
+    build up and start again after a one-second pause; the same letter again steps through the items starting with
+    it; Space is part of the search while letters are building up, else it selects as before. It searches the
+    source, so it finds items that aren't realized.
+65. **ComboBox typeahead:** closed, typing picks the matching item; open, it moves the highlight in the list.
+66. **An item's text:** `ItemsView.textSelector (fun p -> p.Name)`, optional. Without it the text form of
+    `viewSelector`, else `string item`. Also the item's name for screen readers when a view draws it.
+67. **A list takes typed letters without asking for a keyboard:** an element that takes text but reports no caret
+    gets letters from a physical keyboard; no on-screen keyboard shows and no input method composes into it. Only
+    an element that reports a caret (a TextBox) asks for those.
+68. **A `Label` element names another control:** `Label.create [ Label.text "Email"; Label.target "email" ]` points
+    at the control named "email" (`TextBox.name`). The target takes the label's text as its name for screen readers
+    unless it sets `Semantics.label` itself; clicking the label focuses the target; the target is the nearest
+    element with that name, searching outward from the label. A TextBox also reports its text, whether it is
+    read-only and whether it is a password (whose text is not reported).
+
+Status: **agreed (Tim, 2026-11-18: "Yes to all").**
+
+**As built (2026-11-18; checked by Tim on the desktop the same day).**
+- **`TextBox.submitOnEnter`** changes one key in a multi-line box; a one-line box ignores it.
+- **Typeahead** is one rule (`Typeahead.find`, with a `TypeaheadState`, in `KeyStore.fs`) used by ListBox and by a
+  closed ComboBox; an open ComboBox's list is a ListBox, so it has it already. A single letter, or the same letter
+  again, goes to the next match after the current item; more letters stay on the current item while it matches.
+  Matching ignores case and nothing else (an accented letter is not its plain one). In a Single list the selection
+  follows; in Multiple and None only the focus moves.
+- **An item's text** (`ItemsView.itemText`): `textSelector`, else the text of a text `viewSelector` (the function is
+  kept on the view selector), else the item when it is a string, a number or an enum. A record with neither has no
+  text: typing finds nothing. With a `textSelector`, a ListBox gives each realized item that text as its
+  `Semantics.label`.
+- **`KeyboardKind.None`** (decision 67): the host asks with it for a focused element that takes text but has
+  reported no caret. The browser treats it as "off" (letters come from key presses while the hidden field has no
+  focus); SDL starts text input, which is how a desktop gets letters at all. This also changes 9d: an element with
+  only `onTextInput` no longer raises a phone's keyboard.
+- **`Label`** (`Elements/Basic/Label.fs`) extends TextBlock, so it draws as one (the Gallery's form pictures did not
+  change). `Label.findTarget` looks beside the label, then beside each thing that holds it, never looking at the
+  same subtree twice. The semantic tree collects every Label's target once per build. A name comes from the
+  element's own fixed `Semantics.label`, else the Label for it, else what its type reads its name from (a
+  TextBox's placeholder), else its content.
+- **Semantics:** `SemanticNode.Value`, `IsReadOnly`, `IsProtected`; `Semantics.value`, `valueFrom`, `isReadOnly`,
+  `readOnlyFrom` for element types of one's own. `Describe()` shows them (`TextBox "Name" value "Ada"`).
+- **Not in the round, chosen while building:** a press on a Label whose target is missing takes the focus away,
+  as a press on any text does; typeahead on a closed ComboBox keeps Space as a letter while letters build up, so
+  it doesn't open the list then.
+- **Gallery:** a message box with `submitOnEnter` and a Send button on the Controls page; the Layout page's form
+  uses Labels, and its Email field asks for the email keyboard.
+- **Tests:** 11 new unit tests (`TypeaheadAndLabelTests.fs`), one of them reaching item 9,000 of 10,000 with at
+  most 60 items realized. Regenerated after looking: `gallery-phone-controls@3x` (a longer page). Totals: 1,252
+  unit (+7 timing), 100 rendering, 7 timing.
 
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 

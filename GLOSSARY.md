@@ -201,6 +201,10 @@ _Avoid_: logical line, hard line
 One row of text as drawn; a paragraph that wraps is several.
 _Avoid_: visual line, row
 
+**Typeahead**:
+A list going to the item whose text starts with what is typed.
+_Avoid_: type-to-select, incremental search, quick find
+
 **Composition**:
 Text an input method (an IME, a phone's keyboard) is still working on: shown underlined at the caret, not part of the text until it is committed.
 _Avoid_: preedit, marked text, IME string

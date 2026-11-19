@@ -32,6 +32,7 @@
     <Compile Include="Elements/Basic/Border.fs" />
     <Compile Include="Elements/Basic/Flyout.fs" />
     <Compile Include="Elements/Basic/TextBlock.fs" />
+    <Compile Include="Elements/Basic/Label.fs" />
     <Compile Include="Elements/Basic/IconView.fs" />
     <Compile Include="Elements/Basic/ImageView.fs" />
     <Compile Include="Elements/Basic/Separator.fs" />

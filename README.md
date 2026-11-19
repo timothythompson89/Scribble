@@ -1367,6 +1367,17 @@ ComboBox.create [
   box with `ComboBox.style [ States.isOpen ] [ ... ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
   its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. An editable ComboBox comes after M9.
 
+- **Typing in a list** (ListBox, ComboBox) goes to the item whose text starts with what is typed: letters build
+  up until a one-second pause, and the same letter again steps through the items starting with it. It searches
+  the source, so it reaches items that aren't on screen. An item's text is what a text `viewSelector` shows; for
+  items drawn by a view, say what it is with `ListBox.textSelector (fun p -> p.Name)` (also the item's name for a
+  screen reader).
+
+- **Label** names another control, as HTML's `<label for>`: `Label.create [ Label.text "Email"; Label.target "email" ]`
+  with `TextBox.create [ TextBox.name "email" ]`. A screen reader calls the control by the label's text (unless
+  it has a `Semantics.label` of its own) and a click on the label focuses it. The target is the nearest element
+  with that name, so each row of a repeated form finds its own. It takes every TextBlock setting.
+
 - **TextBox**: text to type in, one line or several. Input methods (Japanese, Chinese, Korean and others that
   compose) work in it: what is being composed shows underlined at the caret and becomes text, and one undo step,
   when it is committed; `onTextChanged` hears nothing before that. On a phone its keyboard comes up, and
@@ -1408,6 +1419,9 @@ TextBox.create [
     TextBox.onTextChanged (fun text -> dispatch (SetNotes text))
 ]
 ```
+
+  For a message box, `TextBox.submitOnEnter true` makes Enter call `onSubmitted` and Shift+Enter the new line.
+  The box keeps its text after a submit: give it `text` and clear that when the message is sent.
 
   Style it with `TextBox.style [ States.focused ] [ ... ]` (`TextBox.selection`, `TextBox.placeholderForeground`).
   Any element can hear typed text with `onTextInput` (it bubbles from the focused element like keys).

@@ -151,6 +151,7 @@ module SemanticText =
         | :? (Role voption) as r -> (match r with ValueSome x -> x.ToString() | ValueNone -> "none")
         | :? (CheckState voption) as c -> (match c with ValueSome x -> x.ToString() | ValueNone -> "none")
         | :? (bool voption) as b -> (match b with ValueSome true -> "true" | ValueSome false -> "false" | ValueNone -> "none")
+        | :? (string voption) as s -> (match s with ValueSome x -> "\"" + x + "\"" | ValueNone -> "none")
         | :? (SemanticRange voption) as r -> (match r with ValueSome x -> range x | ValueNone -> "none")
         | :? (Orientation voption) as o -> (match o with ValueSome x -> orientation x | ValueNone -> "none")
         | :? (SemanticPosition voption) as p ->
@@ -208,6 +209,11 @@ module internal SemanticsProps =
     let multiSelectable: Prop<SemanticSource<bool>> = define "multiSelectable" (Fixed false)
     let range: Prop<SemanticSource<SemanticRange voption>> = define "range" (Fixed ValueNone)
     let orientation: Prop<SemanticSource<Orientation voption>> = define "orientation" (Fixed ValueNone)
+    /// A text value (what a text box holds); none for a password.
+    let value: Prop<SemanticSource<string voption>> = define "value" (Fixed ValueNone)
+    let readOnly: Prop<SemanticSource<bool>> = define "readOnly" (Fixed false)
+    /// What it holds is hidden (a password).
+    let isProtected: Prop<SemanticSource<bool>> = define "protected" (Fixed false)
     let position: Prop<SemanticPosition voption> = define "position" ValueNone
     let actions: Prop<SemanticAction list> = define "actions" []
     let onAction: Prop<(InputContext -> SemanticAction -> bool) voption> = define "onAction" ValueNone
@@ -274,6 +280,15 @@ type Semantics =
     static member orientationFrom<'k when 'k :> Layoutable>(prop: Prop<Orientation>) : Setting<'k> =
         Setting.create SemanticsProps.orientation (Read([| prop |], fun e -> ValueSome(e.Get prop)))
     /// Its place in its set: `index` from 1, of `count` ("tab 2 of 4").
+    /// Its text value (what a text box holds), for an element type of your own that edits text.
+    static member value<'k when 'k :> Layoutable>(text: string) : Setting<'k> = Setting.create SemanticsProps.value (Fixed(ValueSome text))
+    /// Its text value, read from one of its properties when asked.
+    static member valueFrom<'k when 'k :> Layoutable>(prop: Prop<string>) : Setting<'k> =
+        Setting.create SemanticsProps.value (Read([| prop |], fun e -> ValueSome(e.Get prop)))
+    /// Its value can be read but not changed.
+    static member isReadOnly<'k when 'k :> Layoutable>(value: bool) : Setting<'k> = Setting.create SemanticsProps.readOnly (Fixed value)
+    static member readOnlyFrom<'k when 'k :> Layoutable>(prop: Prop<bool>) : Setting<'k> =
+        Setting.create SemanticsProps.readOnly (Read([| prop |], fun e -> e.Get prop))
     static member position<'k when 'k :> Layoutable>(index: int, count: int) : Setting<'k> =
         Setting.create SemanticsProps.position (ValueSome { Index = index; Count = count })
     /// Actions it supports beyond the ones it gets by itself (click when it has one, focus when
