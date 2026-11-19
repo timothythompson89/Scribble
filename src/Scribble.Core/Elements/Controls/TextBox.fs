@@ -199,6 +199,52 @@ type internal TextBoxState() =
     member val TouchDown = false with get, set
     /// A finger is scrolling the text.
     member val Panning = false with get, set
+    // ---- Selecting by touch (DESIGN.md, "9g") ----
+    /// The selection handles show: a finger used the box last (a key or the mouse puts them away).
+    member val Touch = false with get, set
+    /// The row of commands shows with them.
+    member val Row = false with get, set
+    /// The row didn't fit the window: it shows as a menu.
+    member val RowVertical = false with get, set
+    /// The row is out of sight while the text scrolls; a count of scrolls, so only the last brings it back.
+    member val RowHeld = false with get, set
+    member val RowGeneration = 0 with get, set
+    /// A command of the row that leaves it open has run (Select all).
+    member val KeepRow = false with get, set
+    /// Nothing is selected and the caret's handle shows (for a few seconds after a tap); a count of restarts.
+    member val CaretHandle = false with get, set
+    member val CaretHandleGeneration = 0 with get, set
+    /// The handle a finger drags (0: none; 1: the selection's start; 2: its end; 3: the caret's), the selection's
+    /// other end, from the finger to the place in the text it moves, where the finger went down, and whether it
+    /// has moved since.
+    member val HandleDrag = 0 with get, set
+    member val HandleFixed = 0 with get, set
+    member val HandleDX = 0.0 with get, set
+    member val HandleDY = 0.0 with get, set
+    member val HandleX = 0.0 with get, set
+    member val HandleY = 0.0 with get, set
+    member val HandleMoved = false with get, set
+    /// A long press selected a word (or placed the caret) and its finger, this one, is still down.
+    member val LongPressed = false with get, set
+    member val TouchId = 0 with get, set
+    /// When the finger now down went down, and when and where the last tap did (for a double-tap).
+    member val TouchTime = TimeSpan.MinValue with get, set
+    member val TapTime = TimeSpan.MinValue with get, set
+    member val TapX = 0.0 with get, set
+    member val TapY = 0.0 with get, set
+    /// Where the box stood in the window at the last frame (NaN: not known yet).
+    member val OriginX = nan with get, set
+    member val OriginY = nan with get, set
+    /// Counts changes to the text, the selection and the row: what the layer shows is made again.
+    member val TouchVersion = 0 with get, set
+    /// What the layer above shows, and what it was made from.
+    member val TouchView: View = Unchecked.defaultof<View> with get, set
+    member val TouchKey: obj = null with get, set
+    /// Made once: what gives the layer its view, what the handles call, and what the row calls.
+    member val TouchContent: unit -> obj = Unchecked.defaultof<unit -> obj> with get, set
+    member val HandleDrags: (int -> Point -> unit)[] = [||] with get, set
+    member val RowTooWide: unit -> unit = ignore with get, set
+    member val RowClosed: unit -> unit = ignore with get, set
 
     /// What is drawn and measured: the text with what is being composed in place of the selection, the caret
     /// where the input method has it.
@@ -210,6 +256,22 @@ type internal TextBoxState() =
             { Text = edit.Text.Substring(0, edit.Start) + s.Composition + edit.Text.Substring edit.End
               Anchor = caret
               Caret = caret }
+
+/// What a TextBox's layer of selection handles was made from: where each handle's point is in the window (minus
+/// infinity: it doesn't show), the row's place, and counts of what else changes it.
+type internal TouchShown =
+    { StartX: float
+      StartY: float
+      EndX: float
+      EndY: float
+      CaretX: float
+      CaretY: float
+      Row: bool
+      Anchor: Rect
+      Middle: bool
+      Vertical: bool
+      Version: int
+      Menu: obj }
 
 /// The words of a TextBox's own menu (DESIGN.md, "9f", decision 76): an app in another language replaces them,
 /// `App.value TextBoxMenu.labels { TextBoxMenuLabels.English with Cut = "Couper"; ... }`.
@@ -292,6 +354,11 @@ module TextBoxProps =
 /// by what a reader sees as one character (an emoji is never split); it blinks, and stops after ten seconds
 /// without input.
 ///
+/// A finger: a tap places the caret, with a selection handle under it for a few seconds; a long press or a
+/// double-tap selects the word under it (keep the finger down and drag for more words), with a handle at each end
+/// of the selection to drag, and the context menu as a row beside it (Cut, Copy, Paste, Select all: those that
+/// apply). A key, typed text or the mouse puts them away (DESIGN.md, "9g: selection by touch").
+///
 /// `TextBox.multiline true`: the text wraps at the box's width and Enter makes a new line (the text uses `\n`);
 /// Ctrl+Enter is `onSubmitted`. ↑/↓ and PageUp/PageDown move by lines, Home/End to the ends of the line as drawn,
 /// Ctrl+Home/End to the ends of the text; a triple-click selects the paragraph. The box asks to be as high as its
@@ -363,6 +430,12 @@ module TextBox =
     /// The strip at the right edge where the scrollbar takes the pointer, and how wide the bar is under it.
     let private barStrip = 12.0
     let private wideBar = 10.0
+    /// The caret's handle goes this long after it was last used (DESIGN.md, "9g", decision 88).
+    let internal caretHandleTime = TimeSpan.FromSeconds 4.0
+    /// The row comes back this long after the text stopped scrolling (decision 93).
+    let internal rowReturn = TimeSpan.FromMilliseconds 250.0
+    /// Two taps this close (DIPs; and within `multiClickTime`) are a double-tap: a finger is less exact than a mouse.
+    let private tapDistance = 24.0
 
     let internal stateOf (e: Element) =
         match e.Get TextBoxProps.state with
@@ -485,6 +558,34 @@ module TextBox =
 
     let private lineHeightOf (e: Element) = e.TextSystem.LineHeight(e.Get TextProps.font, e.Get TextProps.fontSize)
 
+    /// One line, focused: scrolled so the caret is in view, and no further than there is text for. Whole pixels.
+    /// (The caret places are measured: `measureStops`.)
+    let private scrollLine (s: TextBoxState) (width: float) (scale: float) (focused: bool) =
+        if focused then
+            let snap (v: float) = Math.Round(v * scale) / scale
+            let caretDips = max caretWidth (1.0 / scale)
+            let stops = s.Stops
+            let caret = stops[s.Shown.Caret]
+            let mutable scroll = s.Scroll
+            if caret - scroll > width - caretDips then scroll <- caret - width + caretDips
+            if caret - scroll < 0.0 then scroll <- caret
+            s.Scroll <- snap (max 0.0 (min scroll (stops[stops.Length - 1] + caretDips - width)))
+
+    /// Several lines: how much there is to scroll, and scrolled so the caret's line is in view if it moved.
+    let private scrollLines (s: TextBoxState) (count: int) (lineHeight: float) (viewHeight: float) (scale: float) (caretLine: int) =
+        let snap (v: float) = Math.Round(v * scale) / scale
+        s.Extent <- float count * lineHeight
+        s.ViewHeight <- viewHeight
+        // Less than a DIP over (layout rounding) is not overflow.
+        s.MaxScrollY <- (if s.Extent - viewHeight < 1.0 then 0.0 else s.Extent - viewHeight)
+        if s.Reveal then
+            s.Reveal <- false
+            // The caret's line comes into view by the least scroll.
+            let caretTop = float caretLine * lineHeight
+            if caretTop < s.ScrollY then s.ScrollY <- caretTop
+            if caretTop + lineHeight > s.ScrollY + viewHeight then s.ScrollY <- caretTop + lineHeight - viewHeight
+        s.ScrollY <- snap (Math.Clamp(s.ScrollY, 0.0, s.MaxScrollY))
+
     /// The caret place nearest to `x` (the element's own coordinates), in one line.
     let private indexAt (e: Element) (s: TextBoxState) (size: Size) (x: float) =
         measureStops e s
@@ -545,6 +646,7 @@ module TextBox =
     let private applyWith (e: Element) (s: TextBoxState) (kind: EditKind voption) (next: EditState) =
         let before = s.Edit
         s.Edit <- next
+        s.TouchVersion <- s.TouchVersion + 1
         s.Reveal <- true
         s.AtLineEnd <- false
         s.WantedX <- nan
@@ -703,6 +805,9 @@ module TextBox =
         let struct (index, atEnd) = pointAt e s size x y
         let next =
             match s.DragWord with
+            // A finger on the caret's handle moves the caret; on a selection handle, that end (the ends may cross).
+            | _ when s.HandleDrag = 3 -> TextEdit.moveTo index false s.Edit
+            | _ when s.HandleDrag <> 0 -> if index = s.HandleFixed then s.Edit else TextEdit.select s.HandleFixed index s.Edit
             | ValueSome(struct (first, last)) ->
                 // From a double-click: whole words, the first one always in.
                 let struct (wordFirst, wordLast) = TextEdit.wordAt s.Edit.Text index
@@ -753,11 +858,30 @@ module TextBox =
         s.DragTimer <- false
         s.DragGeneration <- s.DragGeneration + 1
 
+    /// The text scrolled, or the box moved in the window: the row for a finger is out of sight until that has
+    /// stopped for a moment (DESIGN.md, "9g", decision 93).
+    let private rowScrolled (e: Element) (s: TextBoxState) =
+        if s.Touch && s.Row then
+            s.RowHeld <- true
+            s.RowGeneration <- s.RowGeneration + 1
+            let generation = s.RowGeneration
+            match e.Root |> ValueOption.bind (fun root -> root.Dispatcher) with
+            | ValueSome dispatcher ->
+                dispatcher.PostAfter(
+                    rowReturn,
+                    fun () ->
+                        if s.RowGeneration = generation && s.RowHeld then
+                            s.RowHeld <- false
+                            e.InvalidateVisual()
+                )
+            | ValueNone -> s.RowHeld <- false
+
     /// Scrolls several lines to `y` (kept within what there is); true when it moved.
     let private scrollTo (e: Element) (s: TextBoxState) (y: float) =
         let y = Math.Clamp(y, 0.0, s.MaxScrollY)
         if y <> s.ScrollY then
             s.ScrollY <- y
+            rowScrolled e s
             e.InvalidateVisual()
             true
         else false
@@ -769,9 +893,403 @@ module TextBox =
 
     let private overBar (e: Element) (s: TextBoxState) (size: Size) (x: float) = isMulti e && s.MaxScrollY > 0.0 && x >= size.Width - barStrip
 
+    // ---- Selecting by touch (DESIGN.md, "9g: selection by touch") ----
+    //
+    // A finger's long press or double-tap selects a word; selection handles then stand at the selection's ends (one
+    // at the caret after a tap), and the box's context menu shows as a row beside it. Handles and row are in a
+    // layer of the box's own above the window's content (`IElementRoot.ElementLayer`), which never takes the
+    // keyboard: the box keeps its focus, and a phone its keyboard.
+
+    /// The box of the caret at `index`, in the element's own coordinates, as the text is scrolled now: on whole
+    /// pixels, where `render` draws it.
+    let private caretBox (e: Element) (s: TextBoxState) (size: Size) (index: int) (atLineEnd: bool) : Rect =
+        let scale = e.Scale
+        let snap (v: float) = Math.Round(v * scale) / scale
+        let lineHeight = lineHeightOf e
+        let struct (left, width) = textArea e size
+        let struct (top, height) = textRows e size
+        if isMulti e then
+            let lines = currentLines e s
+            let struct (p, l, n) = MultiLine.locate lines index atLineEnd
+            let x = max 0.0 (min width (MultiLine.caretX e.TextSystem lines p l index))
+            let y = snap (top + float n * lineHeight - s.ScrollY)
+            Rect.Create(snap (left + x), y, 0.0, snap (top + float (n + 1) * lineHeight - s.ScrollY) - y)
+        else
+            measureStops e s
+            let stops = s.Stops
+            Rect.Create(snap (left + stops[max 0 (min (stops.Length - 1) index)] - s.Scroll), snap (top + (height - lineHeight) / 2.0), 0.0, snap lineHeight)
+
+    /// Where the text shows in the box (what its drawing is clipped to), in the element's own coordinates.
+    let private textClip (e: Element) (size: Size) : Rect =
+        let t = e.Get BorderProps.borderThickness
+        let struct (left, width) = textArea e size
+        Rect.Create(left, t, width, max 0.0 (size.Height - 2.0 * t))
+
+    /// Before the layer above is laid out: the text is scrolled as the coming frame will draw it (what `render`
+    /// does, a moment earlier).
+    let private settleScroll (e: Element) (s: TextBoxState) (size: Size) =
+        settle e s
+        let scale = e.Scale
+        let struct (_, width) = textArea e size
+        if isMulti e then
+            let struct (_, viewHeight) = textRows e size
+            s.TextWidth <- width
+            let lines = linesFor e s width
+            let struct (_, _, caretLine) = MultiLine.locate lines s.Shown.Caret s.AtLineEnd
+            scrollLines s lines.LineCount (lineHeightOf e) viewHeight scale caretLine
+        else
+            measureStops e s
+            scrollLine s width scale e.IsFocused
+
+    /// The character under a finger at (x, y), nearest to which the caret would go at `index`: whether the finger
+    /// is on a word (not on blank space, nor past the end of its line), and the index to take the word from. A
+    /// finger on the right half of a word's last letter is nearest to the place after the word.
+    let private wordUnder (e: Element) (s: TextBoxState) (size: Size) (x: float) (y: float) (index: int) (atEnd: bool) : struct (bool * int) =
+        let text = s.Edit.Text
+        if text.Length = 0 then struct (false, index)
+        else
+            let box = caretBox e s size index atEnd
+            let onLine = abs (x - box.X) <= 16.0 && y >= box.Y - 4.0 && y <= box.Bottom + 4.0
+            let under =
+                if x < box.X && index > 0 then
+                    let before = TextEdit.previousStop text index
+                    // On the same line only (not the line break, nor the line above at a wrap).
+                    if text[before] <> '\n' && (caretBox e s size before false).Y = box.Y then before else index
+                else index
+            let struct (first, last) = TextEdit.wordAt text under
+            struct (onLine && last > first && not (Char.IsWhiteSpace text[first]), under)
+
+    /// The caret's handle shows, for a few seconds from now.
+    let private caretHandleOn (e: Element) (s: TextBoxState) =
+        s.CaretHandle <- true
+        s.CaretHandleGeneration <- s.CaretHandleGeneration + 1
+        let generation = s.CaretHandleGeneration
+        match e.Root |> ValueOption.bind (fun root -> root.Dispatcher) with
+        | ValueSome dispatcher ->
+            dispatcher.PostAfter(
+                caretHandleTime,
+                fun () ->
+                    if s.CaretHandleGeneration = generation && s.CaretHandle then
+                        s.CaretHandle <- false
+                        e.InvalidateVisual()
+            )
+        | ValueNone -> ()
+
+    /// A key, typed text or the mouse: the handles and the row go.
+    let private hideTouch (e: Element) (s: TextBoxState) =
+        if s.Touch || s.LongPressed || s.HandleDrag <> 0 then
+            if s.HandleDrag <> 0 || s.LongPressed then stopDrag s
+            s.Touch <- false
+            s.Row <- false
+            s.RowHeld <- false
+            s.CaretHandle <- false
+            s.HandleDrag <- 0
+            s.LongPressed <- false
+            s.DragWord <- ValueNone
+            s.CaretHandleGeneration <- s.CaretHandleGeneration + 1
+            s.RowGeneration <- s.RowGeneration + 1
+            e.InvalidateVisual()
+
+    /// The box's own commands for a finger (decision 85): Cut, Copy, Paste and Select all, those that apply now.
+    let private touchCommands (e: Element) (s: TextBoxState) : View list =
+        let labels =
+            match e.Root with
+            | ValueSome root -> root.AppValues.Get TextBoxMenu.labels
+            | ValueNone -> TextBoxMenuLabels.English
+        let item (text: string) (run: unit -> unit) =
+            MenuItem.create [ MenuItem.text text; MenuItem.onClick (fun _ -> if e.Root.IsSome then run ()) ]
+        let edit = s.Edit
+        [ // Cut and Paste leave a caret: its handle shows (decision 97).
+          if canCut e then
+              item labels.Cut (fun () ->
+                  cut e
+                  caretHandleOn e s)
+          if canCopy e then item labels.Copy (fun () -> copy e)
+          if canChange e then
+              item labels.Paste (fun () ->
+                  pasteClipboard e true
+                  caretHandleOn e s)
+          if edit.Text.Length > 0 && not (edit.Start = 0 && edit.End = edit.Text.Length) then
+              item labels.SelectAll (fun () ->
+                  // The row stays, with what applies to everything.
+                  s.KeepRow <- true
+                  selectEverything e) ]
+
+    /// Room for a finger on each of the row's items.
+    let private rowStyles = [ MenuItem.style [] [ MenuItem.padding (14.0, 11.0) ] ]
+
+    /// The row: the box's context menu for a finger (decisions 80, 94 and 95), in the box a flyout has. An app's
+    /// `contextMenu` replaces the box's own commands; a Menu is laid out as a row (unless that didn't fit the
+    /// window), any other view is shown as it is.
+    let private rowView (e: Element) (s: TextBoxState) (anchor: Rect) (middle: bool) : View voption =
+        let asRow (menu: View) =
+            if s.RowVertical then menu
+            else menu.With(StackProps.orientation, box Horizontal).With(LayoutProps.minWidth, box Auto)
+        let content =
+            match e.Get FlyoutProps.contextMenu with
+            | ValueSome view when obj.ReferenceEquals(view.Type, Menu.Type) -> ValueSome(asRow view)
+            | ValueSome view -> ValueSome view
+            | ValueNone ->
+                match touchCommands e s with
+                | [] -> ValueNone
+                | items -> ValueSome(asRow (Menu.create [ Menu.children items ]))
+        match content with
+        | ValueSome content ->
+            let row =
+                Flyout.create [
+                    Flyout.styles rowStyles
+                    Setting.create BorderProps.content (ValueSome content)
+                    Setting.create SelectionLayer.anchor anchor
+                    Setting.create SelectionLayer.middle middle
+                    Setting.create SelectionLayer.onOverflow (if s.RowVertical then ValueNone else ValueSome s.RowTooWide)
+                    Setting.create Menus.onClose (ValueSome s.RowClosed)
+                ]
+            ValueSome(row.WithKey(box "row"))
+        | ValueNone -> ValueNone
+
+    /// What the layer above the window's content shows now (null: nothing, and the layer goes): asked before every
+    /// frame while the handles show, once the box has been laid out.
+    let private touchView (e: Element) (s: TextBoxState) : View =
+        if not s.Touch || e.Root.IsNone || not e.IsFocused || not e.IsEnabled then
+            s.Touch <- false
+            Unchecked.defaultof<View>
+        else
+            let b = e.Bounds
+            let size = Size.Create(b.Width, b.Height)
+            settleScroll e s size
+            let origin = e.PositionInTree
+            // Something around the box scrolled it: the row waits until that has stopped.
+            if not (Double.IsNaN s.OriginX) && (origin.X <> s.OriginX || origin.Y <> s.OriginY) then rowScrolled e s
+            s.OriginX <- origin.X
+            s.OriginY <- origin.Y
+            // Where text can show, in the window: the box's own clip, cut by every scroller around it.
+            let area = e.VisiblePart(textClip e size)
+            let edit = s.Edit
+            let composing = s.Composition.Length > 0
+            let selected = edit.HasSelection && not composing
+            let boxOf (index: int) (atEnd: bool) = (caretBox e s size index atEnd).Offset(origin.X, origin.Y)
+            // A handle shows while the middle of its caret does (decision 87).
+            let shows (box: Rect) =
+                let y = box.Y + box.Height / 2.0
+                not area.IsEmpty && box.X >= area.X - 1.0 && box.X <= area.Right + 1.0 && y >= area.Y && y <= area.Bottom
+            let startBox = boxOf edit.Start false
+            let endBox = boxOf edit.End true
+            let caret = boxOf edit.Caret s.AtLineEnd
+            // The handle a finger holds stays whatever scrolls (and its partner: the ends may have crossed).
+            let held = s.HandleDrag = 1 || s.HandleDrag = 2
+            let showStart = selected && (shows startBox || held)
+            let showEnd = selected && (shows endBox || held)
+            let showCaret = not selected && not composing && ((s.CaretHandle && canChange e && shows caret) || s.HandleDrag = 3)
+            let wantRow = s.Row && not s.RowHeld && s.HandleDrag = 0 && not s.LongPressed && not composing
+            let nowhere = Rect.Create(0.0, 0.0, 0.0, 0.0)
+            // On the first line that shows, the row clears the box's own edge too, not only the text.
+            let clearOfBox (r: Rect) =
+                if r.Y - area.Y < r.Height then
+                    let top = min r.Y (e.VisibleBounds.Y)
+                    Rect.FromEdges(r.X, top, r.Right, r.Bottom)
+                else r
+            let struct (hasRow, anchor, middle) =
+                if not wantRow then struct (false, nowhere, false)
+                elif selected then
+                    let whole =
+                        if startBox.Y = endBox.Y then Rect.FromEdges(startBox.X, startBox.Y, endBox.X, startBox.Bottom)
+                        else
+                            let struct (left, width) = textArea e size
+                            Rect.FromEdges(origin.X + left, startBox.Y, origin.X + left + width, endBox.Bottom)
+                    let part = whole.Intersect area
+                    if part.IsEmpty then struct (false, nowhere, false)
+                    // Neither end in view: the row goes in the middle of what shows (decision 86).
+                    else
+                        let middle = not (shows startBox) && not (shows endBox)
+                        struct (true, (if middle || startBox.Y <> endBox.Y then part else clearOfBox part), middle)
+                elif shows caret then struct (true, clearOfBox caret, false)
+                else struct (false, nowhere, false)
+            if not selected && not s.CaretHandle && not s.Row && s.HandleDrag = 0 && not s.LongPressed then
+                // Nothing left to show (the caret's handle went): the layer goes until a finger comes back.
+                s.Touch <- false
+                Unchecked.defaultof<View>
+            else
+                let hidden = Double.NegativeInfinity
+                let key =
+                    { StartX = (if showStart then startBox.X else hidden)
+                      StartY = (if showStart then startBox.Bottom else hidden)
+                      EndX = (if showEnd then endBox.X else hidden)
+                      EndY = (if showEnd then endBox.Bottom else hidden)
+                      CaretX = (if showCaret then caret.X else hidden)
+                      CaretY = (if showCaret then caret.Bottom else hidden)
+                      Row = hasRow
+                      Anchor = anchor
+                      Middle = middle
+                      Vertical = s.RowVertical
+                      Version = s.TouchVersion
+                      Menu = (match e.Get FlyoutProps.contextMenu with ValueSome view -> box view | ValueNone -> null) }
+                if not (isNull (box s.TouchView)) && not (isNull s.TouchKey) && (unbox<TouchShown> s.TouchKey).Equals key then s.TouchView
+                else
+                    let handle (kind: SelectionHandleKind) (name: string) (x: float) (y: float) (drag: int -> Point -> unit) =
+                        (SelectionHandle.create [
+                            Setting.create SelectionHandleProps.kind kind
+                            Setting.create SelectionHandleProps.point (Point(x, y))
+                            Setting.create SelectionHandleProps.onDrag (ValueSome drag)
+                         ]).WithKey(box name)
+                    let view =
+                        SelectionLayer.create [
+                            // The row first: the handles are above it, and take the finger first.
+                            if hasRow then
+                                match rowView e s anchor middle with
+                                | ValueSome row -> row
+                                | ValueNone -> ()
+                            if showStart then handle SelectionHandleKind.Start "start" startBox.X startBox.Bottom s.HandleDrags[0]
+                            if showEnd then handle SelectionHandleKind.End "end" endBox.X endBox.Bottom s.HandleDrags[1]
+                            // Under the middle of the caret's line.
+                            if showCaret then handle SelectionHandleKind.Caret "caret" (caret.X + caretWidth / 2.0) caret.Bottom s.HandleDrags[2]
+                        ]
+                    s.TouchKey <- box key
+                    s.TouchView <- view
+                    view
+
+    /// A finger took a handle (`phase` 0), moves with it (1), let go (2) or was taken away (3), at `at` in the
+    /// window: that end of the selection (or the caret) follows, by characters (decision 89).
+    let private handleDrag (e: Element) (s: TextBoxState) (kind: int) (phase: int) (at: Point) =
+        if e.Root.IsSome then
+            let b = e.Bounds
+            let size = Size.Create(b.Width, b.Height)
+            let origin = e.PositionInTree
+            match phase with
+            // (While one finger has a handle or extends a long press, another is ignored: decision 102.)
+            | 0 when s.HandleDrag = 0 && not s.LongPressed ->
+                adopt e s
+                let edit = s.Edit
+                let struct (index, other, atEnd) =
+                    match kind with
+                    | 1 -> struct (edit.Start, edit.End, false)
+                    | 2 -> struct (edit.End, edit.Start, true)
+                    | _ -> struct (edit.Caret, edit.Caret, s.AtLineEnd)
+                let box = caretBox e s size index atEnd
+                s.HandleDrag <- kind
+                s.HandleFixed <- other
+                // The place in the text is the middle of the caret's line, above the finger: it stays that far away.
+                s.HandleDX <- origin.X + box.X - at.X
+                s.HandleDY <- origin.Y + box.Y + box.Height / 2.0 - at.Y
+                s.HandleX <- at.X
+                s.HandleY <- at.Y
+                s.HandleMoved <- false
+                s.DragWord <- ValueNone
+                s.Dragging <- true
+                s.LastX <- box.X
+                s.LastY <- box.Y + box.Height / 2.0
+                // The caret's handle stays while it is held.
+                s.CaretHandleGeneration <- s.CaretHandleGeneration + 1
+                s.TouchVersion <- s.TouchVersion + 1
+                e.InvalidateVisual()
+            | 1 when s.HandleDrag = kind ->
+                if abs (at.X - s.HandleX) > 4.0 || abs (at.Y - s.HandleY) > 4.0 then s.HandleMoved <- true
+                if s.HandleMoved then
+                    let x, y = at.X + s.HandleDX - origin.X, at.Y + s.HandleDY - origin.Y
+                    s.LastX <- x
+                    s.LastY <- y
+                    dragTo e s size x y
+                    // Held past the text's edge, it keeps scrolling, as a mouse's drag does.
+                    if not s.DragTimer && isOutside e size x y then
+                        s.DragTimer <- true
+                        s.DragGeneration <- s.DragGeneration + 1
+                        dragLater e s s.DragGeneration
+            | 2
+            | 3 when s.HandleDrag = kind ->
+                stopDrag s
+                s.HandleDrag <- 0
+                if kind = 3 then
+                    // A tap on the caret's handle shows the row, or puts it away.
+                    if phase = 2 && not s.HandleMoved then
+                        s.Row <- not s.Row
+                        s.RowVertical <- false
+                    caretHandleOn e s
+                else
+                    // The row comes back when the finger lifts.
+                    s.Row <- true
+                    s.RowVertical <- false
+                s.RowHeld <- false
+                s.TouchVersion <- s.TouchVersion + 1
+                e.InvalidateVisual()
+            | _ -> ()
+
+    /// The handles show (and the row, if `Row` says so): the box asks for its layer.
+    let private showTouch (e: Element) (s: TextBoxState) =
+        if isNull (box s.TouchContent) then
+            s.TouchContent <- fun () -> box (touchView e s)
+            s.HandleDrags <- [| handleDrag e s 1; handleDrag e s 2; handleDrag e s 3 |]
+            // Wider than the window (long words in another language, an app's long menu): from the next frame it
+            // is a menu in the same place (decision 96).
+            s.RowTooWide <-
+                fun () ->
+                    match e.Root with
+                    | ValueSome root ->
+                        root.AfterFrame(fun () ->
+                            s.RowVertical <- true
+                            s.TouchVersion <- s.TouchVersion + 1
+                            e.InvalidateVisual())
+                    | ValueNone -> ()
+            // One of the row's items was chosen (its own handler has run).
+            s.RowClosed <-
+                fun () ->
+                    if s.KeepRow then s.KeepRow <- false else s.Row <- false
+                    s.TouchVersion <- s.TouchVersion + 1
+                    e.InvalidateVisual()
+        s.Touch <- true
+        s.TouchVersion <- s.TouchVersion + 1
+        match e.Root with
+        | ValueSome root -> root.ElementLayer(e, s.TouchContent)
+        | ValueNone -> ()
+        e.InvalidateVisual()
+
+    /// A finger held still on the text (decision 82): on a word, the word is selected, and dragging on selects by
+    /// words; elsewhere the caret goes there. The handles show at once, the row when the finger lifts. A password
+    /// is selected whole (decision 98).
+    let private longPress (ctx: InputContext) (args: PointerEventArgs) =
+        let e = ctx.Element
+        let s = stateOf e
+        if args.PointerKind = PointerKind.Touch && s.TouchDown && e.IsFocused then
+            args.Handle()
+            s.TouchDown <- false
+            adopt e s
+            let size = ctx.Size
+            let x, y = args.LocalPosition.X, args.LocalPosition.Y
+            let struct (index, atEnd) = pointAt e s size x y
+            let struct (onWord, under) = wordUnder e s size x y index atEnd
+            s.LongPressed <- true
+            s.TouchId <- args.PointerId
+            s.Row <- false
+            s.DragWord <- ValueNone
+            if e.Get TextBoxProps.isPassword && s.Edit.Text.Length > 0 then apply e s (TextEdit.selectAll s.Edit)
+            elif onWord then
+                let next = TextEdit.selectWordAt under s.Edit
+                s.DragWord <- ValueSome(struct (next.Start, next.End))
+                s.Dragging <- true
+                s.LastX <- x
+                s.LastY <- y
+                apply e s next
+            else
+                apply e s (TextEdit.moveTo index false s.Edit)
+                s.AtLineEnd <- atEnd
+            showTouch e s
+
+    /// The press the box held was taken away: a drag ends where it is.
+    let private pointerCanceled (ctx: InputContext) =
+        let e = ctx.Element
+        let s = stateOf e
+        stopDrag s
+        s.BarDrag <- false
+        s.TouchDown <- false
+        s.DragWord <- ValueNone
+        if s.LongPressed then
+            s.LongPressed <- false
+            s.Row <- true
+            s.TouchVersion <- s.TouchVersion + 1
+        e.InvalidateVisual()
+
     let private pointerDown (ctx: InputContext) (args: PointerEventArgs) =
         let e = ctx.Element
         if args.Button = ValueSome MouseButton.Right && args.PointerKind = PointerKind.Mouse then
+            hideTouch e (stateOf e)
             // A right press, before the menu: the box takes the focus, and the caret goes to the press unless that
             // is inside the selection (which the menu's Cut and Copy are then about).
             let s = stateOf e
@@ -789,12 +1307,15 @@ module TextBox =
             let x, y = args.LocalPosition.X, args.LocalPosition.Y
             let size = ctx.Size
             if args.PointerKind = PointerKind.Touch then
-                // A finger: lifting it places the caret (see pointerUp), unless it scrolls first. The press isn't
-                // taken, so a finger can still scroll what's around the box. Selecting by touch comes with its
-                // own step (DESIGN.md, "9d", decision 48).
-                s.TouchDown <- true
-                s.PressX <- x
-                s.PressY <- y
+                // A finger: lifting it places the caret (see pointerUp), unless it scrolls first or stays for a
+                // long press. The press isn't taken, so a finger can still scroll what's around the box. Another
+                // finger, while one has a handle or extends a long press, does nothing (DESIGN.md, "9g",
+                // decision 102).
+                if s.HandleDrag = 0 && not s.LongPressed then
+                    s.TouchDown <- true
+                    s.TouchTime <- ctx.Time
+                    s.PressX <- x
+                    s.PressY <- y
             elif overBar e s size x then
                 // The scrollbar: drag the thumb, or a page towards a press beside it.
                 args.Handle()
@@ -811,6 +1332,8 @@ module TextBox =
                     e.InvalidateVisual()
                 | ValueNone -> ()
             else
+                // The mouse or a pen: no handles (decision 81).
+                hideTouch e s
                 let struct (index, atEnd) = pointAt e s size x y
                 args.Handle()
                 let now = ctx.Time
@@ -860,7 +1383,7 @@ module TextBox =
                 let travel = size.Height - 2.0 * ScrollViewer.inset - length
                 if travel > 0.0 then scrollTo e s (s.BarDragOffset + (y - s.BarDragStart) * s.MaxScrollY / travel) |> ignore
             | ValueNone -> ()
-        elif s.Dragging then
+        elif s.Dragging && s.HandleDrag = 0 && (not s.LongPressed || args.PointerId = s.TouchId) then
             args.Handle()
             s.LastX <- x
             s.LastY <- y
@@ -876,20 +1399,62 @@ module TextBox =
                 e.InvalidateVisual()
 
     let private pointerUp (ctx: InputContext) (args: PointerEventArgs) =
-        let s = stateOf ctx.Element
-        if s.TouchDown && args.PointerKind = PointerKind.Touch then
-            // A tap: the caret goes where the finger lifted.
+        let e = ctx.Element
+        let s = stateOf e
+        if s.LongPressed && args.PointerKind = PointerKind.Touch && args.PointerId = s.TouchId then
+            // The finger of a long press lifted: the row shows (and the caret's handle, with nothing selected).
+            args.Handle()
+            s.LongPressed <- false
+            stopDrag s
+            s.DragWord <- ValueNone
+            s.Row <- true
+            s.RowVertical <- false
+            s.RowHeld <- false
+            if not s.Edit.HasSelection then caretHandleOn e s
+            showTouch e s
+        elif s.TouchDown && args.PointerKind = PointerKind.Touch then
             s.TouchDown <- false
-            let e = ctx.Element
             adopt e s
-            let struct (index, atEnd) = pointAt e s ctx.Size args.LocalPosition.X args.LocalPosition.Y
-            apply e s (TextEdit.moveTo index false s.Edit)
-            s.AtLineEnd <- atEnd
+            let x, y = args.LocalPosition.X, args.LocalPosition.Y
+            let struct (index, atEnd) = pointAt e s ctx.Size x y
+            let struct (onWord, under) = wordUnder e s ctx.Size x y index atEnd
+            let password = e.Get TextBoxProps.isPassword
+            let again =
+                s.TapTime > TimeSpan.MinValue
+                && s.TouchTime - s.TapTime <= multiClickTime
+                && abs (x - s.TapX) <= tapDistance
+                && abs (y - s.TapY) <= tapDistance
+            if again && (onWord || (password && s.Edit.Text.Length > 0)) then
+                // A double-tap: the word, with its handles and the row (decision 83); a password whole.
+                s.TapTime <- TimeSpan.MinValue
+                apply e s (if password then TextEdit.selectAll s.Edit else TextEdit.selectWordAt under s.Edit)
+                s.Row <- true
+                s.RowVertical <- false
+                s.RowHeld <- false
+                showTouch e s
+            else
+                s.TapTime <- s.TouchTime
+                s.TapX <- x
+                s.TapY <- y
+                if s.Touch && s.Edit.HasSelection && index >= s.Edit.Start && index <= s.Edit.End then
+                    // A tap inside the selection shows the row, or puts it away (decision 91).
+                    s.Row <- not s.Row
+                    s.RowVertical <- false
+                    s.RowHeld <- false
+                    s.TouchVersion <- s.TouchVersion + 1
+                    e.InvalidateVisual()
+                else
+                    // A tap: the caret goes where the finger lifted, with its handle (decision 88).
+                    apply e s (TextEdit.moveTo index false s.Edit)
+                    s.AtLineEnd <- atEnd
+                    s.Row <- false
+                    caretHandleOn e s
+                    showTouch e s
         if s.BarDrag then
             args.Handle()
             s.BarDrag <- false
             ctx.Element.InvalidateVisual()
-        if s.Dragging then
+        if s.Dragging && s.HandleDrag = 0 then
             args.Handle()
             stopDrag s
 
@@ -929,6 +1494,7 @@ module TextBox =
         if composing then args.Handle()
         elif mods &&& (Modifiers.Alt ||| Modifiers.Meta) = Modifiers.None then
             let s = stateOf e
+            hideTouch e s
             s.Composed <- false
             adopt e s
             let edit = s.Edit
@@ -1042,6 +1608,7 @@ module TextBox =
         if not (e.Get TextBoxProps.isReadOnly) then
             args.Handle()
             let s = stateOf e
+            hideTouch e s
             adopt e s
             // What an input method composed is committed as typed text: one undo step (decision 54).
             let kind = if s.Composed then EditKind.Single else EditKind.Typing
@@ -1061,6 +1628,7 @@ module TextBox =
             // Ended: what was committed, if anything, comes as typed text.
             endComposition e s
         else
+            hideTouch e s
             adopt e s
             if s.Composition <> args.Text || s.CompositionCaret <> args.Caret then
                 s.Composition <- args.Text
@@ -1099,6 +1667,7 @@ module TextBox =
                 | _ -> ()
         else
             commitComposition e s
+            hideTouch e s
             stopDrag s
             s.BarDrag <- false
             s.TouchDown <- false
@@ -1154,13 +1723,8 @@ module TextBox =
         let stops = s.Stops
         let focused = ctx.IsFocused
         let caretDips = max caretWidth (1.0 / scale)
-        if focused then
-            // The caret stays in view; no more is scrolled than there is text for.
-            let caret = stops[edit.Caret]
-            let mutable scroll = s.Scroll
-            if caret - scroll > width - caretDips then scroll <- caret - width + caretDips
-            if caret - scroll < 0.0 then scroll <- caret
-            s.Scroll <- snap (max 0.0 (min scroll (stops[stops.Length - 1] + caretDips - width)))
+        // The caret stays in view; no more is scrolled than there is text for.
+        scrollLine s width scale focused
         let scroll = s.Scroll
         list.PushClip(Rect.Create(left, thickness, width, max 0.0 (size.Height - 2.0 * thickness)))
         if s.Display.Length = 0 then
@@ -1211,17 +1775,7 @@ module TextBox =
         let focused = ctx.IsFocused
         let caretDips = max caretWidth (1.0 / scale)
         let struct (caretP, caretL, caretLine) = MultiLine.locate lines edit.Caret s.AtLineEnd
-        s.Extent <- float count * lineHeight
-        s.ViewHeight <- viewHeight
-        // Less than a DIP over (layout rounding) is not overflow.
-        s.MaxScrollY <- (if s.Extent - viewHeight < 1.0 then 0.0 else s.Extent - viewHeight)
-        if s.Reveal then
-            s.Reveal <- false
-            // The caret's line comes into view by the least scroll.
-            let caretTop = float caretLine * lineHeight
-            if caretTop < s.ScrollY then s.ScrollY <- caretTop
-            if caretTop + lineHeight > s.ScrollY + viewHeight then s.ScrollY <- caretTop + lineHeight - viewHeight
-        s.ScrollY <- snap (Math.Clamp(s.ScrollY, 0.0, s.MaxScrollY))
+        scrollLines s count lineHeight viewHeight scale caretLine
         let scroll = s.ScrollY
         // Text scrolls under the padding and stops at the border.
         let clipTop, clipHeight = thickness, max 0.0 (size.Height - 2.0 * thickness)
@@ -1299,6 +1853,8 @@ module TextBox =
             Element.pointerDown pointerDown
             Element.pointerMove pointerMove
             Element.pointerUp pointerUp
+            Element.pointerCanceled pointerCanceled
+            Element.longPress longPress
             Element.wheel wheel
             Element.pan pan
             Element.panEnded panEnded

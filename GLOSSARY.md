@@ -167,7 +167,7 @@ A list of commands (menu items, separators) the user chooses one from; shown as 
 _Avoid_: dropdown, popup menu
 
 **Context menu**:
-A view (usually a Menu) an element shows at the pointer on a right-click, a long press, the Menu key or Shift+F10 (`contextMenu`).
+A view (usually a Menu) an element shows at the pointer on a right-click, a long press, the Menu key or Shift+F10 (`contextMenu`). In a TextBox, a finger shows it as a row above the text selection.
 _Avoid_: right-click menu, context flyout
 
 **Tooltip**:
@@ -200,6 +200,10 @@ _Avoid_: cursor (that is the pointer's look), insertion point
 **Text selection**:
 The run of text between the anchor (where selecting started) and the caret; typing replaces it.
 _Avoid_: highlight, range
+
+**Selection handle**:
+A mark a finger drags to move one end of a text selection, or the caret when nothing is selected.
+_Avoid_: grip, knob, thumb (a slider's or scrollbar's), teardrop
 
 **Paragraph** (in a TextBox):
 The text between two line breaks; it may wrap into several lines.

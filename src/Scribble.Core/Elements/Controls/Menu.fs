@@ -16,6 +16,8 @@ module MenuItemProps =
     let highlight = Prop.define "MenuItemHighlight" (Color.White.WithAlpha 0.08f) Affects.Render
     /// Set by the Menu: some item has an icon or a check mark, so every item leaves room for one.
     let internal leading = Prop.local "MenuItemLeading" false
+    /// Set by the Menu: it is a row (`Menu.orientation Horizontal`), so the item shows its text alone.
+    let internal inRow = Prop.local "MenuItemInRow" false
 
 /// One command in a Menu (DESIGN.md, "9f: the Menu"):
 ///
@@ -50,9 +52,23 @@ type MenuItem =
 
 /// What a Menu and its items share.
 module internal Menus =
+    /// On an element around a menu that isn't a flyout's: called when an item is chosen (the menu should go).
+    let onClose: Prop<(unit -> unit) voption> = Prop.define "MenuOnClose" ValueNone Affects.Nothing
+
     /// Closes the menu `e` is in: the flyout whose layer it is in is asked to close (its element's own, or the
     /// app's `isOpen`).
     let close (e: Element) =
+        // Shown by an element in a layer of its own (a TextBox's row): whoever shows it hears.
+        let mutable a = ValueSome e
+        while a.IsSome do
+            match a.Value.Get onClose with
+            | ValueSome f ->
+                try
+                    f ()
+                with ex ->
+                    e.ReportError ex
+            | ValueNone -> ()
+            a <- a.Value.Parent
         match e.Root with
         | ValueSome(:? ElementTree as tree) ->
             match tree.Owner with
@@ -69,14 +85,26 @@ module MenuItem =
     /// A check mark, in a 24 × 24 box.
     let private check = Icon.fromPath "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" [ Icon.name "check" ]
 
+    /// What stands before the text: room for an icon or a check mark (0: none), and the gap after it. In a row
+    /// (DESIGN.md, "9g", decision 94) an item shows its text alone: a check mark only if it can be checked, its
+    /// icon only if it has no text.
+    let private leadingOf (e: Element) : struct (float * float) =
+        if e.Get MenuItemProps.inRow then
+            let noText = e.Get TextProps.text = ""
+            if (e.Get MenuItemProps.isChecked).IsSome || (noText && (e.Get MenuItemProps.icon).IsSome) then
+                struct (iconSize, (if noText then 0.0 else iconGap))
+            else struct (0.0, 0.0)
+        elif e.Get MenuItemProps.leading then struct (iconSize, iconGap)
+        else struct (0.0, 0.0)
+
     let private measure (ctx: MeasureContext) (_: Size) =
         let ix, iy = Border.inset ctx
         let font, size = ctx.Get TextProps.font, ctx.Get TextProps.fontSize
         let text = ctx.Text.Measure(ctx.Get TextProps.text, font, size)
-        let shortcut = ctx.Get MenuItemProps.shortcut
+        let shortcut = if ctx.Get MenuItemProps.inRow then "" else ctx.Get MenuItemProps.shortcut
         let shortcutWidth = if shortcut = "" then 0.0 else shortcutGap + ctx.Text.Measure(shortcut, font, size).Width
-        let leading = if ctx.Get MenuItemProps.leading then iconSize + iconGap else 0.0
-        Size.Create(Math.Ceiling(ix + leading + text.Width + shortcutWidth), Math.Ceiling(max text.LineHeight iconSize + iy))
+        let struct (mark, gap) = leadingOf ctx.Element
+        Size.Create(Math.Ceiling(ix + mark + gap + text.Width + shortcutWidth), Math.Ceiling(max text.LineHeight iconSize + iy))
 
     let private render (ctx: RenderContext) (list: DrawList) =
         Border.draw ctx list
@@ -91,7 +119,8 @@ module MenuItem =
         let left = p.Left + t
         let inner = size.Height - p.Vertical - 2.0 * t
         let mutable x = left
-        if ctx.Get MenuItemProps.leading then
+        let struct (mark, gap) = leadingOf ctx.Element
+        if mark > 0.0 then
             let y = Math.Floor(p.Top + t + (inner - iconSize) / 2.0 + 0.5)
             // A checked item's mark stands where an icon would; an item that can't be checked shows its icon.
             match ctx.Get MenuItemProps.isChecked, ctx.Get MenuItemProps.icon with
@@ -99,10 +128,10 @@ module MenuItem =
             | ValueSome false, _ -> ()
             | ValueNone, ValueSome icon -> ctx.Text.DrawIcon(list, Icon.geometry icon, icon.ViewBox, 0.0, false, false, x, y, iconSize, foreground)
             | ValueNone, ValueNone -> ()
-            x <- x + iconSize + iconGap
+            x <- x + mark + gap
         let top = Math.Floor(p.Top + t + (inner - lineHeight) / 2.0 + 0.5)
         ctx.Text.Draw(list, ctx.Get TextProps.text, font, fontSize, x, top, foreground)
-        let shortcut = ctx.Get MenuItemProps.shortcut
+        let shortcut = if ctx.Get MenuItemProps.inRow then "" else ctx.Get MenuItemProps.shortcut
         if shortcut <> "" then
             let width = ctx.Text.Measure(shortcut, font, fontSize).Width
             ctx.Text.Draw(list, shortcut, font, fontSize, Math.Floor(size.Width - p.Right - t - width), top, ctx.Get MenuItemProps.shortcutForeground)
@@ -157,7 +186,10 @@ type internal MenuState() =
 /// press with a finger. In a menu ↑/↓ move through the items (round the ends; disabled ones are skipped), Home and
 /// End go to the first and last, Enter or Space chooses, and a typed letter goes to the item that starts with it.
 /// Choosing an item runs its `onClick` and closes the menu; Escape, Tab or a press elsewhere closes it with
-/// nothing chosen. No submenus yet. A Menu is a panel: its items are its `children` (`MenuItem.create [ ... ]`,
+/// nothing chosen. No submenus yet. `Menu.orientation Horizontal` makes it a row (with `Menu.minWidth 0.0`, or it
+/// keeps a menu's least width): each item shows its text alone (its icon if it has no text, a check mark if it can
+/// be checked, no shortcut), the separators stand upright, and ←/→ move through it. A TextBox shows its context
+/// menu so for a finger (DESIGN.md, "9g"). A Menu is a panel: its items are its `children` (`MenuItem.create [ ... ]`,
 /// `Menu.separator`, or any view), and `Menu.items source key view` makes them from a list, as for any panel.
 [<AbstractClass>]
 type Menu =
@@ -187,9 +219,15 @@ module Menu =
         let mutable any = false
         for c in children do
             if obj.ReferenceEquals(c.Type, MenuItem.Type) && ((c.Get MenuItemProps.icon).IsSome || (c.Get MenuItemProps.isChecked).IsSome) then any <- true
+        // A row: its items show their text alone, and the lines between them stand upright.
+        let row = ctx.Get StackProps.orientation = Horizontal
         for c in children do
-            if obj.ReferenceEquals(c.Type, MenuItem.Type) && c.Get MenuItemProps.leading <> any then
+            if obj.ReferenceEquals(c.Type, MenuItem.Type) && (c.Get MenuItemProps.leading <> any || c.Get MenuItemProps.inRow <> row) then
                 c.SetLocal(MenuItemProps.leading, any)
+                c.SetLocal(MenuItemProps.inRow, row)
+                c.InvalidateMeasure()
+            elif obj.ReferenceEquals(c.Type, Separator.Type) && c.Get SeparatorProps.upright <> row then
+                c.SetLocal(SeparatorProps.upright, row)
                 c.InvalidateMeasure()
         StackPanel.Type.Measure ctx available
 
@@ -205,11 +243,13 @@ module Menu =
             let go (i: int) =
                 args.Handle()
                 if n > 0 then all[((i % n) + n) % n].Focus()
+            // A row's items are side by side: ←/→ in place of ↑/↓.
+            let next, previous = if menu.Get StackProps.orientation = Horizontal then Key.Right, Key.Left else Key.Down, Key.Up
             match args.Key, at with
-            | Key.Down, Some i when shown -> go (i + 1)
-            | Key.Down, _ -> go 0
-            | Key.Up, Some i when shown -> go (i - 1)
-            | Key.Up, _ -> go (n - 1)
+            | k, Some i when k = next && shown -> go (i + 1)
+            | k, _ when k = next -> go 0
+            | k, Some i when k = previous && shown -> go (i - 1)
+            | k, _ when k = previous -> go (n - 1)
             | Key.Home, _ -> go 0
             | Key.End, _ -> go (n - 1)
             // Tab leaves the menu with nothing chosen.

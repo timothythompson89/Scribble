@@ -819,6 +819,14 @@ Border.create [ Border.contextMenu menu; Border.content document ]     // opens 
   `TextBox.contextMenu yours` replaces it. Its labels are an app value: set `TextBoxMenu.labels` to a
   `TextBoxMenuLabels` record in another language. In a browser, Paste from the menu may ask for permission (Ctrl+V
   never does).
+- **By touch, a TextBox selects as a phone does** (M9 step 9g): a long press or a double-tap selects the word
+  under the finger (keep the finger down and drag to take more words); a selection handle then stands at each end
+  of the selection, and dragging one moves that end by characters. A tap places the caret, with a handle of its own
+  for a few seconds. The box's context menu shows as a row beside the selection (Cut, Copy, Paste, Select all:
+  those that apply); your `TextBox.contextMenu` shows there instead, a Menu as a row. A key, typed text or the
+  mouse puts handles and row away. `SelectionHandle.style [] [ SelectionHandle.fill c ]` recolours the handles.
+- **A Menu as a row:** `Menu.orientation Horizontal` (with `Menu.minWidth 0.0`) for any flyout: items show their
+  text alone, separators stand upright, ←/→ move through it.
 - **Look:** `MenuItem.style [ States.hover ] [ ... ]`, `MenuItem.highlight` (the item the keyboard is on),
   `MenuItem.shortcutForeground`. A context menu takes the window's theme, not one set around its element.
 

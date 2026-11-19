@@ -376,11 +376,12 @@ let ``a finger's tap places the caret when it lifts, and a finger drag scrolls s
     Assert.True((boxOf host).IsFocused)
     Assert.Equal((3, 3), selection host)
     Assert.Equal(0.0, s.ScrollY)
-    // A finger moves up over the text: the text follows it, and the caret stays.
-    touch (PointerPressed(Touch, 1, { X = xOf 1; Y = y 2 }, MouseButton.Left, Modifiers.None))
+    // A finger moves up over the text (away from the caret's handle, which the tap brought): the text follows it,
+    // and the caret stays.
+    touch (PointerPressed(Touch, 1, { X = xOf 8; Y = y 2 }, MouseButton.Left, Modifiers.None))
     for step in 1 .. 6 do
-        touch (PointerMoved(Touch, 1, { X = xOf 1; Y = y 2 - 10.0 * float step }, Modifiers.None))
-    touch (PointerReleased(Touch, 1, { X = xOf 1; Y = y 2 - 60.0 }, MouseButton.Left, Modifiers.None))
+        touch (PointerMoved(Touch, 1, { X = xOf 8; Y = y 2 - 10.0 * float step }, Modifiers.None))
+    touch (PointerReleased(Touch, 1, { X = xOf 8; Y = y 2 - 60.0 }, MouseButton.Left, Modifiers.None))
     settle w
     Assert.True(s.ScrollY > 20.0)
     Assert.Equal((3, 3), selection host)

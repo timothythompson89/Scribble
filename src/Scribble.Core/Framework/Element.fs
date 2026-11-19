@@ -52,6 +52,11 @@ type IElementRoot =
     abstract TextInputArea: element: obj * caret: Rect * keyboard: KeyboardKind * multiline: bool -> unit
     /// Drops what an input method is composing: the element has taken the composing text itself.
     abstract ClearComposition: unit -> unit
+    /// An element (an `Element`) shows something in a layer of its own, above its tree and the flyouts, filling
+    /// the window (a TextBox's selection handles). `content` is asked for the view (a `View`) before every frame,
+    /// once the element's tree has been laid out; when it answers null the layer goes, until the element asks
+    /// again. The layer never takes the keyboard. Does nothing in a tree without a host (DESIGN.md, "9g").
+    abstract ElementLayer: element: obj * content: (unit -> obj) -> unit
 
 [<AutoOpen>]
 module internal StyleMarks =
@@ -136,6 +141,8 @@ type ElementType =
       PointerDown: (InputContext -> PointerEventArgs -> unit) voption
       PointerMove: (InputContext -> PointerEventArgs -> unit) voption
       PointerUp: (InputContext -> PointerEventArgs -> unit) voption
+      /// The press the element holds was taken away (the system took the touch): see `Element.pointerCanceled`.
+      PointerCanceled: (InputContext -> unit) voption
       /// The type's own key behavior (a ScrollViewer's arrow keys): runs as a key bubbles from the
       /// focused element, after each element's own handler, if nothing handled it yet.
       KeyDown: (InputContext -> KeyEventArgs -> unit) voption
@@ -148,6 +155,8 @@ type ElementType =
       /// The type's own context menu, made when it is asked for (so it can say what applies now); an element's
       /// `contextMenu` setting comes before it.
       ContextMenu: (InputContext -> View voption) voption
+      /// A finger held still on the element (or inside it): see `Element.longPress`.
+      LongPress: (InputContext -> PointerEventArgs -> unit) voption
       /// The element got keyboard focus (true) or lost it (false); the second value says Tab brought it (not a
       /// press or code), which is when a TextBox selects all its text.
       FocusChanged: (InputContext -> bool -> bool -> unit) voption
@@ -176,10 +185,12 @@ type ElementType =
           PointerDown = ValueNone
           PointerMove = ValueNone
           PointerUp = ValueNone
+          PointerCanceled = ValueNone
           KeyDown = ValueNone
           TextInput = ValueNone
           TextComposition = ValueNone
           ContextMenu = ValueNone
+          LongPress = ValueNone
           FocusChanged = ValueNone
           Click = ValueNone
           ClipChildren = ValueNone
@@ -1890,6 +1901,10 @@ module Element =
     /// The type's own release behavior (after each element's `onPointerUp`).
     let pointerUp (f: InputContext -> PointerEventArgs -> unit) = ElementPart(fun t -> { t with PointerUp = ValueSome f })
 
+    /// The press this element holds (it handled the press, or took a long press) was taken away: the system took
+    /// the touch, or the window lost it. No `pointerUp` comes; a drag in progress ends here.
+    let pointerCanceled (f: InputContext -> unit) = ElementPart(fun t -> { t with PointerCanceled = ValueSome f })
+
     /// The type's own key behavior: keys nothing handled bubble from the focused element up, and
     /// reach this after each element's own `onKeyDown`. Call `e.Handle()` when it used the key.
     let keyDown (f: InputContext -> KeyEventArgs -> unit) = ElementPart(fun t -> { t with KeyDown = ValueSome f })
@@ -1908,6 +1923,13 @@ module Element =
     /// Menu key, a long press), so the Menu it gives can say what applies now; none: no menu of its own. An
     /// element's `contextMenu` setting replaces it.
     let contextMenu (f: InputContext -> View voption) = ElementPart(fun t -> { t with ContextMenu = ValueSome f })
+
+    /// The type's own use of a long press (a finger held still for half a second; a TextBox selects the word under
+    /// it): the deepest element under the finger whose type has this hears of it first, then those around it. Call
+    /// `e.Handle()` to take it: no context menu opens, nothing clicks, and the finger is captured to this element
+    /// (`pointerMove` and `pointerUp` get the rest of the touch). Left unhandled, the context menu of what is under
+    /// the finger opens, as for any element (DESIGN.md, "9g", decision 100).
+    let longPress (f: InputContext -> PointerEventArgs -> unit) = ElementPart(fun t -> { t with LongPress = ValueSome f })
 
     /// The type's own reaction to getting keyboard focus (`f ctx true byTab`) and losing it (`f ctx false false`):
     /// `byTab` is true when Tab or Shift+Tab brought the focus, false for a press or `element.Focus()`.

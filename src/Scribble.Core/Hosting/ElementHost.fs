@@ -61,6 +61,16 @@ type internal OpenFlyout(anchor: Element, anchorLayer: Layer, layer: Layer, retu
     /// Where the keyboard and the focus go when it closes, when that isn't its anchor's layer (a context menu).
     member val ReturnTo: struct (Layer * Element voption) voption = ValueNone with get, set
 
+/// A layer an element asked for (`IElementRoot.ElementLayer`): the element, the layer it is in, its own layer, and
+/// what gives the view to show there.
+type internal ElementLayer(owner: Element, ownerLayer: Layer, layer: Layer, content: unit -> obj) =
+    member _.Owner = owner
+    member _.OwnerLayer = ownerLayer
+    member _.Layer = layer
+    member val Content = content with get, set
+    /// The view the layer shows now (the same one again changes nothing).
+    member val Shown: View voption = ValueNone with get, set
+
 /// Connects element trees to a window: lays them out at the window's size and scale, draws them
 /// on every Frame, and asks for a frame whenever something in them changes. `App.start` makes
 /// one; a custom host (a game engine, a test) makes its own with `ElementHost.create`.
@@ -138,10 +148,13 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
     /// when that has changed (set below, once the keyboard's layer can be found).
     let mutable sentTextInput: TextInputRequest voption = ValueNone
     let mutable syncTextInput: unit -> unit = ignore
+    /// An element in a layer asks for a layer of its own (set below, once layers can be added).
+    let mutable elementLayerAsked: Layer -> Element -> (unit -> obj) -> unit = fun _ _ _ -> ()
 
     let add (layer: Layer) =
         let tree = layer.Tree
         tree.ClearCompositionHandler <- fun () -> window.ClearComposition()
+        tree.ElementLayerHandler <- fun e content -> elementLayerAsked layer e content
         layer.Input.FocusMoved <- fun () -> syncTextInput ()
         tree.WatchHandler <- fun e -> watched.Add(struct (e, layer))
         tree.RestyleHandler <- restyleOwned
@@ -277,8 +290,10 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
 
     /// Above the app's own layers: modals (and the dialogs shown in them), then flyouts (one opened in a modal shows over it), then toasts (an error
     /// stays in sight over a modal); all below the inspector.
-    let modalOrder = System.Int32.MaxValue - 5
-    let flyoutOrder = System.Int32.MaxValue - 4
+    let modalOrder = System.Int32.MaxValue - 6
+    let flyoutOrder = System.Int32.MaxValue - 5
+    /// Layers elements ask for (a TextBox's selection handles): a press in one closes no flyout.
+    let elementLayerOrder = System.Int32.MaxValue - 4
     let toastOrder = System.Int32.MaxValue - 3
     let flyoutGap = 4.0
 
@@ -430,6 +445,62 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                 dismiss f
                 true
             | None -> false
+
+    // --- Layers elements ask for (DESIGN.md, "9g": a TextBox's selection handles and row) ----------
+
+    let elementLayers = List<ElementLayer>()
+
+    let elementLayerIn (layer: Layer) = elementLayers |> Seq.tryFind (fun x -> same x.Layer layer)
+
+    let closeElementLayer (x: ElementLayer) =
+        elementLayers.Remove x |> ignore
+        removeLayer x.Layer
+
+    do
+        elementLayerAsked <-
+            fun ownerLayer owner content ->
+                match elementLayers |> Seq.tryFind (fun x -> obj.ReferenceEquals(x.Owner, owner)) with
+                | Some x ->
+                    x.Content <- content
+                    window.RequestFrame()
+                | None ->
+                    let layer =
+                        Layer.Create(
+                            text,
+                            [ Layer.name ("Above " + (if owner.Name <> "" then owner.Name else owner.Type.Name))
+                              Layer.order elementLayerOrder
+                              Layer.keyboard false
+                              Layer.appStyles ownerLayer.UsesAppStyles ],
+                            window.SetCursor)
+                    // Styled as if inside its element, as a flyout is.
+                    layer.Tree.Owner <- ValueSome owner
+                    elementLayers.Add(ElementLayer(owner, ownerLayer, layer, content))
+                    addLayer layer
+                    if not ownerLayer.UsesAppStyles then layer.Tree.Theme <- ownerLayer.Tree.Theme
+
+    /// Before an element's layer is laid out (its element's layer is below it, so laid out already): it shows what
+    /// the element gives now, and goes when the element gives nothing, left its tree, or is under a modal.
+    let refreshElementLayer (x: ElementLayer) =
+        let owner = x.Owner
+        let ownerIndex = layers.IndexOf x.OwnerLayer
+        let attached = ownerIndex >= 0 && (match owner.Root with ValueSome r -> obj.ReferenceEquals(r, x.OwnerLayer.Tree) | ValueNone -> false)
+        let covered = attached && layers.FindLastIndex(fun l -> isBlocking l) > ownerIndex
+        let view =
+            if not attached || covered then null
+            else
+                try
+                    x.Content ()
+                with ex ->
+                    owner.ReportError ex
+                    null
+        match view with
+        | :? View as view ->
+            match x.Shown with
+            | ValueSome shown when obj.ReferenceEquals(shown, view) -> ()
+            | _ ->
+                x.Shown <- ValueSome view
+                x.Layer.Update view
+        | _ -> closeElementLayer x
 
     // --- Context menus (DESIGN.md, "9f", decisions 71 and 73) --------------------------------------
 
@@ -843,6 +914,7 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
         while i < layers.Count do
             let l = layers[i]
             flyoutIn l |> Option.iter refreshFlyout
+            elementLayerIn l |> Option.iter refreshElementLayer
             if isIn l then
                 l.Tree.Scale <- scale
                 l.Tree.UpdateLayout available
@@ -1004,8 +1076,8 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                     updateKeyboardOwner ()
                 s.Buttons <- s.Buttons + 1
                 layer.Input.PointerPressed(kind, id, p, button, mods)
-                // A finger that stays where it went down asks for a context menu (DESIGN.md, "9f", decision 73).
-                if kind = PointerKind.Touch then
+                // A finger or a pen that stays where it went down asks for a context menu (DESIGN.md, "9f", decision 73).
+                if kind <> PointerKind.Mouse then
                     longPressGeneration <- longPressGeneration + 1
                     let generation = longPressGeneration
                     longPress <- ValueSome(struct (id, p, generation))
@@ -1017,7 +1089,13 @@ type ElementHost internal (window: IWindow, device: IRenderDevice, text: TextSys
                                 match longPress with
                                 | ValueSome(struct (pressed, at, g)) when g = generation && pressed = id ->
                                     longPress <- ValueNone
-                                    if isIn layer && contextAt layer at then
+                                    let time = now () - started
+                                    for l in layers do
+                                        l.Tree.Time <- time
+                                    // An element type that uses a long press itself keeps the finger (a TextBox
+                                    // selects the word under it: DESIGN.md, "9g", decision 100).
+                                    if isIn layer && layer.Input.LongPress(kind, id, at) then ()
+                                    elif isIn layer && contextAt layer at then
                                         // The menu took the press: no click when the finger lifts.
                                         layer.Input.PointerCanceled(kind, id)
                                         s.Buttons <- 0

@@ -154,6 +154,8 @@ module internal ThemeLooks =
               Style.on States.focused [ TextBox.borderBrush Palette.accent ]
               Style.on States.disabled [ TextBox.opacity 0.5 ]
           ]
+          // A TextBox's selection handles for a finger (M9 step 9g, decision 99): the accent.
+          SelectionHandle.style [] [ SelectionHandle.fill Palette.accent ]
           TextBlock.style [ Style.inside ComboBox.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
           // A disabled Button fades as a whole: its text doesn't fade twice.

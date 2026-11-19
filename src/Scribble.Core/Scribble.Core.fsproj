@@ -56,6 +56,7 @@
     <Compile Include="Elements/Controls/RadioButton.fs" />
     <Compile Include="Elements/Controls/ComboBox.fs" />
     <Compile Include="Elements/Controls/Menu.fs" />
+    <Compile Include="Elements/Controls/SelectionHandle.fs" />
     <Compile Include="Elements/Controls/TextBox.fs" />
     <Compile Include="Elements/Controls/Modal.fs" />
     <Compile Include="Elements/Controls/Toast.fs" />

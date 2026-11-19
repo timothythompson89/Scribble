@@ -98,6 +98,8 @@ type ElementTree(text: TextSystem) =
     /// caret's box in its coordinates, the keyboard and whether Enter makes a new line. The host reads it for the
     /// focused element.
     member val internal TextArea: struct (Element * Rect * KeyboardKind * bool) voption = ValueNone with get, set
+    /// Hears an element asking for a layer of its own (`IElementRoot.ElementLayer`): the host sets it.
+    member val internal ElementLayerHandler: Element -> (unit -> obj) -> unit = (fun _ _ -> ()) with get, set
     /// Drops the window's composition (`IElementRoot.ClearComposition`): the host sets it.
     member val internal ClearCompositionHandler: unit -> unit = ignore with get, set
     /// Where the root goes, from the root (measured: its `DesiredSize`, its settings) and the window's size: a flyout's
@@ -310,6 +312,7 @@ type ElementTree(text: TextSystem) =
         member this.TextInputArea(element, caret, keyboard, multiline) =
             this.TextArea <- ValueSome(struct (element :?> Element, caret, keyboard, multiline))
         member this.ClearComposition() = this.ClearCompositionHandler()
+        member this.ElementLayer(element, content) = this.ElementLayerHandler (element :?> Element) content
         member _.Theme = theme |> ValueOption.map (fun t -> t :> IThemeSource)
         member this.RequestRestyle(element, deep, stateChange) =
             this.RestyleHandler(element :?> Element)

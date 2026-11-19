@@ -445,8 +445,48 @@ type internal InputRouter(tree: ElementTree, setCursor: Cursor -> unit) =
     member _.PointerCanceled(kind: PointerKind, id: int) =
         let s = stateFor kind id
         endPan s true
+        // The element holding the press hears that no release comes.
+        match s.Captured with
+        | ValueSome e when isAttached e ->
+            match e.Type.PointerCanceled with
+            | ValueSome f ->
+                try
+                    f (InputContext e)
+                with ex ->
+                    e.ReportError ex
+            | ValueNone -> ()
+        | _ -> ()
         endPress s
         refresh s
+
+    /// A finger has been held still at `position`: the element types under it that use a long press hear of it,
+    /// deepest first. True when one took it: the finger is that element's now (its moves and its release go
+    /// there), and nothing clicks or pans.
+    member _.LongPress(kind: PointerKind, id: int, position: Point) : bool =
+        let s = stateFor kind id
+        let args = PointerEventArgs(kind, id, position, ValueNone, s.Modifiers)
+        let mutable taker = ValueNone
+        for e in routeOf (target s) do
+            if taker.IsNone then
+                match e.Type.LongPress with
+                | ValueSome f ->
+                    args.Origin <- e.PositionInTree
+                    try
+                        f (InputContext e) args
+                    with ex ->
+                        e.ReportError ex
+                    if args.IsHandled then taker <- ValueSome e
+                | ValueNone -> ()
+        match taker with
+        | ValueSome e ->
+            s.Captured <- ValueSome e
+            s.PressRoute <- []
+            s.Clickable <- ValueNone
+            s.PanStart <- ValueNone
+            s.PanCandidates <- []
+            refresh s
+            true
+        | ValueNone -> false
 
     /// Preview from the root down, then up from the element under the pointer: each element's
     /// `onWheel` setting, then its type's own wheel behavior (a ScrollViewer scrolling).

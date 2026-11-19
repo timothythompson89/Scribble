@@ -31,6 +31,7 @@
     <Compile Include="ComboBoxTests.fs" />
     <Compile Include="TextBoxTests.fs" />
     <Compile Include="MenuTests.fs" />
+    <Compile Include="TextBoxTouchTests.fs" />
     <Compile Include="DialogToastTests.fs" />
     <Compile Include="ImageOutTests.fs" />
     <Compile Include="BackendTests.fs" />

@@ -12,6 +12,8 @@ module SeparatorProps =
     let lineStyle = Prop.define "LineStyle" LineStyle.Solid Affects.Render
     /// The line's color (the theme's `Palette.border`).
     let color = Prop.define "Color" (Color.Hex 0x4A4A68) Affects.Render
+    /// Set by a Menu shown as a row: the line stands upright between its items, whatever `orientation` says.
+    let internal upright = Prop.local "SeparatorUpright" false
 
 /// A thin line between groups of things: across its whole width (Horizontal, the default) or down
 /// its whole height (Vertical). For toolbars, menus and forms.
@@ -31,14 +33,14 @@ module Separator =
             Element.defaults [ Semantics.role Role.Separator ]
             Element.measure (fun ctx _ ->
                 let t = ctx.Get SeparatorProps.thickness
-                match ctx.Get SeparatorProps.orientation with
+                match (if ctx.Get SeparatorProps.upright then Vertical else ctx.Get SeparatorProps.orientation) with
                 | Horizontal -> Size.Create(0.0, t)
                 | Vertical -> Size.Create(t, 0.0))
             Element.render (fun ctx list ->
                 let t = ctx.Get SeparatorProps.thickness
                 let size = ctx.Size
                 let rect =
-                    match ctx.Get SeparatorProps.orientation with
+                    match (if ctx.Get SeparatorProps.upright then Vertical else ctx.Get SeparatorProps.orientation) with
                     | Horizontal -> Rect.Create(0.0, (size.Height - t) / 2.0, size.Width, t)
                     | Vertical -> Rect.Create((size.Width - t) / 2.0, 0.0, t, size.Height)
                 let color = ctx.Get SeparatorProps.color

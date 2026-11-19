@@ -24,7 +24,7 @@ questions", as paragraphs starting with the name given here.
 | M7, M7b | Styles, themes, app values; icons and cursors | "Decisions for M7", "… M7 step 2", "… step 2b", "… theme tokens", "… app values", "… the window theme/title as an app value", "Decisions for M7b"; sections "Icon as an F# value", "M7b step 2", "M7b step 3" |
 | M7c | Custom title bars: skipped | Part 2, "The first plan", Milestones |
 | M8 | Core controls | Section "Decisions for M8" (rounds 1–7; steps 1, 2 and 3a as built); sections "M8 step 1b", "M8 step 3a+", "M8 step 3a++", "Recycling measured", "The inspector inside scrolled content", "Scrolling to an item moves the scroll viewers around it only as needed", "M8 step 3b: images, and the Counter becomes the Gallery", "Review of the image pipeline", "M8 step 4: layers and selection controls" (4a flyouts, 4b ListBox and RadioButton, 4c ComboBox, 4d Modal, dialogs and toasts) |
-| M9 | TextBox (planned, in five steps) | Section "M9: TextBox" |
+| M9 | TextBox (9a to 9g: one line, clipboard and undo, several lines, input methods, what waited, the Menu, selection by touch) | Section "M9: TextBox" |
 | Semantics | Roles, names, states and actions for assistive technology | Section "The semantics stage" |
 | Reviews | Two looks back at the whole project | Sections "Evaluation 2026-11-16", "Project review 2026-11-17" (decisions 1–25 and what was built) |
 | Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
@@ -88,7 +88,11 @@ the vectorised PNG decoder in it, was published and walked through by Tim the sa
 And **step 9f, the Menu** (section "9f: the Menu": Menu and MenuItem, `contextMenu` on any element, the TextBox's
 built-in menu; checked by Tim, 2026-11-18).
 
-Next: step 9g, selection by touch (long press, drag handles, the copy/paste bubble), which ends M9's TextBox work. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
+And **step 9g, selection by touch** (section "9g: selection by touch": a long press or a double-tap selects a
+word, selection handles, the context menu as a row; built 2026-11-18, waiting for Tim's check on a phone). It ends
+M9's TextBox work.
+
+Next: AccessKit (screen readers), then M10 hot reload. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"). Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -164,7 +168,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, Label, IconView, ImageView, Separator, FocusRing, Flyout, TooltipPresenter; Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Label, Menu and MenuItem (as a flyout or a context menu; 9f), Modal, dialogs, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Label, Menu and MenuItem (as a flyout or a context menu, or a row; 9f), SelectionHandle (a TextBox's, for a finger; 9g), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -173,6 +177,8 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   style over theme; transitions; dark and light themes with theme values (`Palette.surface`); app values that any
   view can read; visual states that apps can define and tools can force.
 - **Layers:** the app's view and more (dialogs, toasts, the inspector) over it, each with its own tree and focus.
+  An element can ask for a layer of its own above the flyouts (`IElementRoot.ElementLayer`: a TextBox's selection
+  handles), which never takes the keyboard.
   Flyouts (`flyout content` or `flyout [ ... ]`: content anchored to an element, light dismiss, flip and clamp) and tooltips each show
   in a layer of their own. Section "M8 step 4".
 - **Errors:** app code (handlers, views, components, render functions, items) is guarded; with `App.onError` an
@@ -238,6 +244,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 | Responsive layout | A round of its own (the Gallery wants a sidebar on wide windows, tabs on narrow ones) | The TabControl's header row scrolls sideways; views can't read the window size yet |
 | Scroll only the nearest viewer | When an app nests a list in a scrolling page and wants the page to stay put (the browser's `scrollIntoView({ container: "nearest" })`; DESIGN.md, "Scrolling to an item ...", Tim, 2026-11-17) | `BringRectIntoView` already treats the nearest viewer apart from the ones around it; the scroller's requests carry their options |
 | Tab stops numbered in the Inspector | When a Tab order is hard to see (section "Tab order is view order; `Dock.Fill`", decision 8) | Tab order is one list per layer (`Input`) |
+| A magnifier while dragging a selection handle | When selecting by touch proves hard to aim on a phone (section "9g: selection by touch", decision 90) | A view or an element can be rendered to an image; handles stand in their own layer |
 | Game UI hosts | Not planned | The draw list stays plain data; the core never assumes it owns the window or the loop; low per-frame allocations |
 
 ---
@@ -4377,6 +4384,133 @@ Status: **agreed (Tim, 2026-11-18); built and checked by Tim the same day.**
   passed alone; not looked into yet.
 - **Not checked by a test:** how a right-click and the menus feel in a real window, the Menu key on a real
   keyboard, Paste from the menu in a browser, a long press on a phone.
+
+### 9g: selection by touch (grilling, 2026-11-18)
+
+Facts at the start. A tap places the caret; a long press (500 ms within 8 DIPs, owned by the host) opens the
+TextBox's context menu at the finger; there are no selection handles and no way to select a word by touch.
+
+**Round 8 (Tim, 2026-11-18: yes to all, in three rounds of questions).**
+78. **Only the TextBox** (editable, read-only, password). Selectable text in a TextBlock is a feature of its own;
+    a read-only TextBox covers "select and copy" until then.
+79. **One look on every platform, close to Android's:** a caret handle after a tap, two selection handles round a
+    text selection, a row of commands above it; drawn in the theme's colours. Considered: iOS's (no caret handle,
+    a long press moves the caret) and a design of our own.
+80. **The row is the TextBox's context menu, shown by touch**: the same commands, enabled rules and
+    `TextBoxMenu.labels`; an app's `contextMenu` replaces it by touch as by mouse. No new term ("bubble" is not
+    one). Considered: a separate thing an app can't replace.
+81. **Only touch gets handles and the row**, by pointer kind, not platform (a touchscreen laptop too). A pen keeps
+    the mouse's drag-to-select and 9f's long press for the vertical menu.
+82. **A long press in a TextBox:** on a word, it selects the word and shows the handles and the row; on blank
+    space or past the text's end, it places the caret and shows the row with what applies. Keeping the finger down
+    and dragging extends the selection by words.
+83. **A double-tap selects a word**, as the long press does.
+84. **Only a TextBox's context menu becomes a row.** Any other element's opens on a long press as 9f built it: the
+    vertical Menu at the finger.
+85. **The built-in row leaves out Undo and Redo** and shows Cut, Copy, Paste, Select all, each only when it
+    applies (hidden, not disabled). The mouse's menu keeps all six, greyed when they don't apply.
+86. **Where the row sits:** centred above the selection or the caret, clear of the text; below the lower handle
+    when there is no room above; in the middle of what's visible when both ends are out of view; always inside the
+    window.
+87. **Handles stand in a layer of their own**, so nothing clips them; a handle whose end is scrolled out of view
+    (the box's own scroll or a ScrollViewer round it) is hidden until it comes back.
+88. **The caret handle** shows after a tap, hides on typing and goes after 4 s untouched (the platform clock). The
+    two selection handles stay while there is a selection.
+89. **Dragging a handle** moves its end by character, the handle's point offset above the finger; the ends may
+    cross (they swap); near the box's edge the box scrolls as for 9a's mouse drag; the row hides during the drag
+    and comes back on lift.
+90. **No magnifier in 9g** (Deferred work).
+91. **Taps with a selection:** inside it, the row shows or hides; elsewhere in the box, the selection goes and the
+    caret is placed (with its handle); outside the box, the handles and the row go and the box keeps its selection,
+    as for a mouse click outside.
+92. **A long press or double-tap takes the focus**: an editable box brings the phone keyboard up as a tap does; a
+    read-only one doesn't.
+93. **Scrolling** (a finger pan in the box or a ScrollViewer round it): handles follow their ends; the row hides
+    and comes back about ¼ s after the scrolling stops (the platform clock).
+94. **A Menu as a row is `Menu.orientation Horizontal`** (inherited from StackPanel, public, for any flyout): an
+    item shows its text only (its icon when it has no text), no shortcut text; a checked item keeps its check mark;
+    separators are thin upright lines; ←/→ move in place of ↑/↓.
+95. **An app's `contextMenu` on a TextBox, by touch:** a Menu is shown as a row with all its items; any other view
+    as it is, above the selection.
+96. **A row wider than the window** falls back to the vertical Menu in the same place. Considered: Android's
+    overflow item.
+97. **After a command:** Cut and Paste leave a caret (row and selection handles go, the caret handle shows); Copy
+    closes the row and keeps the selection with its handles; Select all keeps the row open with what now applies.
+98. **Password boxes:** a long press or double-tap selects everything (no word boundaries); the row has Paste and
+    Select all only.
+99. **Handles:** a filled teardrop in the accent colour, about 20 DIPs across, below the line (the start's leans
+    left, the end's right, the caret's is centred); the area a finger grabs is 44 DIPs and wins over the text
+    under it.
+100. **`Element.longPress`**, an element part: the host tells the element under a long press first; when it marks
+     the press handled, no context menu opens and that element keeps the touch (the drag by words), else 9f's
+     behaviour. For element authors; no `onLongPress` setting for apps yet.
+101. **During a composition**, a long press, double-tap or handle drag commits it first, as a tap does (9d).
+102. **A second finger** in the box is ignored while one drags a handle or extends a selection.
+
+GLOSSARY: **Selection handle** added; **Context menu** says a finger shows a TextBox's as a row.
+
+Status: **agreed (Tim, 2026-11-18); built the same day; waiting for Tim's check on a phone.**
+
+**As built (2026-11-18):**
+
+- **A layer an element asks for** (`IElementRoot.ElementLayer(element, content)`, `ElementHost`'s "Layers
+  elements ask for"). The host makes a layer above the flyouts and below the toasts (modals, flyouts, these,
+  toasts: `Int32.MaxValue - 6` to `- 3`), which never takes the keyboard and is styled as if inside its element,
+  as a flyout is. `content` is asked for the view before every frame, just before that layer is laid out (the
+  element's own layer is below, so laid out already): the handles stand where the frame being drawn puts the
+  text, with no frame's lag and no frame added. It answers the same View while nothing changed (nothing is
+  patched), and null when there is nothing to show: the layer goes. It also goes when its element leaves its tree
+  or a modal opens above it. A press in such a layer closes no flyout.
+- **The row is not a flyout.** Decision 80 holds (it is the box's context menu: same commands, same labels, an
+  app's `contextMenu` in its place), but it stands in the box's own layer beside the handles, in the box a Flyout
+  has (so the theme's look), placed by `SelectionLayer.place`. A flyout would have taken the focus and the
+  keyboard's layer when it opened, and a phone's keyboard would have gone down with every long press; a press
+  outside it would have been swallowed (decision 91 wants a tap elsewhere in the box to place the caret). One
+  consequence the other way from 9f's context menu: a `theme` or style set around the box does reach the row.
+- **`Element.longPress`** (decision 100) and, new with it, **`Element.pointerCanceled`**: the element that holds
+  a press hears when it is taken away (the system took the touch; a context menu opened), so a drag ends
+  instead of waiting for a release that never comes. The TextBox and the handles use it. The host asks the
+  layer's router first (`InputRouter.LongPress`: the types under the finger, deepest first); unhandled, 9f's
+  context menu opens as before.
+- **A pen's long press now opens context menus**, as 9f's notes said it did: the host timed fingers only. In a
+  TextBox a pen gets the menu as a menu and no handles (decision 81).
+- **`SelectionHandle`** (`Elements/Controls/SelectionHandle.fs`), a public element type so `SelectionHandle.style`
+  can recolour it; apps don't make one. The start's and end's are a 20 DIP circle with one corner left square (a
+  rounded rectangle with three round corners); the caret's is a drop drawn from an icon path. The box a finger
+  takes one by is 44 × 44 DIPs but starts only 4 DIPs above the handle's point and hangs below the line: centred
+  on the drawing, as first built, it covered the lower half of the text line for 32 DIPs beside the selection, and
+  a tap there (to place the caret) took the handle instead. So "wins over the text under it" (decision 99) is true
+  of the lines below and of those 4 DIPs.
+- **`Menu.orientation Horizontal`** (decision 94) as decided; a row menu also wants `Menu.minWidth 0.0`, because a
+  Menu's least width (160) is a type default. Separators stand upright through a local the Menu sets on them.
+  The TextBox gives its row's items more padding (14 × 11: about 41 DIPs high) through a style on the row's box.
+- **Where the row sits** (decision 86): 8 DIPs above the selection; on the first line that shows, above the
+  box's own edge (it stood on the box's border otherwise); below, 8 DIPs under the handles.
+- **A row too wide** (decision 96) is found when the layer arranges it: it is kept out of sight for that frame
+  and the box shows a menu from the next.
+- **"On a word"** (decisions 82 and 83) is: the finger is within 16 DIPs of a caret place on a line of text and
+  the character under it is not white space. The character under the finger, not the nearest caret place, picks
+  the word (a finger on the right half of a word's last letter selects that word; a mouse's double-click still
+  takes the nearest place, as 9a built it).
+- **What puts handles and row away:** a key, typed text, a composition starting, a mouse or pen press in the
+  box, and the focus leaving (a tap anywhere else in the box's layer). The caret's handle shows only in a box
+  that can change. Dragging the caret's handle leaves the row as it was; a tap on that handle shows or hides it.
+- **The row hides** while a handle is held, and for a quarter of a second after the text last scrolled or the
+  box last moved in the window (a scroller around it; also a phone's keyboard coming up).
+- **`render`'s scrolling was moved** into `scrollLine` and `scrollLines`, called by `render` and by the layer's
+  content just before it: same arithmetic, same pictures (the 102 older screenshots are unchanged).
+- **Tests:** 17 unit tests (`TextBoxTouchTests.fs`: long press on a word and on blank space, dragging on by
+  words, double-tap, taps inside and outside the selection, the caret's handle and its four seconds, dragging
+  each handle and crossing the ends, the row's four commands, password and read-only, what puts them away, a
+  second finger, an app's menu as the row, the too-wide row, scrolling inside and around the box, a pen, the
+  row's placement, a Menu as a row); four screenshots (`textbox-touch@1x`, `-light@1x`, `@2x`,
+  `textbox-touch-caret@1x`). One 9d test moved its finger away from the caret's new handle. Totals: 1,281 unit
+  (+7 timing), 106 rendering, 7 timing.
+- **Not built:** a magnifier (decision 90); the row's show and hide are not animated; selection by touch in a
+  TextBlock (decision 78).
+- **Not checked by a test:** all of it under a real finger: whether 44 DIPs is easy to take, whether the handles
+  sit well under the text, the row's place over a phone's keyboard, and whether a browser's own selection menu
+  or magnifier appears over ours.
 
 ## Platform layer: SDL3 and AccessKit (planning round, 2026-11-18)
 
