@@ -33,6 +33,7 @@ questions", as paragraphs starting with the name given here.
 | Imaging speed | The PNG decoder's row loops and mip levels with `Vector128` (built 2026-11-18) | Section "Vectorising the PNG decoder" |
 | Defaults | Where each element's defaults live: rest looks as type defaults by theme value (2026-11-19) | Section "Where defaults live" |
 | Names | An app names and styles a thing by what it wrote; presenters are internal (2026-11-19) | Section "Names an app sees" |
+| Style syntax | A selector says which elements, `Style.onState` and `Style.onProp` say when (2026-11-19) | Section "One way to say when" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -184,7 +185,8 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
   focus-visible.
-- **Styles and themes:** selectors (type, class, name, state, descendant and child), precedence own value over
+- **Styles and themes:** selectors (type, class, name, descendant and child) say which elements, blocks in the
+  settings say when (`Style.onState`, `Style.onProp`; section "One way to say when"); precedence own value over
   style over theme; transitions; dark and light themes with theme values (`Palette.surface`); app values that any
   view can read; visual states that apps can define and tools can force.
   An element type's look at rest is its type defaults, colours and shadows by theme value, so a tree without a
@@ -5285,6 +5287,41 @@ Decisions (Tim: "Yes, all four"):
 
 As built: no screenshot changed (no reference shows these names). Unit tests 1,305 (1 new: the three names and
 the styles' descriptions); the tooltip tests use `Tooltip.style`. 106 rendering tests.
+
+## One way to say when (2026-11-19)
+
+Tim asked whether the selector syntax for styles could be simpler. Counting the samples and the README (37 styles):
+9 with an empty selector, 9 with one class, 10 with a state, 9 with an ancestor, 1 with a property test. The syntax
+is near its floor for typed lists. Turned down: CSS-like strings (a misspelt type or class would compile, and
+resolving type names needs a registry keyed on user types, against engineering rule 6); short names by `open`
+(`cls "primary"; hover`: two spellings for every part, and names like `hover` collide with an app's own);
+dropping the empty `[]` (`style` is a module function and can't be overloaded, and it matches `X.create []`).
+
+What was heavy was having two ways to say a state: as a selector part (`Button.style [ States.hover ] [ ... ]`)
+and as a block in the settings (`Style.on States.hover [ ... ]`).
+
+Decisions (Tim: "Let's do the one way but make it Style.onState and let's add Style.onProp"):
+
+1. **A selector says which elements; blocks say when.** Selector parts are the type, classes, a name and what the
+   element is inside (`Style.inside`, `Style.parent`). When is a block in the settings.
+2. **`Style.onState state [ ... ]`** replaces `Style.on`, and in a view `X.onState` replaces `X.on` (Claude's
+   call, so the two keep one name: Tim named only the style's).
+3. **`Style.onProp prop value [ ... ]`** is new: settings while the element's own value of `prop` (else its default;
+   never a style's) equals `value`, matched again when it changes. It is `Style.prop` as a block. A style may hold
+   any number; blocks nest with `onState`. For styles only: a view knows the value and gives the settings
+   themselves (an element's own settings could hold only one such block).
+4. **A state or property test stays a selector part in one place, an ancestor's**
+   (`Style.inside Button.Type [ States.disabled ]`, `Style.inside Border.Type [ Style.prop selected true ]`): there
+   is nowhere else to say it. The parts still work on the element itself (tests keep covering them); the README,
+   samples and doc comments write the one way. `Style.where` has no block form until something needs one.
+
+As built: a block (`StateBlock`) carries a state or a property test and narrows its style's selector with it
+(`Narrow`); `Style.onProp` blocks share one key (`PropBlocks.prop`), which a style's list may repeat. The theme's
+styles already wrote blocks; its one own-state selector (`TextBlock:disabled`) is a block now, the same rule. The
+selector text tools show is unchanged (`Button:hover`, `Slider[Step=5]`; a union value prints as "…", as before).
+Screenshots: 3 regenerated (`styles-page`, `styles-page-light`, `gallery-phone-styles`: the Styles page's own label
+quotes the syntax, now "Hover me: Border.onState States.hover [ ... ], right in the view"). Tests: 1,307 unit
+(2 new, for `onProp`), 106 rendering.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

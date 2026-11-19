@@ -41,7 +41,7 @@ module TabItem =
     let style (parts: SelectorPart list) (settings: Setting<TabItem> list) : Style = Style.forType Type parts settings
 
 /// A tab's header in a TabControl's header row (a Button; the TabControl makes them). Styles can
-/// change its look: `TabHeader.style [ States.isSelected ] [ TabHeader.foreground c ]`.
+/// change its look: `TabHeader.style [] [ Style.onState States.isSelected [ TabHeader.foreground c ] ]`.
 [<AbstractClass>]
 type TabHeader =
     inherit Button

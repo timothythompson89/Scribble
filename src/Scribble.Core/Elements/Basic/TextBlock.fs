@@ -61,5 +61,5 @@ module TextBlock =
         ]
 
     let create (settings: Setting<TextBlock> list) : View = View.Create(Type, settings)
-    /// A style for TextBlocks: `TextBlock.style [ Style.cls "c"; States.hover ] [ TextBlock.margin 4.0 ]` (this type exactly).
+    /// A style for TextBlocks: `TextBlock.style [ Style.cls "c" ] [ Style.onState States.hover [ TextBlock.margin 4.0 ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<TextBlock> list) : Style = Style.forType Type parts settings

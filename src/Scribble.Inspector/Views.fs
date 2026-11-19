@@ -414,7 +414,7 @@ module internal Views =
             CheckBox.onCheckedChanged (fun _ -> onToggle ())
             CheckBox.background Color.Transparent
             CheckBox.borderBrush (Color.Hex 0x8A8AA0)
-            CheckBox.on States.isChecked [ CheckBox.background (Color.Hex 0x3D59A1); CheckBox.borderBrush (Color.Hex 0x3D59A1) ]
+            CheckBox.onState States.isChecked [ CheckBox.background (Color.Hex 0x3D59A1); CheckBox.borderBrush (Color.Hex 0x3D59A1) ]
             CheckBox.content (
                 TextBlock.create [
                     TextBlock.text label
@@ -475,7 +475,7 @@ module internal Views =
                 else Color.Transparent
             )
             Border.cursor Cursor.Hand
-            Border.on States.hover [ Border.overlay (Color.White.WithAlpha 0.08f) ]
+            Border.onState States.hover [ Border.overlay (Color.White.WithAlpha 0.08f) ]
             Border.onClick (fun _ -> onClick ())
             Border.content (
                 // One cell: the name, and over it a line through its middle when forced off.

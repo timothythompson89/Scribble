@@ -107,7 +107,7 @@ type ImageOutTests(fixture: TextFixture) =
                 Border.horizontalAlignment HorizontalAlignment.Left
                 Border.cornerRadius 12.0
                 // Its colour only while hovered (an element's own value would win over the block).
-                Border.on States.hover [ Border.background (Color.Hex 0xCC6633) ]
+                Border.onState States.hover [ Border.background (Color.Hex 0xCC6633) ]
                 Border.content (TextBlock.create [ TextBlock.text "Card"; TextBlock.margin 8.0 ])
             ]
         let view =

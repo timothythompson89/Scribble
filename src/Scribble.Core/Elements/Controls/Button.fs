@@ -126,5 +126,5 @@ module Button =
         ]
 
     let create (settings: Setting<Button> list) : View = View.Create(Type, settings)
-    /// A style for Buttons: `Button.style [ Style.cls "c"; States.hover ] [ Button.margin 4.0 ]` (this type exactly).
+    /// A style for Buttons: `Button.style [ Style.cls "c" ] [ Style.onState States.hover [ Button.margin 4.0 ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<Button> list) : Style = Style.forType Type parts settings

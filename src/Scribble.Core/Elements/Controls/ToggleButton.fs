@@ -94,5 +94,5 @@ module ToggleButton =
         ]
 
     let create (settings: Setting<ToggleButton> list) : View = View.Create(Type, settings)
-    /// A style for ToggleButtons (this type exactly): `ToggleButton.style [ States.isChecked ] [ ... ]`.
+    /// A style for ToggleButtons (this type exactly): `ToggleButton.style [] [ Style.onState States.isChecked [ ... ] ]`.
     let style (parts: SelectorPart list) (settings: Setting<ToggleButton> list) : Style = Style.forType Type parts settings

@@ -39,5 +39,5 @@ module IconView =
         ]
 
     let create (settings: Setting<IconView> list) : View = View.Create(Type, settings)
-    /// A style for IconViews: `IconView.style [ States.hover ] [ IconView.foreground c ]` (this type exactly).
+    /// A style for IconViews: `IconView.style [] [ Style.onState States.hover [ IconView.foreground c ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<IconView> list) : Style = Style.forType Type parts settings

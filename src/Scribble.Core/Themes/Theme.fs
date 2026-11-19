@@ -25,11 +25,11 @@ module internal ThemeLooks =
           Style.transition LayoutProps.scale pressTime
           Style.transition BorderProps.shadow pressTime
           yield! whileOn
-          Style.on States.hover [ Button.overlay Palette.hoverTint ]
+          Style.onState States.hover [ Button.overlay Palette.hoverTint ]
           // Sinks to 97% around its center and its shadow flattens.
-          Style.on States.pressed [ Button.overlay Palette.pressTint; Button.scale 0.97; flat ]
+          Style.onState States.pressed [ Button.overlay Palette.pressTint; Button.scale 0.97; flat ]
           // Last, so it wins over hover and pressed.
-          Style.on States.disabled [ Button.overlay Color.Transparent; Button.opacity 0.5; flat ] ]
+          Style.onState States.disabled [ Button.overlay Color.Transparent; Button.opacity 0.5; flat ] ]
 
     /// CheckBox's and Switch's state looks: the accent while on, with the mark (tick, knob) in the colour that
     /// reads on it; hover and press tint the box or track.
@@ -37,17 +37,17 @@ module internal ThemeLooks =
         [ Style.transition BorderProps.overlay tintTime
           Style.transition BorderProps.background tintTime
           Style.transition BorderProps.borderBrush tintTime
-          Style.on States.isChecked [ ToggleButton.background Palette.accent; ToggleButton.borderBrush Palette.accent; ToggleButton.markColor Palette.onAccent ]
-          Style.on States.isIndeterminate [ ToggleButton.background Palette.accent; ToggleButton.borderBrush Palette.accent; ToggleButton.markColor Palette.onAccent ]
-          Style.on States.hover [ ToggleButton.overlay Palette.hoverTint ]
-          Style.on States.pressed [ ToggleButton.overlay Palette.pressTint ]
-          Style.on States.disabled [ ToggleButton.overlay Color.Transparent; ToggleButton.opacity 0.5 ] ]
+          Style.onState States.isChecked [ ToggleButton.background Palette.accent; ToggleButton.borderBrush Palette.accent; ToggleButton.markColor Palette.onAccent ]
+          Style.onState States.isIndeterminate [ ToggleButton.background Palette.accent; ToggleButton.borderBrush Palette.accent; ToggleButton.markColor Palette.onAccent ]
+          Style.onState States.hover [ ToggleButton.overlay Palette.hoverTint ]
+          Style.onState States.pressed [ ToggleButton.overlay Palette.pressTint ]
+          Style.onState States.disabled [ ToggleButton.overlay Color.Transparent; ToggleButton.opacity 0.5 ] ]
 
     let private styles =
         [ Button.style [] (buttonLook [])
           ToggleButton.style [] (
               buttonLook [
-                  Style.on States.isChecked [
+                  Style.onState States.isChecked [
                       ToggleButton.background Palette.accent
                       ToggleButton.borderBrush Palette.accent
                       ToggleButton.foreground Palette.onAccent
@@ -62,63 +62,63 @@ module internal ThemeLooks =
               Style.transition BorderProps.overlay tintTime
               Style.transition BorderProps.background tintTime
               Style.transition BorderProps.borderBrush tintTime
-              Style.on States.isChecked [ RadioButton.background Palette.accent; RadioButton.borderBrush Palette.accent ]
-              Style.on States.hover [ RadioButton.overlay Palette.hoverTint ]
-              Style.on States.pressed [ RadioButton.overlay Palette.pressTint ]
-              Style.on States.disabled [ RadioButton.overlay Color.Transparent; RadioButton.opacity 0.5 ]
+              Style.onState States.isChecked [ RadioButton.background Palette.accent; RadioButton.borderBrush Palette.accent ]
+              Style.onState States.hover [ RadioButton.overlay Palette.hoverTint ]
+              Style.onState States.pressed [ RadioButton.overlay Palette.pressTint ]
+              Style.onState States.disabled [ RadioButton.overlay Color.Transparent; RadioButton.opacity 0.5 ]
           ]
           Slider.style [] [
               Style.transition SliderProps.overlay tintTime
               // A white thumb doesn't lighten: its edge takes the accent instead.
-              Style.on States.hover [ Slider.thumbBorder Palette.accent ]
-              Style.on States.pressed [ Slider.overlay Palette.pressTint ]
-              Style.on States.disabled [ Slider.overlay Color.Transparent; Slider.opacity 0.5 ]
+              Style.onState States.hover [ Slider.thumbBorder Palette.accent ]
+              Style.onState States.pressed [ Slider.overlay Palette.pressTint ]
+              Style.onState States.disabled [ Slider.overlay Color.Transparent; Slider.opacity 0.5 ]
           ]
           // Text tabs: dim (their type default) until selected (the TabControl draws the accent underline) or hovered.
           TabHeader.style [] [
               Style.transition BorderProps.overlay tintTime
               Style.transition InheritedProps.foreground tintTime
-              Style.on States.hover [ TabHeader.overlay Palette.hoverTint; TabHeader.foreground Palette.text ]
-              Style.on States.isSelected [ TabHeader.foreground Palette.text ]
-              Style.on States.pressed [ TabHeader.overlay Palette.pressTint ]
-              Style.on States.disabled [ TabHeader.overlay Color.Transparent; TabHeader.opacity 0.5 ]
+              Style.onState States.hover [ TabHeader.overlay Palette.hoverTint; TabHeader.foreground Palette.text ]
+              Style.onState States.isSelected [ TabHeader.foreground Palette.text ]
+              Style.onState States.pressed [ TabHeader.overlay Palette.pressTint ]
+              Style.onState States.disabled [ TabHeader.overlay Color.Transparent; TabHeader.opacity 0.5 ]
           ]
           // List items (M8 step 4b, decision 15): hover and press tint; selected, an accent tint and
           // the accent bar at the left edge.
           ListBoxItem.style [] [
               Style.transition BorderProps.overlay tintTime
               Style.transition BorderProps.background tintTime
-              Style.on States.isSelected [ Setting.fromThemeWith BorderProps.background Palette.accent ThemeConvert.selectionTint ]
-              Style.on States.hover [ ListBoxItem.overlay Palette.hoverTint ]
-              Style.on States.pressed [ ListBoxItem.overlay Palette.pressTint ]
-              Style.on States.disabled [ ListBoxItem.overlay Color.Transparent; ListBoxItem.opacity 0.5 ]
+              Style.onState States.isSelected [ Setting.fromThemeWith BorderProps.background Palette.accent ThemeConvert.selectionTint ]
+              Style.onState States.hover [ ListBoxItem.overlay Palette.hoverTint ]
+              Style.onState States.pressed [ ListBoxItem.overlay Palette.pressTint ]
+              Style.onState States.disabled [ ListBoxItem.overlay Color.Transparent; ListBoxItem.opacity 0.5 ]
           ]
           // Menu items (M9 step 9f): as list items under the pointer; the one the keyboard is on has the same tint.
           MenuItem.style [] [
               Style.transition BorderProps.overlay tintTime
-              Style.on States.hover [ MenuItem.overlay Palette.hoverTint ]
-              Style.on States.pressed [ MenuItem.overlay Palette.pressTint ]
-              Style.on States.disabled [ MenuItem.overlay Color.Transparent; MenuItem.opacity 0.5 ]
+              Style.onState States.hover [ MenuItem.overlay Palette.hoverTint ]
+              Style.onState States.pressed [ MenuItem.overlay Palette.pressTint ]
+              Style.onState States.disabled [ MenuItem.overlay Color.Transparent; MenuItem.opacity 0.5 ]
           ]
           // A field (M8 step 4c, decision 10): its line takes the accent while it has focus
           // or its list is open.
           ComboBox.style [] [
               Style.transition BorderProps.overlay tintTime
               Style.transition BorderProps.borderBrush tintTime
-              Style.on States.hover [ ComboBox.overlay Palette.hoverTint ]
-              Style.on States.pressed [ ComboBox.overlay Palette.pressTint ]
-              Style.on States.focused [ ComboBox.borderBrush Palette.accent ]
-              Style.on States.isOpen [ ComboBox.borderBrush Palette.accent ]
-              Style.on States.disabled [ ComboBox.overlay Color.Transparent; ComboBox.opacity 0.5 ]
+              Style.onState States.hover [ ComboBox.overlay Palette.hoverTint ]
+              Style.onState States.pressed [ ComboBox.overlay Palette.pressTint ]
+              Style.onState States.focused [ ComboBox.borderBrush Palette.accent ]
+              Style.onState States.isOpen [ ComboBox.borderBrush Palette.accent ]
+              Style.onState States.disabled [ ComboBox.overlay Color.Transparent; ComboBox.opacity 0.5 ]
           ]
           // A field to type in (M9 step 9a, decision 17): a ComboBox's state looks without the hover and press tints.
           TextBox.style [] [
               Style.transition BorderProps.borderBrush tintTime
-              Style.on States.focused [ TextBox.borderBrush Palette.accent ]
-              Style.on States.disabled [ TextBox.opacity 0.5 ]
+              Style.onState States.focused [ TextBox.borderBrush Palette.accent ]
+              Style.onState States.disabled [ TextBox.opacity 0.5 ]
           ]
           TextBlock.style [ Style.inside ComboBox.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
-          TextBlock.style [ States.disabled ] [ TextBlock.opacity 0.45 ]
+          TextBlock.style [] [ Style.onState States.disabled [ TextBlock.opacity 0.45 ] ]
           // A disabled Button fades as a whole: its text doesn't fade twice.
           TextBlock.style [ Style.inside Button.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]
           TextBlock.style [ Style.inside ToggleButton.Type [ States.disabled ] ] [ TextBlock.opacity 1.0 ]

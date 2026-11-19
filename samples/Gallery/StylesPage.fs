@@ -27,7 +27,7 @@ let private normalStyles =
           Border.cornerRadius 8.0
           Border.padding 12.0
           // Highlights while the pointer is anywhere over the card.
-          Style.on States.hover [ Border.borderBrush highlight ]
+          Style.onState States.hover [ Border.borderBrush highlight ]
       ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "card" ] ] [ TextBlock.foreground Palette.text ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "card"; States.hover ] ] [ TextBlock.foreground highlight ]
@@ -38,12 +38,12 @@ let private normalStyles =
           Border.borderThickness 1.0
           Border.cornerRadius 14.0
           Border.padding (12.0, 5.0)
-          Style.on States.hover [ Border.background subtle ]
+          Style.onState States.hover [ Border.background subtle ]
       ]
       Border.style [ Style.cls "chip"; selectedState ] [
           Border.background Palette.accent
           Border.borderBrush highlight
-          Style.on States.hover [ Border.background accentHover ]
+          Style.onState States.hover [ Border.background accentHover ]
       ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "chip" ] ] [ TextBlock.foreground Palette.textDim ]
       TextBlock.style [ Style.inside Border.Type [ Style.prop selected true ] ] [ TextBlock.foreground Palette.onAccent ] ]
@@ -109,10 +109,10 @@ let demo =
                 Border.create [
                     Border.minHeight 40.0
                     Border.cornerRadius 6.0
-                    Border.on States.hover [ Border.background hover ]
+                    Border.onState States.hover [ Border.background hover ]
                     Border.content (
                         TextBlock.create [
-                            TextBlock.text "Hover me: Border.on States.hover [ ... ], a style right in the view"
+                            TextBlock.text "Hover me: Border.onState States.hover [ ... ], right in the view"
                             TextBlock.foreground Palette.textDim
                             TextBlock.textWrapping TextWrapping.Wrap
                             TextBlock.margin (12.0, 8.0)

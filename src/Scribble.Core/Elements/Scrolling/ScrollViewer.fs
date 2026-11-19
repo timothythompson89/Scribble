@@ -526,7 +526,7 @@ module ScrollViewer =
         ]
 
     let create (settings: Setting<ScrollViewer> list) = View.Create(Type, settings)
-    /// A style for ScrollViewers: `ScrollViewer.style [ Style.cls "c"; States.hover ] [ ScrollViewer.margin 4.0 ]` (this type exactly).
+    /// A style for ScrollViewers: `ScrollViewer.style [ Style.cls "c" ] [ Style.onState States.hover [ ScrollViewer.margin 4.0 ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<ScrollViewer> list) : Style = Style.forType Type parts settings
 
     /// The visible part of a ScrollViewer (its viewport) and its content's offset, for what's

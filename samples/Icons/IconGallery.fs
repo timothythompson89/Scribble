@@ -31,7 +31,7 @@ let private tile (name: string) (filled: bool) (isMatch: bool) (pick: string -> 
         Border.padding (6.0, 10.0)
         Border.borderThickness (if isMatch then 1.5 else 0.0)
         Border.borderBrush Palette.accent
-        Border.on States.hover [ Border.background Palette.surface ]
+        Border.onState States.hover [ Border.background Palette.surface ]
         Border.onClick (fun _ -> pick name)
         Border.content (
             StackPanel.create [

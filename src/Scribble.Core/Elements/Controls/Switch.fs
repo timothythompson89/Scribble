@@ -47,5 +47,5 @@ module Switch =
         ]
 
     let create (settings: Setting<Switch> list) : View = View.Create(Type, settings)
-    /// A style for Switches: `Switch.style [ States.isChecked ] [ Switch.background c ]` (this type exactly).
+    /// A style for Switches: `Switch.style [] [ Style.onState States.isChecked [ Switch.background c ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<Switch> list) : Style = Style.forType Type parts settings

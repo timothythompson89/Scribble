@@ -49,5 +49,5 @@ module CheckBox =
         ]
 
     let create (settings: Setting<CheckBox> list) : View = View.Create(Type, settings)
-    /// A style for CheckBoxes: `CheckBox.style [ States.isChecked ] [ CheckBox.background c ]` (this type exactly).
+    /// A style for CheckBoxes: `CheckBox.style [] [ Style.onState States.isChecked [ CheckBox.background c ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<CheckBox> list) : Style = Style.forType Type parts settings

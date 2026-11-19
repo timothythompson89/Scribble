@@ -99,5 +99,5 @@ module StackPanel =
     let Type = Element.define "StackPanel" [ Element.measure measure; Element.arrange arrange ]
 
     let create (settings: Setting<StackPanel> list) : View = View.Create(Type, settings)
-    /// A style for StackPanels: `StackPanel.style [ Style.cls "c"; States.hover ] [ StackPanel.margin 4.0 ]` (this type exactly).
+    /// A style for StackPanels: `StackPanel.style [ Style.cls "c" ] [ Style.onState States.hover [ StackPanel.margin 4.0 ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<StackPanel> list) : Style = Style.forType Type parts settings

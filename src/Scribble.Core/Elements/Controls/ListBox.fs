@@ -281,7 +281,7 @@ module internal ListBoxLogic =
 
 /// The element a ListBox wraps each item in (a Border): it shows the item's states (`selected`
 /// with hover, pressed and focused) and takes its clicks. Styles reach it as
-/// `ListBoxItem.style [ States.isSelected ] [ ListBoxItem.background c ]`.
+/// `ListBoxItem.style [] [ Style.onState States.isSelected [ ListBoxItem.background c ] ]`.
 [<AbstractClass>]
 type ListBoxItem =
     inherit Border
@@ -328,7 +328,7 @@ module ListBoxItem =
         ]
 
     let create (settings: Setting<ListBoxItem> list) : View = View.Create(Type, settings)
-    /// A style for ListBoxItems: `ListBoxItem.style [ States.isSelected ] [ ... ]`.
+    /// A style for ListBoxItems: `ListBoxItem.style [] [ Style.onState States.isSelected [ ... ] ]`.
     let style (parts: SelectorPart list) (settings: Setting<ListBoxItem> list) : Style = Style.forType Type parts settings
 
 /// A list the user selects from (an ItemsView: it realizes only what shows, so 10,000 items cost

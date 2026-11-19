@@ -259,5 +259,5 @@ module Slider =
         ]
 
     let create (settings: Setting<Slider> list) : View = View.Create(Type, settings)
-    /// A style for Sliders: `Slider.style [ States.hover ] [ Slider.thumb c ]` (this type exactly).
+    /// A style for Sliders: `Slider.style [] [ Style.onState States.hover [ Slider.thumb c ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<Slider> list) : Style = Style.forType Type parts settings

@@ -245,7 +245,7 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
     member val internal TestedByStyles = false with get, set
     /// ... and an ancestor part does (`Style.inside`/`Style.parent`): a change matches the subtree.
     member val internal TestedByAncestorStyles = false with get, set
-    /// Holds an inline state block (`Button.on States.hover [ ... ]`): part of the element's styles.
+    /// Holds an inline state block (`Button.onState States.hover [ ... ]`): part of the element's styles.
     member val internal IsStateBlock = false with get, set
     /// The `styles` setting (a list of styles for the element and its subtree).
     member val internal IsStyles = false with get, set

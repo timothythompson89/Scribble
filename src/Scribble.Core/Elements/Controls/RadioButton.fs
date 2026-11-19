@@ -115,7 +115,7 @@ module RadioButton =
         ]
 
     let create (settings: Setting<RadioButton> list) : View = View.Create(Type, settings)
-    /// A style for RadioButtons: `RadioButton.style [ States.isChecked ] [ RadioButton.borderBrush c ]`.
+    /// A style for RadioButtons: `RadioButton.style [] [ Style.onState States.isChecked [ RadioButton.borderBrush c ] ]`.
     let style (parts: SelectorPart list) (settings: Setting<RadioButton> list) : Style = Style.forType Type parts settings
 
 module RadioGroup =

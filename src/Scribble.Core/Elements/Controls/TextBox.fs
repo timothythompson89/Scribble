@@ -2052,5 +2052,5 @@ module TextBox =
         ]
 
     let create (settings: Setting<TextBox> list) : View = View.Create(Type, settings)
-    /// A style for TextBoxes: `TextBox.style [ States.focused ] [ TextBox.borderBrush c ]` (this type exactly).
+    /// A style for TextBoxes: `TextBox.style [] [ Style.onState States.focused [ TextBox.borderBrush c ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<TextBox> list) : Style = Style.forType Type parts settings

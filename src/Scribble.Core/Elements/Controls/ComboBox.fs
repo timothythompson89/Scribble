@@ -345,5 +345,5 @@ module ComboBox =
         ]
 
     let create (settings: Setting<ComboBox> list) : View = View.Create(Type, settings)
-    /// A style for ComboBoxes: `ComboBox.style [ States.isOpen ] [ ComboBox.borderBrush c ]` (this type exactly).
+    /// A style for ComboBoxes: `ComboBox.style [] [ Style.onState States.isOpen [ ComboBox.borderBrush c ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<ComboBox> list) : Style = Style.forType Type parts settings

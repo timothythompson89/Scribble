@@ -13,8 +13,8 @@ type Layoutable =
     /// app's): `Border.styles cardStyles`. Define the list once (styles compare by reference).
     static member styles<'k when 'k :> Layoutable>(value: Style list) : Setting<'k> = Setting.create StyleProps.styles value
     /// Settings that apply while this element is in `state`, right in the view:
-    /// `Button.on States.hover [ Button.background light ]` (one block per state; blocks nest).
-    static member on<'k when 'k :> Layoutable> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> = Style.on state settings
+    /// `Button.onState States.hover [ Button.background light ]` (one block per state; blocks nest).
+    static member onState<'k when 'k :> Layoutable> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> = Style.onState state settings
     static member margin<'k when 'k :> Layoutable>(value: Thickness) : Setting<'k> = Setting.create LayoutProps.margin value
     static member margin<'k when 'k :> Layoutable>(uniform: float) : Setting<'k> = Setting.create LayoutProps.margin (Thickness.Uniform uniform)
     static member margin<'k when 'k :> Layoutable>(horizontal: float, vertical: float) : Setting<'k> =
@@ -78,7 +78,7 @@ type Layoutable =
     /// shapes overlap they show through each other.
     static member opacity<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create LayoutProps.opacity value
     /// Draws this element and everything inside it larger or smaller around its center (1 = as is);
-    /// layout and hit testing don't change. Button's press is `Button.on States.pressed [ Button.scale 0.97 ]`.
+    /// layout and hit testing don't change. Button's press is `Button.onState States.pressed [ Button.scale 0.97 ]`.
     static member scale<'k when 'k :> Layoutable>(value: float) : Setting<'k> = Setting.create LayoutProps.scale value
     /// The theme for this element and everything inside it (instead of the app's): its looks and
     /// base text color, font and size. Switching is the view returning a different theme.

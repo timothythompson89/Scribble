@@ -37,12 +37,12 @@ and SelectorPart internal (apply: Selector -> Selector) =
         | _ -> apply s
 
 /// A state an element can be in: `States.hover`, `States.pressed`, ..., or an element type's own
-/// (`States.define`, `States.ofProp`). The same value is a selector part
-/// (`Button.style [ Style.cls "primary"; States.hover ] [ ... ]`) and a block
-/// (`Style.on States.hover [ ... ]`, `Button.on States.hover [ ... ]`).
+/// (`States.define`, `States.ofProp`). Written as a block: `Style.onState States.hover [ ... ]` in a style,
+/// `Button.onState States.hover [ ... ]` in a view. It is also a selector part, for an ancestor's state:
+/// `Style.inside Button.Type [ States.disabled ]`.
 and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop: Prop voption, forcedValues: struct (obj * obj) voption) =
     inherit SelectorPart(id)
-    // An element holds at most one inline block per state (`Button.on States.hover [ ... ]`).
+    // An element holds at most one inline block per state (`Button.onState States.hover [ ... ]`).
     let blockProp =
         let p = Prop<StateBlock voption>("On " + name, ValueNone, Affects.Nothing, PropKind.Value)
         p.IsStateBlock <- true
@@ -66,22 +66,42 @@ and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop:
         | ValueNone -> ValueNone
     override _.ToString() = name
 
-/// Settings that apply while an element is in a state: `Style.on States.hover [ ... ]` inside a
-/// style, or `Button.on States.hover [ ... ]` in a view.
-and [<Sealed>] internal StateBlock(state: ElementState, settings: struct (Prop * obj)[]) =
+/// Settings that apply while an element is in a state (`Style.onState States.hover [ ... ]` inside a
+/// style, or `Button.onState States.hover [ ... ]` in a view) or while one of its properties has a value
+/// (`Style.onProp SliderProps.orientation Orientation.Vertical [ ... ]`, the test with the value it compares to).
+and [<Sealed>] internal StateBlock(state: ElementState voption, propTest: struct (PropTest * obj) voption, settings: struct (Prop * obj)[]) =
     member _.State = state
+    member _.PropTest = propTest
     member _.Settings = settings
+    /// The selector of the style the block is in, with the block's own condition added.
+    member _.Narrow(s: Selector) : Selector =
+        match state, propTest with
+        | ValueSome st, _ -> { s with States = s.States @ [ st ] }
+        | ValueNone, ValueSome(struct (t, _)) -> { s with Props = s.Props @ [ t ] }
+        | ValueNone, ValueNone -> s
 
     // Rebuilt views make new blocks; equal ones mustn't count as a change.
     override _.Equals(other: obj) =
         match other with
         | :? StateBlock as b ->
-            obj.ReferenceEquals(state, b.State)
+            (match state, b.State with
+             | ValueSome x, ValueSome y -> obj.ReferenceEquals(x, y)
+             | ValueNone, ValueNone -> true
+             | _ -> false)
+            && (match propTest, b.PropTest with
+                | ValueSome(struct (t, v)), ValueSome(struct (u, w)) -> obj.ReferenceEquals(t.Prop, u.Prop) && t.Prop.Same(v, w)
+                | ValueNone, ValueNone -> true
+                | _ -> false)
             && settings.Length = b.Settings.Length
             && Array.forall2 (fun (struct (p: Prop, v: obj)) (struct (q: Prop, w: obj)) -> obj.ReferenceEquals(p, q) && p.Same(v, w)) settings b.Settings
         | _ -> false
 
-    override _.GetHashCode() = state.Name.GetHashCode() + settings.Length
+    override _.GetHashCode() =
+        settings.Length
+        + (match state, propTest with
+           | ValueSome st, _ -> st.Name.GetHashCode()
+           | ValueNone, ValueSome(struct (t, _)) -> t.Prop.Id
+           | ValueNone, ValueNone -> 0)
 
 /// The built-in states, and `States.define` for an element type's own.
 module States =
@@ -267,6 +287,14 @@ module internal Selector =
         | ValueSome(struct (Relation.Inside, a)) -> text a + " " + own
         | ValueNone -> own
 
+/// Where a style's settings list keeps its `Style.onProp` blocks (one key for all of them: a style's list may hold
+/// any number, an element's own settings only one, and a view that knows the value has no need of one).
+module internal PropBlocks =
+    let prop =
+        let p = Prop<StateBlock voption>("On property", ValueNone, Affects.Nothing, PropKind.Value)
+        p.IsStateBlock <- true
+        p
+
 /// One selector with the values it sets (a style is one or more: its base and its state blocks).
 [<NoEquality; NoComparison>]
 type internal Rule =
@@ -304,11 +332,11 @@ module internal Rule =
             if p.IsStateBlock then
                 match v with
                 | :? (StateBlock voption) as b when b.IsSome ->
-                    flatten { selector with States = selector.States @ [ b.Value.State ] } prefix b.Value.Settings into
+                    flatten (b.Value.Narrow selector) prefix b.Value.Settings into
                 | _ -> ()
 
 /// A style: a selector and the settings it gives every element it matches. Made with an element
-/// module's `style` (`Button.style [ Style.cls "primary"; States.hover ] [ Button.background c ]`) or
+/// module's `style` (`Button.style [ Style.cls "primary" ] [ Style.onState States.hover [ Button.background c ] ]`) or
 /// `Style.any`; used in `App.styles [ ... ]` or an element's `styles` setting. Compared by
 /// reference: define styles once, at module level.
 [<Sealed>]
@@ -365,13 +393,30 @@ type Style internal (rules: Rule[], description: string) =
         SelectorPart(fun s -> { s with Ancestor = ValueSome(struct (Relation.Parent, a)) })
 
     /// Settings that apply while the element is also in `state`, inside a style's settings:
-    /// `Button.style [ Style.cls "primary" ] [ Button.background c; Style.on States.hover [ ... ] ]`.
-    /// Blocks nest (hover inside focused: both). In a view, write `Button.on` (the same thing).
-    static member on<'k> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> =
+    /// `Button.style [ Style.cls "primary" ] [ Button.background c; Style.onState States.hover [ ... ] ]`.
+    /// Blocks nest (hover inside focused: both). In a view, write `Button.onState` (the same thing).
+    /// The one way to say when: a style's selector says which elements (type, class, name, what they are inside),
+    /// `onState` and `onProp` say when.
+    static member onState<'k> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> =
         // A state block is a style, in a style or a view: checked when made, like one.
         for s in settings do
             if not s.Prop.IsStateBlock then Rule.check s.Prop
-        Setting.create state.BlockProp (ValueSome(StateBlock(state, [| for s in settings -> struct (s.Prop, s.Value) |])))
+        Setting.create state.BlockProp (ValueSome(StateBlock(ValueSome state, ValueNone, [| for s in settings -> struct (s.Prop, s.Value) |])))
+
+    /// Settings that apply while the element's own value of `prop` (else its default; never a style's) equals
+    /// `value`, inside a style's settings:
+    /// `Slider.style [] [ Style.onProp SliderProps.orientation Orientation.Vertical [ Slider.width 24.0 ] ]`.
+    /// Matched again when the value changes; nests with `onState` (vertical and hovered: both). For styles: in a
+    /// view, which knows the value, give the settings themselves.
+    static member onProp<'k, 'T when 'T: equality> (prop: Prop<'T>) (value: 'T) (settings: Setting<'k> list) : Setting<'k> =
+        for s in settings do
+            if not s.Prop.IsStateBlock then Rule.check s.Prop
+        prop.TestedByStyles <- true
+        let test =
+            { Prop = prop
+              Test = (fun v -> unbox<'T> v = value)
+              Text = "[" + prop.Name + "=" + Selector.valueText (box value) + "]" }
+        Setting.create PropBlocks.prop (ValueSome(StateBlock(ValueNone, ValueSome(struct (test, box value)), [| for s in settings -> struct (s.Prop, s.Value) |])))
 
     /// Fades `prop` from its old value to its new one over `duration` whenever it changes (not when
     /// the element first appears), inside a style's settings:

@@ -163,7 +163,7 @@ module MenuItem =
         ]
 
     let create (settings: Setting<MenuItem> list) : View = View.Create(Type, settings)
-    /// A style for MenuItems: `MenuItem.style [ States.hover ] [ MenuItem.background c ]`.
+    /// A style for MenuItems: `MenuItem.style [] [ Style.onState States.hover [ MenuItem.background c ] ]`.
     let style (parts: SelectorPart list) (settings: Setting<MenuItem> list) : Style = Style.forType Type parts settings
 
 /// What a Menu keeps: the letters typed into it.

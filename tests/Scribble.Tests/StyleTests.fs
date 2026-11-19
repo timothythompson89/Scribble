@@ -74,7 +74,7 @@ let ``later styles beat earlier ones, nearer scopes beat outer ones, inline bloc
                 StackPanel.children [
                     Border.create [ Border.name "plain" ]
                     Border.create [ Border.name "card"; Border.classes [ card ] ]
-                    Border.create [ Border.name "inline"; Border.classes [ card ]; Border.on States.disabled [ Border.background red ]; Border.isEnabled false ]
+                    Border.create [ Border.name "inline"; Border.classes [ card ]; Border.onState States.disabled [ Border.background red ]; Border.isEnabled false ]
                 ]
             ]
         )
@@ -84,7 +84,7 @@ let ``later styles beat earlier ones, nearer scopes beat outer ones, inline bloc
 
 [<Fact>]
 let ``a hover block applies while the pointer is over the element`` () =
-    let t = tree [ Border.style [ Style.cls primary ] [ Border.background red; Style.on States.hover [ Border.background green ] ] ]
+    let t = tree [ Border.style [ Style.cls primary ] [ Border.background red; Style.onState States.hover [ Border.background green ] ] ]
     let root = show t (Border.create [ Border.classes [ primary ] ])
     Assert.Equal(red, background root)
     root.ChangePointersOver 1
@@ -96,7 +96,7 @@ let ``a hover block applies while the pointer is over the element`` () =
 
 [<Fact>]
 let ``blocks nest, so states combine`` () =
-    let t = tree [ Button.style [] [ Style.on States.focused [ Button.background red; Style.on States.hover [ Button.background green ] ] ] ]
+    let t = tree [ Button.style [] [ Style.onState States.focused [ Button.background red; Style.onState States.hover [ Button.background green ] ] ] ]
     let root = show t (Button.create [])
     root.ChangePointersOver 1
     layout t
@@ -186,11 +186,11 @@ let ``a styles setting covers its element and what's inside, not its siblings`` 
 [<Fact>]
 let ``inline blocks in a view work without any styles elsewhere`` () =
     let t = tree []
-    let root = show t (Border.create [ Border.background red; Border.on States.hover [ Border.background green ] ])
+    let root = show t (Border.create [ Border.background red; Border.onState States.hover [ Border.background green ] ])
     root.ChangePointersOver 1
     layout t
     Assert.Equal(red, background root) // the view's own background still wins over the block
-    let root = show t (Border.create [ Border.on States.hover [ Border.background green ] ])
+    let root = show t (Border.create [ Border.onState States.hover [ Border.background green ] ])
     Assert.Equal(green, background root)
     root.ChangePointersOver -1
     layout t
@@ -227,18 +227,18 @@ let ``styles never set app state: handlers, controlled values, content, flyouts 
         Assert.Contains("come from views", refusal make)
     Assert.Contains("content and app state", refusal (fun () -> CheckBox.style [] [ CheckBox.isChecked true ]))
     // A state block is a style, in a view too: checked when it's made.
-    let inBlock = Assert.Throws<ArgumentException>(fun () -> Button.create [ Button.on States.hover [ Button.onClick (fun _ -> ()) ] ] |> ignore)
+    let inBlock = Assert.Throws<ArgumentException>(fun () -> Button.create [ Button.onState States.hover [ Button.onClick (fun _ -> ()) ] ] |> ignore)
     Assert.Contains("handlers come from views", inBlock.Message)
 
 [<Fact>]
 let ``styles still set how things look and behave`` () =
     Flyout.style [ Style.parent Button.Type [] ] [ Flyout.placement Placement.Right; Flyout.lightDismiss false; Flyout.padding 0.0 ] |> ignore
     Slider.style [] [ Slider.step 5.0; Slider.isEnabled false ] |> ignore
-    CheckBox.style [ Style.cls primary ] [ Style.on States.isChecked [ CheckBox.markColor red ] ] |> ignore
+    CheckBox.style [ Style.cls primary ] [ Style.onState States.isChecked [ CheckBox.markColor red ] ] |> ignore
 
 [<Fact>]
 let ``Values says which style set a value`` () =
-    let t = tree [ Button.style [ Style.cls primary ] [ Style.on States.hover [ Button.background red ] ] ]
+    let t = tree [ Button.style [ Style.cls primary ] [ Style.onState States.hover [ Button.background red ] ] ]
     let root = show t (Button.create [ Button.classes [ primary ] ])
     root.ChangePointersOver 1
     layout t
@@ -316,15 +316,15 @@ let ``a property on an ancestor re-matches what's inside`` () =
 
 [<Fact>]
 let ``a state from a property works in styles and inline blocks`` () =
-    let t = tree [ Border.style [] [ Style.on checkedState [ Border.background red ] ] ]
+    let t = tree [ Border.style [] [ Style.onState checkedState [ Border.background red ] ] ]
     let root = show t (Border.create [ checkedOn true ])
     Assert.Equal(red, background root)
     show t (Border.create [ checkedOn false ]) |> ignore
     Assert.Equal(Color.Transparent, background root)
     let t2 = tree []
-    let r2 = show t2 (Border.create [ Border.on checkedState [ Border.background green ] ])
+    let r2 = show t2 (Border.create [ Border.onState checkedState [ Border.background green ] ])
     Assert.Equal(Color.Transparent, background r2)
-    show t2 (Border.create [ checkedOn true; Border.on checkedState [ Border.background green ] ]) |> ignore
+    show t2 (Border.create [ checkedOn true; Border.onState checkedState [ Border.background green ] ]) |> ignore
     Assert.Equal(green, background r2)
 
 [<Fact>]
@@ -366,3 +366,41 @@ let ``ActiveStates lists built-in and custom states that are on, skipping tests 
     Assert.False(has broken)
     show t (Border.create []) |> ignore
     Assert.False(has checkedState)
+
+[<Fact>]
+let ``onProp applies while the element's own value matches, and is matched again when it changes`` () =
+    // DESIGN.md, "One way to say when": a style's selector says which elements; onState and onProp say when.
+    let style =
+        Slider.style [] [
+            Slider.track red
+            Style.onProp SliderProps.orientation Orientation.Vertical [
+                Slider.track green
+                Style.onState States.disabled [ Slider.track blue ]
+            ]
+            Style.onProp SliderProps.step 5.0 [ Slider.fill blue ]
+        ]
+    let t = tree [ style ]
+    let view (settings: Setting<Slider> list) = Slider.create (Slider.name "s" :: settings)
+    let track (root: Element) = (find "s" root).Get SliderProps.track
+    // Lying down (the property's default): the plain setting.
+    Assert.Equal(red, track (show t (view [])))
+    // Upright: the block; with a state inside it, both must hold.
+    let root = show t (view [ Slider.orientation Orientation.Vertical ])
+    Assert.Equal(green, track root)
+    Assert.Equal(blue, track (show t (view [ Slider.orientation Orientation.Vertical; Slider.isEnabled false ])))
+    Assert.Equal(red, track (show t (view [ Slider.isEnabled false ])))
+    // A style holds any number of them, each on its own property.
+    let both = show t (view [ Slider.orientation Orientation.Vertical; Slider.step 5.0 ])
+    Assert.Equal(green, track both)
+    Assert.Equal(blue, (find "s" both).Get SliderProps.fill)
+    // Tools read the rule as a selector with the test written out (simple values; a union's is left as "…").
+    let value = (find "s" both).Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, SliderProps.fill))
+    Assert.Equal("Slider[Step=5]", value.Selector)
+    // Back to lying down: matched again.
+    Assert.Equal(red, track (show t (view [])))
+
+[<Fact>]
+let ``onProp is a style: it can't set handlers or app state`` () =
+    Assert.Throws<ArgumentException>(fun () ->
+        Style.onProp SliderProps.orientation Orientation.Vertical [ Slider.value 3.0 ] |> ignore<Setting<Slider>>)
+    |> ignore

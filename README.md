@@ -196,10 +196,10 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
    - Hover a button, then open the modal without moving the mouse: the button stops looking hovered.
 9. The Styles page (M7 step 1, verified on Windows and in the browser 2026-11-16):
    - Primary is blue and Danger red (classes); the selected tab's blue comes from a style too.
-   - Hover the card: its border and all three lines of text turn light blue (`Style.on States.hover` on the card,
+   - Hover the card: its border and all three lines of text turn light blue (`Style.onState States.hover` on the card,
      and text matched by `Style.inside Border.Type [ Style.cls "card"; States.hover ]`); the line below the card stays
      grey. Leave it: they go back.
-   - "Hover me" lights up under the pointer (an inline `Border.on States.hover` block).
+   - "Hover me" lights up under the pointer (an inline `Border.onState States.hover` block).
    - The chips at the bottom (Fast, Quiet, Cheap): Fast starts blue with white text. Clicking a chip toggles it
      (a `selected` state made with `States.ofProp` on the chip, and `Style.prop selected true` on its text through
      `Style.inside`); hovering a chip lightens it, selected or not. In the inspector, pick a selected chip: its
@@ -827,7 +827,7 @@ Border.create [ Border.contextMenu menu; Border.content document ]     // opens 
   mouse puts handles and row away. `SelectionHandle.style [] [ SelectionHandle.fill c ]` recolours the handles.
 - **A Menu as a row:** `Menu.orientation Horizontal` (with `Menu.minWidth 0.0`) for any flyout: items show their
   text alone, separators stand upright, ←/→ move through it.
-- **Look:** `MenuItem.style [ States.hover ] [ ... ]`, `MenuItem.highlight` (the item the keyboard is on),
+- **Look:** `MenuItem.style [] [ Style.onState States.hover [ ... ] ]`, `MenuItem.highlight` (the item the keyboard is on),
   `MenuItem.shortcutForeground`. A context menu takes the window's theme, not one set around its element.
 
 **Tooltips:** `Button.tooltip "Save (Ctrl+S)"` (any element), or `tooltipView view` for any content.
@@ -971,29 +971,33 @@ typed lists, and each element module has a `style` next to `create`, so a style 
 let styles = [
     Button.style [ Style.cls "primary" ] [               // classes are plain names
         Button.background accent
-        Style.on States.hover [ Button.borderBrush accentLight ]   // while hovered (blocks nest: states combine)
+        Style.onState States.hover [ Button.borderBrush accentLight ]   // while hovered (blocks nest: states combine)
     ]
     TextBlock.style [ Style.inside Border.Type [ Style.cls "card" ] ] [ TextBlock.foreground light ]
-    Button.style [ Style.cls "primary"; States.hover ] [ Button.borderBrush white ]   // a state in a selector list
+    Slider.style [] [ Style.onProp SliderProps.orientation Orientation.Vertical [ Slider.width 24.0 ] ]   // while a property has a value
     TextBlock.style [ Style.parent StackPanel.Type [] ] [ TextBlock.margin 2.0 ]
-    Style.any [ States.focusVisible ] [ Layoutable.cursor Cursor.Hand ]
+    Style.any [] [ Style.onState States.focusVisible [ Layoutable.cursor Cursor.Hand ] ]
 ]
 
 App.run [ App.styles styles; ... ]                                   // the whole app
 Border.create [ Border.styles cardStyles; Border.content (...) ]       // an element and what's inside it
 Button.create [ Button.classes [ "primary"; if wide then "wide" ]; Button.text "Save" ]
-Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inline, for this element alone
+Border.create [ Border.onState States.hover [ Border.background lighter ] ]  // inline, for this element alone
 ```
 
-- **Selectors:** `X.style` matches type X exactly (a `Border.style` doesn't touch Buttons); `Style.any` matches
-  every type. Parts: `Style.cls "name"`, `Style.name "x"`, any state (`States.hover`, `pressed`, `focused`,
-  `focusVisible`, `disabled`, or your own), `Style.inside T [ ... ]` (any ancestor), `Style.parent T [ ... ]` (the direct parent),
-  `Style.prop p v` (a property equals a value) and `Style.where p (fun v -> ...)` (a test on it).
+- **A selector says which elements; blocks say when.** `X.style` matches type X exactly (a `Border.style` doesn't
+  touch Buttons); `Style.any` matches every type. Selector parts: `Style.cls "name"`, `Style.name "x"`,
+  `Style.inside T [ ... ]` (any ancestor) and `Style.parent T [ ... ]` (the direct parent). Inside the settings,
+  `Style.onState States.hover [ ... ]` applies while the element is in a state (`hover`, `pressed`, `focused`,
+  `focusVisible`, `disabled`, or your own) and `Style.onProp p v [ ... ]` while its property `p` equals `v`; blocks
+  nest. An ancestor's state or property goes in its part, the one place a selector tests them:
+  `Style.inside Button.Type [ States.disabled ]`, `Style.inside Border.Type [ Style.prop p v ]` (and
+  `Style.where p (fun v -> ...)` for a test other than equals).
 - **Classes are plain names**, matched exactly (case counts). For typo safety, define a name once
   (`let primary = "primary"`) and use that.
 - **Property selectors read the element's own value** (else its default), never a value set by a style, so a style
   can't turn itself on or off. They re-match by themselves when the value changes.
-- **Precedence:** the view's (or code's) own setting wins; then the element's inline `on` blocks; then styles, the
+- **Precedence:** the view's (or code's) own setting wins; then the element's inline `onState` blocks; then styles, the
   nearest scope first (its own `styles`, its ancestors', then `App.styles`), and within a list later beats earlier;
   then the element type's defaults. No CSS specificity. A setting the view drops lets the style show again.
 - **Re-matching** happens at the start of layout, only where needed: an element joining the tree, classes, name,
@@ -1004,7 +1008,7 @@ Border.create [ Border.on States.hover [ Border.background lighter ] ]  // inlin
   element it's on. So it can't set handlers (`onClick`, any `on…`), controlled values (`isChecked`, `value`,
   `selected`, `Flyout.isOpen`), content (`content`, `children`, tabs, headers, items), a `flyout` or a tooltip. Nor
   can it set what decides matching (classes, styles, name, key, theme). Each throws when the style (or a state block,
-  `Button.on States.hover [ … ]`) is made, saying
+  `Button.onState States.hover [ … ]`) is made, saying
   why; for "these buttons get this menu", use a function or a shared settings list in the view.
 - Element authors: add `let style parts (settings: Setting<MyElement> list) = Style.forType Type parts settings`
   next to `create`; a state read from a property is `States.ofProp "checked" CheckBoxProps.isChecked id` (matched
@@ -1040,8 +1044,8 @@ Button.style [ Style.cls "primary" ] [ Button.background Palette.accent ]  // a 
   - `Border.overlay`: a translucent color laid over the whole box (background and border), used for hover and
     press. The theme lightens on hover (white at 8%) and darkens on press (black at 20%) this way, so the look
     works whatever the background color is, and a class color like `.primary` keeps its state looks.
-    Transparent by default: `Button.style [ States.hover ] [ Button.overlay (Color.White.WithAlpha 0.15f) ]`.
-  - `opacity` (disabled) and `scale` plus `shadow` (the press): `Button.style [ States.pressed ] [ Button.scale 0.9 ]`
+    Transparent by default: `Button.style [] [ Style.onState States.hover [ Button.overlay (Color.White.WithAlpha 0.15f) ] ]`.
+  - `opacity` (disabled) and `scale` plus `shadow` (the press): `Button.style [] [ Style.onState States.pressed [ Button.scale 0.9 ] ]`
     presses deeper.
 - **Inherited text settings:** `foreground`, `font` and `fontSize` on any element reach the text inside
   (`Border.foreground c`, `Button.foreground c` for its label): own value, then styles, then the type default, then
@@ -1067,7 +1071,7 @@ let light = Theme.light [ Theme.set cardLine (Color.Hex 0xDCDCE6); Theme.accent 
 Border.style [ Style.cls "card" ] [
     Border.background Palette.surface        // a theme value, not a color: each theme gives its own
     Border.borderBrush cardLine
-    Style.on States.hover [ Border.borderBrush Palette.accent ]
+    Style.onState States.hover [ Border.borderBrush Palette.accent ]
 ]
 
 // The window's theme is an app value, Theme.current: App.theme sets where it starts, and setting it
@@ -1341,8 +1345,8 @@ Switch.create [ Switch.text "Notifications"; Switch.onCheckedChanged (fun on -> 
   first time its tab is shown and then kept, hidden, with its state (`TabItem.keepAlive false` lets it go), so tabs
   never visited cost nothing. ←/→ on a focused header select (Home/End the ends); Tab moves into the page. Headers
   that don't fit scroll sideways, and the selected one is brought into view.
-- Styles select on their values with states: `CheckBox.style [ States.isChecked ] [ ... ]`, `States.isIndeterminate`,
-  `TabHeader.style [ States.isSelected ] [ ... ]` (F# reserves the word `checked`). The themes color them from the
+- Styles select on their values with states: `CheckBox.style [] [ Style.onState States.isChecked [ ... ] ]`, `States.isIndeterminate`,
+  `TabHeader.style [] [ Style.onState States.isSelected [ ... ] ]` (F# reserves the word `checked`). The themes color them from the
   palette; nothing new to set in a theme.
 - An element can be given keyboard focus from code: `element.Focus()`.
 - **RadioGroup and RadioButton**: one option of several. The group holds the choice (`RadioGroup.selected v`,
@@ -1384,7 +1388,7 @@ ScrollViewer.create [
 
   The change event has `Keys`, `Items`, `Added`, `Removed`, and `Key`/`Item` (the one selected, for Single). A
   selected key that leaves the source is dropped (and reported) when the list keeps its own selection; a
-  controlled list leaves the app's keys alone. Style the items with `ListBoxItem.style [ States.isSelected ] [ ... ]`
+  controlled list leaves the app's keys alone. Style the items with `ListBoxItem.style [] [ Style.onState States.isSelected [ ... ] ]`
   (`ListBoxItem.indicator` is the bar at the left of a selected item).
 
 - **ComboBox**: a box showing one item picked from a list it opens in its flyout. The list is a ListBox, so
@@ -1406,7 +1410,7 @@ ComboBox.create [
 ```
 
   The list is as wide as the box and at most `ComboBox.maxListHeight` tall (320 DIPs), then it scrolls. Style the
-  box with `ComboBox.style [ States.isOpen ] [ ... ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
+  box with `ComboBox.style [] [ Style.onState States.isOpen [ ... ] ]` (`ComboBox.chevron`, `ComboBox.placeholderForeground`), and
   its list with `Flyout.style [ Style.inside ComboBox.Type [] ] [ ... ]`. An editable ComboBox comes after M9.
 
 - **Typing in a list** (ListBox, ComboBox) goes to the item whose text starts with what is typed: letters build
@@ -1465,7 +1469,7 @@ TextBox.create [
   For a message box, `TextBox.submitOnEnter true` makes Enter call `onSubmitted` and Shift+Enter the new line.
   The box keeps its text after a submit: give it `text` and clear that when the message is sent.
 
-  Style it with `TextBox.style [ States.focused ] [ ... ]` (`TextBox.selection`, `TextBox.placeholderForeground`).
+  Style it with `TextBox.style [] [ Style.onState States.focused [ ... ] ]` (`TextBox.selection`, `TextBox.placeholderForeground`).
   Any element can hear typed text with `onTextInput` (it bubbles from the focused element like keys).
 
 - **The clipboard** (text) from app code is a hook; an element type's input handlers have it as `ctx.Clipboard`:

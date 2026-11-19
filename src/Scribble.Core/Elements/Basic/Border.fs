@@ -56,7 +56,7 @@ type Border =
     /// A translucent color laid over the whole box (background and border), used for hover and
     /// press, so it works whatever the background color is. Transparent by default; the theme sets
     /// it per state, and a style can change it:
-    /// `Button.style [ States.hover ] [ Button.overlay (Color.White.WithAlpha 0.15f) ]`.
+    /// `Button.style [] [ Style.onState States.hover [ Button.overlay (Color.White.WithAlpha 0.15f) ] ]`.
     static member overlay<'k when 'k :> Border>(value: Color) : Setting<'k> = Setting.create BorderProps.overlay value
     static member overlay<'k when 'k :> Border>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.overlay themeValue
     /// What it shows (one view; Button, Flyout and other Borders inherit it).
@@ -116,5 +116,5 @@ module Border =
         ]
 
     let create (settings: Setting<Border> list) : View = View.Create(Type, settings)
-    /// A style for Borders: `Border.style [ Style.cls "c"; States.hover ] [ Border.margin 4.0 ]` (this type exactly).
+    /// A style for Borders: `Border.style [ Style.cls "c" ] [ Style.onState States.hover [ Border.margin 4.0 ] ]` (this type exactly).
     let style (parts: SelectorPart list) (settings: Setting<Border> list) : Style = Style.forType Type parts settings
