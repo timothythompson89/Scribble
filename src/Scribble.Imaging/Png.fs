@@ -9,7 +9,6 @@ module Scribble.Imaging.Png
 open System
 open System.IO
 open System.IO.Compression
-open System.Runtime.CompilerServices
 open Microsoft.FSharp.NativeInterop
 
 let private signature = [| 137uy; 80uy; 78uy; 71uy; 13uy; 10uy; 26uy; 10uy |]
@@ -113,76 +112,6 @@ let private readHeader (data: byte[]) : Header =
 let readInfo (data: byte[]) : ImageInfo =
     let h = readHeader data
     { Width = h.Width; Height = h.Height }
-
-// ---- Filters -----------------------------------------------------------------------------------------
-
-/// Undoes one row's filter in place: `count` bytes at `cur` (after its filter byte), the row above (already
-/// unfiltered, or zeros) at `up`, `step` bytes between a byte and the same byte of the pixel before. Pointers into
-/// arrays pinned and sized by `decode`: this is the hot loop.
-let private unfilter (filter: byte) (cur: nativeptr<byte>) (up: nativeptr<byte>) (count: int) (step: int) =
-    let inline get (p: nativeptr<byte>) (i: int) = int (NativePtr.get p i)
-    let inline add (i: int) (v: int) = NativePtr.set cur i (byte (get cur i + v))
-    let first = min step count
-    match filter with
-    | 0uy -> ()
-    | 1uy ->
-        for i in step .. count - 1 do
-            add i (get cur (i - step))
-    | 2uy ->
-        for i in 0 .. count - 1 do
-            add i (get up i)
-    | 3uy ->
-        for i in 0 .. first - 1 do
-            add i (get up i >>> 1)
-        for i in step .. count - 1 do
-            add i ((get cur (i - step) + get up i) >>> 1)
-    | 4uy ->
-        for i in 0 .. first - 1 do
-            add i (get up i)
-        for i in step .. count - 1 do
-            let a = get cur (i - step)
-            let b = get up i
-            let c = get up (i - step)
-            // Paeth's distances from p = a + b - c, written without p: |p - a| = |b - c| and so on. Branch free
-            // (noisy pictures make the branches unpredictable), ties going to a, then b, as the spec says.
-            let inline absolute (v: int) = (v ^^^ (v >>> 31)) - (v >>> 31)
-            let pa = absolute (b - c)
-            let pb = absolute (a - c)
-            let pc = absolute (a + b - c - c)
-            let mutable best = a
-            let mutable distance = pa
-            if pb < distance then
-                best <- b
-                distance <- pb
-            if pc < distance then best <- c
-            add i best
-    | f -> fail ("unknown row filter " + string f)
-
-/// 8-bit RGBA rows, the commonest kind, on pointers (`convertRow` does the rest).
-let private convertRgba8 (src: nativeptr<byte>) (dst: nativeptr<byte>) (width: int) (dstStep: int) =
-    for x in 0 .. width - 1 do
-        let s = NativePtr.add src (x * 4)
-        let d = NativePtr.add dst (x * dstStep)
-        let a = int (NativePtr.get s 3)
-        if a = 255 then
-            Unsafe.WriteUnaligned<uint32>(NativePtr.toVoidPtr d, Unsafe.ReadUnaligned<uint32>(NativePtr.toVoidPtr s))
-        elif a = 0 then
-            Unsafe.WriteUnaligned<uint32>(NativePtr.toVoidPtr d, 0u)
-        else
-            NativePtr.set d 0 (byte (Pixels.premultiply (int (NativePtr.get s 0)) a))
-            NativePtr.set d 1 (byte (Pixels.premultiply (int (NativePtr.get s 1)) a))
-            NativePtr.set d 2 (byte (Pixels.premultiply (int (NativePtr.get s 2)) a))
-            NativePtr.set d 3 (byte a)
-
-/// 8-bit RGB rows without a colour key, on pointers.
-let private convertRgb8 (src: nativeptr<byte>) (dst: nativeptr<byte>) (width: int) (dstStep: int) =
-    for x in 0 .. width - 1 do
-        let s = NativePtr.add src (x * 3)
-        let d = NativePtr.add dst (x * dstStep)
-        NativePtr.set d 0 (NativePtr.get s 0)
-        NativePtr.set d 1 (NativePtr.get s 1)
-        NativePtr.set d 2 (NativePtr.get s 2)
-        NativePtr.set d 3 255uy
 
 // ---- Rows to RGBA ------------------------------------------------------------------------------------
 
@@ -415,10 +344,12 @@ let decode (data: byte[]) : DecodedImage =
             let row = at + 1
             let cur = NativePtr.add rawPtr row
             let up = if y = 0 then NativePtr.add zerosPtr step else NativePtr.add rawPtr (row - rowBytes - 1)
-            unfilter raw[at] cur up rowBytes step
+            let filter = raw[at]
+            if filter > 4uy then fail ("unknown row filter " + string filter)
+            Rows.unfilter filter cur up rowBytes step
             let dst = ((y0 + y * dy) * h.Width + x0) * 4
-            if fast && h.ColorType = 6 then convertRgba8 cur (NativePtr.add outPtr dst) w (dx * 4)
-            elif fast then convertRgb8 cur (NativePtr.add outPtr dst) w (dx * 4)
+            if fast && h.ColorType = 6 then Rows.rgba8 cur (NativePtr.add outPtr dst) w (dx * 4)
+            elif fast then Rows.rgb8 cur (NativePtr.add outPtr dst) w (dx * 4)
             else convertRow h k raw row w out dst (dx * 4)
             at <- at + 1 + rowBytes
     DecodedImage(h.Width, h.Height, out)

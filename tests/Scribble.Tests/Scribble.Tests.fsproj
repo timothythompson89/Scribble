@@ -48,6 +48,7 @@
     <Compile Include="DialogsTests.fs" />
     <Compile Include="SemanticsTests.fs" />
     <Compile Include="PngTests.fs" />
+    <Compile Include="ImagingVectorTests.fs" />
     <Compile Include="ImageAtlasTests.fs" />
     <Compile Include="ImageViewTests.fs" />
     <Compile Include="ImageLoadingTests.fs" />

@@ -30,6 +30,7 @@ questions", as paragraphs starting with the name given here.
 | Platform | SDL3 for windows and input, AccessKit for screen readers (planned) | Section "Platform layer: SDL3 and AccessKit" |
 | Focus | Tab order and reading order are view order; `Dock.Fill` (built 2026-11-18) | Section "Tab order is view order; `Dock.Fill`" |
 | Images out | Rendering a view or an element to an image, PNG, saving (built 2026-11-18) | Section "Rendering to an image and saving it" |
+| Imaging speed | The PNG decoder's row loops and mip levels with `Vector128` (built 2026-11-18) | Section "Vectorising the PNG decoder" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -74,7 +75,8 @@ Done and verified by Tim on Windows and in the browser (every checklist item, th
 Done in M9 so far: **step 9a, the single-line TextBox** (section "9a: the single-line TextBox"; checked by Tim on
 the desktop, 2026-11-18; its browser checks wait in `docs/CHECKLIST-BROWSER.md`). Also done:
 **step 9b, clipboard and undo** (section "9b: clipboard and undo"; checked by Tim, 2026-11-18). And **step 9c,
-the multi-line TextBox** (section "9c: the multi-line TextBox"; checked by Tim, 2026-11-18).
+the multi-line TextBox** (section "9c: the multi-line TextBox"; checked by Tim, 2026-11-18). Between 9c and 9d the
+PNG decoder got `Vector128` loops (section "Vectorising the PNG decoder"; a 1024² picture in about 13 ms, from 26).
 
 Next: M9 steps 9d and 9e (IME and the phone keyboard, typeahead and labels). SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"); AccessKit comes after M9. Then M9 TextBox and M10 hot reload. Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
@@ -92,7 +94,7 @@ complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game
 | `Scribble.Text` | TrueType parser, rasterizer, text system, line breaking, wrapping and trimming, icon paths; Inter built in |
 | `Scribble.Text.HarfBuzz`, `.Browser` | Shaping: native HarfBuzz, harfbuzzjs in WebAssembly (identical output) |
 | `Scribble.Text.Emoji` | Opt-in Twemoji colour font (CC-BY 4.0 art: apps that use it must credit it) |
-| `Scribble.Imaging` | Image files to decoded images (premultiplied RGBA with mip levels) and back: our own PNG decoder and encoder (zlib from the BCL); no GPU, no elements |
+| `Scribble.Imaging` | Image files to decoded images (premultiplied RGBA with mip levels) and back: our own PNG decoder and encoder (zlib from the BCL), the decoder's row loops and the mip levels with `Vector128` and a scalar twin; no GPU, no elements |
 | `Scribble.Core` | Views and the differ, elements, layout, input, styles, themes, components, app values, layers, the element types, `App`; folders in compile order: Foundation, Framework, Elements (Basic, Panels, Scrolling, Controls), Themes, Hosting |
 | `Scribble.Desktop`, `Scribble.Browser` | `App.run` for each: one reference brings platform, GPU and shaping |
 | `Scribble.Inspector` | Opt-in devtools-style inspector; files in compile order: InspectorTypes, Format, InspectorState, Highlight, Elements, Views, Inspector (the public type) |
@@ -2358,7 +2360,8 @@ does from (d). Choices made while building:
   sizes checked first). Paeth is branch free with the spec's tie order. The CRC slices by 8. The two large arrays
   are allocated uninitialized because every byte gets written. A 1024² noisy RGBA picture (2.5 MB, Paeth on every
   row) decodes in **24 ms in Release**, about 8 ms of it the BCL's zlib, which costs about 7 ms per 4 MB however well
-  the data compresses. Started at 33 ms; the timing test's guard is 40 ms.
+  the data compresses. Started at 33 ms; the timing test's guard is 40 ms. (About 13 ms and a 25 ms guard since
+  2026-11-18: section "Vectorising the PNG decoder".)
 - **Tests (`PngTests.fs`, 351 of them):** PngSuite against WIC; `readInfo` agreeing with `decode`; the 14 corrupt
   files; non-images; cut-short and corrupted files failing only with `ImageFormatException`; the rounding formulas
   checked exhaustively; round trips through a small PNG writer in the tests (all five filters, mixed by row); an
@@ -4332,6 +4335,79 @@ As built:
   - The README also says how to get SDL3 by hand if the download fails.
 - **One thing that isn't SDL's:** the samples are console apps (`OutputType Exe`), so an AOT sample opens a console
   window too. It did on Win32 as well.
+
+## Vectorising the PNG decoder (2026-11-18)
+
+Status: **built** (agreed by Tim, 2026-11-18: "yes to all"); the Gallery's Images page checked by Tim on the desktop
+(2026-11-18: "looks right"). The NativeAOT exe and the browser are not yet checked. Tim asked for the PNG code to
+use `Vector128` before M9 step 9d.
+
+Measured first (1024² noisy picture, Release, warmed up, best of 20, ms; the first row is the timing test's case):
+
+| Picture (one filter on every row) | CRC | zlib | Unfilter | To RGBA | Mip levels | Total |
+| --- | --- | --- | --- | --- | --- | --- |
+| RGBA, Paeth | 0.6 | 5.8 | 10.9 | 3.7 | 2.0 | 22.9 |
+| RGBA, Average | 0.7 | 7.7 | 2.4 | 3.7 | 1.8 | 16.1 |
+| RGBA, Sub | 0.6 | 5.7 | 1.7 | 3.7 | 1.8 | 13.3 |
+| RGBA, Up | 0.6 | 6.3 | 1.6 | 3.7 | 1.8 | 13.9 |
+| RGB, Paeth | 0.3 | 2.0 | 6.8 | 0.5 | 1.8 | 11.6 |
+
+zlib is the BCL's (and checks Adler-32 itself: there is none of ours).
+
+1. **Unfiltering with `Vector128`:** Up 16 bytes at a time for every format; Sub, Average and Paeth a pixel at a
+   time in one register (libpng's method: each pixel needs the one before) for 3, 4, 6 and 8 bytes a pixel. 1 and 2
+   bytes a pixel (grey, palette, grey with alpha) stay scalar.
+2. **To RGBA with `Vector128`:** 8-bit RGBA premultiplied four pixels at a time, `(c·a + 127) / 255` written as
+   `t = c·a + 128; (t + (t >> 8)) >> 8` (the same for every input, tested for all 65,536); 8-bit RGB by a shuffle.
+   16-bit, grey, palette, colour keys and Adam7 passes stay scalar.
+3. **Mip levels (`Pixels.halve`) with `Vector128`:** 2 ms of every decode, and JPEG will share it.
+4. **CRC-32 stays** slicing by 8: 0.6 ms of 23, and faster needs carry-less multiply, which `Vector128` doesn't
+   have (separate x86 and ARM code, nothing for wasm).
+5. **The encoder stays:** its time is zlib at `SmallestSize`.
+6. **Fallback and tests:** the scalar code stays, picked when `Vector128.IsHardwareAccelerated` is false; both are
+   internal (`Rows.fs`, `Pixels.fs`) with no runtime switch, and tests run both over the same inputs (every filter,
+   every bytes-a-pixel step, widths 1 to 40 so every tail) and compare exactly. A vector load never reads past a row.
+7. **Browser:** .NET turns wasm SIMD on by default and no project of ours turns it off: no project changes. The
+   timing test's guard comes down once the new number is in.
+
+**As built (2026-11-18):**
+- **`src/Scribble.Imaging/Rows.fs`** (new, internal, after `Pixels.fs`) holds the row loops, each twice:
+  `unfilterScalar` and `unfilterVector`, `rgba8Scalar` and `rgba8Vector`, `rgb8Scalar` and `rgb8Vector`, and the
+  unsuffixed `unfilter`, `rgba8`, `rgb8` that `Png.decode` calls, which pick by `Rows.useVectors ()`
+  (`Vector128.IsHardwareAccelerated`, and little-endian: pixels are loaded as integers). The scalar loops are the
+  old ones moved out of `Png.fs`, now able to start part way along a row, so they also finish each vector loop's
+  tail. `Png.decode` refuses a filter byte over 4 itself. `Pixels.halveWith vectors level` is the mip level both
+  ways; `Pixels.halve` picks.
+- **How each works:**
+  - Up: 16 bytes added at a time.
+  - Sub, Average, Paeth: the pixel before stays in a register, starting as zeros (what the filters take to the left
+    of a row), so the first pixel needs no special case. A pixel is loaded as 4 bytes (3 or 4 a pixel) or 8 (6 or
+    8) and exactly its own bytes are stored; the last pixel of a 3- or 6-byte row is left to the scalar loop, since
+    its load would reach a byte past the row. Average is `(a & b) + ((a ^ b) >> 1)`, which needs no ninth bit. Paeth
+    runs in 16-bit lanes: the three distances by `Abs`, the smallest by `Min`, then a where its distance is the
+    smallest, else b where b's is, else c (the scalar loop's tie order).
+  - RGBA: alpha spread beside its colours by a shuffle, 255 beside the alpha itself, then decision 2's formula in
+    16-bit lanes. RGB: a shuffle of 12 of 16 loaded bytes, alpha set to 255. Both only for packed pixels (not Adam7
+    passes); the last pixels of a row are scalar.
+  - Mip levels: red and blue, and green and alpha, of four pixels in 16-bit lanes, two rows added, then each pixel
+    added to its neighbour through a 64-bit shift; two output pixels a step.
+- **Only portable `Vector128` calls** (no `Sse2`, `AdvSimd` or `PackedSimd` types), so one path serves x64, ARM64 and
+  wasm. `Shuffle` needs SSSE3 to be fast on x86 (every x64 processor since 2006 has it); without it .NET's own
+  fallback gives the same bytes, slower.
+- **Measured** (the table's pictures, same machine, ms, scalar → vector): Paeth unfiltering 11.5 → 2.4 (RGB 6.8 →
+  2.3), Average 1.6 → 0.95, Sub 1.7 → 0.33, Up 1.6 → 0.11; RGBA to premultiplied 3.9 → 0.36, RGB to RGBA 0.57 →
+  0.13; mip levels 1.4 → 0.2. The whole decode with levels: RGBA Paeth 22.9 → 9.4, RGB Paeth 11.6 → 5.0; what is
+  left is zlib (5.8) and the CRC (0.6). **The timing test** (`decoding a 1024 square PNG is fast`; its file is
+  2.5 MB, so more zlib): 26.0 ms on the code before, **12 to 15 ms** after; its guard went from 40 to 25 ms.
+- **Tests (`ImagingVectorTests.fs`, 6):** every filter × steps 1, 2, 3, 4, 6, 8 × 1 to 40 pixels × three kinds of
+  bytes (any, small values for Paeth ties, only 0 and 255) × a first row and a later one, scalar against vector,
+  with guard bytes around the row and the row above exactly its length; odd byte counts at step 1; RGBA and RGB at
+  widths 1 to 40, packed and spread; the vector premultiply against `Pixels.premultiply` for all 65,536 inputs; mip
+  levels for 1 to 24 by 1 to 9 pixels, both ways and against the formula. PngSuite and the other PNG tests pass
+  unchanged (on this machine they now run the vector path). Totals: 1,228 unit (+7 timing), 99 rendering.
+- **Wasm:** the SDK's targets set `WasmEnableSIMD` from `WasmEnableExceptionHandling`, on by default; nothing in the
+  repository sets either. Not run in a browser here: a line waits in `docs/CHECKLIST-BROWSER.md` (interpreted and
+  AOT; interpreted is the one to watch, where a vector call the interpreter doesn't know runs as ordinary code).
 
 ## Rendering to an image and saving it (built 2026-11-18)
 

@@ -284,8 +284,9 @@ let ``decoding a 1024 square PNG is fast`` () =
             sw.Elapsed.TotalMilliseconds)
         |> Seq.min
     Console.WriteLine($"PNG 1024² decode: {best:F2} ms ({png.Length / 1024} KB)")
-    // Measured 24 ms on Tim's machine (2026-11-17): about 8 of it is the BCL's zlib. A guard against regressions.
-    Assert.True(best < 40.0, $"decoding took {best:F2} ms")
+    // Measured 14.6 ms on Tim's machine (2026-11-18, with Vector128; 26 ms without): about 8 of it is the BCL's zlib. A guard
+    // against regressions.
+    Assert.True(best < 25.0, $"decoding took {best:F2} ms")
 
 // --- The encoder (DESIGN.md, "Rendering to an image and saving it", decisions 1 and 6) -----------------------
 
