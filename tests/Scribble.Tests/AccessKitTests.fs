@@ -355,3 +355,238 @@ let ``building and translating the tree is quick, for the Gallery's page and for
     // Generous: measured well under a millisecond in Release.
     Assert.True(g < 10.0, $"the Gallery's page took {g:F2} ms")
     Assert.True(l < 5.0, $"the list took {l:F2} ms")
+
+// --- A2: a TextBox's text (DESIGN.md, "A2: a TextBox's text") -----------------------------------------
+
+/// A TextBox at size 20 (the stand-in shaper makes every UTF-16 unit 10 DIPs wide), its text area 200 DIPs wide
+/// from x = 13, above a button.
+let private textPage (settings: Setting<TextBox> list) =
+    StackPanel.create [
+        StackPanel.children [
+            TextBox.create ([ TextBox.name "box"; TextBox.fontSize 20.0; TextBox.width 226.0; TextBox.horizontalAlignment HorizontalAlignment.Left ] @ settings)
+            Button.create [ Button.name "next"; Button.text "Next"; Button.horizontalAlignment HorizontalAlignment.Left ]
+        ]
+    ]
+
+/// The page with the box focused by a click at its start, then `text` typed into it (it keeps its own text).
+let private typed (settings: Setting<TextBox> list) (text: string) =
+    let w, host = showView (textPage settings)
+    w.Send(PointerPressed(Mouse, 0, { X = 15.0; Y = 15.0 }, MouseButton.Left, Modifiers.None))
+    w.Send(PointerReleased(Mouse, 0, { X = 15.0; Y = 15.0 }, MouseButton.Left, Modifiers.None))
+    if text <> "" then w.Send(TextInput text)
+    settle w
+    w, host
+
+let private key (w: FakeWindow) (mods: Modifiers) (k: Key) =
+    w.Send(KeyDown(k, mods, false))
+    w.Send(KeyUp(k, mods))
+    settle w
+
+let private boxNode (u: AkUpdate) = u.Nodes |> Array.find (fun n -> n.Selection.IsSome)
+let private runsOf (u: AkUpdate) = u.Nodes |> Array.filter (fun n -> n.Role = AkRole.TextRun)
+let private editOf (host: ElementHost) = TextBox.editOf (named "box" host)
+
+[<Fact>]
+let ``a text box's line is a text run: its text, each character's bytes and place, where words start, and the selection`` () =
+    // "é" is two bytes in UTF-8 and one character; the emoji is four bytes, two UTF-16 units and one character.
+    let w, host = typed [] "héllo wörld 😀!"
+    let u = update host
+    let box = boxNode u
+    Assert.Equal(AkRole.TextInput, box.Role)
+    Assert.Equal(ValueSome "héllo wörld 😀!", box.Value)
+    Assert.True box.ClipsChildren
+    let run = Assert.Single(runsOf u)
+    Assert.Equal<uint64[]>([| run.Id |], box.Children)
+    Assert.Equal(ValueSome "héllo wörld 😀!", run.Value)
+    Assert.Equal<byte[]>([| 1uy; 2uy; 1uy; 1uy; 1uy; 1uy; 1uy; 2uy; 1uy; 1uy; 1uy; 1uy; 4uy; 1uy |], run.CharacterLengths)
+    // Words as the caret's word moves see them: "héllo", "wörld", and the emoji with the "!" (one run of symbols).
+    Assert.Equal<byte[]>([| 0uy; 6uy; 12uy |], run.WordStarts)
+    // Each character 10 DIPs on from the last, the emoji 20 wide (two units).
+    Assert.Equal<float32[]>([| for i in 0 .. 12 -> float32 (10 * i) |], run.CharacterPositions[0..12])
+    Assert.Equal(140.0f, run.CharacterPositions[13])
+    Assert.Equal(20.0f, run.CharacterWidths[12])
+    Assert.Equal(10.0f, run.CharacterWidths[0])
+    // The run's box in the window: from the text's left edge, as wide as the text.
+    Assert.Equal((13.0, 13.0 + 150.0), (run.X0, run.X1))
+    // The caret after the last character: the end of the run.
+    Assert.Equal(ValueSome { AnchorRun = run.Id; AnchorCharacter = 14; FocusRun = run.Id; FocusCharacter = 14 }, box.Selection)
+    // Shift+Left twice: the "!" and the emoji selected, by characters and not by UTF-16 units.
+    key w Modifiers.Shift Key.Left
+    key w Modifiers.Shift Key.Left
+    Assert.Equal(ValueSome { AnchorRun = run.Id; AnchorCharacter = 14; FocusRun = run.Id; FocusCharacter = 12 }, (boxNode (update host)).Selection)
+    // At twice the scale, twice the pixels.
+    let big = (runsOf (updateAt 2.0 host))[0]
+    Assert.Equal(20.0f, big.CharacterWidths[0])
+    Assert.Equal((26.0, 26.0 + 300.0), (big.X0, big.X1))
+
+[<Fact>]
+let ``several lines are a run each; a line break is one more character at its line's end, where the caret then stands`` () =
+    // 200 DIPs: twenty characters a line. Two paragraphs, the first wrapping once.
+    let w, host = typed [ TextBox.multiline true ] "aaaa bbbb cccc dddd eeee\nlast"
+    let u = update host
+    let box = boxNode u
+    Assert.Equal(AkRole.MultilineTextInput, box.Role)
+    let runs = runsOf u
+    Assert.Equal<string voption list>([ ValueSome "aaaa bbbb cccc dddd "; ValueSome "eeee\n"; ValueSome "last" ], [ for r in runs -> r.Value ])
+    // The break counts as a character of one byte, with no width.
+    Assert.Equal<byte[]>([| 1uy; 1uy; 1uy; 1uy; 1uy |], runs[1].CharacterLengths)
+    Assert.Equal(0.0f, runs[1].CharacterWidths[4])
+    // One under the other, a line apart.
+    Assert.True(runs[1].Y0 > runs[0].Y0 && runs[2].Y0 > runs[1].Y0)
+    Assert.Equal(runs[0].Y1, runs[1].Y0)
+    // The caret is at the text's end: the last run's end.
+    Assert.Equal((runs[2].Id, 4), (box.Selection.Value.FocusRun, box.Selection.Value.FocusCharacter))
+    // Up, End: the end of "eeee", which is on its line break, not after it.
+    key w Modifiers.None Key.Up
+    key w Modifiers.None Key.End
+    let selection = (boxNode (update host)).Selection.Value
+    Assert.Equal((runs[1].Id, 4), (selection.FocusRun, selection.FocusCharacter))
+    // Up, End: the end of the wrapped first line stays on that line.
+    key w Modifiers.None Key.Up
+    key w Modifiers.None Key.End
+    let selection = (boxNode (update host)).Selection.Value
+    Assert.Equal((runs[0].Id, 20), (selection.FocusRun, selection.FocusCharacter))
+
+[<Fact>]
+let ``a password is a bullet for each character and never its text`` () =
+    let _, host = typed [ TextBox.isPassword true ] "pä😀s"
+    let u = update host
+    let box = boxNode u
+    Assert.Equal(AkRole.PasswordInput, box.Role)
+    Assert.Equal(ValueNone, box.Value)
+    let run = Assert.Single(runsOf u)
+    Assert.Equal(ValueSome "••••", run.Value)
+    Assert.Equal(4, run.CharacterLengths.Length)
+    Assert.Equal<byte[]>([| 0uy |], run.WordStarts)
+    Assert.Equal(4, box.Selection.Value.FocusCharacter)
+    for n in u.Nodes do
+        Assert.DoesNotContain("pä", defaultValueArg n.Value "")
+
+[<Fact>]
+let ``a line of more than 255 characters is several runs on one line, and places map back`` () =
+    let text = String.replicate 60 "word "
+    let _, host = typed [] text
+    let u = update host
+    let runs = runsOf u
+    Assert.Equal(2, runs.Length)
+    Assert.Equal(255, runs[0].CharacterLengths.Length)
+    Assert.Equal(45, runs[1].CharacterLengths.Length)
+    Assert.Equal((0UL, runs[1].Id), (runs[0].PreviousOnLine, runs[0].NextOnLine))
+    Assert.Equal((runs[0].Id, 0UL), (runs[1].PreviousOnLine, runs[1].NextOnLine))
+    // The second starts where the first ends, with its own word starts counted from its own start.
+    Assert.Equal(runs[0].X1, runs[1].X0)
+    Assert.Equal(0.0f, runs[1].CharacterPositions[0])
+    Assert.Equal<byte[]>([| for i in 0 .. 8 -> byte (5 * i) |], runs[1].WordStarts)
+    // The caret at the end is in the second run; a place in it maps back to the line's 300th character.
+    let selection = (boxNode u).Selection.Value
+    Assert.Equal((runs[1].Id, 45), (selection.FocusRun, selection.FocusCharacter))
+    Assert.Equal({ Line = 0; Character = 300 }, Translation.placeOf selection.FocusRun selection.FocusCharacter)
+    Assert.Equal({ Line = 0; Character = 7 }, Translation.placeOf runs[0].Id 7)
+
+[<Fact>]
+let ``a very long text gives the thousand lines around the caret`` () =
+    let text = String.Join("\n", Seq.init 3000 (fun i -> "line " + string i))
+    let w, host = typed [ TextBox.multiline true; TextBox.maxLines 5 ] ""
+    w.Send(TextInput text)
+    settle w
+    // The caret is at the end: the last thousand lines.
+    let runs = runsOf (update host)
+    Assert.Equal(TextBox.semanticLineCap, runs.Length)
+    Assert.Equal(ValueSome "line 2999", runs[runs.Length - 1].Value)
+    Assert.Equal(ValueSome "line 2000\n", runs[0].Value)
+    // At the start: the first thousand, and the caret in the first.
+    key w Modifiers.Control Key.Home
+    let u = update host
+    let runs = runsOf u
+    Assert.Equal(ValueSome "line 0\n", runs[0].Value)
+    Assert.Equal(TextBox.semanticLineCap, runs.Length)
+    Assert.Equal((runs[0].Id, 0), ((boxNode u).Selection.Value.FocusRun, (boxNode u).Selection.Value.FocusCharacter))
+
+[<Fact>]
+let ``what an input method composes is in the lines, as it is drawn`` () =
+    let w, host = typed [] "ab"
+    w.Send(TextComposition("xyz", 3))
+    settle w
+    let u = update host
+    let composed = runsOf u
+    Assert.Equal(ValueSome "abxyz", composed[0].Value)
+    Assert.Equal(5, (boxNode u).Selection.Value.FocusCharacter)
+    // Not typed yet.
+    Assert.Equal("ab", (editOf host).Text)
+
+[<Fact>]
+let ``a screen reader's text actions select, replace and set the text by the paths input takes`` () =
+    let heard = ResizeArray<string>()
+    let w, host = typed [ TextBox.maxLength 20; TextBox.onTextChanged heard.Add ] "hello brave world"
+    heard.Clear()
+    let box () = (host.SemanticTree().Find "TextBox").Value
+    let run = (runsOf (update host))[0]
+    // What AccessKit is told the box can do.
+    let actions = (boxNode (update host)).Actions
+    for a in [ AkAction.SetTextSelection; AkAction.ReplaceSelectedText; AkAction.SetValue ] do
+        Assert.Contains(a, actions)
+    // Select "brave", as AccessKit names places: a run and a character in it.
+    let selection = SemanticArgument.TextSelection(Translation.placeOf run.Id 6, Translation.placeOf run.Id 11)
+    Assert.True((box ()).Perform(SemanticAction.SetTextSelection, selection))
+    settle w
+    Assert.Equal("brave", (editOf host).SelectedText)
+    Assert.Empty heard
+    // Replace it, as pasted text: the app hears, and one undo takes it back.
+    Assert.True((box ()).Perform(SemanticAction.ReplaceSelectedText, SemanticArgument.Text "calm"))
+    settle w
+    Assert.Equal("hello calm world", (editOf host).Text)
+    Assert.Equal<string list>([ "hello calm world" ], List.ofSeq heard)
+    key w Modifiers.Control (Key.Char 'z')
+    Assert.Equal("hello brave world", (editOf host).Text)
+    // Set the whole value: no more than maxLength gets in.
+    Assert.True((box ()).Perform(SemanticAction.SetValue, SemanticArgument.Text "a text that is longer than twenty characters"))
+    settle w
+    Assert.Equal("a text that is longe", (editOf host).Text)
+    // Without what it needs, an action does nothing.
+    Assert.False((box ()).Perform SemanticAction.SetValue)
+    Assert.False((box ()).Perform(SemanticAction.SetTextSelection, SemanticArgument.Text "no"))
+
+[<Fact>]
+let ``a read-only box can be selected in but not changed, and AccessKit is told so`` () =
+    let w, host = showView (textPage [ TextBox.text "hello world"; TextBox.isReadOnly true ])
+    let box () = (host.SemanticTree().Find "TextBox").Value
+    let u = update host
+    let actions = (boxNode u).Actions
+    Assert.Contains(AkAction.SetTextSelection, actions)
+    Assert.DoesNotContain(AkAction.ReplaceSelectedText, actions)
+    Assert.DoesNotContain(AkAction.SetValue, actions)
+    Assert.Equal(ValueNone, Translation.semanticAction (box ()) AkAction.SetValue)
+    let run = (runsOf u)[0]
+    Assert.True((box ()).Perform(SemanticAction.SetTextSelection, SemanticArgument.TextSelection(Translation.placeOf run.Id 0, Translation.placeOf run.Id 5)))
+    settle w
+    Assert.Equal("hello", (editOf host).SelectedText)
+    Assert.False((box ()).Perform(SemanticAction.ReplaceSelectedText, SemanticArgument.Text "x"))
+    Assert.Equal("hello world", (editOf host).Text)
+
+[<Fact>]
+let ``a blinking caret changes nothing AccessKit is given; a moved caret does`` () =
+    let w, host = typed [] "hello"
+    let first = update host
+    // Half a second on, the caret has blinked off (a frame was drawn for it).
+    w.Time.AdvanceMs 600.0
+    settle w
+    Assert.True((first = update host))
+    key w Modifiers.None Key.Left
+    Assert.False((first = update host))
+
+[<Timing.TimingFact; Trait("Category", "Timing")>]
+let ``a thousand lines of text for AccessKit are quick`` () =
+    let text = String.Join("\n", Seq.init 3000 (fun i -> "line number " + string i + " of the text"))
+    let w, host = typed [ TextBox.multiline true; TextBox.maxLines 5 ] ""
+    w.Send(TextInput text)
+    settle w
+    for _ in 1 .. 10 do
+        update host |> ignore
+    let best =
+        Seq.init 30 (fun _ ->
+            let sw = Stopwatch.StartNew()
+            update host |> ignore
+            sw.Elapsed.TotalMilliseconds)
+        |> Seq.min
+    Console.WriteLine($"Semantic tree for AccessKit: a text box of 3,000 lines (1,000 given) {best:F3} ms ({(update host).Nodes.Length} nodes)")
+    Assert.True(best < 20.0, $"the text took {best:F2} ms")

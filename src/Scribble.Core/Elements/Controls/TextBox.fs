@@ -1846,6 +1846,164 @@ module TextBox =
         if isMulti ctx.Element then renderLines ctx list else renderLine ctx list
         if ctx.IsFocusVisible then FocusRing.draw ctx list (ctx.Get BorderProps.cornerRadius)
 
+    // ---- For assistive technology (DESIGN.md, "A2: a TextBox's text") ----
+
+    /// The most lines a screen reader is given at once: beyond it, those around the caret (decision 18).
+    let internal semanticLineCap = 1000
+
+    /// One line for a screen reader: its characters (what the caret steps over as one), where each stands (`xOf`
+    /// a place in `text`), and the characters that start a word, as the caret's word moves see words.
+    let private semanticLine (number: int) (text: string) (endsWithBreak: bool) (xOf: int -> float) (bounds: Rect) : SemanticTextLine =
+        // (White space at the line's start is a word of its own to AccessKit; so the first character always starts one.)
+        let struct (stops, words) = TextEdit.characters text
+        { Number = number
+          Text = text
+          EndsWithBreak = endsWithBreak
+          Stops = stops
+          Positions = Array.map xOf stops
+          WordStarts = words
+          Bounds = bounds }
+
+    /// How many characters of `text` come before the place `index`.
+    let private charactersBefore (text: string) (index: int) =
+        let mutable i = 0
+        let mutable n = 0
+        while i < index && i < text.Length do
+            i <- TextEdit.nextStop text i
+            n <- n + 1
+        n
+
+    /// The place in `text` after `count` characters (its end, if it has fewer).
+    let private placeAfter (text: string) (count: int) =
+        let mutable i = 0
+        let mutable n = 0
+        while n < count && i < text.Length do
+            i <- TextEdit.nextStop text i
+            n <- n + 1
+        i
+
+    /// The lines a screen reader is given of several lines: all of them, or those around the caret's.
+    let private semanticRange (count: int) (caretLine: int) : struct (int * int) =
+        if count <= semanticLineCap then struct (0, count - 1)
+        else
+            let first = max 0 (min (count - semanticLineCap) (caretLine - semanticLineCap / 2))
+            struct (first, first + semanticLineCap - 1)
+
+    /// The box's text for a screen reader: its lines as drawn (what an input method composes included, bullets
+    /// for a password) and its selection.
+    let private semanticText (e: Element) : SemanticTextInfo voption =
+        let s = stateOf e
+        let b = e.Bounds
+        let size = Size.Create(b.Width, b.Height)
+        let shown = s.Shown
+        let lineHeight = lineHeightOf e
+        let struct (left, width) = textArea e size
+        let struct (top, height) = textRows e size
+        if isMulti e then
+            let lines = currentLines e s
+            let count = lines.LineCount
+            let place (index: int) (atEnd: bool) (first: int) (last: int) : SemanticTextPosition =
+                let struct (p, l, n) = MultiLine.locate lines index atEnd
+                if n < first then { Line = first; Character = 0 }
+                elif n > last then
+                    let lastP = lines.ParagraphOfLine last
+                    let line = lines.Paragraphs[lastP].Lines[last - lines.FirstLine lastP]
+                    { Line = last; Character = charactersBefore (lines.Paragraphs[lastP].Text.Substring(line.Start, line.End - line.Start)) Int32.MaxValue }
+                else
+                    let paragraph = lines.Paragraphs[p]
+                    let line = paragraph.Lines[l]
+                    let text = paragraph.Text.Substring(line.Start, line.End - line.Start)
+                    { Line = n; Character = charactersBefore text (index - lines.Offset p - line.Start) }
+            let struct (_, _, caretLine) = MultiLine.locate lines shown.Caret s.AtLineEnd
+            let struct (first, last) = semanticRange count caretLine
+            let made =
+                [| for n in first .. last do
+                       let p = lines.ParagraphOfLine n
+                       let l = n - lines.FirstLine p
+                       let paragraph = lines.Paragraphs[p]
+                       let line = paragraph.Lines[l]
+                       let text = paragraph.Text.Substring(line.Start, line.End - line.Start)
+                       let stops = MultiLine.stopsOf e.TextSystem lines p l
+                       // The last line of a paragraph that another follows ends with the break between them.
+                       let endsWithBreak = l = paragraph.Lines.Length - 1 && p < lines.Paragraphs.Length - 1
+                       let bounds = Rect.Create(left, top + float n * lineHeight - s.ScrollY, width, lineHeight)
+                       semanticLine n text endsWithBreak (fun i -> stops[max 0 (min (stops.Length - 1) i)]) bounds |]
+            ValueSome
+                { Lines = made
+                  Anchor = place shown.Anchor false first last
+                  Caret = place shown.Caret s.AtLineEnd first last }
+        else
+            measureStops e s
+            let text = shown.Text
+            let stops = s.Stops
+            let password = e.Get TextBoxProps.isPassword
+            let bounds = Rect.Create(left - s.Scroll, top + (height - lineHeight) / 2.0, max width stops[stops.Length - 1], lineHeight)
+            let line =
+                if password then
+                    // A bullet for each character: where each stands, and nothing of what they are.
+                    let places = ResizeArray<float>()
+                    let mutable i = 0
+                    places.Add stops[0]
+                    while i < text.Length do
+                        i <- TextEdit.nextStop text i
+                        places.Add stops[i]
+                    { Number = 0
+                      Text = s.Display
+                      EndsWithBreak = false
+                      Stops = [| 0 .. places.Count - 1 |]
+                      Positions = places.ToArray()
+                      WordStarts = (if places.Count > 1 then [| 0 |] else [||])
+                      Bounds = bounds }
+                else semanticLine 0 s.Display false (fun i -> stops[max 0 (min (stops.Length - 1) i)]) bounds
+            ValueSome
+                { Lines = [| line |]
+                  Anchor = { Line = 0; Character = charactersBefore text shown.Anchor }
+                  Caret = { Line = 0; Character = charactersBefore text shown.Caret } }
+
+    /// Where in the text a place a screen reader names is, and whether it is the end of a line that wraps on.
+    let private indexOfPlace (e: Element) (s: TextBoxState) (place: SemanticTextPosition) : struct (int * bool) =
+        if isMulti e then
+            let lines = currentLines e s
+            let n = max 0 (min (lines.LineCount - 1) place.Line)
+            let p = lines.ParagraphOfLine n
+            let l = n - lines.FirstLine p
+            let paragraph = lines.Paragraphs[p]
+            let line = paragraph.Lines[l]
+            let text = paragraph.Text.Substring(line.Start, line.End - line.Start)
+            let offset = placeAfter text (max 0 place.Character)
+            struct (lines.Offset p + line.Start + offset, offset = text.Length && offset > 0 && l < paragraph.Lines.Length - 1)
+        else struct (placeAfter s.Edit.Text (max 0 place.Character), false)
+
+    /// What a screen reader asks of the text (decision 22), each by the path the matching input takes: a selection
+    /// as a drag makes one, a replacement as pasted text, a new value as everything selected and pasted over.
+    let private semanticActionWith (ctx: InputContext) (action: SemanticAction) (argument: SemanticArgument) : bool =
+        let e = ctx.Element
+        let s = stateOf e
+        adopt e s
+        match action, argument with
+        | SemanticAction.SetTextSelection, SemanticArgument.TextSelection(anchor, caret) ->
+            commitComposition e s
+            hideTouch e s
+            let struct (from, _) = indexOfPlace e s anchor
+            let struct (upTo, atEnd) = indexOfPlace e s caret
+            let next = TextEdit.select from upTo s.Edit
+            if next <> s.Edit then apply e s next
+            s.AtLineEnd <- atEnd
+            true
+        | SemanticAction.ReplaceSelectedText, SemanticArgument.Text text when canChange e ->
+            commitComposition e s
+            hideTouch e s
+            let next = inserted e text s.Edit
+            if next <> s.Edit then applyEdit e s EditKind.Single next
+            true
+        | SemanticAction.SetValue, SemanticArgument.Text text when canChange e ->
+            commitComposition e s
+            hideTouch e s
+            let next = inserted e text (TextEdit.selectAll s.Edit)
+            if next <> s.Edit then applyEdit e s EditKind.Single next
+            true
+        | _ -> false
+
     let Type =
         Element.extend Border.Type "TextBox" [
             Element.measure measure
@@ -1872,6 +2030,10 @@ module TextBox =
                     Read([| TextBoxProps.text; TextBoxProps.isPassword |], fun e -> if e.Get TextBoxProps.isPassword then ValueNone else ValueSome(e.Get TextBoxProps.text)))
                 Setting.create SemanticsProps.isProtected (Read([| TextBoxProps.isPassword |], fun e -> e.Get TextBoxProps.isPassword))
                 Semantics.readOnlyFrom TextBoxProps.isReadOnly
+                // Its lines and selection, and what a screen reader can ask of them.
+                Semantics.textFrom semanticText
+                Semantics.actions [ SemanticAction.SetTextSelection; SemanticAction.ReplaceSelectedText; SemanticAction.SetValue ]
+                Semantics.onActionWith semanticActionWith
                 // (A password is one line whatever `multiline` says.)
                 Setting.create SemanticsProps.multiline (
                     Read([| TextBoxProps.multiline; TextBoxProps.isPassword |], fun e -> e.Get TextBoxProps.multiline && not (e.Get TextBoxProps.isPassword)))

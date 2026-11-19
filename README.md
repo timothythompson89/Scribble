@@ -1490,7 +1490,8 @@ elements fill this in themselves; a Button or CheckBox is named by the text insi
 windows are readable by screen readers (Narrator, NVDA) through AccessKit with nothing to set up: `App.run` gives
 each window a screen-reader bridge, which does nothing until something asks the window what is in it.
 `App.screenReader false` leaves it out. A screen reader can read what is there, follow the focus and press, toggle,
-select, scroll and step things; following the caret in a TextBox and announcing toasts come next. The semantic
+select, scroll and step things, and read a TextBox by character, word and line, follow its caret and
+selection, and select or put text in it (dictation); announcing toasts comes next. The semantic
 tree lives in its own namespace, so it stays out of autocomplete until you open it:
 
 ```fsharp

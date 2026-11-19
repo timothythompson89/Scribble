@@ -33,6 +33,27 @@ type ActionCallback = delegate of nativeint * nativeint -> unit
 /// `target_node` (a uint64, aligned to 8) is at 24.
 let ActionRequestActionOffset = 0
 let ActionRequestTargetNodeOffset = 24
+/// `data` (an `accesskit_opt_action_data`) follows at 32: `has_value` (a byte) there; its `value` (an
+/// `accesskit_action_data`, aligned to 8) at 40, which is a tag (a C enum: 4 bytes) and, at 48, a union.
+let ActionRequestHasDataOffset = 32
+let ActionRequestDataTagOffset = 40
+/// `ACCESSKIT_ACTION_DATA_VALUE`: the union holds a `char *` (UTF-8, ended by a zero).
+let ActionDataValue = 1
+/// `ACCESSKIT_ACTION_DATA_SET_TEXT_SELECTION`: the union holds an `accesskit_text_selection`: the anchor's node
+/// (uint64) and character index (size_t), then the focus's.
+let ActionDataSetTextSelection = 7
+let ActionRequestDataOffset = 48
+
+/// `accesskit_text_position` and `accesskit_text_selection`.
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type TextPosition =
+    val mutable Node: uint64
+    val mutable CharacterIndex: unativeint
+
+[<Struct; StructLayout(LayoutKind.Sequential)>]
+type TextSelection =
+    val mutable Anchor: TextPosition
+    val mutable Focus: TextPosition
 
 // ---- Nodes ----
 
@@ -116,6 +137,33 @@ extern void accesskit_node_set_scroll_y_min(nativeint node, float value)
 
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern void accesskit_node_set_scroll_y_max(nativeint node, float value)
+
+// ---- Text runs and a text box's selection ----
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_character_lengths(nativeint node, unativeint length, byte* values)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_word_starts(nativeint node, unativeint length, byte* values)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_character_positions(nativeint node, unativeint length, float32* values)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_character_widths(nativeint node, unativeint length, float32* values)
+
+/// `accesskit_text_direction`: 0 is left to right.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_text_direction(nativeint node, byte value)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_previous_on_line(nativeint node, uint64 value)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_next_on_line(nativeint node, uint64 value)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern void accesskit_node_set_text_selection(nativeint node, TextSelection value)
 
 // ---- Tree updates ----
 

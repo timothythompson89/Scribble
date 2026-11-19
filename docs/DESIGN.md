@@ -96,7 +96,11 @@ And **AccessKit step A1, the screen-reader bridge** (section "AccessKit: the scr
 window's semantic tree through AccessKit to UI Automation, actions back; built 2026-11-19, checked through UI
 Automation by script, waiting for Tim's check with Narrator and NVDA).
 
-Next: AccessKit steps A2 (a TextBox's text, caret and selection) and A3 (announcements and leftovers), then M10 hot reload. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"). Later: animation, accessibility, bidi and
+And **AccessKit step A2, a TextBox's text** (section "A2: a TextBox's text": its lines as text runs, the caret
+and selection, and three text actions; built 2026-11-19, checked through UI Automation's text interface by script,
+not yet heard through a screen reader).
+
+Next: AccessKit step A3 (announcements and leftovers), then M10 hot reload. SDL3 is the desktop platform and Win32 is gone (2026-11-18, section "Platform layer: SDL3 and AccessKit"). Later: animation, accessibility, bidi and
 complex scripts, IME, macOS and Linux, mobile, a Vulkan backend of our own, game UI hosts.
 
 ## Projects
@@ -4895,6 +4899,78 @@ rule"). They don't, and A1 has to show it:
 - **Not checked by a test or by script:** what Narrator and NVDA say, their own navigation (item by item, by
   control type), focus following in a real screen reader, and whether anything on another Windows machine
   connects by itself.
+
+### A2: a TextBox's text (planned 2026-11-19)
+
+Facts at the start. AccessKit wants a text box's text as "text run" nodes under it, one for each line as drawn,
+holding the line's text; for each character (what the editor selects as one) its length in bytes; where each
+word starts (it won't guess: they must be the editor's own); and, optionally, each character's place and
+width. A hard line break belongs to the end of its line and counts as one character. The selection is an anchor
+and a focus, each a run and a character in it. Three actions come back: set the selection, replace the selected
+text, set the value. A run's word starts are bytes, so a run holds at most 255 characters: a longer line is
+several runs, linked as being on one line. Our TextBox holds all of it (lines as wrapped, caret places, words,
+the selection); none of it is in the semantic node.
+
+**Decisions (Tim, 2026-11-19: yes to all)**
+17. **The text description is in Core's semantic node** (`SemanticNode.Text`): its lines, each line's characters,
+    their places, its word starts, and the selection. The TextBox fills it in, as an element type of an app's own
+    that edits text could. The browser's bridge will want the same.
+18. **Every line up to 1,000; beyond that, the 1,000 around the caret.** Updates are whole trees (decision 4), so a
+    10,000-line box would be 10,000 nodes more with every key. In a longer text "read to the end" stops at the
+    cap until the caret moves on. If that annoys, the answer is partial updates, a step of its own.
+19. **A password gives one bullet for each character**, never its text.
+20. **While an input method composes, the lines are what is drawn**, the composing text included.
+21. **Each character's place and width are given**, so a screen reader's highlight and a magnifier can follow the
+    caret.
+22. **Three semantic actions more, each with a value:** set the text selection, replace the selected text, set
+    the value. Each takes the path the matching input takes (a replace is as pasted text: `maxLength`, nothing
+    in a read-only box, one undo step, `onTextChanged`).
+23. **An update equal to the last one sent isn't sent** (a blinking caret changes nothing a screen reader is
+    told). The tree is still built; the send is what is saved.
+
+Status: **agreed (Tim, 2026-11-19); built the same day; not yet heard through a screen reader.**
+
+**As built (2026-11-19):**
+
+- **Core** (`Semantics.fs`): `SemanticTextLine` (its number, text, whether a break ends it, where each character
+  starts, each one's x, the characters that start a word, its bounds), `SemanticTextPosition` (a line and a
+  character in it), `SemanticTextInfo` (the lines and the selection's anchor and caret), and
+  `SemanticNode.Text`. An element type gives it with `Semantics.textFrom`. Places are counted in characters (what
+  the caret steps over as one), so a password's bullets and an emoji need no special case downstream.
+- **Actions with something to work with** (decision 22): `SemanticAction.SetTextSelection`,
+  `ReplaceSelectedText` and `SetValue`; `SemanticArgument` (`Text`, `TextSelection`); `node.Perform(action,
+  argument)`; an element type performs them in `Semantics.onActionWith`. The nine older actions are as they were.
+- **The TextBox** gives its lines from what it already keeps (`semanticText`): several lines from the wrapped
+  paragraphs, one line from what it draws. `TextEdit.characters` finds a line's characters and word starts in one
+  pass. Its three actions go through `apply`, `applyEdit` and `inserted`, as a drag and a paste do; a
+  composition is committed first.
+- **The bridge** (`Translation.fs`): each line becomes one or more text runs (role text run; the text, with
+  "\n" for the break; each character's bytes in UTF-8; word starts; places and widths in pixels from the run's
+  left edge), children of the text box's node after its own. A run's id is made from its text box's element, its
+  line's number and its part of the line, so an action's place (a run and a character) maps back with no table
+  (`Translation.placeOf`). **A line of more than 255 characters is several runs**, linked as previous and next on
+  the line: AccessKit keeps a run's word starts in bytes. A read-only box is not said to support replacing or
+  setting text.
+- **Decision 23** (`Bridge.fs`): the tree is built as plain data (`AkUpdate`), compared with the last one given
+  to AccessKit, and written out only if it differs. `AccessKitBridge.UpdatesSent` counts those written.
+- **Found while checking, and left as it is for now: AccessKit hides what a scroll area clips.** With "clips its
+  children" set on a scroll area (A1), AccessKit leaves out the children that are scrolled out of view, all but
+  the first on each side, which can be asked to scroll into view. So UI Automation saw 30 of the Controls page's
+  81 nodes, and A1's "sliders not found" was this: they were below the fold. It is AccessKit's design (made for
+  long lists), and a screen reader that walks item by item brings the next one in; one that reads the whole page
+  at once stops at the fold. The other way is not to say that scroll areas clip, which shows everything, off
+  screen or not. **To decide with Tim, with a screen reader that speaks.**
+- **Measured** (Release, our side only, without the native calls): the Gallery's Controls page 0.32 ms (70 nodes,
+  its text boxes' runs among them); a text box of 3,000 lines, 1,000 given, 2.1 ms (1,003 nodes; 16.7 ms before
+  `TextEdit.characters`). With a text box focused and its caret blinking, 0 updates were sent in 5 s.
+- **Checked through UI Automation's text interface** (a script as the client): the three text boxes on the
+  Controls page, their text (a password's is empty); the first character's rectangle inside the box; the first
+  word; the selection; `Select` on a range (the box's selection followed); `SetValue` (the text changed).
+- **Tests:** 9 unit tests and one timing test more in `AccessKitTests.fs` (a line as a run with bytes, places
+  and word starts; several lines and the break; a password; a line over 255 characters; the cap; a composition;
+  the three actions; a read-only box; a blinking caret). Totals: 1,300 unit (+9 timing), 106 rendering, 9 timing.
+- **Not checked:** what a screen reader says as the caret moves; dictation itself; the native calls' cost for a
+  thousand runs; right-to-left text (runs are always said to run left to right).
 
 ## Vectorising the PNG decoder (2026-11-18)
 

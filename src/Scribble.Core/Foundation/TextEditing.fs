@@ -83,6 +83,23 @@ module TextEdit =
             | UnicodeCategory.NonSpacingMark | UnicodeCategory.SpacingCombiningMark | UnicodeCategory.EnclosingMark -> 1
             | _ -> 2
 
+    /// In one pass over a line of text: where each character starts (and last the text's length), and the
+    /// characters, by their number, that start a word: the first, and each that begins a run of one kind that isn't
+    /// white space (what `wordAt` calls a word). For assistive technology, which is told both for every line.
+    let characters (text: string) : struct (int[] * int[]) =
+        let stops = ResizeArray<int>(text.Length + 1)
+        let words = ResizeArray<int>()
+        let mutable i = 0
+        let mutable previous = -1
+        while i < text.Length do
+            let kind = kindAt text i
+            if stops.Count = 0 || (kind <> 0 && kind <> previous) then words.Add stops.Count
+            stops.Add i
+            previous <- kind
+            i <- i + StringInfo.GetNextTextElementLength(text, i)
+        stops.Add text.Length
+        struct (stops.ToArray(), words.ToArray())
+
     /// The start of the word before `index` (Ctrl+Left): back over white space, then over one run.
     let previousWord (text: string) (index: int) =
         let mutable i = stopAtOrBefore text index

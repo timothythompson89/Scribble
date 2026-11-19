@@ -3,6 +3,7 @@ namespace Scribble.Accessibility
 open System.Collections.Generic
 open System.Runtime.CompilerServices
 open Scribble.Core
+open Scribble.Rendering
 
 /// What kind of thing an element is to assistive technology, from ARIA's roles (plus ScrollArea,
 /// which every platform has and ARIA doesn't). Grows as controls arrive; there is no custom role,
@@ -104,6 +105,45 @@ type SemanticScroll =
       ViewportWidth: float
       ViewportHeight: float }
 
+/// One line of a text box as it is drawn, for assistive technology (DESIGN.md, "A2: a TextBox's text").
+type SemanticTextLine =
+    { /// Its number among all the box's lines, from 0.
+      Number: int
+      /// What the line shows (a bullet for each character of a password), without the line break that may end it.
+      Text: string
+      /// A line break ends it (the text goes on in another paragraph): one more character after `Text`.
+      EndsWithBreak: bool
+      /// Where each character starts in `Text`, and last `Text.Length`. A character is what the caret steps over
+      /// as one (an emoji is one).
+      Stops: int[]
+      /// The x of each of `Stops`, in DIPs from the left edge of `Bounds`.
+      Positions: float[]
+      /// The characters, by their number in the line, that start a word (as the caret's word moves see words).
+      WordStarts: int[]
+      /// Where the line is drawn, in the element's own coordinates (DIPs): outside the element when scrolled out.
+      Bounds: Rect }
+
+/// A place in a text box's text: a line (its `Number`) and a character in it. 0 is before the line's first
+/// character; the number of its characters is after its last, which is where its line break stands if it has one.
+[<Struct>]
+type SemanticTextPosition = { Line: int; Character: int }
+
+/// A text box's text for assistive technology: its lines as drawn (in a very long text, those around the caret)
+/// and its selection, which runs from `Anchor` to `Caret` (the same place: only a caret).
+type SemanticTextInfo =
+    { Lines: SemanticTextLine[]
+      Anchor: SemanticTextPosition
+      Caret: SemanticTextPosition }
+
+/// What a semantic action is given to work with, for those that need something.
+[<RequireQualifiedAccess>]
+type SemanticArgument =
+    | None
+    /// The text to put in (`ReplaceSelectedText`, `SetValue`).
+    | Text of string
+    /// The selection to make (`SetTextSelection`): from the anchor to the caret.
+    | TextSelection of anchor: SemanticTextPosition * caret: SemanticTextPosition
+
 /// Something assistive technology can ask a semantic node to do; it takes the same path as the
 /// matching input.
 [<RequireQualifiedAccess>]
@@ -122,6 +162,12 @@ type SemanticAction =
     /// Something that opens (a ComboBox's list) shows what it holds.
     | Expand
     | Collapse
+    /// A text box selects what `SemanticArgument.TextSelection` says (a screen reader's own selection commands).
+    | SetTextSelection
+    /// A text box puts `SemanticArgument.Text` in place of its selection, as pasted text (dictation).
+    | ReplaceSelectedText
+    /// A text box takes `SemanticArgument.Text` as its whole text.
+    | SetValue
 
     override a.ToString() =
         match a with
@@ -134,6 +180,9 @@ type SemanticAction =
         | ScrollBackward -> "ScrollBackward"
         | Expand -> "Expand"
         | Collapse -> "Collapse"
+        | SetTextSelection -> "SetTextSelection"
+        | ReplaceSelectedText -> "ReplaceSelectedText"
+        | SetValue -> "SetValue"
 
 /// Semantics values as text, written out (records' and options' generated ToString use %A,
 /// which NativeAOT can't run): for the inspector and node descriptions.
@@ -224,6 +273,10 @@ module internal SemanticsProps =
     let position: Prop<SemanticPosition voption> = define "position" ValueNone
     let actions: Prop<SemanticAction list> = define "actions" []
     let onAction: Prop<(InputContext -> SemanticAction -> bool) voption> = define "onAction" ValueNone
+    /// Performs the actions that are given something (the text actions).
+    let onActionWith: Prop<(InputContext -> SemanticAction -> SemanticArgument -> bool) voption> = define "onActionWith" ValueNone
+    /// A text box's lines and selection, read when the semantic tree is asked for.
+    let text: Prop<(Element -> SemanticTextInfo voption) voption> = define "text" ValueNone
     let computed: Prop<(Element -> Setting<Layoutable> list) voption> = define "computed" ValueNone
     /// For a list (ItemsView): the position of one of its children among all its items.
     let itemPosition: Prop<(Element -> Element -> SemanticPosition voption) voption> = define "itemPosition" ValueNone
@@ -308,6 +361,15 @@ type Semantics =
     /// Performs an action of `actions` (returns whether it did).
     static member onAction<'k when 'k :> Layoutable>(handler: InputContext -> SemanticAction -> bool) : Setting<'k> =
         Setting.create SemanticsProps.onAction (ValueSome handler)
+    /// Performs the actions of `actions` that are given something: `SetTextSelection`, `ReplaceSelectedText` and
+    /// `SetValue`, for an element type of your own that edits text (returns whether it did).
+    static member onActionWith<'k when 'k :> Layoutable>(handler: InputContext -> SemanticAction -> SemanticArgument -> bool) : Setting<'k> =
+        Setting.create SemanticsProps.onActionWith (ValueSome handler)
+    /// Its text as lines and its selection, read when the semantic tree is asked for: what lets a screen reader
+    /// read by character, word and line and follow the caret. For an element type of your own that edits text
+    /// (a TextBox gives its own).
+    static member textFrom<'k when 'k :> Layoutable>(read: Element -> SemanticTextInfo voption) : Setting<'k> =
+        Setting.create SemanticsProps.text (ValueSome read)
     /// Semantics worked out when asked (when they can't be read from one property each): its
     /// settings take the place of the element's own.
     static member computed<'k when 'k :> Layoutable>(f: Element -> Setting<Layoutable> list) : Setting<'k> =

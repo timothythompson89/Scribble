@@ -72,6 +72,24 @@ module internal Writer =
             Native.accesskit_node_set_scroll_y_min (node, 0.0)
             Native.accesskit_node_set_scroll_y_max (node, max 0.0 (s.ExtentHeight - s.ViewportHeight))
         | ValueNone -> ()
+        match n.Selection with
+        | ValueSome s ->
+            let mutable selection = Native.TextSelection()
+            selection.Anchor.Node <- s.AnchorRun
+            selection.Anchor.CharacterIndex <- unativeint s.AnchorCharacter
+            selection.Focus.Node <- s.FocusRun
+            selection.Focus.CharacterIndex <- unativeint s.FocusCharacter
+            Native.accesskit_node_set_text_selection (node, selection)
+        | ValueNone -> ()
+        // A text run. (An empty array pins as a null pointer, which is right for a length of 0.)
+        if not (isNull n.CharacterLengths) then
+            Native.accesskit_node_set_text_direction (node, 0uy)
+            (use p = fixed n.CharacterLengths in Native.accesskit_node_set_character_lengths (node, unativeint n.CharacterLengths.Length, p))
+            (use p = fixed n.WordStarts in Native.accesskit_node_set_word_starts (node, unativeint n.WordStarts.Length, p))
+            (use p = fixed n.CharacterPositions in Native.accesskit_node_set_character_positions (node, unativeint n.CharacterPositions.Length, p))
+            (use p = fixed n.CharacterWidths in Native.accesskit_node_set_character_widths (node, unativeint n.CharacterWidths.Length, p))
+            if n.PreviousOnLine <> 0UL then Native.accesskit_node_set_previous_on_line (node, n.PreviousOnLine)
+            if n.NextOnLine <> 0UL then Native.accesskit_node_set_next_on_line (node, n.NextOnLine)
         node
 
     /// The `accesskit_tree_update` for a whole tree (AccessKit owns what is returned).
@@ -107,7 +125,12 @@ type AccessKitBridge private (host: ElementHost, hwnd: nativeint) =
     let mutable dirty = false
     let mutable lastFocus: Element voption = ValueNone
     let mutable treesBuilt = 0
+    let mutable updatesSent = 0
     let mutable disposed = false
+    /// The tree AccessKit was last given (decision 23: one equal to it isn't sent), and one made and waiting for
+    /// AccessKit to ask for it.
+    let mutable lastSent: AkUpdate voption = ValueNone
+    let mutable waiting: AkUpdate voption = ValueNone
     /// The nodes of the tree AccessKit has, by id: what an action is about.
     let nodes = Dictionary<uint64, SemanticNode>()
 
@@ -117,8 +140,8 @@ type AccessKitBridge private (host: ElementHost, hwnd: nativeint) =
         | ValueNone, ValueNone -> true
         | _ -> false
 
-    /// The window's tree now, written out for AccessKit.
-    let build () : nativeint =
+    /// The window's tree now, as AccessKit is given it.
+    let build () : AkUpdate =
         let tree = host.SemanticTree()
         nodes.Clear()
         for n in tree.Nodes do
@@ -129,8 +152,15 @@ type AccessKitBridge private (host: ElementHost, hwnd: nativeint) =
         lastFocus <- focus
         dirty <- false
         treesBuilt <- treesBuilt + 1
-        if log then Console.WriteLine("Scribble accessibility: tree " + string treesBuilt + ", " + string nodes.Count + " nodes")
-        Writer.update (Translation.update window.Title (float size.Width) (float size.Height) window.Scale tree focus)
+        Translation.update window.Title (float size.Width) (float size.Height) window.Scale tree focus
+
+    /// Writes a tree out for AccessKit, which then has it.
+    let write (update: AkUpdate) : nativeint =
+        lastSent <- ValueSome update
+        updatesSent <- updatesSent + 1
+        if log then
+            Console.WriteLine("Scribble accessibility: update " + string updatesSent + " (tree " + string treesBuilt + "), " + string update.Nodes.Length + " nodes")
+        Writer.update update
 
     // Called by AccessKit on the window's thread: the first time something asks for the tree, and from
     // `update_if_active` once something has. A failure gives an empty window, never an exception across the call.
@@ -140,7 +170,11 @@ type AccessKitBridge private (host: ElementHost, hwnd: nativeint) =
                 active <- true
                 if log then Console.WriteLine "Scribble accessibility: something asked for the window's tree; the bridge is active"
             try
-                build ()
+                match waiting with
+                | ValueSome update ->
+                    waiting <- ValueNone
+                    write update
+                | ValueNone -> write (build ())
             with e ->
                 // To App.onError, as any error from a frame; rethrown without one, which must not cross the call.
                 (try
@@ -151,33 +185,65 @@ type AccessKitBridge private (host: ElementHost, hwnd: nativeint) =
 
     /// An action AccessKit asked for, on the UI thread: the node it was about does it, by the path the matching
     /// input takes.
-    let perform (id: uint64) (action: int) =
+    let perform (id: uint64) (action: int) (argument: SemanticArgument) =
         if not disposed then
             match nodes.TryGetValue id with
             | true, node ->
                 match Translation.semanticAction node action with
-                | ValueSome a -> node.Perform a |> ignore
+                | ValueSome a -> node.Perform(a, argument) |> ignore
                 | ValueNone -> ()
             | _ -> ()
+
+    /// What an action request carries, for the actions that are given something: text, or a selection among a
+    /// text box's runs.
+    let argumentOf (request: nativeint) : SemanticArgument =
+        if Marshal.ReadByte(request, Native.ActionRequestHasDataOffset) = 0uy then SemanticArgument.None
+        else
+            let tag = Marshal.ReadInt32(request, Native.ActionRequestDataTagOffset)
+            if tag = Native.ActionDataValue then
+                match Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(request, Native.ActionRequestDataOffset)) with
+                | null -> SemanticArgument.None
+                | text -> SemanticArgument.Text text
+            elif tag = Native.ActionDataSetTextSelection then
+                let at (offset: int) =
+                    Translation.placeOf
+                        (uint64 (Marshal.ReadInt64(request, Native.ActionRequestDataOffset + offset)))
+                        (int (Marshal.ReadIntPtr(request, Native.ActionRequestDataOffset + offset + 8)))
+                SemanticArgument.TextSelection(at 0, at 16)
+            else SemanticArgument.None
 
     // Called by AccessKit on any thread (decision 10 of the platform round: through the dispatcher).
     let onAction =
         Native.ActionCallback(fun request _ ->
             let action = int (Marshal.ReadByte(request, Native.ActionRequestActionOffset))
             let id = uint64 (Marshal.ReadInt64(request, Native.ActionRequestTargetNodeOffset))
+            // Read before the request is freed: the text is the request's.
+            let argument =
+                try
+                    argumentOf request
+                with _ ->
+                    SemanticArgument.None
             Native.accesskit_action_request_free request
             match host.Dispatcher with
-            | ValueSome d -> d.Post(fun () -> perform id action)
+            | ValueSome d -> d.Post(fun () -> perform id action argument)
             | ValueNone -> ())
 
     let onTreePointer = Marshal.GetFunctionPointerForDelegate<Native.TreeUpdateCallback> onTree
     let onActionPointer = Marshal.GetFunctionPointerForDelegate<Native.ActionCallback> onAction
     let adapter = Native.accesskit_windows_subclassing_adapter_new (hwnd, onTreePointer, 0n, onActionPointer, 0n)
 
+    /// Gives AccessKit the tree as it is now, unless it is what AccessKit has already (a blinking caret asks for
+    /// frames and changes nothing a screen reader is told).
     let send () =
         if not disposed then
-            let events = Native.accesskit_windows_subclassing_adapter_update_if_active (adapter, onTreePointer, 0n)
-            if events <> 0n then Native.accesskit_windows_queued_events_raise events
+            let update = build ()
+            match lastSent with
+            | ValueSome last when last = update -> ()
+            | _ ->
+                waiting <- ValueSome update
+                let events = Native.accesskit_windows_subclassing_adapter_update_if_active (adapter, onTreePointer, 0n)
+                waiting <- ValueNone
+                if events <> 0n then Native.accesskit_windows_queued_events_raise events
 
     /// After a frame: a tree that changed goes out, paced. Nothing at all until something has asked.
     let afterFrame () =
@@ -201,6 +267,8 @@ type AccessKitBridge private (host: ElementHost, hwnd: nativeint) =
     member _.IsActive = active
     /// How many trees it has built for AccessKit: none while nothing asks.
     member _.TreesBuilt = treesBuilt
+    /// How many of them it gave AccessKit: one equal to the last isn't sent.
+    member _.UpdatesSent = updatesSent
 
     /// Makes `host`'s window readable by screen readers. Call it before the window is first shown (AccessKit's
     /// rule), on the UI thread. On a platform or a window it can't serve it gives a bridge that does nothing;

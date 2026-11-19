@@ -41,7 +41,7 @@ module internal SemanticActions =
           SemanticAction.ScrollIntoView ]
         |> List.distinct
 
-    let perform (e: Element) (supported: SemanticAction list) (action: SemanticAction) =
+    let perform (e: Element) (supported: SemanticAction list) (action: SemanticAction) (argument: SemanticArgument) =
         e.VerifyAccess()
         if e.Root.IsNone || not (List.contains action supported) then false
         else
@@ -61,6 +61,17 @@ module internal SemanticActions =
                 true
             | SemanticAction.ScrollForward when isScrollViewer e -> ScrollViewer.page e true
             | SemanticAction.ScrollBackward when isScrollViewer e -> ScrollViewer.page e false
+            | SemanticAction.SetTextSelection
+            | SemanticAction.ReplaceSelectedText
+            | SemanticAction.SetValue ->
+                match e.Get SemanticsProps.onActionWith with
+                | ValueSome handler when e.IsEnabled ->
+                    try
+                        handler (InputContext e) action argument
+                    with ex ->
+                        e.ReportError ex
+                        false
+                | _ -> false
             | _ ->
                 match e.Get SemanticsProps.onAction with
                 | ValueSome handler when e.IsEnabled ->
@@ -80,6 +91,7 @@ type SemanticNode
         element: Element,
         id: uint64,
         isMultiline: bool,
+        text: SemanticTextInfo voption,
         role: Role,
         name: string,
         nameSource: NameSource,
@@ -108,6 +120,8 @@ type SemanticNode
     member _.Id = id
     /// Its text value may hold several lines.
     member _.IsMultiline = isMultiline
+    /// A text box's lines as drawn and its selection (none for other elements).
+    member _.Text = text
     member _.Role = role
     /// What a screen reader calls it ("" when it has no name).
     member _.Name = name
@@ -142,7 +156,11 @@ type SemanticNode
 
     /// Asks the element to do `action`, by the path the matching input takes; false when it has
     /// left its tree, is disabled, or doesn't support the action.
-    member _.Perform(action: SemanticAction) : bool = SemanticActions.perform element actions action
+    member _.Perform(action: SemanticAction) : bool = SemanticActions.perform element actions action SemanticArgument.None
+
+    /// As `Perform`, for an action that is given something: `node.Perform(SemanticAction.SetValue,
+    /// SemanticArgument.Text "hello")`.
+    member _.Perform(action: SemanticAction, argument: SemanticArgument) : bool = SemanticActions.perform element actions action argument
 
     /// One line: role, name and states (`CheckBox "Remember me" checked`).
     member this.Describe() =
@@ -376,6 +394,14 @@ module internal SemanticBuilder =
                               e,
                               (e.SemanticId <<< 20) ||| uint64 (generation &&& 0xFFFFF),
                               read computed e SemanticsProps.multiline,
+                              (match valueOf computed e SemanticsProps.text with
+                               | ValueSome f ->
+                                   try
+                                       f e
+                                   with ex ->
+                                       e.ReportError ex
+                                       ValueNone
+                               | ValueNone -> ValueNone),
                               role,
                               name,
                               source,
