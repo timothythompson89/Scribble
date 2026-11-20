@@ -42,6 +42,7 @@ questions", as paragraphs starting with the name given here.
 | Controls written outside Core | `ControlValue` and `Prop.appState` are public, `InputContext.Element` too; the Gallery's `RatingBar` is written with the public API only (2026-11-19) | Section "Controls written outside Core" |
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
 | Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
+| Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); agreed 2026-11-20, not built | Section "A hook for a picture's load state" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -5298,6 +5299,63 @@ what it is (a key and a source), so no app code changes and nothing in the publi
   touch: a cold run).
 - **Not verified:** the browser (relative URLs, downloads through `fetch`): a line waits in
   `docs/CHECKLIST-BROWSER.md`. Two apps in one process outside tests (M10's dev host will be the first).
+
+## A hook for a picture's load state: `ctx.useImage` (planning round, 2026-11-20)
+
+Status: **agreed (Tim, 2026-11-20: "Accept all"); nothing built.** It waits for the per-app image work (section
+"Image state per app, not per process") to be committed (decision 7).
+
+Tim asked whether images should work through a hook. The answer given: not as how pictures are shown (the
+isolation the tests lacked comes from where the cache lives, not from a hook; a hook per row would make virtualized
+lists heavier; image cursors, `ViewImage.render` and an element type's own render stage have no component to call
+one from; and `ImageView.image picture` is the settings-list shape everything else has), but yes as a way for a
+component to *read* where a picture stands. This is what M8 step 3b's decision 17 left for later ("placeholders
+and `onLoaded` when an app needs them").
+
+```fsharp
+let avatar = Component.create "Avatar" (fun ctx (url: string) ->
+    let picture = Image.fromUrl url []
+    let load = ctx.useImage picture
+    match load.Status with
+    | ImageStatus.Ready -> ImageView.create [ ImageView.image picture ]
+    | ImageStatus.Loading -> Border.create [ Border.background Palette.control ]
+    | ImageStatus.Failed _ -> Button.create [ Button.text "Retry"; Button.onClick (fun _ -> load.Retry()) ])
+```
+
+Facts at the start.
+- Apps can't see load state today: `ImageView` has no events, and the public `ImageStatus` (loading, ready, failed)
+  is read only by the inspector (`Element.HeldImages`).
+- A component reaches its app's image cache through its tree's app values (the per-app work).
+- A failed picture leaves the cache at once and is tried again only when shown again.
+
+**Decisions (Tim accepted every recommendation)**
+1. **The hook holds the picture** for as long as the component lives, and lets go when the component goes or the
+   picture changes. Reading alone would never start the load in a view that shows a placeholder *instead of* the
+   `ImageView`. A row of a virtualized list holds only while realized.
+2. **It returns a small handle, `ImageLoad`:** `Status`, the size in pixels once known (a resource's or bytes'
+   header gives it while still loading), and `Retry()`. Considered: `AsyncValue<_>` as `useAsync` gives, and the
+   bare `ImageStatus`; neither has room for retry.
+3. **A picture held by a hook reports its failure to the hook only,** not also to `App.onError`: the component has
+   said it handles it.
+4. **`Retry()` is in from the start** (lets go and asks again): a retry button is the main reason to want the
+   failed state.
+5. **No `ImageView.onLoaded` / `onFailed` in this round.** A plain `App.program` view can't call hooks and would
+   need them to dispatch messages; added when an MVU-only app asks.
+6. **The name is `ctx.useImage`.**
+7. **Built after the per-app image work is committed** (two sessions were in one folder), for `0.1.0-alpha.2`.
+
+**To build:** the hook and its slot (`Component.fs`), with the cache telling the component when loading ends as it
+tells elements; the inspector shows the hook's state as it does `useAsync`'s; the Gallery's Images page gets a
+placeholder for the web picture and a retry for the 404; README, `CHANGELOG.md` (Added).
+
+**Tests (fake platform):** loading then ready re-runs the component once and nothing draws while idle; a failure
+reaches the hook and not `App.onError`; unmounting lets go (holders at zero, a running download cancelled);
+changing the picture swaps what is held; retry after a failure asks again and can succeed; 10,000 rows with a hook
+each hold only the realized rows.
+
+**Not known yet:** whether a hook and an `ImageView` holding the same failed picture agree on who reports
+(decision 3) whatever the order: to be settled with a test first. The browser (decoding on the UI thread): for
+`docs/CHECKLIST-BROWSER.md`.
 
 ## Vectorising the PNG decoder (2026-11-18)
 
