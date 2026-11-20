@@ -14,7 +14,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: read
+  contents: write   # the GitHub release at the end
   id-token: write   # trusted publishing
 
 jobs:
@@ -83,3 +83,11 @@ jobs:
       # (artifacts/packages/*.nupkg)", the first release run, 2026-11-20).
       - name: Push
         run: dotnet nuget push "artifacts\packages\*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      # Last, so a GitHub release never names packages that are not on NuGet. Its notes are this version's section
+      # of docs/CHANGELOG.md.
+      - name: GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./.github/github-release.ps1 ${{ github.ref_name }}

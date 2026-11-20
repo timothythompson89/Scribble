@@ -5197,6 +5197,11 @@ Facts at the start.
   step; NuGet's index showed all 17 about six minutes after the push. Checked from outside: an app in an empty
   folder, with nuget.org as its only source, restored `Scribble.Desktop` and built with the four native
   libraries in its output (built, not run).
+- **GitHub releases (Tim, 2026-11-20).** `.github/github-release.ps1` publishes a release for a tag with that
+  version's section of `docs/CHANGELOG.md` as its notes (a pre-release when the version has a hyphen).
+  `release.yml` runs it last, after the packages are on NuGet; `github-release.yml` runs it by hand for a tag
+  that exists already (Actions, "GitHub release", Run workflow), which is how `v0.1.0-alpha.1` gets its own. The
+  notes were tried locally (`-NotesOnly`); neither workflow path has run yet.
 - **The markdown files moved into `docs/` (Tim, 2026-11-20):** README, CHANGELOG, CONTRIBUTING, GLOSSARY,
   THIRD-PARTY-NOTICES and the package readme (`docs/PACKAGE.md`, from `src/`). GitHub shows a README and a
   CONTRIBUTING file from `docs/` as it does from the root. Two stay at the root: `LICENSE` (GitHub reads the
