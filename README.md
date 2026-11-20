@@ -201,10 +201,12 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      grey. Leave it: they go back.
    - "Hover me" lights up under the pointer (an inline `Border.onState States.hover` block).
    - The chips at the bottom (Fast, Quiet, Cheap): Fast starts blue with white text. Clicking a chip toggles it
-     (a `selected` state made with `States.ofProp` on the chip, and `Style.prop selected true` on its text through
-     `Style.inside`); hovering a chip lightens it, selected or not. In the inspector, pick a selected chip: its
-     states line ends with `selected`, and its `background` is "from Border.chip:selected". Unselect it and
-     `selected` goes away.
+     (a state of the page's own, `States.define "chosen" []`, switched with `Border.state chosen true`; the text
+     follows it through `Style.inside`); hovering a chip lightens it, chosen or not. In the inspector, pick a
+     chosen chip: its states line ends with `chosen`, lit, and its `background` is "from Border.chip:chosen".
+     Click it again and `chosen` dims. An element that isn't a chip doesn't list `chosen` at all.
+   - The slider under the chips: drag it past 80 and its filled part turns red, back below and it's blue again
+     (a state read from its value, `States.ofProp "high" SliderProps.value (fun v -> v >= 80.0)`).
    - "Compact buttons" swaps the page's style list: every button on the page gets smaller padding; again to undo.
    - "Disable Danger" fades it (the theme's disabled look); hover and click no longer work on it.
    - With the inspector (F12): pick Primary: its `classes` reads `.primary`, and its `background` shows `style`,
@@ -235,7 +237,7 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      (transparent, `default`), `scale`, `opacity`, `shadow`, with no line under them; hover it and `overlay` gets
      `theme`, "from Button:hover". Plain defaults like `margin` stay behind "Show defaults".
    - Forcing states: pick a button; the STATES section shows toggles (hover, pressed, focus, focus-visible, disabled,
-     and every custom state, such as `selected`).
+     and the custom states that are the element's: `checked` on a CheckBox, `chosen` on the Styles page's chips).
      Click "hover": it turns teal, the button looks hovered with the mouse
      elsewhere, the tree marks it "• forced" and its `overlay` shows `theme`, "from Button:hover"; scroll the panel freely.
      "pressed" sinks it, "focus-visible" draws the ring, "disabled" fades it, yet the button still clicks. Click a
@@ -1017,19 +1019,47 @@ Border.create [ Border.onState States.hover [ Border.background lighter ] ]  // 
   can it set what decides matching (classes, styles, name, key, theme). Each throws when the style (or a state block,
   `Button.onState States.hover [ … ]`) is made, saying
   why; for "these buttons get this menu", use a function or a shared settings list in the view.
+- **A state of your own** is one declaration, at module level, and one setting in the view:
+
+  ```fsharp
+  let chosen = States.define "chosen" []                                // the view switches it
+
+  Border.create [ Border.classes [ "chip" ]; Border.state chosen isPicked ]
+  Border.style [ Style.cls "chip" ] [ Style.onState chosen [ Border.background Palette.accent ] ]
+  TextBlock.style [ Style.inside Border.Type [ Style.cls "chip"; chosen ] ] [ TextBlock.foreground Palette.onAccent ]
+  ```
+
+  It works wherever `States.hover` does, and the inspector lists it on the elements that have it. Only such a
+  state can be set (`Border.state States.hover true` throws), and only by a view, never a style. For a look that
+  needs no more than a name, a class does it too: `Border.classes [ "chip"; if isPicked then "chosen" ]`.
 - Element authors: add `let style parts (settings: Setting<MyElement> list) = Style.forType Type parts settings`
-  next to `create`; a state read from a property is `States.ofProp "checked" CheckBoxProps.isChecked id` (matched
-  again by itself); any other state is `States.define "name" (fun e -> ...)`, and `element.RefreshStates()` says it
-  may have changed.
+  next to `create`. A state read from one property is `States.ofProp "checked" CheckBoxProps.isChecked id`. One
+  from several says which it reads and when it's on:
+
+  ```fsharp
+  let full =
+      States.define "full" [
+          States.dependsOn RatingBarProps.value
+          States.dependsOn RatingBarProps.max
+          States.test (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)
+      ]
+  ```
+
+  Both are matched again by themselves when a property they read changes. The test reads the element's own
+  values, never a style's (a style can't switch the state that applies it); in a Debug build, reading a property
+  the state doesn't depend on warns once.
 - The inspector shows a value a style set as `style`, with the selector under it (`from Button.primary:hover`). Its
-  own layers ignore `App.styles` (`Layer.appStyles false`). Its STATES section is a row of toggles: every built-in
-  state and every custom one (`States.customStates ()`; bright when on, `element.ActiveStates`). Clicking one forces the opposite of what it
+  own layers ignore `App.styles` (`Layer.appStyles false`). Its STATES section is a row of toggles: the built-in
+  states, and the custom ones something ties to the element (`element.ApplicableStates`: those its view switches
+  on it, or that a style reaching it gives a look, so an unchecked CheckBox lists `checked`, a TextBlock doesn't,
+  and a state read from a Slider's value is listed only on the sliders a style for it reaches; bright when on,
+  `element.ActiveStates`). Clicking one forces the opposite of what it
   shows (on if it's off, off if it's on; again to stop), for looks only (styles and render functions see it, input doesn't), so you can inspect hover or pressed with the mouse
   elsewhere; tools can do the same with `element.ForceState(state, on)` (`element.UnforceState state` stops it;
   `element.ForcedStates` lists `(state, on)` pairs). Forced states spread like real ones: a
   forced `disabled` (on or off) reaches everything inside the element (forced off, except what has its own
   `isEnabled false`), a forced-on `hover` its ancestors. A state read from a bool
-  property (`checked`, `indeterminate`, `selected`, or an app's `States.ofProp "x" prop id`) forced makes render
+  property (`checked`, `indeterminate`, `selected`, or an element type's `States.ofProp "x" prop id`) forced makes render
   functions read that property as `true` or `false` (`ctx.Get`): a forced checked CheckBox draws its tick, a Switch its knob on
   the right. Its real value doesn't change. (A TabControl's underline is the TabControl's: a forced `selected`
   header changes only the header's own look.)

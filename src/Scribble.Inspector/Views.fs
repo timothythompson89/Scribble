@@ -57,8 +57,6 @@ module internal InspectorIcons =
 // --- The views ---------------------------------------------------------------------------------------
 
 module internal Views =
-    // Shown in their own words on the states line ("hovered", "focused (visible)"), not by name.
-    let private builtInStates = [ States.hover; States.pressed; States.focused; States.focusVisible; States.disabled ]
     let private panelBackground = (Color.Hex 0x1B1B2A).WithAlpha 0.97f
     let private dim = Color.Hex 0x8A8AA0
     let private typeColor = Color.Hex 0x8AB4F8
@@ -497,12 +495,13 @@ module internal Views =
             )
         ]
 
-    /// The STATES section: every state, built-in and custom (`States.define`, `States.ofProp`), as
-    /// toggles that force them, so one that is off can be forced too.
+    /// The STATES section: the states that mean something for the element (`element.ApplicableStates`: the
+    /// built-in ones, and the custom ones its view switches or a style reaching it uses), as toggles that
+    /// force them, so one that is off can be forced too. A state nothing ties to the element isn't listed.
     let private statesLine (state: InspectorState) (e: Element) =
         let active = e.ActiveStates
         let forced = e.ForcedStates
-        let shown = builtInStates @ List.ofArray (States.customStates ())
+        let shown = e.ApplicableStates
         // Its own section (under the STATES heading), across the whole width.
         WrapPanel.create [
             WrapPanel.margin (Thickness.Create(10.0, 2.0, 10.0, 2.0))

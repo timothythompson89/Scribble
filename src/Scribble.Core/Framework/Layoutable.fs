@@ -15,6 +15,14 @@ type Layoutable =
     /// Settings that apply while this element is in `state`, right in the view:
     /// `Button.onState States.hover [ Button.background light ]` (one block per state; blocks nest).
     static member onState<'k when 'k :> Layoutable> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> = Style.onState state settings
+    /// Puts this element in a state of your own, or takes it out: `Border.state chosen isPicked`, for a state
+    /// made with `States.define "chosen" []`. Styles then match it like any state (`Style.onState chosen [ ... ]`).
+    /// Only for those: a state with a test follows its properties, and the built-in ones follow input.
+    static member state<'k when 'k :> Layoutable> (state: ElementState) (on: bool) : Setting<'k> =
+        match state.SwitchProp with
+        | ValueSome p -> Setting.create p on
+        | ValueNone ->
+            invalidArg "state" ("The state '" + state.Name + "' isn't one a view switches: it follows input or the element's properties. Only a state made with States.define \"name\" [] can be set.")
     static member margin<'k when 'k :> Layoutable>(value: Thickness) : Setting<'k> = Setting.create LayoutProps.margin value
     static member margin<'k when 'k :> Layoutable>(uniform: float) : Setting<'k> = Setting.create LayoutProps.margin (Thickness.Uniform uniform)
     static member margin<'k when 'k :> Layoutable>(horizontal: float, vertical: float) : Setting<'k> =

@@ -97,7 +97,7 @@ _Avoid_: global, app state
 ## State
 
 **Visual state**:
-A condition of an element that styles can match: hover, pressed, focused, disabled, or one an app registers (`States.hover`).
+A condition of an element that styles can match: hover, pressed, focused, disabled (`States.hover`), or one of an app's or an element type's own (`States.define`): switched by the view (`Border.state chosen true`) or following the element's properties.
 _Avoid_: state (alone), pseudo-class
 
 **State**:

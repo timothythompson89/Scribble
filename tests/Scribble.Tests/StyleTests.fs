@@ -355,7 +355,7 @@ let ``a state is a selector part, built-in or custom`` () =
 
 [<Fact>]
 let ``ActiveStates lists built-in and custom states that are on, skipping tests that throw`` () =
-    let broken = States.define "broken" (fun _ -> invalidOp "only for another type")
+    let broken = States.define "broken" [ States.dependsOn level; States.test (fun _ -> invalidOp "only for another type") ]
     let t = tree []
     let root = show t (Border.create [ checkedOn true ])
     root.ChangePointersOver 1
@@ -404,3 +404,168 @@ let ``onProp is a style: it can't set handlers or app state`` () =
     Assert.Throws<ArgumentException>(fun () ->
         Style.onProp SliderProps.orientation Orientation.Vertical [ Slider.value 3.0 ] |> ignore<Setting<Slider>>)
     |> ignore
+
+// --- States of your own (2026-11-19): States.define with settings, Border.state -------------------
+
+let private limit = Prop.define "Limit" 3 Affects.Render
+let private limitOf (v: int) : Setting<Border> = Setting.create limit v
+/// Switched by the view.
+let private chosen = States.define "chosen-in-style-tests" []
+/// From two properties: the level has reached the limit.
+let private full =
+    States.define "full-in-style-tests" [
+        States.dependsOn level
+        States.dependsOn limit
+        States.test (fun v -> v.Get level >= v.Get limit)
+    ]
+
+[<Fact>]
+let ``a state the view switches: styles follow it, on the element and inside it`` () =
+    let t =
+        tree [ Border.style [ Style.cls card ] [ Style.onState chosen [ Border.background red ] ]
+               Border.style [ Style.inside Border.Type [ Style.cls card; chosen ] ] [ Border.background green ] ]
+    let view (on: bool voption) =
+        Border.create [
+            Border.classes [ card ]
+            match on with
+            | ValueSome v -> Border.state chosen v
+            | ValueNone -> ()
+            Border.content (Border.create [ Border.name "in" ])
+        ]
+    let root = show t (view (ValueSome false))
+    let inner = find "in" root
+    Assert.Equal(Color.Transparent, background root)
+    Assert.Equal(Color.Transparent, background inner)
+    show t (view (ValueSome true)) |> ignore
+    Assert.Equal(red, background root)
+    Assert.Equal(green, background inner)
+    Assert.Contains(chosen, root.ActiveStates)
+    // Dropped from the view: out of the state.
+    show t (view ValueNone) |> ignore
+    Assert.Equal(Color.Transparent, background root)
+    Assert.Equal(Color.Transparent, background inner)
+
+[<Fact>]
+let ``only a state made without settings can be switched, and never by a style`` () =
+    for s in [ States.hover; checkedState; full ] do
+        let error = Assert.Throws<ArgumentException>(fun () -> Border.state s true |> ignore<Setting<Border>>)
+        Assert.Contains(s.Name, error.Message)
+    Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Border.state chosen true ] |> ignore) |> ignore
+    Assert.Throws<ArgumentException>(fun () -> Border.style [] [ Style.onState States.hover [ Border.state chosen true ] ] |> ignore) |> ignore
+
+[<Fact>]
+let ``a state from several properties is matched again when any of them changes`` () =
+    let t = tree [ Border.style [] [ Style.onState full [ Border.background red ] ] ]
+    let root = show t (Border.create [ levelOf 1 ])
+    Assert.Equal(Color.Transparent, background root)
+    show t (Border.create [ levelOf 3 ]) |> ignore // the limit's default is 3
+    Assert.Equal(red, background root)
+    show t (Border.create [ levelOf 3; limitOf 10 ]) |> ignore
+    Assert.Equal(Color.Transparent, background root)
+    show t (Border.create [ levelOf 12; limitOf 10 ]) |> ignore
+    Assert.Equal(red, background root)
+    Assert.Contains(full, root.ActiveStates)
+
+[<Fact>]
+let ``a state's test reads the element's own values, not a style's`` () =
+    // The style gives every Border a level past the limit: that mustn't put them in the state.
+    let t = tree [ Border.style [] [ levelOf 50; Style.onState full [ Border.background red ] ] ]
+    let root = show t (Border.create [])
+    Assert.Equal(50, root.Get level)
+    Assert.Equal(Color.Transparent, background root)
+    Assert.DoesNotContain(full, root.ActiveStates)
+
+[<Fact>]
+let ``a state needs both what it depends on and a test, or neither`` () =
+    let noProps = Assert.Throws<ArgumentException>(fun () -> States.define "no-props" [ States.test (fun _ -> true) ] |> ignore)
+    Assert.Contains("States.dependsOn", noProps.Message)
+    let noTest = Assert.Throws<ArgumentException>(fun () -> States.define "no-test" [ States.dependsOn level ] |> ignore)
+    Assert.Contains("States.test", noTest.Message)
+
+[<Fact>]
+let ``a test that reads a property the state doesn't depend on warns in a Debug build`` () =
+    let unlisted = Prop.define "UnlistedForStateTest" 0 Affects.Render
+    let careless = States.define "careless" [ States.dependsOn level; States.test (fun v -> v.Get level > v.Get unlisted) ]
+    let warnings = System.Collections.Generic.List<string>()
+    let listener = Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
+    // Added beside any other test's listener, and taken away again, so neither takes the other's.
+    DebugWarnings.Listener <- Delegate.Combine(DebugWarnings.Listener, listener) :?> Action<string>
+    // (A test that sets the listener outright may still drop this one: then there is nothing to check.)
+    let mutable heard = true
+    try
+        let t = tree []
+        let root = show t (Border.create [ levelOf 1 ])
+        Assert.Contains(careless, root.ActiveStates)
+        heard <- not (isNull DebugWarnings.Listener) && (DebugWarnings.Listener.GetInvocationList() |> Array.contains (listener :> Delegate))
+    finally
+        DebugWarnings.Listener <- Delegate.Remove(DebugWarnings.Listener, listener) :?> Action<string>
+        States.remove careless
+#if DEBUG
+    if heard then Assert.Contains(List.ofSeq warnings, fun m -> m.Contains "careless" && m.Contains "UnlistedForStateTest")
+#endif
+
+/// Read from a property a control already has, as the Gallery's Styles page does.
+let private high = States.ofProp "high-in-style-tests" SliderProps.value (fun v -> v >= 80.0)
+
+[<Fact>]
+let ``ApplicableStates: the built-in states, and the custom ones the view switches here or a style reaching it uses`` () =
+    let unused = States.define "unused-in-style-tests" []
+    try
+        let t =
+            tree [ Border.style [ Style.cls card ] [ Style.onState chosen [ Border.background red ] ]
+                   Slider.style [ Style.cls card ] [ Style.onState high [ Slider.fill red ] ] ]
+        t.Theme <- ValueSome(Theme.dark [])
+        let root =
+            show t (
+                StackPanel.create [
+                    StackPanel.children [
+                        Border.create [ Border.name "plain" ]
+                        Border.create [ Border.name "styled"; Border.classes [ card ] ]
+                        Border.create [ Border.name "switched"; Border.state chosen false ]
+                        Border.create [ Border.name "level"; levelOf 1 ]
+                        CheckBox.create [ CheckBox.name "box" ]
+                        Slider.create [ Slider.name "styled slider"; Slider.classes [ card ]; Slider.value 40.0 ]
+                        Slider.create [ Slider.name "other slider"; Slider.value 90.0 ]
+                    ]
+                ])
+        let has (name: string) (s: ElementState) = (find name root).ApplicableStates |> List.exists (fun x -> obj.ReferenceEquals(x, s))
+        // The built-in ones: everywhere.
+        for name in [ "plain"; "styled"; "box" ] do
+            Assert.True(has name States.hover)
+            Assert.True(has name States.disabled)
+        // Nothing of a plain Border's.
+        for s in [ chosen; full; States.isChecked; unused ] do
+            Assert.False(has "plain" s)
+        // A style reaching it gives the state a look; the view switches it here.
+        Assert.True(has "styled" chosen)
+        Assert.True(has "switched" chosen)
+        // Having a property the state reads ties nothing: no style here uses "full".
+        Assert.False(has "level" full)
+        Assert.False(has "level" chosen)
+        // A state read from a Slider's value is the styled slider's alone: the other is even in it (90), to no effect.
+        Assert.True(has "styled slider" high)
+        Assert.False(has "other slider" high)
+        Assert.Contains(high, (find "other slider" root).ActiveStates)
+        // The theme styles a checked CheckBox, so an unchecked one has the state; a Border doesn't.
+        Assert.True(has "box" States.isChecked)
+        Assert.False(has "box" chosen)
+        // Forced, a state is the element's until it's let go.
+        let plain = find "plain" root
+        plain.ForceState(unused, true)
+        Assert.True(has "plain" unused)
+        plain.UnforceState unused
+        Assert.False(has "plain" unused)
+    finally
+        States.remove unused
+
+[<Fact>]
+let ``a state read from a control's own value follows it`` () =
+    let t = tree [ Slider.style [] [ Style.onState high [ Slider.fill red ] ] ]
+    let root = show t (Slider.create [ Slider.value 40.0 ])
+    Assert.NotEqual(red, root.Get SliderProps.fill)
+    Assert.DoesNotContain(high, root.ActiveStates)
+    show t (Slider.create [ Slider.value 85.0 ]) |> ignore
+    Assert.Equal(red, root.Get SliderProps.fill)
+    Assert.Contains(high, root.ActiveStates)
+    show t (Slider.create [ Slider.value 79.0 ]) |> ignore
+    Assert.NotEqual(red, root.Get SliderProps.fill)

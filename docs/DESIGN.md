@@ -35,6 +35,7 @@ questions", as paragraphs starting with the name given here.
 | Names | An app names and styles a thing by what it wrote; presenters are internal (2026-11-19) | Section "Names an app sees" |
 | Style syntax | A selector says which elements, `Style.onState` and `Style.onProp` say when (2026-11-19) | Section "One way to say when" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
+| States of your own | `States.define "name" [ ... ]` and `Border.state`; the inspector lists an element's own states (2026-11-19) | Section "States of your own" |
 
 ## What Scribble is
 
@@ -5403,6 +5404,86 @@ when off the UI thread (inline when the tree has no dispatcher, as in bare `Elem
 `ctx.useAsync(deps, fun d ct -> task|async)` → `AsyncValue.Loading|Loaded|Failed` (version counter drops late
 results). Tests drain the fake platform's wakes by hand (`AsyncTests.fs`; use a real `Thread` for "other thread",
 since `Task.Run(...).Wait()` can run inline).
+## States of your own (2026-11-19)
+
+Tim: "creating custom states seems confusing. Can we make it more user friendly?" The Gallery's chips needed three
+declarations and four element-author ideas for one look: a property (`Prop.define "Selected" false
+Affects.Render`), a setting for it (`Setting.create selected v`), and a state read from it (`States.ofProp "chosen"
+selected id`), under two names, then used two ways in the styles (the state, and `Style.prop selected true`).
+
+Rounds: a one-call state plus a setting (Claude); what becomes of the function form, `States.define name (fun e ->
+...)`, which nothing in Core used and whose `element.RefreshStates()` an element type's own code couldn't reach
+(its contexts expose neither the element nor a refresh); `States.ofProps "full" [ a; b ] (fun v m -> ...)` (Tim:
+a list of properties of different types can't type the lambda; `ofProp2` proposed instead); then Tim's settings
+list, which was agreed with two changes.
+
+**Decisions (Tim, 2026-11-19: "Let's build it")**
+1. **`States.define name settings` is the one way to make a state** (a settings list, as every user-facing API).
+2. **No settings: the view switches it.** `let chosen = States.define "chosen" []`, then `Border.state chosen
+   isPicked`. `Layoutable.state` is the setting (so `Button.state`, `Border.state`); it throws for a state that
+   isn't switched by a view (`States.hover`, an `ofProp` state, one with a test). A style can't set it either.
+   Considered: `inState` (too like `onState`), a member on the state (`chosen.Is v`: not the settings style).
+3. **A state that follows properties says which and when:** `States.dependsOn prop` for each, and `States.test
+   (fun v -> ...)`. Both or neither: a test with nothing to depend on, or the reverse, throws when the state is made.
+4. **The test gets a reader, not the element** (the first change to Tim's form, which had `fun e -> e.Get ...`):
+   `v.Get prop` reads the element's own value, never a style's, as `ofProp` always did, so a style can't switch the
+   state that applies it; and in a Debug build reading a property the state doesn't depend on warns once (a state
+   that silently stops following a property is what the list form risks: each property is named twice).
+5. **The settings are `States.dependsOn` and `States.test`** (the second change: `State` is what `ctx.useState`
+   returns).
+6. **`States.ofProp name prop test` stays** as the short form for one property: the four built-in custom states
+   use it, and it carries what lets a forced "checked" draw the tick.
+7. **The function form and the public `element.RefreshStates()` are gone.** Nothing needs a hand-made refresh now.
+8. **Docs say which to reach for:** an app's own state is `States.define "name" []`; a class does it too when a
+   name is all that's needed (`Border.classes [ "chip"; if picked then "chosen" ]`).
+
+**The inspector lists an element's own states** (Tim, the same day: "Can we make it so the inspector only shows
+states that are actually on the element?"). This takes back "Every state is always listed" (2026-11-16, in the
+inspector's notes), which put `checked`, `indeterminate`, `selected`, `open` and every app state on every
+element's STATES row. Rule (`element.ApplicableStates`, public like `ActiveStates`): the five built-in states
+always (hover on anything is worth forcing), and a custom state when the element is in it or has it forced, has a
+value of its own for a property the state reads (`Border.state chosen false` counts), or is given a look for it by
+a style that reaches it: its theme's, the app's, the scopes above it, its own `styles`, its inline blocks. That last
+part is what keeps `checked` on a CheckBox that isn't checked and was never set: the theme styles it. A style
+"reaches" an element when its selector matches with its states and property tests left out. Not decided by
+element type: there is no list of the properties a type has (still open from M6).
+
+**Stricter, the same day** (Tim: "I want the states to show if they are a possible state... the 'high' state on
+that slider is never going to apply to another slider because no other slider is tied to it in any way"). The rule
+above listed `high` on every Slider with a value, since each has the property it reads. Now a custom state is
+listed only when something ties it to the element: the view switches it there (the element has a value of its own
+for the state's hidden property, so `Border.state chosen false` counts), a style that reaches the element gives it
+a look, or a tool has forced it. Having a property the state reads no longer counts, and neither does being in the
+state: a Slider at 90 that no style for `high` reaches is in it to no effect, and `ActiveStates` still says so.
+Considered: keeping "is in it" (a row that changes as a slider is dragged, for a state that does nothing there),
+and a `States.appliesTo` setting naming element types (every state would list its types, `checked` four of them,
+and forgetting one hides it silently).
+
+**As built (2026-11-19)**
+- `Style.fs`: `ElementState` holds the properties it reads (an array; none for the built-in five) and, for a
+  switched state, its hidden bool property (`"State " + name`, `Affects.Nothing`, `NotStylable`, tested by styles).
+  `StateValues` is the reader (a struct over the element and the declared properties), `StateSetting` the setting.
+  An ancestor part that tests a state marks every property it reads, where it marked the one.
+- `Layoutable.state`; `Element.HasOwnValue` (internal); `ApplicableStates` at the end of `ElementTree.fs` (it needs
+  the tree's styles). The inspector's STATES row uses it; nothing else of the inspector changed.
+- Gallery: the Styles page's chips are `States.define "chosen" []` and `Border.state`; the chosen look is a block
+  in the chip's style and the text follows through `Style.inside Border.Type [ Style.cls "chip"; chosen ]`. Same
+  pixels for the chips; the hint beside them reads "Border.state chosen". Under them (Tim: "can you also add a
+  demo of State.ofProp"), a Slider whose filled part turns to `Palette.danger` from 80 up: `States.ofProp "high"
+  SliderProps.value (fun v -> v >= 80.0)` and `Slider.style [] [ Style.onState high [ ... ] ]` in the page's styles.
+  The inspector lists "high" on that slider alone (the stricter rule above): the page's style reaches no other.
+- Still as it was: custom states are kept per process (`States.customStates`); moving that to the host is on M10's
+  list (rule 6).
+- Tests: 8 new in `StyleTests.fs` (a switched state on the element and inside it; what can't be switched; a state
+  from two properties; own values, not a style's; both-or-neither; the Debug warning; `ApplicableStates`; a state
+  read from a Slider's value), and the
+  three tests that used the function form rewritten (the inspector's two now also hold that another element's
+  state isn't listed). The two Debug-warning tests added today add their listener beside any other and take it
+  away, after one that set it outright made `ImageCursorTests`' warning test fail once in a parallel run.
+  References regenerated, each looked at: `styles-page@1x`, `styles-page-light@1x` (now 520 × 440: the
+  hint's words and the slider), `gallery-phone-styles@3x` (those and the page's first line), `inspector-pick@1x`, `inspector-images@1x` (a TextBlock's and an ImageView's STATES row: the five
+  built-in states, where there were ten).
+
 
 #### M6: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M6")
 

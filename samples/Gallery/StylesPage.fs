@@ -1,19 +1,20 @@
 /// The Styles page (M7): classes, state blocks, text styled inside a card, an inline block, chips styled from a
-/// property value, and a button that swaps the page's style list.
+/// state of our own, a slider styled from a state read from its value, and a button that swaps the page's style list.
 module Scribble.Samples.Gallery.StylesPage
 
 open Scribble.Rendering
 open Scribble.Text
 open Scribble.Core
+open Scribble.Accessibility
 open Scribble.Samples
 open Scribble.Samples.Gallery.Common
 
-/// A property of our own for the chips below (ToggleButton has one built in, `isChecked`). Styles
-/// select on its value with `Style.prop`, or through a state made from it.
-let private selected = Prop.define "Selected" false Affects.Render
-let private isSelected (v: bool) : Setting<Border> = Setting.create selected v
-/// A state read from the property: usable like `States.hover`, and listed by the inspector.
-let private selectedState = States.ofProp "chosen" selected id
+/// A state of our own for the chips below: the view switches it (`Border.state chosen true`), styles use it
+/// like `States.hover`, and the inspector lists it on the chips.
+let private chosen = States.define "chosen" []
+/// A state read from a property an element already has: a Slider is "high" from 80 up. It is matched again by
+/// itself whenever the value changes.
+let private high = States.ofProp "high" SliderProps.value (fun v -> v >= 80.0)
 
 /// The page's styles: classes, a state block, and text inside cards. Colors are theme values, so
 /// one list serves both themes.
@@ -31,22 +32,23 @@ let private normalStyles =
       ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "card" ] ] [ TextBlock.foreground Palette.text ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "card"; States.hover ] ] [ TextBlock.foreground highlight ]
-      // Chips look selected from their Selected value: through a state made from it (the chip), and
-      // a property selector (its text).
+      // Chips look chosen while they're in our own state: the chip, and the text inside it.
       Border.style [ Style.cls "chip" ] [
           Border.borderBrush line
           Border.borderThickness 1.0
           Border.cornerRadius 14.0
           Border.padding (12.0, 5.0)
           Style.onState States.hover [ Border.background subtle ]
-      ]
-      Border.style [ Style.cls "chip"; selectedState ] [
-          Border.background Palette.accent
-          Border.borderBrush highlight
-          Style.onState States.hover [ Border.background accentHover ]
+          Style.onState chosen [
+              Border.background Palette.accent
+              Border.borderBrush highlight
+              Style.onState States.hover [ Border.background accentHover ]
+          ]
       ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "chip" ] ] [ TextBlock.foreground Palette.textDim ]
-      TextBlock.style [ Style.inside Border.Type [ Style.prop selected true ] ] [ TextBlock.foreground Palette.onAccent ] ]
+      TextBlock.style [ Style.inside Border.Type [ Style.cls "chip"; chosen ] ] [ TextBlock.foreground Palette.onAccent ]
+      // The slider's filled part warns while its value is high.
+      Slider.style [] [ Style.onState high [ Slider.fill Palette.danger ] ] ]
 
 /// The same, plus smaller buttons: switching the page between the two lists swaps a style list.
 let private compactStyles = normalStyles @ [ Button.style [] [ Button.padding (8.0, 3.0) ] ]
@@ -57,10 +59,11 @@ let demo =
         let compact = ctx.useState false
         let disabled = ctx.useState false
         let picked = ctx.useState (Set.ofList [ "Fast" ])
+        let level = ctx.useState 40.0
         let chipView (name: string) =
             Border.create [
                 Border.classes [ "chip" ]
-                isSelected (picked.Current.Contains name)
+                Border.state chosen (picked.Current.Contains name)
                 Border.onClick (fun _ -> picked.Update(fun s -> if s.Contains name then s.Remove name else s.Add name))
                 Border.content (TextBlock.create [ TextBlock.text name ])
             ]
@@ -128,14 +131,26 @@ let demo =
                         chipView "Quiet"
                         chipView "Cheap"
                         TextBlock.create [
-                            TextBlock.text "Click to toggle: Style.prop selected true"
+                            TextBlock.text "Click to toggle: Border.state chosen"
                             TextBlock.foreground Palette.textDim
                             TextBlock.verticalAlignment VerticalAlignment.Center
                         ]
                     ]
                 ]
+                Slider.create [
+                    Semantics.label "Level"
+                    Slider.width 240.0
+                    Slider.horizontalAlignment HorizontalAlignment.Left
+                    Slider.value level.Current
+                    Slider.onValueChanged level.Set
+                ]
+                TextBlock.create [
+                    TextBlock.text "Drag past 80 and it turns red: a state read from its value, States.ofProp"
+                    TextBlock.foreground Palette.textDim
+                    TextBlock.textWrapping TextWrapping.Wrap
+                ]
             ]
         ])
 
 let view () =
-    page "Styles" "Looks from style lists: classes, states, text inside a card, inline blocks and a selector on a property's value." [ demo () ]
+    page "Styles" "Looks from style lists: classes, states (built in, one of our own, one read from a value), text inside a card and inline blocks." [ demo () ]

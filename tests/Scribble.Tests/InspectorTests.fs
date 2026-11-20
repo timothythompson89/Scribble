@@ -478,14 +478,19 @@ let ``the properties show the selection's values and sources, defaults only when
     Assert.Contains(texts panel, fun t -> t.Contains "shapes") // frame stats
 
 [<Fact>]
-let ``every state is listed, off ones too, and a long states section wraps`` () =
-    // Custom states are global: every element's STATES section lists them, so these are removed
-    // again at the end (or they'd crowd the other tests' panels).
-    let longStates = [ for i in 1 .. 6 -> States.define ("a-rather-long-custom-state-" + i.ToString()) (fun _ -> false) ]
+let ``an element's states are listed, off ones too, and a long states section wraps`` () =
+    // Custom states are kept for the whole process, so these are removed again at the end.
+    let longStates = [ for i in 1 .. 6 -> States.define ("a-rather-long-custom-state-" + i.ToString()) [] ]
+    let elsewhere = States.define "a-state-of-another-element" []
     try
         let log = List<string>()
-        let w, _, panel = start log
+        let w, host, panel = start log
+        // The button has them (switched off); the other state is nothing of its.
+        let button = (find "appButton" host.App.Tree.Root.Value).Value
+        for s in longStates do
+            button.Set(Button.state s false)
         pickAppButton w
+        Assert.DoesNotContain("a-state-of-another-element", texts panel)
         // The states section: the row of toggles under the STATES heading.
         let rec statesRow (e: Element) =
             if obj.ReferenceEquals(e.Type, WrapPanel.Type) then Some e
@@ -498,6 +503,7 @@ let ``every state is listed, off ones too, and a long states section wraps`` () 
         Assert.True(row.Bounds.Height > 60.0)
         Assert.True(row.Bounds.Right <= (panelBox panel).Bounds.Width)
     finally
+        States.remove elsewhere
         for s in longStates do
             States.remove s
 
@@ -987,12 +993,13 @@ let ``a deep pick brings the selected row's name into view sideways`` () =
 [<Fact>]
 let ``a state chip forces the opposite of what it shows, then lets go`` () =
     // A custom state that's always on, so its chip forces it off; removed again at the end.
-    let always = States.define "always-on-for-this-test" (fun _ -> true)
+    let always = States.define "always-on-for-this-test" []
     try
         let log = List<string>()
         let w, host, panel = start log
-        pickAppButton w
         let button = (find "appButton" host.App.Tree.Root.Value).Value
+        button.Set(Button.state always true)
+        pickAppButton w
         let forcedAs (s: ElementState) = button.ForcedStates |> List.tryPick (fun (f, on) -> if obj.ReferenceEquals(f, s) then Some on else None)
         // Off for real: forced on, then real again.
         clickButton w panel "disabled"

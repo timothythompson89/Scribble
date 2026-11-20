@@ -54,7 +54,7 @@ type GalleryTests(fixture: TextFixture) =
     member _.``the styles page, card hovered``() =
         let tree = ElementTree(fixture.Text)
         tree.Update(Border.create [ Border.margin 24.0; Border.content (StylesPage.demo ()) ])
-        let size = Size.Create(520.0, 360.0)
+        let size = Size.Create(520.0, 440.0)
         tree.UpdateLayout size
         tree.RunAfterFrame()
         let rec findCard (e: Element) : Element option =
@@ -63,7 +63,7 @@ type GalleryTests(fixture: TextFixture) =
         let card = (findCard tree.Root.Value).Value
         card.ChangePointersOver 1
         tree.UpdateLayout size
-        let pixels: PixelSize = { Width = 520; Height = 360 }
+        let pixels: PixelSize = { Width = 520; Height = 440 }
         let image =
             fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
                 f.Clear(Color.Hex 0x181825)
@@ -95,8 +95,8 @@ type GalleryTests(fixture: TextFixture) =
     member _.``the styles page, light``() =
         let tree = ElementTree(fixture.Text)
         tree.Update(Border.create [ Border.theme Common.lightTheme; Border.padding 24.0; Border.content (StylesPage.demo ()) ])
-        tree.UpdateLayout(Size.Create(520.0, 360.0))
-        let pixels: PixelSize = { Width = 520; Height = 360 }
+        tree.UpdateLayout(Size.Create(520.0, 440.0))
+        let pixels: PixelSize = { Width = 520; Height = 440 }
         let image =
             fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
                 f.Clear (Common.lightTheme.Get Palette.background)

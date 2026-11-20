@@ -285,8 +285,9 @@ let ``reading an app value off the UI thread warns in a Debug build`` () =
     let offThread = AppValue.define "ReadOffThread" 1
     let warnings = List<string>()
     let listener = Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
-    DebugWarnings.Listener <- listener
-    // (The listener is one for the whole process: another test running beside this one may take it.)
+    // Added beside any other test's listener, and taken away again, so neither takes the other's.
+    DebugWarnings.Listener <- Delegate.Combine(DebugWarnings.Listener, listener) :?> Action<string>
+    // (A test that sets the listener outright may still drop this one: then there is nothing to check.)
     let mutable heard = true
     try
         let platform, device = new FakePlatform(), new FakeDevice()
@@ -298,9 +299,9 @@ let ``reading an app value off the UI thread warns in a Debug build`` () =
         let other = Thread(fun () -> host.AppValues.Get offThread |> ignore)
         other.Start()
         other.Join()
-        heard <- obj.ReferenceEquals(DebugWarnings.Listener, listener)
+        heard <- not (isNull DebugWarnings.Listener) && (DebugWarnings.Listener.GetInvocationList() |> Array.contains (listener :> Delegate))
     finally
-        DebugWarnings.Listener <- null
+        DebugWarnings.Listener <- Delegate.Remove(DebugWarnings.Listener, listener) :?> Action<string>
 #if DEBUG
     if heard then Assert.Contains(List.ofSeq warnings, fun m -> m.Contains "ReadOffThread" && m.Contains "off the UI thread")
 #endif

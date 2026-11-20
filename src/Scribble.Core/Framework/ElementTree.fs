@@ -334,3 +334,54 @@ type ElementTree(text: TextSystem) =
 #else
             ignore ownerThread
 #endif
+
+[<AutoOpen>]
+module ApplicableStateExtensions =
+    type Element with
+        /// The states this element can be in to some effect, for tools such as the inspector: the built-in ones,
+        /// and each custom one (`States.define`, `States.ofProp`) that something ties to it: its view switches
+        /// it here (`Border.state chosen false` counts), a style reaching it gives it a look (its theme, the app,
+        /// the scopes above it, its own styles and blocks: a CheckBox that isn't checked still has "checked"), or
+        /// a tool has forced it. Having a property the state reads is not a tie: a state read from a Slider's
+        /// value belongs to the sliders a style for it reaches, not to every Slider. Walks those styles, so not
+        /// for every frame.
+        member this.ApplicableStates: ElementState list =
+            let custom = States.customStates ()
+            if custom.Length = 0 then
+                List.ofArray States.builtIn
+            else
+                let styled = System.Collections.Generic.HashSet<ElementState>(HashIdentity.Reference)
+                // A rule that would match the element but for its states (and property tests) gives those states a look.
+                let note (r: Rule) =
+                    if not r.Selector.States.IsEmpty && Selector.matches { r.Selector with States = []; Props = [] } this then
+                        for s in r.Selector.States do
+                            styled.Add s |> ignore
+                let noteAll (styles: Style list) =
+                    for s in styles do
+                        for r in s.Rules do
+                            note r
+                noteAll (StyleEngine.themeStyles (StyleEngine.treeTheme this) this)
+                match this.Root with
+                | ValueSome(:? ElementTree as tree) -> noteAll tree.Styles
+                | _ -> ()
+                for scope in StyleEngine.scopesAbove this do
+                    noteAll scope
+                noteAll (this.Get StyleProps.styles)
+                for struct (p, v) in this.StyleSettings do
+                    if p.IsStateBlock then
+                        let rules = System.Collections.Generic.List<Rule>()
+                        Rule.flatten Selector.Any "inline " [| struct (p, v) |] rules
+                        for r in rules do
+                            note r
+                let forced = this.ForcedStates
+                [ yield! States.builtIn
+                  for s in custom do
+                      // The view switches it on this element (a hidden property that is that state's alone).
+                      let switchedHere =
+                          match s.SwitchProp with
+                          | ValueSome p -> this.HasOwnValue p
+                          | ValueNone -> false
+                      if switchedHere
+                         || styled.Contains s
+                         || forced |> List.exists (fun (f, _) -> obj.ReferenceEquals(f, s)) then
+                          s ]

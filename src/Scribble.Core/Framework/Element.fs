@@ -774,10 +774,6 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             if shown p then add p
         List.ofSeq result
 
-    /// Its states changed in a way only it knows about (a custom state from `States.define`, such
-    /// as M8's checked): styles that test states are matched again.
-    member this.RefreshStates() = this.RequestRestyle(false, true)
-
     /// The space the last measure offered the element (margin included; may be infinite).
     member _.OfferedSize: Size = lastAvailable
 
@@ -1256,6 +1252,9 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         match find prop.Id with
         | -1 -> this.DefaultOf prop
         | i -> values[i]
+
+    /// True when the element has a value of its own for `prop` (from a view or from code; not a style's, not a default).
+    member internal _.HasOwnValue(prop: Prop) : bool = find prop.Id <> -1
 
     /// A style selector tests `prop` and its unstyled value went from `before` to `after`.
     member private this.TestedValueChanged(prop: Prop, before: obj, after: obj) =

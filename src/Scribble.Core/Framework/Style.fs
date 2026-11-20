@@ -40,7 +40,15 @@ and SelectorPart internal (apply: Selector -> Selector) =
 /// (`States.define`, `States.ofProp`). Written as a block: `Style.onState States.hover [ ... ]` in a style,
 /// `Button.onState States.hover [ ... ]` in a view. It is also a selector part, for an ancestor's state:
 /// `Style.inside Button.Type [ States.disabled ]`.
-and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop: Prop voption, forcedValues: struct (obj * obj) voption) =
+and [<Sealed>] ElementState
+    internal
+    (
+        name: string,
+        test: Element -> bool,
+        props: Prop[],
+        forcedValues: struct (obj * obj) voption,
+        switchProp: Prop<bool> voption
+    ) =
     inherit SelectorPart(id)
     // An element holds at most one inline block per state (`Button.onState States.hover [ ... ]`).
     let blockProp =
@@ -55,8 +63,13 @@ and [<Sealed>] ElementState internal (name: string, test: Element -> bool, prop:
         | Some(struct (_, on)) -> on
         | None -> test e
     member internal _.BlockProp = blockProp
-    /// The property it reads (`States.ofProp`), so an ancestor part testing it can be re-matched.
-    member internal _.Prop = prop
+    /// The properties it reads (`States.ofProp`, `States.dependsOn`; a state the view switches reads its own
+    /// hidden one), so an ancestor part testing it can be re-matched. None for the built-in states.
+    member internal _.Props = props
+    /// The one property it reads, when it reads just one (what `ForcedValue` is a value of).
+    member internal _.Prop: Prop voption = if props.Length = 1 then ValueSome props[0] else ValueNone
+    /// What `Layoutable.state` sets: only a state made by `States.define name []` has one.
+    member internal _.SwitchProp = switchProp
     /// What render functions read from `Prop` while the state is forced on, and off (`true` and `false`
     /// for a bool state read as is), so a forced checked CheckBox draws its tick; ValueNone: none known
     /// (only styles follow).
@@ -103,18 +116,43 @@ and [<Sealed>] internal StateBlock(state: ElementState voption, propTest: struct
            | ValueNone, ValueSome(struct (t, _)) -> t.Prop.Id
            | ValueNone, ValueNone -> 0)
 
-/// The built-in states, and `States.define` for an element type's own.
+/// What a state's test reads (`States.test`): the element's own values of the properties the state depends on
+/// (else their defaults; never a style's, so a style can't switch the state that applies it).
+[<Struct>]
+type StateValues internal (element: Element, state: string, declared: Prop[]) =
+    /// The element's own value of `prop`. In a Debug build, reading a property the state wasn't given with
+    /// `States.dependsOn` warns once: the state wouldn't follow that property's changes.
+    member _.Get<'T>(prop: Prop<'T>) : 'T =
+#if DEBUG
+        if not (declared |> Array.exists (fun p -> obj.ReferenceEquals(p, prop))) then
+            DebugWarnings.Once(
+                "States.test " + state + " " + prop.Name,
+                "The state '" + state + "' reads " + prop.Name + " without depending on it, so it won't follow its changes: add States.dependsOn for it.")
+#else
+        ignore state
+        ignore declared
+#endif
+        unbox<'T> (element.UnstyledValue prop)
+
+/// What `States.define`'s settings configure.
+type internal StateOptions = { Props: Prop list; Test: (StateValues -> bool) voption }
+
+/// One setting for `States.define`: `States.dependsOn prop`, `States.test (fun v -> ...)`.
+[<Struct>]
+type StateSetting = internal StateSetting of (StateOptions -> StateOptions)
+
+/// The built-in states, and `States.define` for an app's or an element type's own.
 module States =
     /// The pointer is over the element or something inside it.
-    let hover = ElementState("hover", (fun e -> e.IsPointerOver || e.HasForcedHoverInside), ValueNone, ValueNone)
+    let hover = ElementState("hover", (fun e -> e.IsPointerOver || e.HasForcedHoverInside), [||], ValueNone, ValueNone)
     /// Pressed with the left button (and the pointer still over it), or Space held while focused.
-    let pressed = ElementState("pressed", (fun e -> e.IsPressed), ValueNone, ValueNone)
+    let pressed = ElementState("pressed", (fun e -> e.IsPressed), [||], ValueNone, ValueNone)
     /// Has keyboard focus.
-    let focused = ElementState("focus", (fun e -> e.IsFocused), ValueNone, ValueNone)
+    let focused = ElementState("focus", (fun e -> e.IsFocused), [||], ValueNone, ValueNone)
     /// Has focus and shows it (the keyboard is in use).
-    let focusVisible = ElementState("focus-visible", (fun e -> e.IsFocusVisible), ValueNone, ValueNone)
+    let focusVisible = ElementState("focus-visible", (fun e -> e.IsFocusVisible), [||], ValueNone, ValueNone)
     /// `isEnabled false` on the element or one of its ancestors.
-    let disabled = ElementState("disabled", (fun e -> e.LooksDisabled), ValueNone, ValueNone)
+    let disabled = ElementState("disabled", (fun e -> e.LooksDisabled), [||], ValueNone, ValueNone)
 
     // Every custom state made, in order, for `element.ActiveStates` (states are usually made at
     // module level, possibly on several threads at once).
@@ -130,12 +168,52 @@ module States =
     /// Forgets a custom state (tests that make their own, so they don't show in other tests).
     let internal remove (s: ElementState) = lock custom (fun () -> custom.Remove s |> ignore)
 
-    /// An element type's own state, tested by any function. Call `element.RefreshStates()` when it
-    /// may have changed, so styles are matched again. For a state that only reads a property, use
-    /// `ofProp` (it is matched again by itself).
-    let define (name: string) (test: Element -> bool) = register (ElementState(name, test, ValueNone, ValueNone))
+    /// A property the state reads (in `States.define`'s settings): the state is matched again whenever the
+    /// element's own value of it changes. One for each property the test reads.
+    let dependsOn (prop: Prop<'T>) : StateSetting = StateSetting(fun o -> { o with Props = o.Props @ [ prop :> Prop ] })
 
-    /// A state read from a property (M8's CheckBox: `States.ofProp "checked" CheckBoxProps.isChecked id`):
+    /// When the element is in the state (in `States.define`'s settings), from the properties it depends on:
+    /// `States.test (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)`.
+    let test (inState: StateValues -> bool) : StateSetting = StateSetting(fun o -> { o with Test = ValueSome inState })
+
+    /// A state of your own, usable like `States.hover` (`Style.onState chosen [ ... ]`) and shown by the inspector.
+    /// Define each one once, at module level.
+    ///
+    /// With no settings, the view switches it: `let chosen = States.define "chosen" []`, then
+    /// `Border.state chosen isPicked` on the element.
+    ///
+    /// An element type's state that follows its properties says which, and when:
+    ///
+    ///     let full =
+    ///         States.define "full" [
+    ///             States.dependsOn RatingBarProps.value
+    ///             States.dependsOn RatingBarProps.max
+    ///             States.test (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)
+    ///         ]
+    ///
+    /// The test reads the element's own values (else their defaults; never a style's, so a style can't switch
+    /// the state that applies it), and the state is matched again by itself when one of them changes. For a state
+    /// read from one property, `ofProp` is shorter.
+    let define (name: string) (settings: StateSetting list) : ElementState =
+        let o = settings |> List.fold (fun o (StateSetting apply) -> apply o) { Props = []; Test = ValueNone }
+        match o.Props, o.Test with
+        | [], ValueNone ->
+            // Switched by the view: a hidden property of its own, set by `Layoutable.state`.
+            let p = Prop<bool>("State " + name, false, Affects.Nothing, PropKind.Value)
+            p.NotStylable <- true
+            p.TestedByStyles <- true
+            register (ElementState(name, (fun e -> unbox<bool> (e.UnstyledValue p)), [| p :> Prop |], ValueNone, ValueSome p))
+        | [], ValueSome _ ->
+            invalidArg "settings" ("The state '" + name + "' has a test but depends on no property, so nothing would say when to test it again: add States.dependsOn for each property the test reads.")
+        | _, ValueNone ->
+            invalidArg "settings" ("The state '" + name + "' depends on properties but has no test: add States.test (fun v -> ...).")
+        | props, ValueSome inState ->
+            let declared = Array.ofList props
+            for p in declared do
+                p.TestedByStyles <- true
+            register (ElementState(name, (fun e -> inState (StateValues(e, name, declared))), declared, ValueNone, ValueNone))
+
+    /// A state read from one property (M8's CheckBox: `States.ofProp "checked" CheckBoxProps.isChecked id`):
     /// the element is in it while `test` passes for its own value (else its default; never a style's,
     /// so a style can't switch its own state). Matched again whenever that value changes.
     let ofProp (name: string) (prop: Prop<'T>) (test: 'T -> bool) =
@@ -146,7 +224,7 @@ module States =
             match box test with
             | :? (bool -> bool) as t when t true && not (t false) -> ValueSome(struct (box true, box false))
             | _ -> ValueNone
-        register (ElementState(name, (fun e -> test (unbox<'T> (e.UnstyledValue prop))), ValueSome(prop :> Prop), forcedValues))
+        register (ElementState(name, (fun e -> test (unbox<'T> (e.UnstyledValue prop))), [| prop :> Prop |], forcedValues, ValueNone))
 
     /// A ToggleButton (CheckBox, Switch) that is on (`isChecked`; F# reserves the word `checked`).
     let isChecked = ofProp "checked" ToggleButtonProps.isChecked id
@@ -252,9 +330,8 @@ module internal Selector =
         for t in s.Props do
             t.Prop.TestedByAncestorStyles <- true
         for st in s.States do
-            match st.Prop with
-            | ValueSome p -> p.TestedByAncestorStyles <- true
-            | ValueNone -> ()
+            for p in st.Props do
+                p.TestedByAncestorStyles <- true
         match s.Ancestor with
         | ValueSome(struct (_, a)) -> markAncestorProps a
         | ValueNone -> ()
