@@ -65,7 +65,7 @@ development platform.
 - Licence: MIT (`LICENSE`). Packages will be `Scribble.*` (the bare `Scribble` id on NuGet belongs to someone
   else), all at one version, pre-release (`0.1.0-alpha.1` is the first); a desktop package carries its native
   libraries. The repository is public (https://github.com/timothythompson89/Scribble, CI green) and
-  `0.1.0-alpha.2` is on nuget.org (2026-11-20, after `alpha.1` the same day); a `v*` tag publishes the next (section
+  `0.1.0-alpha.3` is on nuget.org (2026-11-20, after `alpha.1` and `alpha.2` the same day); a `v*` tag publishes the next (section
   "Publishing: GitHub and NuGet").
 
 ## Status
@@ -5217,6 +5217,14 @@ Facts at the start.
   disagreed in between: its servers don't update together). Then an app in an empty folder, with nuget.org as
   its only source, restored `Scribble.Desktop` 0.1.0-alpha.2 and built a component using `ctx.useImage` and
   `load.Image`, with the four native libraries in its output (built, not run).
+- **Released 2026-11-20: `0.1.0-alpha.3`** (ListBox scrolls on its own and has a frame; section "ListBox scrolls
+  on its own"). Before the tag: the full consumer test at that version, 1,360 unit tests in Release and 107
+  rendering tests on Tim's machine, and CI run 15 green on the code. Release run 4 did the rest. NuGet listed
+  none of the 17 for some minutes after the workflow ended, then all. An app in an empty folder, with nuget.org
+  as its only source, restored `Scribble.Desktop` 0.1.0-alpha.3 and built a framed ListBox of 10,000 items with
+  no ScrollViewer around it (`maxHeight`, `cornerRadius`, `layout`), with the four native libraries in its
+  output (built, not run). The docs-only push of the morning (`c6c0754`) started no CI run: the `paths` filter
+  below works.
 - **CI skips documentation (Tim, 2026-11-20).** `ci.yml` has a `paths` filter: a push or pull request that changes
   only `docs/`, `CLAUDE.md` or `LICENSE` starts no run. `docs/PACKAGE.md` and `docs/THIRD-PARTY-NOTICES.md` still
   do: they are packed into every package. Several of the day's 11-minute runs were for DESIGN.md alone. Seen
