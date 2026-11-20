@@ -5273,8 +5273,15 @@ Facts at the start.
   informational version; the title test holds its form. The default page (`build/page/main.js`) shows the
   notice for no WebGPU and for a page that isn't secure, and imports the runtime only when it can run. Seen in
   the browser pane on the development server: the Gallery runs, its tab reads "Gallery – Components ·
-  0.1.0-alpha.3 (6534fef)", and the notice shows when WebGPU is taken away. Not yet seen: the job on GitHub,
-  its time and the page's size, and the page at its real address (a sub-folder; the page's paths are relative).
+  0.1.0-alpha.3 (6534fef)", and the notice shows when WebGPU is taken away.
+
+  **First deploy: CI run 18 (2026-11-20, commit `8f6c984`).** The whole run took 13 min 49 s: build and tests
+  7 min 30 s, then `pages` 6 min 10 s, of which the AOT publish was 4 min 25 s and installing the WebAssembly
+  tools 1 min 17 s. AOT stays (decision 3): the time is reasonable. The page at its real address, opened in the
+  browser pane: it runs from the sub-folder with no error, the tab reads "Gallery – Components · 0.1.0-alpha.3
+  (8f6c984)", and the Lists page shows the framed ListBoxes. A first visit downloads 6.8 MB (19.7 MB once
+  unpacked) in 30 files; the largest is `dotnet.native.wasm`, 4.2 MB sent for 13.2 MB. (Run 17, the first with
+  the job, failed in the tests and published nothing: see the avatars test above.)
 - **CI skips documentation (Tim, 2026-11-20).** `ci.yml` has a `paths` filter: a push or pull request that changes
   only `docs/`, `CLAUDE.md` or `LICENSE` starts no run. `docs/PACKAGE.md` and `docs/THIRD-PARTY-NOTICES.md` still
   do: they are packed into every package. Several of the day's 11-minute runs were for DESIGN.md alone. Seen
