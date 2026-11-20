@@ -46,6 +46,7 @@ dotnet run --project tools/Scribble.Serve         # browser samples on the local
 dotnet run -c Release --project tools/Scribble.Bench   # ItemsView costs
 dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through WIC (only if PngSuite changes)
 dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if a picture changes)
+dotnet fsi tools/TestPackages.fsx                 # the consumer test: packs all, builds/runs/publishes apps from the packages (--no-run: no GPU)
 ```
 
 - **A test run counts only if nothing aborted and the totals are right** (2026-11-19: 1,336 unit tests plus 9
@@ -105,6 +106,11 @@ dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if
   a stale reference assembly may hide it (FS1094): `dotnet build --no-incremental`.
 - Core's `Cursor`, `Modifiers`, `MouseButton`, `PointerKind` alias the Scribble.Platform types. `onClick` takes
   `ClickEventArgs`: write `fun _ -> ...` when unused.
+- **Packages** (DESIGN.md, "Publishing"): every project in `src/` is a package at one version (`Directory.Build.props`);
+  a new library goes in `tools/TestPackages.fsx`'s list, and in `src/PACKAGE.md` if apps reference it. Anything
+  conditioned on a project's own property (`IsScribbleLibrary`) belongs in `Directory.Build.targets`: the props file is
+  read first, and a condition there silently never applied. After a change of version alone, build with
+  `--no-incremental` (a stale assembly kept the old version of its reference). API breaks go in `CHANGELOG.md`.
 - Rider: it once silently overwrote `Directory.Build.props` (check the file on disk if a fix doesn't take); linked
   files with a folder in `Link` are hidden (link flat); browser samples need the default browser "First listed".
   Run configurations live in `.run/`: adding or renaming a host project updates its `.run/*.run.xml` too.

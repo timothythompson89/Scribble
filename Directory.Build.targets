@@ -1,0 +1,27 @@
+<Project>
+  <!--
+    Read after each project's own file, so IsScribbleLibrary (set by every project in src/) is known here. Until
+    2026-11-19 the AOT flags below sat in Directory.Build.props under the same condition, which is read first: they
+    never applied.
+
+    The samples have their own Directory.Build.targets and don't import this one; nothing here is for them.
+  -->
+
+  <!-- Libraries must stay NativeAOT- and trim-safe (iOS and consoles allow no JIT). -->
+  <PropertyGroup Condition="'$(IsScribbleLibrary)' == 'true'">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <PackageReadmeFile>PACKAGE.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <!-- Only the libraries are packages (DESIGN.md, "Publishing"). -->
+  <PropertyGroup Condition="'$(IsScribbleLibrary)' != 'true'">
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Every package carries the one package readme and the notices for what Scribble bundles. -->
+  <ItemGroup Condition="'$(IsScribbleLibrary)' == 'true'">
+    <None Include="$(RepositoryRoot)src/PACKAGE.md" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(RepositoryRoot)THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
+</Project>

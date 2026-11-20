@@ -23,7 +23,16 @@
     <Unzip SourceFiles="$(WgpuNativeRoot)$(WgpuNativeWinZip)" DestinationFolder="$(WgpuNativeWinDir)" />
   </Target>
 
-  <Target Name="ScribbleCopyWgpuNative" AfterTargets="ScribbleFetchWgpuNative" BeforeTargets="AssignTargetPaths">
+  <!-- The project that binds the library (Scribble.Rendering.WebGPU) imports this file with
+       ScribbleNativePackOnly: it fetches the library and puts it in its package, from where NuGet copies it to an
+       app's output (DESIGN.md, "Publishing", decision 7). It doesn't copy it to its own output: inside this
+       repository Scribble.Desktop does that. A pack without the file fails, as it should. -->
+  <ItemGroup Condition="'$(ScribbleNativePackOnly)' == 'true'">
+    <None Include="$(WgpuNativeWinDir)lib/wgpu_native.dll" Pack="true" PackagePath="runtimes/win-x64/native/" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="ScribbleCopyWgpuNative" AfterTargets="ScribbleFetchWgpuNative" BeforeTargets="AssignTargetPaths"
+          Condition="'$(ScribbleNativePackOnly)' != 'true'">
     <ItemGroup>
       <None Include="$(WgpuNativeWinDir)lib/wgpu_native.dll"
             Condition="Exists('$(WgpuNativeWinDir)lib/wgpu_native.dll')"

@@ -1,0 +1,59 @@
+# Builds, runs the unit tests and the consumer test on every push to main and every pull request
+# (docs/DESIGN.md, "Publishing", decisions 4 and 9).
+#
+# Not here: the rendering tests. Their references are exact Direct3D 12 pictures from a real GPU, and the hosted
+# runners have only a software one; they run on the development machine before each milestone.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # The consumer test publishes a browser app, as the samples' browser hosts are published.
+      - name: Install the WebAssembly tools
+        run: dotnet workload install wasm-tools
+
+      - name: Build
+        run: dotnet build Scribble.slnx -c Release
+
+      # A hang killed by the timeout can still end in "Passed!" with only the finished tests counted, so the next
+      # step fails the job if a hang dump was written.
+      - name: Unit tests
+        run: dotnet test tests/Scribble.Tests -c Release --no-build --blame-hang-timeout 5m --results-directory TestResults
+
+      - name: No test run was aborted
+        shell: pwsh
+        run: |
+          $dumps = Get-ChildItem TestResults -Recurse -Include *.dmp -ErrorAction SilentlyContinue
+          if ($dumps) { $dumps | ForEach-Object { Write-Host $_.FullName }; throw "A test run was aborted (hang dump found)." }
+
+      # Packs the 17 packages, then builds and publishes (NativeAOT, WebAssembly) apps that know Scribble only as
+      # packages. --no-run: the apps aren't started, since a hosted runner has no GPU to count on; run the script
+      # without it on a real machine before tagging a release.
+      - name: Consumer test
+        run: dotnet fsi tools/TestPackages.fsx --no-run
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages
+          if-no-files-found: error

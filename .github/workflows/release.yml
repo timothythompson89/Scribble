@@ -1,0 +1,66 @@
+# Publishes the packages to NuGet when a tag like v0.1.0-alpha.1 is pushed (docs/DESIGN.md, "Publishing",
+# decision 10). The version is the tag without its "v".
+#
+# Before tagging, on a machine with a GPU:   dotnet fsi tools/TestPackages.fsx --version <version>
+# and move CHANGELOG.md's "Unreleased" entries under the version.
+#
+# No API key is stored: NuGet's trusted publishing gives this workflow a short-lived one. That needs, once:
+#   - on nuget.org, a trusted publishing policy for this repository and this file (release.yml);
+#   - a repository secret NUGET_USER holding the nuget.org profile name that owns the policy.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write   # trusted publishing
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install the WebAssembly tools
+        run: dotnet workload install wasm-tools
+
+      - name: Version from the tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Tag '${{ github.ref_name }}' is not a version." }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Unit tests
+        run: dotnet test tests/Scribble.Tests -c Release --blame-hang-timeout 5m --results-directory TestResults
+
+      - name: No test run was aborted
+        shell: pwsh
+        run: |
+          $dumps = Get-ChildItem TestResults -Recurse -Include *.dmp -ErrorAction SilentlyContinue
+          if ($dumps) { throw "A test run was aborted (hang dump found)." }
+
+      # Rebuilds everything at this version, packs into artifacts/packages and tests those very packages.
+      - name: Pack and consumer test
+        run: dotnet fsi tools/TestPackages.fsx --version ${{ steps.version.outputs.version }} --no-run
+
+      - name: NuGet login (trusted publishing)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # The .snupkg beside each .nupkg goes to the symbol server with it.
+      - name: Push
+        run: dotnet nuget push "artifacts/packages/*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

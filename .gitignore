@@ -19,3 +19,6 @@ TestResults/
 # Local issue tracker (docs/agents/issue-tracker.md) and logs from running the samples
 .scratch/
 *.log
+
+# Claude Code's local settings and worktrees
+.claude/

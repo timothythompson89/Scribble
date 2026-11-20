@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
+    <!-- Fetches the native library and puts it in this project's package (build/Sdl3.targets). -->
+    <ScribbleNativePackOnly>true</ScribbleNativePackOnly>
     <Description>SDL3 backend for Scribble.Platform: windows, input and cursors through SDL (DESIGN.md, "Platform layer: SDL3 and AccessKit").</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -11,4 +13,5 @@
   <ItemGroup>
     <ProjectReference Include="../Scribble.Platform/Scribble.Platform.fsproj" />
   </ItemGroup>
+  <Import Project="$(RepositoryRoot)build/Sdl3.targets" />
 </Project>

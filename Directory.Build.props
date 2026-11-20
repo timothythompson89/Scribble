@@ -13,14 +13,25 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Authors>Scribble contributors</Authors>
     <Product>Scribble</Product>
+    <Copyright>Copyright (c) 2026 Timothy Thompson</Copyright>
+    <!-- One version for every package (DESIGN.md, "Publishing", decision 8). The release workflow passes
+         -p:Version from the tag; this is what a local pack gets. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>alpha.1</VersionSuffix>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>fsharp;ui;gui;webgpu;wasm;nativeaot;funcui</PackageTags>
+    <!-- Stepping into Scribble from an app: the repository's address and commit go into the package (SourceLink is
+         part of the SDK), and the PDBs into a .snupkg beside it. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
     <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
     <!-- Only English resources (skips FSharp.Core's translated-message folders in the output). -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
-  <!-- Libraries must stay NativeAOT- and trim-safe (iOS and consoles allow no JIT). -->
-  <PropertyGroup Condition="'$(IsScribbleLibrary)' == 'true'">
-    <IsAotCompatible>true</IsAotCompatible>
-    <IsTrimmable>true</IsTrimmable>
-  </PropertyGroup>
+  <!-- What depends on a project's own IsScribbleLibrary is in Directory.Build.targets: this file is read before
+       the project sets it. -->
 </Project>

@@ -22,7 +22,14 @@
     <Unzip SourceFiles="$(Sdl3Root)$(Sdl3WinZip)" DestinationFolder="$(Sdl3WinDir)" />
   </Target>
 
-  <Target Name="ScribbleCopySdl3" AfterTargets="ScribbleFetchSdl3" BeforeTargets="AssignTargetPaths">
+  <!-- Pack-only mode for the project that binds the library (Scribble.Platform.SDL3): see WgpuNative.targets. -->
+  <ItemGroup Condition="'$(ScribbleNativePackOnly)' == 'true'">
+    <None Include="$(Sdl3WinDir)SDL3.dll" Pack="true" PackagePath="runtimes/win-x64/native/" Visible="false" />
+    <None Include="$(Sdl3WinDir)LICENSE.txt" Pack="true" PackagePath="licenses/SDL3-LICENSE.txt" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="ScribbleCopySdl3" AfterTargets="ScribbleFetchSdl3" BeforeTargets="AssignTargetPaths"
+          Condition="'$(ScribbleNativePackOnly)' != 'true'">
     <ItemGroup>
       <None Include="$(Sdl3WinDir)SDL3.dll" Condition="Exists('$(Sdl3WinDir)SDL3.dll')"
             Link="SDL3.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />

@@ -25,7 +25,20 @@
            Include="**/lib/windows/x86_64/msvc/shared/accesskit.dll;**/LICENSE*;**/include/accesskit.h" />
   </Target>
 
-  <Target Name="ScribbleCopyAccessKit" AfterTargets="ScribbleFetchAccessKit" BeforeTargets="AssignTargetPaths">
+  <!-- Pack-only mode for the project that binds the library (Scribble.Accessibility.AccessKit): see
+       WgpuNative.targets. -->
+  <PropertyGroup>
+    <AccessKitUnpacked>$(AccessKitRoot)accesskit-c-$(AccessKitVersion)/</AccessKitUnpacked>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ScribbleNativePackOnly)' == 'true'">
+    <None Include="$(AccessKitWinDll)" Pack="true" PackagePath="runtimes/win-x64/native/" Visible="false" />
+    <None Include="$(AccessKitUnpacked)LICENSE-MIT" Pack="true" PackagePath="licenses/AccessKit/" Visible="false" />
+    <None Include="$(AccessKitUnpacked)LICENSE-APACHE" Pack="true" PackagePath="licenses/AccessKit/" Visible="false" />
+    <None Include="$(AccessKitUnpacked)LICENSE.chromium" Pack="true" PackagePath="licenses/AccessKit/" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="ScribbleCopyAccessKit" AfterTargets="ScribbleFetchAccessKit" BeforeTargets="AssignTargetPaths"
+          Condition="'$(ScribbleNativePackOnly)' != 'true'">
     <ItemGroup>
       <None Include="$(AccessKitWinDll)" Condition="Exists('$(AccessKitWinDll)')"
             Link="accesskit.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />

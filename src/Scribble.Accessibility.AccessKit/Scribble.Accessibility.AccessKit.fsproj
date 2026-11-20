@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
+    <!-- Fetches the native library and puts it in this project's package (build/AccessKit.targets). -->
+    <ScribbleNativePackOnly>true</ScribbleNativePackOnly>
     <Description>A screen-reader bridge for Scribble through AccessKit: a window's semantic tree to the platform's assistive technology, and its actions back (DESIGN.md, "AccessKit: the screen-reader bridge").</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -14,4 +16,5 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Scribble.Tests" />
   </ItemGroup>
+  <Import Project="$(RepositoryRoot)build/AccessKit.targets" />
 </Project>

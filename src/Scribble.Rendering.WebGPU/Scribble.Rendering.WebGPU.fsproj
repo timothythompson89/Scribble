@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsScribbleLibrary>true</IsScribbleLibrary>
+    <!-- Fetches the native library and puts it in this project's package (build/WgpuNative.targets). -->
+    <ScribbleNativePackOnly>true</ScribbleNativePackOnly>
     <Description>WebGPU (webgpu.h) backend for Scribble.Rendering. Bindings match wgpu-native v29.0.1.1.</Description>
   </PropertyGroup>
   <ItemGroup>
@@ -14,4 +16,5 @@
   <ItemGroup>
     <ProjectReference Include="../Scribble.Rendering/Scribble.Rendering.fsproj" />
   </ItemGroup>
+  <Import Project="$(RepositoryRoot)build/WgpuNative.targets" />
 </Project>

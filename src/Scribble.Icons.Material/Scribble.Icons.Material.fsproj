@@ -14,6 +14,7 @@
          browser's .NET has no Brotli decoder, and a browser publish Brotli-compresses the DLL (~0.8 MB download). -->
     <EmbeddedResource Include="Data/outlined.txt" LogicalName="Scribble.Icons.Material.outlined.txt" />
     <EmbeddedResource Include="Data/filled.txt" LogicalName="Scribble.Icons.Material.filled.txt" />
+    <None Include="MaterialSymbols-LICENSE.txt" Pack="true" PackagePath="licenses/" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Scribble.Core/Scribble.Core.fsproj" />
