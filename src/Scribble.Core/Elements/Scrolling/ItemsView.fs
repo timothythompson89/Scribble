@@ -738,6 +738,20 @@ module ItemsView =
         match viewportOf e with
         | ValueSome v -> max 1 (int (Math.Floor(v.Height / max 1.0 (average s))))
         | ValueNone -> 10
+    /// How many items a row holds, as of the last layout: 1 in a stack, what fits the width in a wrap, a grid's
+    /// columns (a list's arrow keys: DESIGN.md, "A ListBox's arrow keys in wrap and grid layouts").
+    let internal columns (e: Element) =
+        let s = stateOf e
+        match cells (e.Get ItemsViewProps.layout) s s.Width with
+        | ValueSome(struct (columns, _, _)) -> max 1 columns
+        | ValueNone -> 1
+    /// How many whole rows fit in the viewport (PageUp/PageDown): from the cells' height where rows are all one
+    /// height, else from the average, as `perPage`.
+    let internal rowsPerPage (e: Element) =
+        let s = stateOf e
+        match cells (e.Get ItemsViewProps.layout) s s.Width, viewportOf e with
+        | ValueSome(struct (_, _, h)), ValueSome v when h > 0.0 -> max 1 (int (Math.Floor(v.Height / h)))
+        | _ -> perPage e
     /// Re-wraps the realized items (their containers ask for the selection again).
     let internal refresh (e: Element) =
         let s = stateOf e

@@ -255,15 +255,30 @@ module internal ListBoxLogic =
         let current = if isNull key then ValueNone else ItemsView.indexOf lb key
         if n > 0 && not alt then
             let at = current |> ValueOption.defaultValue -1
-            let page = ItemsView.perPage lb
+            // Rows of `columns` items (1 in a stack; more in a wrap or a grid): Up, Down and the page keys move by
+            // rows and keep the column; Left and Right move by one item, on to the next row at a row's end
+            // (DESIGN.md, "A ListBox's arrow keys in wrap and grid layouts").
+            let columns = ItemsView.columns lb
+            let page = ItemsView.rowsPerPage lb
+            let lastRow = (n - 1) / columns
+            /// `rows` rows down (up when negative), stopping at the first and the last row. Where the last row is
+            /// short and has nothing in this column, its last item.
+            let byRows (rows: int) =
+                if at < 0 then 0
+                else
+                    let row = Math.Clamp(at / columns + rows, 0, lastRow)
+                    if row = at / columns then at else min (n - 1) (row * columns + at % columns)
             let target =
                 match args.Key with
-                | Key.Down -> ValueSome(if at < 0 then 0 else at + 1)
-                | Key.Up -> ValueSome(if at < 0 then 0 else at - 1)
+                | Key.Down -> ValueSome(byRows 1)
+                | Key.Up -> ValueSome(byRows -1)
                 | Key.Home -> ValueSome 0
                 | Key.End -> ValueSome(n - 1)
-                | Key.PageDown -> ValueSome(if at < 0 then 0 else at + page)
-                | Key.PageUp -> ValueSome(if at < 0 then 0 else at - page)
+                | Key.PageDown -> ValueSome(byRows page)
+                | Key.PageUp -> ValueSome(byRows -page)
+                // With one column these aren't the list's: they go on to the ScrollViewer (sideways scrolling).
+                | Key.Right when columns > 1 -> ValueSome(if at < 0 then 0 else at + 1)
+                | Key.Left when columns > 1 -> ValueSome(if at < 0 then 0 else at - 1)
                 | _ -> ValueNone
             match target with
             | ValueSome t ->

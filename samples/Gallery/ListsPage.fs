@@ -1,6 +1,6 @@
 /// The Lists page (M8 step 4b): a ListBox of 10,000 items whose selection mode a RadioGroup picks (the page keeps
-/// the selection, by key, so reversing the order keeps it), and a small ListBox of colours with a view of its own
-/// per item that keeps its own selection. The page fills the window: the long list takes the height left.
+/// the selection, by key, so reversing the order keeps it), and a small ListBox of colour tiles in a wrap
+/// layout, with a view of its own per item, that keeps its own selection. The page fills the window: the long list takes the height left.
 module Scribble.Samples.Gallery.ListsPage
 
 open System
@@ -41,25 +41,49 @@ let private swatches =
        { Name = "Clay"; Color = Color.Hex 0xE76F51; Note = "orange, for energy" }
        { Name = "Night"; Color = Color.Hex 0x264653; Note = "deep blue-green" }
        { Name = "Orchid"; Color = Color.Hex 0xB56CC9; Note = "violet, for play" }
-       { Name = "Moss"; Color = Color.Hex 0x6A994E; Note = "green, for growth" } |]
+       { Name = "Moss"; Color = Color.Hex 0x6A994E; Note = "green, for growth" }
+       { Name = "Coral"; Color = Color.Hex 0xFF7F6B; Note = "pink-orange, for cheer" }
+       { Name = "Slate"; Color = Color.Hex 0x64748B; Note = "grey-blue, for quiet" }
+       { Name = "Plum"; Color = Color.Hex 0x7B3F6E; Note = "dark purple, for depth" }
+       { Name = "Mint"; Color = Color.Hex 0x8FD9B6; Note = "pale green, for freshness" }
+       { Name = "Rust"; Color = Color.Hex 0xB5532A; Note = "red-brown, for age" }
+       { Name = "Sky"; Color = Color.Hex 0x5BB8F5; Note = "light blue, for air" }
+       { Name = "Honey"; Color = Color.Hex 0xD99A2B; Note = "gold, for sweetness" }
+       { Name = "Berry"; Color = Color.Hex 0xC2335C; Note = "crimson, for boldness" }
+       { Name = "Pine"; Color = Color.Hex 0x2F5D50; Note = "dark green, for shade" }
+       { Name = "Sand"; Color = Color.Hex 0xD9C5A0; Note = "beige, for rest" }
+       { Name = "Iris"; Color = Color.Hex 0x6C63D9; Note = "blue-violet, for dusk" }
+       { Name = "Peach"; Color = Color.Hex 0xF7B58C; Note = "soft orange, for ease" }
+       { Name = "Storm"; Color = Color.Hex 0x48566A; Note = "dark grey, for weight" }
+       { Name = "Lime"; Color = Color.Hex 0xA6CE39; Note = "yellow-green, for zest" }
+       { Name = "Rose"; Color = Color.Hex 0xE58FA8; Note = "pink, for kindness" }
+       { Name = "Ocean"; Color = Color.Hex 0x1F6FB2; Note = "blue, for distance" }
+       { Name = "Cocoa"; Color = Color.Hex 0x7A5238; Note = "brown, for comfort" }
+       { Name = "Frost"; Color = Color.Hex 0xBFD9E6; Note = "ice blue, for stillness" } |]
 
-/// A swatch's view: a round chip of the colour, its name and a dim note.
+/// A swatch's tile: a round chip of the colour above its name.
 let private swatchView (s: Swatch) =
     StackPanel.create [
-        StackPanel.orientation Orientation.Horizontal
-        StackPanel.spacing 10.0
+        StackPanel.spacing 4.0
+        StackPanel.horizontalAlignment HorizontalAlignment.Center
+        StackPanel.verticalAlignment VerticalAlignment.Center
         StackPanel.children [
             Border.create [
-                Border.width 16.0
-                Border.height 16.0
-                Border.cornerRadius 8.0
+                Border.width 20.0
+                Border.height 20.0
+                Border.cornerRadius 10.0
                 Border.background s.Color
-                Border.verticalAlignment VerticalAlignment.Center
+                Border.horizontalAlignment HorizontalAlignment.Center
             ]
-            TextBlock.create [ TextBlock.text s.Name; TextBlock.verticalAlignment VerticalAlignment.Center ]
-            TextBlock.create [ TextBlock.text s.Note; TextBlock.foreground Palette.textDim; TextBlock.fontSize 12.0; TextBlock.verticalAlignment VerticalAlignment.Center ]
+            TextBlock.create [ TextBlock.text s.Name; TextBlock.fontSize 12.0; TextBlock.horizontalAlignment HorizontalAlignment.Center ]
         ]
     ]
+
+/// What the line above the tiles says: the swatch picked and its note.
+let private picked (name: string) =
+    match swatches |> Array.tryFind (fun s -> s.Name = name) with
+    | Some s -> "Picked " + s.Name + ": " + s.Note
+    | None -> "Tiles in a wrap layout: the arrow keys follow the rows. This list keeps its own selection."
 
 let private lists =
     Component.define "Lists" (fun ctx () ->
@@ -118,7 +142,7 @@ let private lists =
                     ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Item, int>) -> selected.Set e.Keys)
                     ListBox.onItemInvoked (fun (e: ItemInvokedEventArgs<Item, int>) -> invoked.Set("#" + number e.Key))
                 ]
-                // The colours: a view of their own per item; the list keeps its own selection.
+                // The colours: tiles in a wrap layout, a view of their own per item; the list keeps its own selection.
                 StackPanel.create [
                     DockPanel.dock Dock.Bottom
                     StackPanel.margin (0.0, 16.0, 0.0, 0.0)
@@ -126,7 +150,7 @@ let private lists =
                     StackPanel.children [
                         TextBlock.create [ TextBlock.text "A view per item"; TextBlock.fontSize 15.0 ]
                         TextBlock.create [
-                            TextBlock.text (if colours.Current = "" then "Swatches with a chip and a note; this list keeps its own selection." else "Picked " + colours.Current)
+                            TextBlock.text (picked colours.Current)
                             TextBlock.foreground Palette.textDim
                             TextBlock.fontSize 12.0
                             TextBlock.textWrapping Wrap
@@ -134,6 +158,7 @@ let private lists =
                         ListBox.create [
                             ListBox.height 150.0
                             ListBox.name "swatches"
+                            ListBox.layout (ItemsLayout.wrap 96.0 64.0)
                             ListBox.source swatches
                             ListBox.keySelector (fun (s: Swatch) -> s.Name)
                             ListBox.viewSelector swatchView
@@ -149,5 +174,5 @@ let view () =
     fillingPage "Lists" "ListBox and RadioButton: 10,000 items, only those on screen exist; the selection is kept by key." (
         fillingSection
             "ListBox"
-            "Click to select; Ctrl+click and Shift+click in Multiple; arrows, Home/End and PageUp/Down after Tab; double-click or Enter invokes. Ctrl+A selects all in Multiple."
+            "Click to select; Ctrl+click and Shift+click in Multiple; arrows, Home/End and PageUp/Down after Tab; double-click or Enter invokes. Ctrl+A selects all in Multiple. Left and Right too in the tiles."
             (lists ()))

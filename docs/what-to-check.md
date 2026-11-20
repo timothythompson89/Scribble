@@ -159,7 +159,7 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
 16. Lists (M8 step 4b, not yet checked): a ListBox of 10,000 items; the radio buttons above it pick Single, Multiple
    or None. Click, Ctrl+click, Shift+click, Ctrl+A; Tab in and use ↑/↓, Home/End, PageUp/PageDown; double-click or
    Enter invokes (the line above the list says what). "Reverse order" keeps the selection. Below, a list of colour
-   swatches with its own view per item.
+   swatches as tiles in a wrap layout, with its own view per item: the arrow keys follow the rows.
 The browser version is `samples/Gallery.Browser` (port 5281); the Counter's is `samples/Counter.Browser` (port 5283).
 
 The icon gallery (`dotnet run --project samples/Icons.Desktop`; browser: `samples/Icons.Browser`,

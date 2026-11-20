@@ -12,6 +12,13 @@ While the version starts with 0, any release may break the API: each break is li
   in the middle of the page, where it used to be black with a red error box. The .NET runtime isn't downloaded
   there. An app with a `wwwroot/index.html` of its own is unchanged.
 
+### Fixed
+
+- A `ListBox` with a `wrap` or `grid` layout: the arrow keys follow the rows. Up and Down move by a row and keep
+  the column (they moved by one item, so Down went to the item at the right); Left and Right move by one item
+  and carry on to the next row (they did nothing); PageUp and PageDown move by the rows that show. A list in
+  the default one-column layout is unchanged.
+
 ## 0.1.0-alpha.3 (2026-11-20)
 
 ### Changed

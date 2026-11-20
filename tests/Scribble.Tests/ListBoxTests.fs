@@ -501,3 +501,119 @@ let ``its frame is a ComboBox's and a TextBox's, in both themes`` () =
             Assert.Equal(other.Get BorderProps.borderThickness, lb.Get BorderProps.borderThickness)
             Assert.Equal(other.Get BorderProps.cornerRadius, lb.Get BorderProps.cornerRadius)
         Assert.True((lb.Get BorderProps.background).A > 0.0f)
+
+// ---- Arrow keys in wrap and grid layouts (DESIGN.md, "A ListBox's arrow keys in wrap and grid layouts") ----
+
+/// The key of the item with the focus.
+let private focusedKey (host: ElementHost) = containers host |> List.find (fun e -> e.IsFocused) |> keyOf
+
+/// A list with no frame, `width` wide inside its scrollbar's gutter of 12.
+let private bare (width: float) (extra: Setting<ListBox> list) : Setting<ListBox> list =
+    [ ListBox.background Scribble.Rendering.Color.Transparent
+      ListBox.borderThickness 0.0
+      ListBox.padding 0.0
+      ListBox.width (width + 12.0)
+      ListBox.horizontalAlignment HorizontalAlignment.Left
+      yield! extra ]
+
+[<Fact>]
+let ``in a grid, Up and Down move by a row and Left and Right by an item, on to the next row`` () =
+    // Ten items in four columns: 0 1 2 3 / 4 5 6 7 / 8 9.
+    let w, host = show (list 10 (bare 400.0 [ ListBox.layout (ItemsLayout.grid 4) ]))
+    key w Key.Tab
+    Assert.Equal(0, focusedKey host)
+    key w Key.Right
+    key w Key.Right
+    Assert.Equal<int list>([ 2 ], selectedKeys host)
+    key w Key.Down
+    Assert.Equal(6, focusedKey host)
+    // Nothing is below 6 in the short last row: its last item.
+    key w Key.Down
+    Assert.Equal(9, focusedKey host)
+    // In the last row Down does nothing; Up goes straight up from here (no remembered column).
+    key w Key.Down
+    Assert.Equal(9, focusedKey host)
+    key w Key.Up
+    Assert.Equal(5, focusedKey host)
+    key w Key.Up
+    key w Key.Up
+    Assert.Equal(1, focusedKey host)
+    // Left and Right carry on over a row's end, and stop at the first and the last item.
+    key w Key.Down
+    key w Key.Left
+    Assert.Equal(4, focusedKey host)
+    key w Key.Left
+    Assert.Equal(3, focusedKey host)
+    key w Key.Right
+    Assert.Equal(4, focusedKey host)
+    key w Key.Home
+    key w Key.Left
+    Assert.Equal(0, focusedKey host)
+    key w Key.End
+    key w Key.Right
+    Assert.Equal(9, focusedKey host)
+    Assert.Equal<int list>([ 9 ], selectedKeys host)
+
+[<Fact>]
+let ``in a wrap layout the page keys move by the rows that show, keeping the column, through 10,000 items`` () =
+    // Three cells of 100 fit the width; five rows of 40 fit the height.
+    let settings = bare 300.0 [ ListBox.height 200.0; ListBox.verticalAlignment VerticalAlignment.Top; ListBox.layout (ItemsLayout.wrap 100.0 40.0) ]
+    let w, host = show (list 10_000 settings)
+    Assert.Equal(3, ItemsView.columns (listOf host))
+    key w Key.Tab
+    key w Key.Right
+    key w Key.Down
+    Assert.Equal(4, focusedKey host)
+    key w Key.PageDown
+    Assert.Equal(19, focusedKey host)
+    key w Key.PageDown
+    Assert.Equal(34, focusedKey host)
+    key w Key.PageUp
+    Assert.Equal(19, focusedKey host)
+    // Past the top: the first row, same column.
+    key w Key.PageUp
+    key w Key.PageUp
+    Assert.Equal(1, focusedKey host)
+    // The last row holds 9,999 alone. From 9,998 (the row above, third column) there is nothing below.
+    key w Key.End
+    Assert.Equal(9999, focusedKey host)
+    key w Key.Left
+    Assert.Equal(9998, focusedKey host)
+    key w Key.PageDown
+    Assert.Equal(9999, focusedKey host)
+    key w Key.Up
+    Assert.Equal(9996, focusedKey host)
+    Assert.InRange(realizedIn host, 1, 60)
+
+[<Fact>]
+let ``in a grid, Ctrl moves the focus only and Shift extends the selection in source order`` () =
+    let c = Changes()
+    let w, host = show (list 12 (bare 400.0 (ListBox.layout (ItemsLayout.grid 4) :: ListBox.selectionMode SelectionMode.Multiple :: c.Settings)))
+    key w Key.Tab
+    key w Key.Right
+    Assert.Equal(1, focusedKey host)
+    Assert.Empty(selectedKeys host)
+    key w Key.Space
+    keyWith w Modifiers.Shift Key.Down
+    Assert.Equal<int list>([ 1; 2; 3; 4; 5 ], selectedKeys host)
+    keyWith w Modifiers.Shift Key.Right
+    Assert.Equal<int list>([ 1; 2; 3; 4; 5; 6 ], selectedKeys host)
+    // Single: Ctrl+Right moves the focus and leaves the selection.
+    let w, host = show (list 12 (bare 400.0 [ ListBox.layout (ItemsLayout.grid 4) ]))
+    key w Key.Tab
+    key w Key.Down
+    Assert.Equal<int list>([ 4 ], selectedKeys host)
+    keyWith w Modifiers.Control Key.Right
+    Assert.Equal(5, focusedKey host)
+    Assert.Equal<int list>([ 4 ], selectedKeys host)
+
+[<Fact>]
+let ``in a stack, Left and Right are not the list's`` () =
+    let w, host = show (list 20 [])
+    key w Key.Tab
+    key w Key.Down
+    key w Key.Right
+    key w Key.Left
+    Assert.Equal(1, focusedKey host)
+    Assert.Equal<int list>([ 1 ], selectedKeys host)
+    Assert.Equal(1, ItemsView.columns (listOf host))

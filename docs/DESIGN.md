@@ -5614,6 +5614,48 @@ as a `ListBox.header` setting or a public `ListBoxItems`. Built, it turned out t
   bytes). The timing tests pass run on their own; `decoding a 1024 square PNG is fast` read 32 ms against its
   25 ms bound when run among the whole Release suite, twice, and 3 of 3 passed alone (the decoder is untouched).
 
+## A ListBox's arrow keys in wrap and grid layouts (grilling, 2026-11-20)
+
+The keys were written for one column: Up and Down moved by one item, PageUp and PageDown by "items per page"
+from the average row height, and Left and Right weren't the list's at all. With `ItemsLayout.wrap` or `grid`
+Down went to the item at the right and Left and Right did nothing. No ListBox in the repository had such a
+layout, so nothing existing changes.
+
+**Decisions (Tim: yes to all):**
+1. **Up and Down move by a row**, staying in the column.
+2. **Left and Right move by one item in source order and carry on to the next or previous row** at a row's
+   end (over stopping there, as Explorer's icon view does): the items are one sequence that wraps, as text
+   does, and Shift+Right extends a selection the way it reads.
+3. **Down from the last full row goes to the last item** when nothing is directly below (a short last row);
+   Down in the last row and Up in the first do nothing.
+4. **PageUp and PageDown move by the whole rows that fit the visible height**, staying in the column, stopping
+   at the first or last row with decision 3's rule.
+5. **Home and End stay the first and the last item** in every layout.
+6. **A stack's Left and Right stay unhandled**, so they still reach the ScrollViewer (sideways scrolling).
+
+Settled by Claude, said to Tim: no remembered column (after Down lands on the last item of a short row, Up goes
+straight up from there); a wrap layout's columns are what fits the width now, so a resize changes where a key
+lands. Left and Right take the modifiers Up and Down have (Ctrl moves focus only; Shift extends in Multiple).
+
+**As built:** `ItemsView.columns` and `ItemsView.rowsPerPage` (internal) read the layout's cells; one rule in
+`ListBoxLogic.keyDown` moves by rows for every layout (with one column it is what the keys did before), and
+Left and Right are taken only when there is more than one column. Four tests (`ListBoxTests.fs`): a grid of ten
+in four columns (rows, the short last row, no remembered column, Left and Right over a row's end and stopping at
+both ends); a wrap of 10,000 in three columns (the page keys by five rows keeping the column, past the top, the
+last row holding one item, under 60 realized); Ctrl and Shift in a grid; a stack's Left and Right left alone.
+1,365 unit tests, 107 rendering tests, no picture changed. **Not seen in a window:** no sample has a ListBox
+with a wrap or grid layout, so how it feels (the focus ring moving over tiles, scrolling as it goes) is
+untried; the tests hold where each key lands.
+
+**A Gallery example (grilling, 2026-11-20; Tim: yes to all):** the Lists page's swatches list became tiles
+instead of a third list being added (the page fills the window, and a third list would take height from the
+long one): `ItemsLayout.wrap`, so the columns follow the window; 24 colours, so there are several rows at any
+width and the list scrolls in its 150 of height; a tile is the chip above the name, and the note moved to the
+line above ("Picked Lagoon: teal, for calm"); single selection kept by the list, as before. **As built:** cells
+of 96 by 64 (104 gave a phone two columns and an empty third; 96 gives three); the section's hint says "Left
+and Right too in the tiles"; `gallery-phone-lists@3x` regenerated (the only picture of the page). 1,365 unit
+tests, 107 rendering tests. The keys in a window and in the browser are on the checklists.
+
 ## Vectorising the PNG decoder (2026-11-18)
 
 Status: **built** (agreed by Tim, 2026-11-18: "yes to all"); the Gallery's Images page checked by Tim on the desktop

@@ -1273,7 +1273,9 @@ RadioGroup.create [
   index without one), so it survives inserts, sorting and filtering. `selectionMode`: `Single` (default),
   `Multiple` (Ctrl+click toggles, Shift+click selects a range, Ctrl+A all, Space toggles, Shift+arrows extend) or
   `None` (a list of actions: a click invokes). One Tab stop; ↑/↓, Home/End and PageUp/PageDown move through the
-  items, realizing only the one reached. **Invoking** acts on an item: a double-click or Enter (a click in `None`).
+  items, realizing only the one reached. With `ListBox.layout (ItemsLayout.wrap w h)` or `grid columns` the
+  keys follow the rows: ↑/↓ and PageUp/PageDown move by rows and keep the column, ←/→ move by one item and
+  carry on to the next row. **Invoking** acts on an item: a double-click or Enter (a click in `None`).
 
 ```fsharp
 ListBox.create [
