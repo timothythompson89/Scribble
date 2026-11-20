@@ -6,7 +6,7 @@ open Scribble.Rendering
 
 module RadioGroupProps =
     /// The chosen option's value (null: none). Given by the view: controlled; otherwise its own.
-    let selected: Prop<obj> = Prop.define "Selected" null Affects.Measure |> AppState.mark
+    let selected: Prop<obj> = Prop.appState "Selected" null Affects.Measure
     /// Called with the chosen value (boxed; the setting unboxes it).
     let internal onSelectedChanged: Prop<(obj -> unit) voption> = Prop.define "OnSelectedChanged" ValueNone Affects.Nothing
     /// Marks a RadioGroup (and types extended from it).

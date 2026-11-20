@@ -311,6 +311,16 @@ type Prop internal (name: string, affects: Affects, kind: PropKind, defaultBoxed
         p.IsLocal <- true
         p
 
+    /// A property that holds app state: what an element gets from the app through its view and never from a
+    /// style. A control's value (`isChecked`, `value`, `selected`), a list's items, a tab's header:
+    /// `let value = Prop.appState "Value" 0.0 Affects.Render`. A style that sets it throws when it is made: a
+    /// style has no model and no idea which element it is on. For a control's value, change it with
+    /// `ControlValue.change`, so the view's value wins when it gives one.
+    static member appState (name: string) (defaultValue: 'T) (affects: Affects) : Prop<'T> =
+        let p = Prop<'T>(name, defaultValue, affects, PropKind.Value)
+        p.IsAppState <- true
+        p
+
 /// A property key whose values are of type 'T.
 and [<Sealed>] Prop<'T> internal (name: string, defaultValue: 'T, affects: Affects, kind: PropKind) =
     inherit Prop(
@@ -318,12 +328,6 @@ and [<Sealed>] Prop<'T> internal (name: string, defaultValue: 'T, affects: Affec
         (fun a b -> EqualityComparer<'T>.Default.Equals(unbox<'T> a, unbox<'T> b)),
         Interpolation.forType typeof<'T>, typeof<'T>)
     member _.Default = defaultValue
-
-/// Marks a property as app state: styles can't set it (`Prop.IsAppState`).
-module internal AppState =
-    let mark (p: 'P when 'P :> Prop) =
-        p.IsAppState <- true
-        p
 
 /// Where elements find base values for inherited properties: a theme (`Layoutable.theme`,
 /// `App.theme`). Implemented by `Theme`.
@@ -453,9 +457,9 @@ module InheritedProps =
 module ToggleButtonProps =
     /// On or off. Given by the view: controlled; otherwise the control's own value, kept across
     /// rebuilds (a click sets it, and the view never had it, so a patch leaves it).
-    let isChecked = Prop<bool>("IsChecked", false, Affects.Render, PropKind.Value) |> AppState.mark
+    let isChecked = Prop.appState "IsChecked" false Affects.Render
     /// A CheckBox's "partly checked" dash (display only).
-    let isIndeterminate = Prop<bool>("IsIndeterminate", false, Affects.Render, PropKind.Value) |> AppState.mark
+    let isIndeterminate = Prop.appState "IsIndeterminate" false Affects.Render
     /// Called with the new value when the user changes it.
     let onCheckedChanged = Prop<(bool -> unit) voption>("OnCheckedChanged", ValueNone, Affects.Nothing, PropKind.Value)
     /// A CheckBox's tick and dash, a Switch's knob.
@@ -463,11 +467,11 @@ module ToggleButtonProps =
 
 /// Whether a TabControl's header or a ListBox's item is selected. Declared here so `States.isSelected` can read it.
 module TabHeaderProps =
-    let isSelected = Prop<bool>("IsSelected", false, Affects.Render, PropKind.Value) |> AppState.mark
+    let isSelected = Prop.appState "IsSelected" false Affects.Render
 
 /// Whether a ComboBox's list is open. Declared here so `States.isOpen` can read it.
 module ComboBoxOpenProps =
-    let isOpen = Prop<bool>("IsListOpen", false, Affects.Measure, PropKind.Value) |> AppState.mark
+    let isOpen = Prop.appState "IsListOpen" false Affects.Measure
 
 /// The engine's typed copy of an element's layout properties (read on every measure and arrange).
 [<Struct>]

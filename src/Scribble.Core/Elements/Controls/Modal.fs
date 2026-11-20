@@ -6,7 +6,7 @@ open Scribble.Text
 
 module ModalProps =
     /// A heading above the content, and the modal's name for screen readers.
-    let title = Prop.define "Title" "" Affects.Nothing |> AppState.mark
+    let title = Prop.appState "Title" "" Affects.Nothing
     /// True: a press on the scrim asks to close it too.
     let lightDismiss = Prop.define "LightDismiss" false Affects.Nothing
     /// False: Escape doesn't ask to close it (a modal that must be answered).

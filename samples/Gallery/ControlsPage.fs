@@ -261,5 +261,33 @@ let private controls =
             ]
         ])
 
+/// A control of the Gallery's own (RatingBar.fs, written with the public API only), used like a built-in one: the
+/// first is controlled by this component's state, the second keeps its own value, and a style gives its own
+/// state, `RatingBar.full`, a look. The rendering tests show this alone.
+let ratingDemo =
+    Component.define "RatingDemo" (fun ctx () ->
+        let stars = ctx.useState 3
+        StackPanel.create [
+            StackPanel.styles [ RatingBar.style [] [ Style.onState RatingBar.full [ RatingBar.filled Palette.warning ] ] ]
+            StackPanel.spacing 10.0
+            StackPanel.children [
+                row [
+                    RatingBar.create [ Semantics.label "Rating"; RatingBar.value stars.Current; RatingBar.onValueChanged stars.Set ]
+                    TextBlock.create [
+                        TextBlock.text (string stars.Current + " of 5" + (if stars.Current = 5 then ": full" else ""))
+                        TextBlock.foreground Palette.textDim
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                    ]
+                ]
+                row [
+                    RatingBar.create [ Semantics.label "Its own value"; RatingBar.maximum 8 ]
+                    TextBlock.create [ TextBlock.text "keeps its own value, out of 8"; TextBlock.foreground Palette.textDim; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                ]
+            ]
+        ])
+
 let view () =
-    page "Controls" "Each control is controlled when the view gives its value, and keeps its own otherwise." [ controls () ]
+    page "Controls" "Each control is controlled when the view gives its value, and keeps its own otherwise." [
+        controls ()
+        section "A control of your own" "RatingBar.fs: properties, settings and an element, as an app would write one. Click a dot or use the arrow keys; all five turn amber (its own state, RatingBar.full, in a style)." (ratingDemo ())
+    ]

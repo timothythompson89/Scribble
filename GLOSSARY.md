@@ -68,6 +68,10 @@ _Avoid_: bound, two-way
 The value a control keeps for itself when the view doesn't give one; it survives the view being rebuilt.
 _Avoid_: uncontrolled, internal state (state is a component's)
 
+**App state**:
+What an element gets from the app through its view and never from a style: a control's value, a list's items, a tab's header (`Prop.appState`).
+_Avoid_: model data, bound value; app value (that is a value shared by the whole app)
+
 ## Looks
 
 **Style**:
@@ -92,7 +96,7 @@ _Avoid_: root value, theme default
 
 **App value**:
 A named, typed value with one current value per app (`Theme.current`, `WindowTitle.current`), shared by all its windows and layers.
-_Avoid_: global, app state
+_Avoid_: global; app state (that is what views give elements, below)
 
 ## State
 

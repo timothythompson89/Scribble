@@ -1036,7 +1036,11 @@ Border.create [ Border.onState States.hover [ Border.background lighter ] ]  // 
   It works wherever `States.hover` does, and the inspector lists it on the elements that have it. Only such a
   state can be set (`Border.state States.hover true` throws), and only by a view, never a style. For a look that
   needs no more than a name, a class does it too: `Border.classes [ "chip"; if isPicked then "chosen" ]`.
-- Element authors: add `let style parts (settings: Setting<MyElement> list) = Style.forType Type parts settings`
+- Element authors: `samples/Gallery/RatingBar.fs` is a whole control written with the public API only (properties,
+  settings type, element; controlled or keeping its own value; a state of its own). A control's value is made with
+  `Prop.appState "Value" 0.0 Affects.Render` (app state: a style that sets it throws) and changed with
+  `ControlValue.change ctx.Element prop value handler`, which sets the control's own value unless the view gives one
+  and then calls the handler; an input handler reaches its element as `ctx.Element`. Add `let style parts (settings: Setting<MyElement> list) = Style.forType Type parts settings`
   next to `create`. A state read from one property is `States.ofProp "checked" CheckBoxProps.isChecked id`. One
   from several says which it reads and when it's on:
 
@@ -1586,7 +1590,7 @@ Border.create [ Semantics.role Role.Switch; Semantics.label "Wi-Fi"; Semantics.i
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
 | `samples/Hello` | The Hello sample (library): `HelloApp.fs` (model, update, app settings) and `Dashboard.fs` (the dashboard as a view function, also used by the rendering tests) |
 | `samples/Counter` | The Counter (library): the README's first example, one file |
-| `samples/Gallery` | The Gallery (library): one file per page (`ComponentsPage.fs`, `LayoutPage.fs`, `ControlsPage.fs`, `ScrollingPage.fs`, `LayersPage.fs`, `StylesPage.fs`, `ImagesPage.fs`), `Common.fs` (page and section layouts) and `GalleryApp.fs` (the tabs, the two themes and the app). Its colours are the built-in palette's, but for one theme value of its own on the Styles page (`ThemeValue.define`, `Theme.set`) |
+| `samples/Gallery` | The Gallery (library): one file per page (`ComponentsPage.fs`, `LayoutPage.fs`, `ControlsPage.fs`, `ScrollingPage.fs`, `LayersPage.fs`, `StylesPage.fs`, `ImagesPage.fs`), `Common.fs` (page and section layouts), `RatingBar.fs` (a control of the Gallery's own, written with the public API only) and `GalleryApp.fs` (the tabs, the two themes and the app). Its colours are the built-in palette's, but for one theme value of its own on the Styles page (`ThemeValue.define`, `Theme.set`) |
 | `samples/Icons` | The Material Symbols gallery (library) |
 | `samples/X.Desktop`, `samples/X.Browser` | Each sample's hosts: the same one-line Program.fs, a different SDK and Scribble package |
 | `samples/Samples.Shared` | `Adaptive.fs`: the samples' own `SplitRow` |

@@ -304,7 +304,7 @@ type TextBoxMenu =
 
 module TextBoxProps =
     /// The text. Given by the view: controlled; otherwise the control's own value.
-    let text = Prop.define "Text" "" Affects.Measure |> AppState.mark
+    let text = Prop.appState "Text" "" Affects.Measure
     let onTextChanged: Prop<(string -> unit) voption> = Prop.define "OnTextChanged" ValueNone Affects.Nothing
     let onSubmitted: Prop<(string -> unit) voption> = Prop.define "OnSubmitted" ValueNone Affects.Nothing
     /// Shown, dim, while the text is empty.

@@ -4,7 +4,7 @@ namespace Scribble.Core
 /// the value setting, the control is *controlled* and shows exactly that; when it doesn't, the
 /// control keeps its *own value* (set by code, so a patch from a view that never had the setting
 /// leaves it). Either way the change event gets the new value.
-module internal ControlValue =
+module ControlValue =
     /// The view gives this value (the control is controlled).
     let isControlled (e: Element) (prop: Prop) =
         match e.CurrentView with

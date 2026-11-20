@@ -104,3 +104,32 @@ type GalleryTests(fixture: TextFixture) =
         match Snapshot.check "styles-page-light@1x" image with
         | Some error -> Assert.Fail error
         | None -> ()
+
+    /// A control written outside Core (the Gallery's RatingBar): part filled, full (the style's amber, through its
+    /// own state), and with another maximum, on both themes.
+    [<Fact>]
+    member _.``a control of the Gallery's own``() =
+        let bars =
+            StackPanel.create [
+                StackPanel.styles [ RatingBar.style [] [ Style.onState RatingBar.full [ RatingBar.filled Palette.warning ] ] ]
+                StackPanel.spacing 10.0
+                StackPanel.children [
+                    RatingBar.create [ RatingBar.value 3 ]
+                    RatingBar.create [ RatingBar.value 5 ]
+                    RatingBar.create [ RatingBar.maximum 8; RatingBar.value 1 ]
+                ]
+            ]
+        let half (theme: Theme) =
+            Border.create [ Border.theme theme; Border.background Palette.background; Border.padding 16.0; Border.content bars ]
+        let tree = ElementTree(fixture.Text)
+        tree.Update(
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.children [ half Scribble.Samples.GalleryApp.darkTheme; half Scribble.Samples.GalleryApp.lightTheme ]
+            ])
+        tree.UpdateLayout(Size.Create(460.0, 106.0))
+        let pixels: PixelSize = { Width = 460; Height = 106 }
+        let image = fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f -> tree.Render f.DrawList)
+        match Snapshot.check "rating-bar@1x" image with
+        | Some error -> Assert.Fail error
+        | None -> ()

@@ -49,17 +49,16 @@ type internal ItemsState() =
 type internal Anchor = { Key: obj; Into: float; Height: float; Next: obj[] }
 
 module ItemsViewProps =
-    let internal source = Prop.define "Source" ItemsSource.Empty Affects.Measure |> AppState.mark
-    let internal keySelector = Prop.define "Key selector" (TypedKeyFunc<obj, obj>(id) :> KeyFunc) Affects.Nothing |> AppState.mark
+    let internal source = Prop.appState "Source" ItemsSource.Empty Affects.Measure
+    let internal keySelector = Prop.appState "Key selector" (TypedKeyFunc<obj, obj>(id) :> KeyFunc) Affects.Nothing
     let internal viewSelector =
         // Without one, an item shows `string item` (strings, numbers, enums). Not unions or records: their
         // ToString prints with %A, which NativeAOT can't run; give them a view selector.
-        Prop.define "View selector" (ItemsFunc<View voption>(fun item -> ValueSome(TextBlock.create [ TextBlock.text (string item) ]))) Affects.Measure
-        |> AppState.mark
+        Prop.appState "View selector" (ItemsFunc<View voption>(fun item -> ValueSome(TextBlock.create [ TextBlock.text (string item) ]))) Affects.Measure
     /// An item's text, when its view isn't text: what typeahead searches and a screen reader calls it.
-    let internal textSelector: Prop<ItemsFunc<string> voption> = Prop.define "Text selector" ValueNone Affects.Nothing |> AppState.mark
+    let internal textSelector: Prop<ItemsFunc<string> voption> = Prop.appState "Text selector" ValueNone Affects.Nothing
     let layout = Prop.define "Layout" ItemsLayout.Stack Affects.Measure
-    let scroller = Prop.define "Scroller" (ValueNone: Scroller voption) Affects.Measure |> AppState.mark
+    let scroller = Prop.appState "Scroller" (ValueNone: Scroller voption) Affects.Measure
     let internal state = Prop.local "ItemsState" (null: ItemsState)
     /// A list's item containers (M8 step 4b): wraps each item's view (key, item, view) in its container.
     let internal container: Prop<(obj -> obj -> View -> View) voption> = Prop.define "Item container" ValueNone Affects.Measure

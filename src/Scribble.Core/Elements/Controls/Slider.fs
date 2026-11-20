@@ -6,7 +6,7 @@ open Scribble.Rendering
 
 module SliderProps =
     /// The value. Given by the view: controlled; otherwise the control's own value.
-    let value = Prop.define "Value" 0.0 Affects.Render |> AppState.mark
+    let value = Prop.appState "Value" 0.0 Affects.Render
     let minimum = Prop.define "Minimum" 0.0 Affects.Render
     let maximum = Prop.define "Maximum" 100.0 Affects.Render
     /// Values snap to multiples of this from the minimum; 0 means continuous.

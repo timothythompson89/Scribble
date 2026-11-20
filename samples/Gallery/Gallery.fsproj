@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <Compile Include="Common.fs" />
+    <Compile Include="RatingBar.fs" />
     <Compile Include="ComponentsPage.fs" />
     <Compile Include="LayoutPage.fs" />
     <Compile Include="ControlsPage.fs" />

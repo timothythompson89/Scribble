@@ -44,7 +44,7 @@ type ItemInvokedEventArgs<'T, 'K> internal (key: 'K, item: 'T) =
 
 module ListBoxProps =
     /// The selected keys. Given by the view: controlled; otherwise the control's own value.
-    let selected: Prop<obj list> = Prop.define "Selected" [] Affects.Measure |> AppState.mark
+    let selected: Prop<obj list> = Prop.appState "Selected" [] Affects.Measure
     let selectionMode = Prop.define "SelectionMode" SelectionMode.Single Affects.Measure
     /// (keys, items, added, removed), boxed; the setting unboxes them for the app's handler.
     let internal onSelectedChanged: Prop<(obj list -> obj list -> obj list -> obj list -> unit) voption> =

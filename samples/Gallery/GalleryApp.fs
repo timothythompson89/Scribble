@@ -3,6 +3,7 @@
 /// order):
 ///
 /// - Common.fs: what the pages share (the page and section layouts),
+/// - RatingBar.fs: a control of the Gallery's own, written with the public API only (the Controls page shows it),
 /// - ComponentsPage.fs: an Elmish counter with a command, keyed counters with an animated bar, a slow load
 ///   (`useElmishWithCmd`, `useState`, `useAnimated`, `useAsync`),
 /// - LayoutPage.fs: Grid, DockPanel, Canvas (drag, zIndex), WrapPanel and Separators (M8 step 2),

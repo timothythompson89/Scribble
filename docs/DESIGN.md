@@ -38,6 +38,7 @@ questions", as paragraphs starting with the name given here.
 | The Gallery uses the built-in palette | Its own theme values are gone but for one example; `Palette.textDanger` (2026-11-19) | Section "The Gallery uses the built-in palette" |
 | Style.onWhere | `Style.onWhere prop test [ ... ]`; `States.where` replaces `States.test`; `States.ofProp` stays (2026-11-19) | Section "Style.onWhere, and where for a condition on values" (its heading quotes the word) |
 | Property tests in selectors | `Style.prop` and `Style.where` are for an ancestor's part only; they throw in a style's own selector (2026-11-19) | Section "Style.prop and Style.where are for an ancestor's part only" |
+| Controls written outside Core | `ControlValue` and `Prop.appState` are public, `InputContext.Element` too; the Gallery's `RatingBar` is written with the public API only (2026-11-19) | Section "Controls written outside Core" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -5526,6 +5527,40 @@ comments showed that form: two ways to write one thing.
 - Tests: the three that used the own-selector form are now blocks or ancestor parts (the selector-text test reads
   `Border[IsChecked=true] TextBlock`, `Button.primary[Level=2]:hover > TextBlock`, `Border[Level?] TextBlock`); one
   new test holds the rule. No picture changed.
+
+## Controls written outside Core (2026-11-19)
+
+Found while sketching a control for Tim ("an example of what it might look like for a user to author their own
+control"): the two things every built-in control with a value uses, `ControlValue` and `AppState.mark`, were
+internal, though CLAUDE.md's pattern told authors to use them. Tim: "Yes, build it" to the four recommendations.
+
+1. **`ControlValue` is public as it was** (`isControlled`, `change`): its names are the glossary's, and it does
+   nothing an author couldn't do with `Element.Set`.
+2. **`Prop.appState name default affects`** makes a property that holds app state, beside `Prop.define`,
+   `Prop.attached` and `Prop.local`. Not a public `AppState` module: one function in a top-level module of that
+   name would read as where an app keeps its state. The built-in controls use it too (about 25 properties); the
+   internal `AppState` module is gone.
+3. **"App state" is a glossary term**: what an element gets from the app through its view and never from a
+   style. The glossary had it only under App value's "avoid"; that line now says why.
+4. **A control written with the public API alone proves it:** `samples/Gallery/RatingBar.fs`, shown on the
+   Controls page ("A control of your own"). The samples can't see Core's internals; the tests can, so they
+   couldn't show the surface was enough.
+
+**As built (2026-11-19)**
+- **One more thing had to open: `InputContext.Element`.** An input handler had no way to set a value of its own
+  or to call `ControlValue.change`, which takes the element; every built-in control reaches it as `ctx.Element`.
+  Now public on `InputContext` alone (measure, arrange and render contexts keep theirs internal: those stages
+  read). Nothing else was missing: `Element.define` and its stages, `Setting.create` and `fromTheme`,
+  `Semantics.rangeFrom`, `actions` and `onAction`, `FocusRing.drawAround`, `States.define`, `Style.forType`.
+- `RatingBar`: a row of dots out of `maximum` (5); a click gives that many (the first again, none), the arrow keys
+  move by one; controlled when the view gives `value`; a slider to a screen reader; its own state
+  `RatingBar.full` (`States.define` with two `dependsOn` and a `where`: the runnable example of that form, which
+  the code had only in tests). The Controls page shows one controlled, one keeping its own value out of 8, and a
+  style turning a full one amber.
+- Tests: three unit tests drive it on the fake platform (own value by click and keys; controlled; its state and a
+  style setting its value throwing), one screenshot test (`rating-bar@1x`: part filled, full, another maximum, both
+  themes). `gallery-phone-controls@3x` regenerated: the page is longer, so its scrollbar thumb is shorter.
+- Not done: the control isn't in a screen reader's hands yet (checklist), and no AOT publish was run after this.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

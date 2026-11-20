@@ -349,7 +349,9 @@ and [<Struct>] InputContext internal (element: Element) =
         match element.Root with
         | ValueSome root -> root.ClearComposition()
         | ValueNone -> ()
-    member internal _.Element = element
+    /// The element the input went to: for what the context has no shortcut for, such as setting a value of its own
+    /// (`ctx.Element.Set(prop, v)`) or changing a control's value (`ControlValue.change ctx.Element prop v handler`).
+    member _.Element = element
 
 /// What a component's input carries (its function and props); equal inputs don't re-run it.
 and [<AbstractClass>] internal ComponentInput() =

@@ -490,3 +490,79 @@ let ``focus-visible forced off draws no focus ring`` () =
     Assert.False((focused = plain), "the focus ring doesn't draw: nothing to check")
     let forcedOff = drawn (CheckBox.create []) (fun e -> e.SetFocusState(true, true); e.ForceState(States.focusVisible, false))
     Assert.True((forcedOff = plain), "forced-off focus-visible still draws the ring")
+
+// --- A control written outside Core (2026-11-19): the Gallery's RatingBar, public API only -----------------------
+
+open Scribble.Samples.Gallery
+
+let private ratingView (heard: List<int>) (extra: Setting<RatingBar> list) =
+    StackPanel.create [
+        StackPanel.children [ RatingBar.create ([ RatingBar.name "r"; RatingBar.onValueChanged heard.Add ] @ extra) ]
+    ]
+
+/// The middle of a RatingBar's dot (1 is the first): dots are 18 DIPs with 6 between.
+let private onDot (r: Element) (n: int) =
+    let p = r.PositionInTree
+    p.X + float (n - 1) * 24.0 + 9.0, p.Y + 9.0
+
+let private rating (r: Element) = r.Get RatingBarProps.value
+
+[<Fact>]
+let ``an outside control keeps its own value: a click and the arrow keys change it and are reported`` () =
+    let heard = List<int>()
+    let w, _, host = show [ App.view (ratingView heard []) ]
+    let r = find "r" host
+    let x, y = onDot r 4
+    press w x y
+    release w x y
+    Assert.Equal(4.0, rating r)
+    key w Key.Left
+    Assert.Equal(3.0, rating r)
+    key w Key.Up
+    key w Key.Up
+    key w Key.Up // past the maximum: stays, and isn't reported again
+    Assert.Equal(5.0, rating r)
+    Assert.Equal<int list>([ 4; 3; 4; 5 ], List.ofSeq heard)
+    // The first dot again takes the rating away.
+    let x1, y1 = onDot r 1
+    press w x1 y1
+    release w x1 y1
+    press w x1 y1
+    release w x1 y1
+    Assert.Equal(0.0, rating r)
+
+[<Fact>]
+let ``an outside control is controlled when the view gives its value: it reports and shows what the view says`` () =
+    let heard = List<int>()
+    let w, _, host = show [ App.view (ratingView heard [ RatingBar.value 2 ]) ]
+    let r = find "r" host
+    let x, y = onDot r 4
+    press w x y
+    release w x y
+    w.DeliverFrame() |> ignore
+    Assert.Equal<int list>([ 4 ], List.ofSeq heard)
+    Assert.Equal(2.0, rating r) // the view didn't follow, so neither did the control
+
+[<Fact>]
+let ``an outside control's state follows the two properties it reads, and a style can't set its app state`` () =
+    let red = Color.Hex 0xFF0000
+    let styles = [ RatingBar.style [] [ Style.onState RatingBar.full [ RatingBar.filled red ] ] ]
+    let heard = List<int>()
+    let w, _, host = show [ App.styles styles; App.view (ratingView heard [ RatingBar.maximum 3 ]) ]
+    let r = find "r" host
+    Assert.NotEqual(red, r.Get RatingBarProps.filled)
+    Assert.DoesNotContain(RatingBar.full, r.ActiveStates)
+    // The style reaches it, so tools list the state before it is on.
+    Assert.Contains(RatingBar.full, r.ApplicableStates)
+    let x, y = onDot r 3
+    press w x y
+    release w x y
+    w.DeliverFrame() |> ignore
+    Assert.Contains(RatingBar.full, r.ActiveStates)
+    Assert.Equal(red, r.Get RatingBarProps.filled)
+    key w Key.Left
+    w.DeliverFrame() |> ignore
+    Assert.NotEqual(red, r.Get RatingBarProps.filled)
+    // Its value was made with Prop.appState: a style setting it throws when the style is made.
+    let e = Assert.Throws<System.ArgumentException>(fun () -> RatingBar.style [] [ RatingBar.value 3 ] |> ignore)
+    Assert.Contains("Value", e.Message)

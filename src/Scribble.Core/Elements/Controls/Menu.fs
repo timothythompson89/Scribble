@@ -10,7 +10,7 @@ module MenuItemProps =
     /// Shown, dim, at the item's right ("Ctrl+C"): text only.
     let shortcut = Prop.define "MenuItemShortcut" "" Affects.Measure
     /// Given: the item can be checked, and shows a check mark while it is.
-    let isChecked: Prop<bool voption> = Prop.define "MenuItemChecked" ValueNone Affects.Render |> AppState.mark
+    let isChecked: Prop<bool voption> = Prop.appState "MenuItemChecked" ValueNone Affects.Render
     let shortcutForeground = Prop.define "MenuItemShortcutForeground" Color.Transparent Affects.Render
     /// Behind the item the keyboard is on.
     let highlight = Prop.define "MenuItemHighlight" Color.Transparent Affects.Render

@@ -48,8 +48,8 @@ dotnet fsi tools/MakePngReferences.fsx            # PngSuite references through 
 dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if a picture changes)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-19: 1,333 unit tests plus 9
-  timing tests skipped; 106 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-19: 1,336 unit tests plus 9
+  timing tests skipped; 107 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and
   are compared exactly. A mismatch is a bug or a stale picture: look at the diff before regenerating
@@ -120,7 +120,7 @@ Controls), after the types it uses in the compile order; Core's folders are each
 
 ```fsharp
 module ProgressBarProps =
-    let value = Prop.define "Value" 0.0 Affects.Render          // Prop.local for caches; Prop.content/children for views inside
+    let value = Prop.define "Value" 0.0 Affects.Render          // Prop.local for caches; Prop.appState for a control's value; Prop.content/children for views inside
 
 [<AbstractClass>]
 type ProgressBar =                                               // the settings (always the generic 'k form)
@@ -144,7 +144,8 @@ module ProgressBar =                                             // the element:
   Helpers go in the module as `private`, or `internal` when a derived element needs them (`Border.draw`).
 - **Naming** (decision 8): a control's value setting is named for what it is (`isChecked`, `value`, `selected`),
   its change event `on<Name>Changed`, the end of a drag `on<Name>Committed`. A control is controlled when the view
-  gives its value, else it keeps its own (`Control.fs`). Mark the value `|> AppState.mark` (styles never set app state;
+  gives its value, else it keeps its own: change it with `ControlValue.change e prop value handler` (`Control.fs`). Make
+  the value with `Prop.appState "Value" 0.0 Affects.Render` (styles never set app state;
   handlers are found by their type).
 - **Where a default goes** (DESIGN.md, "Where defaults live"): the property default is neutral (transparent,
   zero, none); the type default holds behaviour, semantics, metrics and the look at rest, colours and shadows as
@@ -152,6 +153,8 @@ module ProgressBar =                                             // the element:
   state blocks, transitions and class variants. `DefaultsTests.fs` holds this: add a new element type to its list.
 - Every element stretches by default; a control whose click area should stay small sets its own alignment
   (CheckBox and Switch: `Left`).
+- A whole control written with the public API alone: `samples/Gallery/RatingBar.fs` (the samples can't see Core's
+  internals, so it also shows what an outside author can reach).
 - Unit tests for behaviour; a screenshot test when it draws something new.
 
 ## Agent skills

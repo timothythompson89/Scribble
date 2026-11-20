@@ -16,7 +16,7 @@ type internal ComboState() =
 
 module ComboBoxProps =
     /// The selected key (none: the placeholder shows). Given by the view: controlled; otherwise its own.
-    let selected: Prop<obj voption> = Prop.define "Selected" ValueNone Affects.Measure |> AppState.mark
+    let selected: Prop<obj voption> = Prop.appState "Selected" ValueNone Affects.Measure
     /// Shown in the box while nothing is selected.
     let placeholder = Prop.define "Placeholder" "" Affects.Measure
     let placeholderForeground = Prop.define "PlaceholderForeground" Color.Transparent Affects.Measure
