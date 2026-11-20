@@ -5173,6 +5173,16 @@ Facts at the start.
   the background decodes end before the first frame even when forced, so it never showed there. Fixed in the
   test: it draws again until the 13 are there (5 s at most). A cache per tree for tests would make it
   deterministic; that is a Core change, not made.
+- **A second test failed the same way in run 7:** `10,000 rows of downloaded avatars ...` timed out waiting for 6
+  requests ("downloads running 6, waiting 9"). The HTTP handler and the six download places are also one per
+  process, and the Gallery's Images page has two pictures from real URLs: a test drawing the Gallery at the same
+  moment takes two places (and asks the real network when no fake handler is set). Interim fix (Tim,
+  2026-11-20): the eight test modules that draw the Gallery or use the shared image state are one xUnit
+  collection, `Shared image state`, so they run one after another (ImageView, ImageLoading, ImageCursor,
+  GalleryPages, AppValue, Idle, Inspector, Semantics; the run still takes 6 s). **Still open:** a download a
+  finished test left running keeps its place, so this narrows the race and may not end it; the cure is image
+  state that belongs to a tree or host, a design round of its own (with the cache per tree above), which would
+  also keep unit tests off the real network.
 - **The first release run failed at the push (2026-11-20), with nothing published:** on Windows `dotnet nuget push`
   finds no files for a pattern written with forward slashes. The pattern now has backslashes, and a rehearsal
   step pushes the same pattern into a folder and counts 17 before the sign-in. Tests, pack, the consumer test

@@ -1,5 +1,8 @@
 /// The semantics stage: each element type's semantic node, name from content, what's left out,
 /// semantic actions, layers, and a check that every sample's controls have a name.
+// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
+// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
+[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.SemanticsTests
 
 open System.Collections.Generic

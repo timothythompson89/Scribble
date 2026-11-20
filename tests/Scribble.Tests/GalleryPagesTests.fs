@@ -1,5 +1,8 @@
 /// The Gallery's pages (a TabControl since M8 step 3a): a page is built on its first visit,
 /// switching shows one page, and every visited page keeps its state.
+// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
+// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
+[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.GalleryPagesTests
 
 open System

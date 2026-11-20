@@ -1,6 +1,9 @@
 /// M8 step 3b (d): the Image value, the process-wide cache and its pool, elements holding what they show, ImageView's
 /// measure and fitting, failures reported once per image, and decoding only what's realized in a long list
 /// (DESIGN.md, "M8 step 3b", (d)).
+// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
+// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
+[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.ImageViewTests
 
 open System

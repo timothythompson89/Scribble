@@ -39,7 +39,9 @@ foreach ($file in $files) {
     foreach ($result in $failed) {
         $message = [string] $result.Output.ErrorInfo.Message
         $stack = (([string] $result.Output.ErrorInfo.StackTrace) -split "`n" | Select-Object -First 6) -join "`n"
-        $title = Format-Annotation "Test failed: $($result.testName)"
+        # In a property (the title) a comma ends it and a colon splits it: a test named "10,000 rows ..." lost
+        # everything after "10" (CI run 7).
+        $title = (Format-Annotation "Test failed: $($result.testName)").Replace(":", "%3A").Replace(",", "%2C")
         Write-Host "::error title=$title::$(Format-Annotation ($message + "`n" + $stack))"
         $summary.Add("")
         $summary.Add("- ``$($result.testName)``")

@@ -2,6 +2,9 @@
 /// at most 6 downloads at once, cancelled when nothing holds them, failures (404, too big, timeout, relative URL on
 /// the desktop) reported once, a size that arrives with the pixels, and a 10,000-row list downloading only what's
 /// shown (DESIGN.md, "M8 step 3b", (e)).
+// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
+// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
+[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.ImageLoadingTests
 
 open System
