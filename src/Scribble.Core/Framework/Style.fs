@@ -3,6 +3,11 @@ namespace Scribble.Core
 open System
 open System.Collections.Generic
 
+/// What an `onWhere` block is compared by, in place of the value an `onProp` block compares: its test function.
+[<Sealed; AllowNullLiteral>]
+type internal WhereTest(test: obj) =
+    member _.Test = test
+
 /// A property test in a selector (`Style.prop`, `Style.where`): reads the unstyled value.
 [<NoEquality; NoComparison>]
 type internal PropTest =
@@ -102,7 +107,13 @@ and [<Sealed>] internal StateBlock(state: ElementState voption, propTest: struct
              | ValueNone, ValueNone -> true
              | _ -> false)
             && (match propTest, b.PropTest with
-                | ValueSome(struct (t, v)), ValueSome(struct (u, w)) -> obj.ReferenceEquals(t.Prop, u.Prop) && t.Prop.Same(v, w)
+                | ValueSome(struct (t, v)), ValueSome(struct (u, w)) ->
+                    obj.ReferenceEquals(t.Prop, u.Prop)
+                    && (match v, w with
+                        | (:? WhereTest as a), (:? WhereTest as b) -> obj.ReferenceEquals(a.Test, b.Test)
+                        | (:? WhereTest), _
+                        | _, (:? WhereTest) -> false
+                        | _ -> t.Prop.Same(v, w))
                 | ValueNone, ValueNone -> true
                 | _ -> false)
             && settings.Length = b.Settings.Length
@@ -116,7 +127,7 @@ and [<Sealed>] internal StateBlock(state: ElementState voption, propTest: struct
            | ValueNone, ValueSome(struct (t, _)) -> t.Prop.Id
            | ValueNone, ValueNone -> 0)
 
-/// What a state's test reads (`States.test`): the element's own values of the properties the state depends on
+/// What a state's test reads (`States.where`): the element's own values of the properties the state depends on
 /// (else their defaults; never a style's, so a style can't switch the state that applies it).
 [<Struct>]
 type StateValues internal (element: Element, state: string, declared: Prop[]) =
@@ -126,7 +137,7 @@ type StateValues internal (element: Element, state: string, declared: Prop[]) =
 #if DEBUG
         if not (declared |> Array.exists (fun p -> obj.ReferenceEquals(p, prop))) then
             DebugWarnings.Once(
-                "States.test " + state + " " + prop.Name,
+                "States.where " + state + " " + prop.Name,
                 "The state '" + state + "' reads " + prop.Name + " without depending on it, so it won't follow its changes: add States.dependsOn for it.")
 #else
         ignore state
@@ -137,7 +148,7 @@ type StateValues internal (element: Element, state: string, declared: Prop[]) =
 /// What `States.define`'s settings configure.
 type internal StateOptions = { Props: Prop list; Test: (StateValues -> bool) voption }
 
-/// One setting for `States.define`: `States.dependsOn prop`, `States.test (fun v -> ...)`.
+/// One setting for `States.define`: `States.dependsOn prop`, `States.where (fun v -> ...)`.
 [<Struct>]
 type StateSetting = internal StateSetting of (StateOptions -> StateOptions)
 
@@ -173,8 +184,8 @@ module States =
     let dependsOn (prop: Prop<'T>) : StateSetting = StateSetting(fun o -> { o with Props = o.Props @ [ prop :> Prop ] })
 
     /// When the element is in the state (in `States.define`'s settings), from the properties it depends on:
-    /// `States.test (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)`.
-    let test (inState: StateValues -> bool) : StateSetting = StateSetting(fun o -> { o with Test = ValueSome inState })
+    /// `States.where (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)`.
+    let where (inState: StateValues -> bool) : StateSetting = StateSetting(fun o -> { o with Test = ValueSome inState })
 
     /// A state of your own, usable like `States.hover` (`Style.onState chosen [ ... ]`) and shown by the inspector.
     /// Define each one once, at module level.
@@ -188,7 +199,7 @@ module States =
     ///         States.define "full" [
     ///             States.dependsOn RatingBarProps.value
     ///             States.dependsOn RatingBarProps.max
-    ///             States.test (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)
+    ///             States.where (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)
     ///         ]
     ///
     /// The test reads the element's own values (else their defaults; never a style's, so a style can't switch
@@ -206,7 +217,7 @@ module States =
         | [], ValueSome _ ->
             invalidArg "settings" ("The state '" + name + "' has a test but depends on no property, so nothing would say when to test it again: add States.dependsOn for each property the test reads.")
         | _, ValueNone ->
-            invalidArg "settings" ("The state '" + name + "' depends on properties but has no test: add States.test (fun v -> ...).")
+            invalidArg "settings" ("The state '" + name + "' depends on properties but has no test: add States.where (fun v -> ...).")
         | props, ValueSome inState ->
             let declared = Array.ofList props
             for p in declared do
@@ -364,7 +375,7 @@ module internal Selector =
         | ValueSome(struct (Relation.Inside, a)) -> text a + " " + own
         | ValueNone -> own
 
-/// Where a style's settings list keeps its `Style.onProp` blocks (one key for all of them: a style's list may hold
+/// Where a style's settings list keeps its `Style.onProp` and `Style.onWhere` blocks (one key for all of them: a style's list may hold
 /// any number, an element's own settings only one, and a view that knows the value has no need of one).
 module internal PropBlocks =
     let prop =
@@ -473,7 +484,7 @@ type Style internal (rules: Rule[], description: string) =
     /// `Button.style [ Style.cls "primary" ] [ Button.background c; Style.onState States.hover [ ... ] ]`.
     /// Blocks nest (hover inside focused: both). In a view, write `Button.onState` (the same thing).
     /// The one way to say when: a style's selector says which elements (type, class, name, what they are inside),
-    /// `onState` and `onProp` say when.
+    /// `onState`, `onProp` and `onWhere` say when.
     static member onState<'k> (state: ElementState) (settings: Setting<'k> list) : Setting<'k> =
         // A state block is a style, in a style or a view: checked when made, like one.
         for s in settings do
@@ -494,6 +505,21 @@ type Style internal (rules: Rule[], description: string) =
               Test = (fun v -> unbox<'T> v = value)
               Text = "[" + prop.Name + "=" + Selector.valueText (box value) + "]" }
         Setting.create PropBlocks.prop (ValueSome(StateBlock(ValueNone, ValueSome(struct (test, box value)), [| for s in settings -> struct (s.Prop, s.Value) |])))
+
+    /// Settings that apply while the element's own value of `prop` (else its default; never a style's) passes
+    /// `test`, inside a style's settings:
+    /// `Slider.style [] [ Style.onWhere SliderProps.value (fun v -> v >= 80.0) [ Slider.fill Palette.danger ] ]`.
+    /// `onProp` with a test where it has a value: matched again when the value changes, and it nests with `onState`.
+    /// Reach for it when a look follows a value; make a state (`States.ofProp`, `States.define`) when the condition
+    /// needs a name: an element type's own state, one several styles share, one to force from the inspector.
+    /// For styles made once: two blocks are the same only when their test is the same function, so one written
+    /// inside a view's block is new on every run and restyles its element each time.
+    static member onWhere<'k, 'T> (prop: Prop<'T>) (test: 'T -> bool) (settings: Setting<'k> list) : Setting<'k> =
+        for s in settings do
+            if not s.Prop.IsStateBlock then Rule.check s.Prop
+        prop.TestedByStyles <- true
+        let t = { Prop = prop; Test = (fun v -> test (unbox<'T> v)); Text = "[" + prop.Name + "?]" }
+        Setting.create PropBlocks.prop (ValueSome(StateBlock(ValueNone, ValueSome(struct (t, box (WhereTest(box test)))), [| for s in settings -> struct (s.Prop, s.Value) |])))
 
     /// Fades `prop` from its old value to its new one over `duration` whenever it changes (not when
     /// the element first appears), inside a style's settings:

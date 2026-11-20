@@ -355,7 +355,7 @@ let ``a state is a selector part, built-in or custom`` () =
 
 [<Fact>]
 let ``ActiveStates lists built-in and custom states that are on, skipping tests that throw`` () =
-    let broken = States.define "broken" [ States.dependsOn level; States.test (fun _ -> invalidOp "only for another type") ]
+    let broken = States.define "broken" [ States.dependsOn level; States.where (fun _ -> invalidOp "only for another type") ]
     let t = tree []
     let root = show t (Border.create [ checkedOn true ])
     root.ChangePointersOver 1
@@ -405,6 +405,73 @@ let ``onProp is a style: it can't set handlers or app state`` () =
         Style.onProp SliderProps.orientation Orientation.Vertical [ Slider.value 3.0 ] |> ignore<Setting<Slider>>)
     |> ignore
 
+// --- Style.onWhere (2026-11-19): onProp with a test where it has a value ---------------------------
+
+/// Made once, as a style's test should be.
+let private isHigh (v: float) = v >= 80.0
+let private isHighTest: float -> bool = isHigh
+
+[<Fact>]
+let ``onWhere applies while the element's own value passes the test, and is matched again when it changes`` () =
+    let style =
+        Slider.style [] [
+            Slider.fill red
+            Style.onWhere SliderProps.value isHighTest [
+                Slider.fill green
+                Style.onState States.disabled [ Slider.fill blue ]
+            ]
+            // Beside an onProp block and another onWhere: a style holds any number.
+            Style.onProp SliderProps.orientation Orientation.Vertical [ Slider.track blue ]
+            Style.onWhere SliderProps.step (fun s -> s > 1.0) [ Slider.track green ]
+        ]
+    let t = tree [ style ]
+    let view (settings: Setting<Slider> list) = Slider.create (Slider.name "s" :: settings)
+    let fill (root: Element) = (find "s" root).Get SliderProps.fill
+    Assert.Equal(red, fill (show t (view [ Slider.value 40.0 ])))
+    Assert.Equal(green, fill (show t (view [ Slider.value 80.0 ])))
+    // With a state inside it, both must hold.
+    Assert.Equal(blue, fill (show t (view [ Slider.value 90.0; Slider.isEnabled false ])))
+    Assert.Equal(red, fill (show t (view [ Slider.value 40.0; Slider.isEnabled false ])))
+    // The other blocks, each on its own property.
+    let both = show t (view [ Slider.value 90.0; Slider.step 5.0 ])
+    Assert.Equal(green, fill both)
+    Assert.Equal(green, (find "s" both).Get SliderProps.track)
+    // Tools read the rule as a selector; a test can't be written out.
+    let value = (find "s" both).Values |> List.find (fun v -> obj.ReferenceEquals(v.Prop, SliderProps.fill))
+    Assert.Equal("Slider[Value?]", value.Selector)
+    // Back under 80: matched again. No state was made for any of this.
+    Assert.Equal(red, fill (show t (view [ Slider.value 79.0 ])))
+    Assert.DoesNotContain((find "s" both).ApplicableStates, fun s -> s.Name = "high")
+
+[<Fact>]
+let ``onWhere reads the element's own value, never a style's`` () =
+    // The first style gives every Slider a step of 5; the test is on the step, and no Slider has one of its own.
+    let t =
+        tree [ Slider.style [] [ Slider.step 5.0 ]
+               Slider.style [] [ Style.onWhere SliderProps.step (fun s -> s = 5.0) [ Slider.fill red ] ] ]
+    let root = show t (Slider.create [])
+    Assert.Equal(5.0, root.Get SliderProps.step)
+    Assert.NotEqual(red, root.Get SliderProps.fill)
+    Assert.Equal(red, (show t (Slider.create [ Slider.step 5.0 ])).Get SliderProps.fill)
+
+[<Fact>]
+let ``onWhere is a style: it can't set handlers or app state`` () =
+    Assert.Throws<ArgumentException>(fun () ->
+        Style.onWhere SliderProps.value isHighTest [ Slider.value 3.0 ] |> ignore<Setting<Slider>>)
+    |> ignore
+
+[<Fact>]
+let ``two onWhere blocks are the same only when their test is the same function`` () =
+    let block (test: float -> bool) : Setting<Slider> = Style.onWhere SliderProps.value test [ Slider.fill red ]
+    // A style list made once gives the same function each time: a rebuilt view's styles don't count as a change.
+    Assert.Equal(box (block isHighTest).Value, box (block isHighTest).Value)
+    // Two functions that happen to do the same aren't known to.
+    Assert.NotEqual(box (block (fun v -> v >= 80.0)).Value, box (block (fun v -> v >= 80.0)).Value)
+    // Nor is a test the same as a value on the same property.
+    let byValue: Setting<Slider> = Style.onProp SliderProps.value 80.0 [ Slider.fill red ]
+    Assert.NotEqual(box (block isHighTest).Value, box byValue.Value)
+    Assert.NotEqual(box byValue.Value, box (block isHighTest).Value)
+
 // --- States of your own (2026-11-19): States.define with settings, Border.state -------------------
 
 let private limit = Prop.define "Limit" 3 Affects.Render
@@ -416,7 +483,7 @@ let private full =
     States.define "full-in-style-tests" [
         States.dependsOn level
         States.dependsOn limit
-        States.test (fun v -> v.Get level >= v.Get limit)
+        States.where (fun v -> v.Get level >= v.Get limit)
     ]
 
 [<Fact>]
@@ -477,15 +544,15 @@ let ``a state's test reads the element's own values, not a style's`` () =
 
 [<Fact>]
 let ``a state needs both what it depends on and a test, or neither`` () =
-    let noProps = Assert.Throws<ArgumentException>(fun () -> States.define "no-props" [ States.test (fun _ -> true) ] |> ignore)
+    let noProps = Assert.Throws<ArgumentException>(fun () -> States.define "no-props" [ States.where (fun _ -> true) ] |> ignore)
     Assert.Contains("States.dependsOn", noProps.Message)
     let noTest = Assert.Throws<ArgumentException>(fun () -> States.define "no-test" [ States.dependsOn level ] |> ignore)
-    Assert.Contains("States.test", noTest.Message)
+    Assert.Contains("States.where", noTest.Message)
 
 [<Fact>]
 let ``a test that reads a property the state doesn't depend on warns in a Debug build`` () =
     let unlisted = Prop.define "UnlistedForStateTest" 0 Affects.Render
-    let careless = States.define "careless" [ States.dependsOn level; States.test (fun v -> v.Get level > v.Get unlisted) ]
+    let careless = States.define "careless" [ States.dependsOn level; States.where (fun v -> v.Get level > v.Get unlisted) ]
     let warnings = System.Collections.Generic.List<string>()
     let listener = Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
     // Added beside any other test's listener, and taken away again, so neither takes the other's.

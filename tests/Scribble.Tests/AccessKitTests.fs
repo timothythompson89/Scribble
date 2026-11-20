@@ -320,7 +320,7 @@ let ``an app's window gets the bridge its values name, before it is shown; App.s
 let ``a bridge that can't start leaves the app running without one, with a debug warning`` () =
     let warnings = List<string>()
     let listener = Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
-    DebugWarnings.Listener <- listener
+    DebugWarnings.Listener <- Delegate.Combine(DebugWarnings.Listener, listener) :?> Action<string>
     // (The listener is one for the whole process: another test running beside this one may take it.)
     let mutable heard = true
     try
@@ -333,7 +333,7 @@ let ``a bridge that can't start leaves the app running without one, with a debug
         Assert.Contains("Button \"Hi\"", host.SemanticTree().ToString())
         heard <- obj.ReferenceEquals(DebugWarnings.Listener, listener)
     finally
-        DebugWarnings.Listener <- null
+        DebugWarnings.Listener <- Delegate.Remove(DebugWarnings.Listener, listener) :?> Action<string>
 #if DEBUG
     if heard then Assert.Contains(List.ofSeq warnings, fun m -> m.Contains "screen-reader bridge could not start")
 #endif

@@ -206,7 +206,7 @@ selected one has `isVisible true`, so each page keeps its state while hidden.
      chosen chip: its states line ends with `chosen`, lit, and its `background` is "from Border.chip:chosen".
      Click it again and `chosen` dims. An element that isn't a chip doesn't list `chosen` at all.
    - The slider under the chips: drag it past 80 and its filled part turns red, back below and it's blue again
-     (a state read from its value, `States.ofProp "high" SliderProps.value (fun v -> v >= 80.0)`).
+     (a look that follows its value: `Style.onWhere SliderProps.value (fun v -> v >= 80.0) [ ... ]`, no state).
    - "Compact buttons" swaps the page's style list: every button on the page gets smaller padding; again to undo.
    - "Disable Danger" fades it (the theme's disabled look); hover and click no longer work on it.
    - With the inspector (F12): pick Primary: its `classes` reads `.primary`, and its `background` shows `style`,
@@ -984,6 +984,7 @@ let styles = [
     ]
     TextBlock.style [ Style.inside Border.Type [ Style.cls "card" ] ] [ TextBlock.foreground light ]
     Slider.style [] [ Style.onProp SliderProps.orientation Orientation.Vertical [ Slider.width 24.0 ] ]   // while a property has a value
+    Slider.style [] [ Style.onWhere SliderProps.value (fun v -> v >= 80.0) [ Slider.fill Palette.danger ] ]  // while it passes a test
     TextBlock.style [ Style.parent StackPanel.Type [] ] [ TextBlock.margin 2.0 ]
     Style.any [] [ Style.onState States.focusVisible [ Layoutable.cursor Cursor.Hand ] ]
 ]
@@ -998,7 +999,9 @@ Border.create [ Border.onState States.hover [ Border.background lighter ] ]  // 
   touch Buttons); `Style.any` matches every type. Selector parts: `Style.cls "name"`, `Style.name "x"`,
   `Style.inside T [ ... ]` (any ancestor) and `Style.parent T [ ... ]` (the direct parent). Inside the settings,
   `Style.onState States.hover [ ... ]` applies while the element is in a state (`hover`, `pressed`, `focused`,
-  `focusVisible`, `disabled`, or your own) and `Style.onProp p v [ ... ]` while its property `p` equals `v`; blocks
+  `focusVisible`, `disabled`, or your own), `Style.onProp p v [ ... ]` while its property `p` equals `v` and
+  `Style.onWhere p test [ ... ]` while it passes a test (for a look that follows a value; make a state when the
+  condition needs a name: an element type's own, one several styles share, one to force in the inspector); blocks
   nest. An ancestor's state or property goes in its part, the one place a selector tests them:
   `Style.inside Button.Type [ States.disabled ]`, `Style.inside Border.Type [ Style.prop p v ]` (and
   `Style.where p (fun v -> ...)` for a test other than equals).
@@ -1041,7 +1044,7 @@ Border.create [ Border.onState States.hover [ Border.background lighter ] ]  // 
       States.define "full" [
           States.dependsOn RatingBarProps.value
           States.dependsOn RatingBarProps.max
-          States.test (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)
+          States.where (fun v -> v.Get RatingBarProps.value >= v.Get RatingBarProps.max)
       ]
   ```
 

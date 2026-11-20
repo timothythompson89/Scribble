@@ -128,7 +128,8 @@ let ``the hotspot is its centre unless given, in DIPs of the size asked for`` ()
 [<Fact>]
 let ``over 128 DIPs it shrinks to fit, with a debug warning`` () =
     let warnings = List<string>()
-    DebugWarnings.Listener <- Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
+    let listener = Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
+    DebugWarnings.Listener <- Delegate.Combine(DebugWarnings.Listener, listener) :?> Action<string>
     try
         let image = blank "big" 200 100 1.0
         let b = bitmapOver (Cursor.fromImage image []) 1.0
@@ -140,19 +141,20 @@ let ``over 128 DIPs it shrinks to fit, with a debug warning`` () =
         Assert.Contains(lock warnings (fun () -> List.ofSeq warnings), fun (m: string) -> m.Contains(image.Key) && m.Contains "128")
 #endif
     finally
-        DebugWarnings.Listener <- null
+        DebugWarnings.Listener <- Delegate.Remove(DebugWarnings.Listener, listener) :?> Action<string>
 
 [<Fact>]
 let ``icon-only settings on an image cursor warn and change nothing`` () =
     let warnings = List<string>()
-    DebugWarnings.Listener <- Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
+    let listener = Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
+    DebugWarnings.Listener <- Delegate.Combine(DebugWarnings.Listener, listener) :?> Action<string>
     try
         let image = picture "icon-only" [ [ red; blue ] ]
         let plain = bitmapOver (Cursor.fromImage image []) 1.0
         let filled = bitmapOver (Cursor.fromImage image [ Cursor.fill Color.White; Cursor.outlineWidth 3.0 ]) 1.0
         Assert.Equal<_ list>(quads plain, quads filled)
     finally
-        DebugWarnings.Listener <- null
+        DebugWarnings.Listener <- Delegate.Remove(DebugWarnings.Listener, listener) :?> Action<string>
 
 [<Fact>]
 let ``cursors are equal when their images and settings are`` () =

@@ -1,5 +1,5 @@
 /// The Styles page (M7): classes, state blocks, text styled inside a card, an inline block, chips styled from a
-/// state of our own, a slider styled from a state read from its value, and a button that swaps the page's style list.
+/// state of our own, a slider styled from its value, and a button that swaps the page's style list.
 module Scribble.Samples.Gallery.StylesPage
 
 open Scribble.Rendering
@@ -12,9 +12,6 @@ open Scribble.Samples.Gallery.Common
 /// A state of our own for the chips below: the view switches it (`Border.state chosen true`), styles use it
 /// like `States.hover`, and the inspector lists it on the chips.
 let private chosen = States.define "chosen" []
-/// A state read from a property an element already has: a Slider is "high" from 80 up. It is matched again by
-/// itself whenever the value changes.
-let private high = States.ofProp "high" SliderProps.value (fun v -> v >= 80.0)
 
 /// A theme value of our own, beside the built-in palette (every other colour in the Gallery is a `Palette` one):
 /// what lights up under the pointer here, and a chosen chip's border. Settings take it like `Palette.accent`
@@ -50,8 +47,8 @@ let private normalStyles =
       ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "chip" ] ] [ TextBlock.foreground Palette.textDim ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "chip"; chosen ] ] [ TextBlock.foreground Palette.onAccent ]
-      // The slider's filled part warns while its value is high.
-      Slider.style [] [ Style.onState high [ Slider.fill Palette.danger ] ] ]
+      // The slider's filled part warns while its value is high: a look that follows a value needs no state.
+      Slider.style [] [ Style.onWhere SliderProps.value (fun v -> v >= 80.0) [ Slider.fill Palette.danger ] ] ]
 
 /// The same, plus smaller buttons: switching the page between the two lists swaps a style list.
 let private compactStyles = normalStyles @ [ Button.style [] [ Button.padding (8.0, 3.0) ] ]
@@ -148,7 +145,7 @@ let demo =
                     Slider.onValueChanged level.Set
                 ]
                 TextBlock.create [
-                    TextBlock.text "Drag past 80 and it turns red: a state read from its value, States.ofProp"
+                    TextBlock.text "Drag past 80 and it turns red: Style.onWhere on its value"
                     TextBlock.foreground Palette.textDim
                     TextBlock.textWrapping TextWrapping.Wrap
                 ]
@@ -156,4 +153,4 @@ let demo =
         ])
 
 let view () =
-    page "Styles" "Looks from style lists: classes, states (built in, one of our own, one read from a value), text inside a card and inline blocks." [ demo () ]
+    page "Styles" "Looks from style lists: classes, states (built in and one of our own), a look that follows a value, text inside a card and inline blocks." [ demo () ]

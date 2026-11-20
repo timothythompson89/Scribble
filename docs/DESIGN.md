@@ -36,6 +36,7 @@ questions", as paragraphs starting with the name given here.
 | Style syntax | A selector says which elements, `Style.onState` and `Style.onProp` say when (2026-11-19) | Section "One way to say when" |
 | States of your own | `States.define "name" [ ... ]` and `Border.state`; the inspector lists an element's own states (2026-11-19) | Section "States of your own" |
 | The Gallery uses the built-in palette | Its own theme values are gone but for one example; `Palette.textDanger` (2026-11-19) | Section "The Gallery uses the built-in palette" |
+| Style.onWhere | `Style.onWhere prop test [ ... ]`; `States.where` replaces `States.test`; `States.ofProp` stays (2026-11-19) | Section "Style.onWhere, and where for a condition on values" (its heading quotes the word) |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -5459,6 +5460,46 @@ a sample that showed every app needing a palette beside ours.
   `styles-page-light@1x`, `layout-page@1x`, `layout-grid-overlay@1x`, `images-page@1x`, `inspector-pick@1x`,
   `inspector-floating@1x`, and the phone's Components, Scrolling, Lists and Styles pages. What changed in them:
   border and bar colours, the Primary and Danger buttons' borders, the alternate rows, the card's shadow.
+
+## Style.onWhere, and "where" for a condition on values (2026-11-19)
+
+Tim: "Let's update Styles.onProp to also have an overload that takes a test. With that, should we get rid of
+States.onProp" (meaning `States.ofProp`).
+
+1. **`Style.onWhere prop test [ ... ]`**: `onProp` with a test where it has a value.
+   `Slider.style [] [ Style.onWhere SliderProps.value (fun v -> v >= 80.0) [ Slider.fill Palette.danger ] ]`.
+   Not an overload of `onProp`: F# refuses overloads of a curried member (FS0816). Named for `Style.where`, as
+   `onProp` is for `Style.prop`. Considered: `onPropWhere` (longer), tupled overloads (would change every `onProp`,
+   and are ambiguous for a property whose type is a function).
+2. **`States.ofProp` stays public** (Tim asked not to be agreed with for its own sake; Claude's first answer had
+   it go internal). The framework's own four states are made with it, and an element author's `Expander` wants the
+   same; it is a named state (several styles share it, the inspector lists and forces it), where `onWhere` is a
+   condition inside one style; and removing it saves no code. The docs steer: a look that follows a value is
+   `Style.onWhere`; a state is for a condition that needs a name.
+3. **One word for a condition on values: "where".** `States.test` is now `States.where` (it read as a verb that
+   does something now); with `Style.where` and `Style.onWhere` that is the same word in a selector, a block and a
+   state. Parameter names stay `test`. Considered: `predicate` (the functional-programming term, not a plain
+   word); `when`, the better word for something that changes over time, but reserved in F# (it would be written
+   ``States.``when`` ``), and compounds such as `Style.onWhen` and `States.activeWhen` give one idea two words.
+4. **Two `onWhere` blocks are the same only when their test is the same function.** A style list made once is
+   unaffected; a test written inside a view's inline block is new on every run and restyles its element each
+   time. Documented on the member, as `onProp` already says it is for styles; no warning.
+
+**As built (2026-11-19)**
+- `Style.fs`: `Style.onWhere`; an `onWhere` block is kept under the same key as `onProp` blocks and compared by its
+  test (`WhereTest`), an `onProp` block by its value as before. `States.where` replaces `States.test` (the Debug
+  warning's key and both messages with it). A tool reads the rule as `Slider[Value?]`, as for `Style.where`.
+- Gallery: the Styles page's slider is `Style.onWhere`; its `high` state is gone, so the slider's STATES row is the
+  five built-in states. The hint reads "Drag past 80 and it turns red: Style.onWhere on its value". References
+  regenerated and looked at: `styles-page@1x`, `styles-page-light@1x`, `gallery-phone-styles@3x` (the hint's and the
+  page's first line's words).
+- Tests: four new in `StyleTests.fs` (follows the value and nests with `onState`, beside `onProp` blocks; own
+  value, not a style's; can't set app state; block equality by test function).
+- Found on the way: a unit test failed twice in some thirty runs. One cause fixed: five tests set
+  `DebugWarnings.Listener` outright and cleared it, taking away the listener of any warning test running beside
+  them; all now add and remove their own. One cause left and not looked into: `the Gallery's Images page finds its
+  embedded pictures and draws every one` failed once (no message kept); `ImageCache.DecodeInlineOnThisThread` is
+  process-wide and one test turns it off, which is the first place to look.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

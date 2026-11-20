@@ -392,12 +392,13 @@ let ``an element without a node says why`` () =
 [<Fact>]
 let ``a label without a role gets a debug warning`` () =
     let said = List<string>()
-    DebugWarnings.Listener <- System.Action<string>(said.Add)
+    let listener = System.Action<string>(fun m -> lock said (fun () -> said.Add m))
+    DebugWarnings.Listener <- System.Delegate.Combine(DebugWarnings.Listener, listener) :?> System.Action<string>
     try
         let _, host = showView (Border.create [ Semantics.label "Lonely card" ])
         host.SemanticTree() |> ignore
     finally
-        DebugWarnings.Listener <- null
+        DebugWarnings.Listener <- System.Delegate.Remove(DebugWarnings.Listener, listener) :?> System.Action<string>
 #if DEBUG
     Assert.Contains(said, fun m -> m.Contains "Lonely card")
 #endif

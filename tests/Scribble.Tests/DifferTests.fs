@@ -216,13 +216,13 @@ module private Twice =
 let ``a settings list that sets a property twice warns once in Debug builds`` () =
     let heard = Collections.Concurrent.ConcurrentQueue<string>()
     let listener = Action<string>(heard.Enqueue)
-    DebugWarnings.Listener <- listener
+    DebugWarnings.Listener <- Delegate.Combine(DebugWarnings.Listener, listener) :?> Action<string>
     try
         for _ in 1..3 do
             View.Create(Twice.Type, [ Setting.create Twice.width 1.0; Setting.create Twice.width 2.0 ]) |> ignore
         View.Create(Twice.Type, [ Setting.create Twice.width 1.0 ]) |> ignore
     finally
-        DebugWarnings.Listener <- null
+        DebugWarnings.Listener <- Delegate.Remove(DebugWarnings.Listener, listener) :?> Action<string>
     let mine = heard |> Seq.filter (fun m -> m.Contains "TwiceWidth") |> List.ofSeq
 #if DEBUG
     Assert.Equal<string list>([ "Twice: its settings set TwiceWidth more than once; the last one wins." ], mine)
