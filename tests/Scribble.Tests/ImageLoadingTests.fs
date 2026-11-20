@@ -59,13 +59,15 @@ let private ok (bytes: byte[]) = new HttpResponseMessage(HttpStatusCode.OK, Cont
 
 /// Waits (real time: downloads finish on other threads) until `condition`, running what they post to the UI thread.
 let private waitFor (cache: ImageCache) (dispatcher: Dispatcher) (condition: unit -> bool) =
-    let deadline = DateTime.UtcNow.AddSeconds 5.0
+    let deadline = DateTime.UtcNow + RealTime.patience
     while not (condition ()) && DateTime.UtcNow < deadline do
         dispatcher.RunPending()
         Thread.Yield() |> ignore
     dispatcher.RunPending()
     let struct (running, waiting) = cache.Downloads
-    Assert.True(condition (), "timed out waiting; downloads running " + string running + ", waiting " + string waiting + "
+    Assert.True(
+        condition (),
+        "timed out waiting; downloads running " + string running + ", waiting " + string waiting + "; " + RealTime.poolNow () + "
 " + Environment.StackTrace)
 
 /// A tree showing `view`, its errors collected; `http` answers the downloads of its own image cache (null: the tests'
@@ -98,9 +100,11 @@ type private Scene(view: View, http: HttpMessageHandler, ?width: float, ?height:
     member _.WaitFor(condition: unit -> bool) = waitFor tree.Images dispatcher condition
     interface IDisposable with
         member _.Dispose() =
-            // Taken down, its downloads are cancelled: the next test gets all 6 places.
+            // Taken down, its downloads are cancelled. Nothing is waited for or checked here: the cache is this
+            // scene's own, so no other test needs its places back, and a check here would hide what the test itself
+            // failed with (`a download nothing shows any more is cancelled ...` holds that the places come back).
             tree.Update(Border.create [])
-            waitFor tree.Images dispatcher (fun () -> tree.Images.Downloads = struct (0, 0))
+            dispatcher.RunPending()
 
 let private topLeft (image: Image) =
     ImageView.create [ ImageView.image image; ImageView.horizontalAlignment Left; ImageView.verticalAlignment Top ]
@@ -214,6 +218,8 @@ let ``a download nothing shows any more is cancelled, and one still waiting is n
     s.Update(StackPanel.create [])
     s.WaitFor(fun () -> http.Cancelled.Length = 6)
     Assert.Equal(6, http.Requests.Length)
+    // And every place comes back (the scenes' own teardown no longer checks this).
+    s.WaitFor(fun () -> s.Tree.Images.Downloads = struct (0, 0))
     for u in urls do
         Assert.False(s.Tree.Images.Contains("url:" + u))
     Assert.Empty s.Errors
@@ -273,9 +279,11 @@ let ``10,000 rows of downloaded avatars ask only for the realized rows, also aft
     // Not "12 requests, 6 cancelled" exactly (2026-11-20: that failed about one run in five in Release). The jump
     // lays the list out in two passes, the first realizing a few rows more than the second keeps, and a cancelled
     // download gives its place back on another thread. When that thread is quick, a row of the first pass (8,991,
-    // seen) is asked for and then cancelled as the second pass lets it go: 13 requests, 7 cancelled. What holds
-    // whatever the threads do: the first six are cancelled, six are open, and no row but those near 9,000 was
-    // ever asked for.
+    // seen) is asked for and then cancelled as the second pass lets it go: 13 requests, 7 cancelled. The same
+    // way, a row of the first screen that was still waiting for a place (6, seen) can get one for a moment, as the
+    // rows before it let theirs go one by one, and is cancelled when its own turn to go comes. What holds whatever
+    // the threads do: the first six are cancelled; the six open requests are for rows near 9,000; anything else
+    // asked for on the way was a first-screen row or one near 9,000, and was cancelled; nothing between was asked.
     let rowOf (u: string) = int (Path.GetFileNameWithoutExtension(Uri(u).LocalPath))
     s.WaitFor(fun () -> http.Cancelled.Length >= 6 && http.Requests.Length - http.Cancelled.Length = 6)
     let asked, cancelled = http.Requests, http.Cancelled
@@ -284,8 +292,13 @@ let ``10,000 rows of downloaded avatars ask only for the realized rows, also aft
         Assert.Contains(urlOf i, cancelled)
     let struct (running, _) = s.Tree.Images.Downloads
     Assert.Equal(6, running)
+    let near (row: int) = row >= 8980 && row <= 9020
+    let stillOpen = asked |> List.filter (fun u -> not (List.contains u cancelled))
+    Assert.Equal(6, stillOpen.Length)
+    for u in stillOpen do
+        Assert.True(near (rowOf u), "open: " + u)
     for u in List.skip 6 asked do
-        Assert.True(rowOf u >= 8980 && rowOf u <= 9020, u)
+        Assert.True(near (rowOf u) || rowOf u < 20, "asked: " + u)
     for i in 100..8900 do
         Assert.DoesNotContain(urlOf i, asked)
     Assert.Empty s.Errors
@@ -315,7 +328,7 @@ let ``an image cursor shows the arrow until its picture arrives, then changes wi
     try
         w.DeliverFrame() |> ignore
         // The first frame asked for it: the download started before any pointer.
-        let deadline = DateTime.UtcNow.AddSeconds 5.0
+        let deadline = DateTime.UtcNow + RealTime.patience
         while http.Requests.IsEmpty && DateTime.UtcNow < deadline do
             Thread.Yield() |> ignore
         Assert.Equal<string list>([ url ], http.Requests)
@@ -326,7 +339,7 @@ let ``an image cursor shows the arrow until its picture arrives, then changes wi
         Assert.False(w.FrameRequested)
         let frames = device.Frames
         http.Answer(url, ok pngBytes)
-        let deadline = DateTime.UtcNow.AddSeconds 5.0
+        let deadline = DateTime.UtcNow + RealTime.patience
         while w.Cursor = Cursor.Default && DateTime.UtcNow < deadline do
             platform.RunWake()
             Thread.Yield() |> ignore

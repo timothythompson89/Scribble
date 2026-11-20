@@ -5192,6 +5192,25 @@ Facts at the start.
   that every other request is within 20 rows of 9,000. The hook's 10,000-row test read "running" after waiting
   for a count of requests, the same mistake in a smaller window: it waits for six open too. 60 Release runs of
   the whole suite in a row passed after the change.
+- **It failed again in CI run 17, the same day, and that showed two more things.** The message was a timeout in
+  the scene's teardown ("downloads running 3, waiting 0"), which waited 5 s for the cancelled downloads to hand
+  their places back and asserted it. (a) **The teardown was hiding the test's own failure**: an exception from
+  `Dispose` replaces the one the body threw. With the teardown's check gone the test failed fast, 3 runs in 25,
+  on its own assertion: the fix above had kept "every request after the first six is near 9,000", and a row of
+  the first screen still waiting for a place (6, seen) can get one for a moment as the rows before it are let
+  go one by one. It now says what holds: the six open requests are near 9,000; anything else asked for on the
+  way was a first-screen row or one near 9,000 and was cancelled; nothing between was asked. (b) **The 5 s were
+  too short for a hosted runner**, where three of six cancellations had come back by then. Not reproduced on
+  Tim's machine (limited to 1, 2 and 4 processors, 35 runs; and a temporary report of any teardown slower than
+  half a second stayed empty over 50 runs), so the cause is inferred: xUnit runs test bodies on the thread
+  pool, as many as there are processors, which is also how many threads the pool starts without waiting, so a
+  continuation queues behind them and gets a thread only as the pool adds one. Done for it
+  (`tests/Scribble.Tests/ImageSetup.fs`): the pool's minimum is raised to 32 for the test process; waits in
+  real time have 30 s (`RealTime.patience`: a wait ends the moment its condition holds, so a passing test pays
+  nothing); a timeout's message says what the pool was doing (`RealTime.poolNow`), so the next one is not a
+  guess. The scenes' teardown cancels and checks nothing (each scene's cache is its own since image state went
+  per app, so no other test needs its places); that places do come back is held by one test (`a download
+  nothing shows any more is cancelled ...`). 70 Release runs in a row passed after these changes.
 - **A second test failed the same way in run 7:** `10,000 rows of downloaded avatars ...` timed out waiting for 6
   requests ("downloads running 6, waiting 9"). The HTTP handler and the six download places are also one per
   process, and the Gallery's Images page has two pictures from real URLs: a test drawing the Gallery at the same

@@ -25,12 +25,41 @@ type NoNetwork() =
             )
         )
 
+/// For the few tests that wait in real time for work on other threads (a download's cancellation coming back, a
+/// background decode). Such a wait ends the moment its condition holds, so a long limit costs a passing test
+/// nothing; a short one fails a slow machine (2026-11-20, CI run 17: three of six cancelled downloads had given
+/// their places back after 5 s on a hosted runner; never seen on Tim's machine in over a hundred runs).
+module RealTime =
+    /// How long such a wait may last before the test gives up.
+    let patience = TimeSpan.FromSeconds 30.0
+
+    /// The thread pool as it is now, for a timeout's message: queued work with few threads means the wait starved.
+    let poolNow () =
+        let mutable workers, io = 0, 0
+        ThreadPool.GetMinThreads(&workers, &io)
+        "thread pool: "
+        + string ThreadPool.ThreadCount
+        + " threads (minimum "
+        + string workers
+        + "), "
+        + string ThreadPool.PendingWorkItemCount
+        + " work items queued, "
+        + string Environment.ProcessorCount
+        + " processors"
+
 /// xUnit makes one of these before it runs (or lists) the tests of this assembly: the one place that runs once
 /// for the whole test process.
 type ScribbleTestFramework(messageSink: IMessageSink) =
     inherit XunitTestFramework(messageSink)
 
     do
+        // xUnit runs test bodies on the thread pool, as many at once as there are processors, which is also how
+        // many threads the pool starts at once without waiting. A test that waits for a continuation (a download
+        // handing its place back) while the others hold those threads gets it only as the pool adds threads, about
+        // one a second. A higher minimum lets continuations run at once on a small machine.
+        let mutable workers, io = 0, 0
+        ThreadPool.GetMinThreads(&workers, &io)
+        ThreadPool.SetMinThreads(max workers 32, max io 32) |> ignore
         ImageCache.ConfigureNew <-
             Action<ImageCache>(fun cache ->
                 cache.DecodeInline <- true

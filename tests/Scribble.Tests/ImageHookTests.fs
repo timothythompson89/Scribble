@@ -74,17 +74,19 @@ type private Scene(?http: HttpMessageHandler) =
         list
     /// Frames (real time: downloads and background decodes end on other threads) until `condition`.
     member this.WaitFor(condition: unit -> bool) =
-        let deadline = DateTime.UtcNow.AddSeconds 5.0
+        let deadline = DateTime.UtcNow + RealTime.patience
         while not (condition ()) && DateTime.UtcNow < deadline do
             this.Frame() |> ignore
             Thread.Yield() |> ignore
         this.Frame() |> ignore
-        Assert.True(condition (), "timed out waiting")
+        let struct (running, waiting) = tree.Images.Downloads
+        Assert.True(condition (), "timed out waiting; downloads running " + string running + ", waiting " + string waiting + "; " + RealTime.poolNow ())
     interface IDisposable with
         member this.Dispose() =
-            // Taken down, its downloads are cancelled.
+            // Taken down, its downloads are cancelled. Nothing is checked here: the cache is this scene's own, and
+            // a check here would hide what the test itself failed with.
             tree.Update(Border.create [])
-            this.WaitFor(fun () -> tree.Images.Downloads = struct (0, 0))
+            this.Frame() |> ignore
 
 let private isReady (status: ImageStatus) =
     match status with
