@@ -37,6 +37,7 @@ questions", as paragraphs starting with the name given here.
 | States of your own | `States.define "name" [ ... ]` and `Border.state`; the inspector lists an element's own states (2026-11-19) | Section "States of your own" |
 | The Gallery uses the built-in palette | Its own theme values are gone but for one example; `Palette.textDanger` (2026-11-19) | Section "The Gallery uses the built-in palette" |
 | Style.onWhere | `Style.onWhere prop test [ ... ]`; `States.where` replaces `States.test`; `States.ofProp` stays (2026-11-19) | Section "Style.onWhere, and where for a condition on values" (its heading quotes the word) |
+| Property tests in selectors | `Style.prop` and `Style.where` are for an ancestor's part only; they throw in a style's own selector (2026-11-19) | Section "Style.prop and Style.where are for an ancestor's part only" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -5500,6 +5501,31 @@ States.onProp" (meaning `States.ofProp`).
   them; all now add and remove their own. One cause left and not looked into: `the Gallery's Images page finds its
   embedded pictures and draws every one` failed once (no message kept); `ImageCache.DecodeInlineOnThisThread` is
   process-wide and one test turns it off, which is the first place to look.
+
+## Style.prop and Style.where are for an ancestor's part only (2026-11-19)
+
+Tim, after asking what a style written with `Style.where` looks like: "should we get rid of Style.where and have
+them create a state instead?", then "make them ancestor only". Since "One way to say when", a condition on the
+element itself is a block, but `Border.style [ Style.where p test ] [ ... ]` still worked, and the two members' doc
+comments showed that form: two ways to write one thing.
+
+1. **Kept, not replaced by states.** A state for an ancestor's one-off condition would have the app invent a name
+   and register a process-wide state for it, and would allow an anonymous condition on the element (`onProp`,
+   `onWhere`) but not on an ancestor. `Style.prop` would have had to go with it.
+2. **In a style's own selector they throw when the style is made** (`X.style`, `Style.any`), naming the property
+   and the block to write: `Style.onProp prop value [ ... ]` or `Style.onWhere prop test [ ... ]`. Inside
+   `Style.inside` and `Style.parent`, at any depth, they are as before.
+3. **One way to write each:** a block for the element's own condition, a selector part for an ancestor's, a state
+   when the condition needs a name.
+4. **A state in a style's own selector is left as it is** (`Border.style [ States.hover ] [ ... ]` still works):
+   not asked, and the theme's own styles would need a look first.
+
+**As built (2026-11-19)**
+- `Selector.buildOwn` in `Style.fs`, used by `Style.forType` and `Style.any`; the ancestor parts keep `build`. Both
+  members' doc comments show the ancestor form.
+- Tests: the three that used the own-selector form are now blocks or ancestor parts (the selector-text test reads
+  `Border[IsChecked=true] TextBlock`, `Button.primary[Level=2]:hover > TextBlock`, `Border[Level?] TextBlock`); one
+  new test holds the rule. No picture changed.
 
 ## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
 

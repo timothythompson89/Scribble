@@ -268,8 +268,8 @@ let private checkedOn (v: bool) : Setting<Border> = Setting.create isChecked v
 let private levelOf (v: int) : Setting<Border> = Setting.create level v
 
 [<Fact>]
-let ``a property selector matches the value, and changing it re-matches`` () =
-    let t = tree [ Border.style [ Style.prop isChecked true ] [ Border.background red ] ]
+let ``a property block matches the value, and changing it re-matches`` () =
+    let t = tree [ Border.style [] [ Style.onProp isChecked true [ Border.background red ] ] ]
     let root = show t (Border.create [])
     Assert.Equal(Color.Transparent, background root)
     show t (Border.create [ checkedOn true ]) |> ignore
@@ -288,19 +288,39 @@ let ``a style setting the tested property doesn't change what matches`` () =
     let t =
         tree [
             Border.style [] [ checkedOn true ]
-            Border.style [ Style.prop isChecked true ] [ Border.background red ]
+            Border.style [] [ Style.onProp isChecked true [ Border.background red ] ]
         ]
     let root = show t (Border.create [])
     Assert.True(root.Get isChecked) // the style's value shows...
     Assert.Equal(Color.Transparent, background root) // ...but selectors only see the unstyled value
 
 [<Fact>]
-let ``where tests with a function`` () =
-    let t = tree [ Border.style [ Style.where level (fun l -> l >= 2) ] [ Border.background red ] ]
-    let root = show t (Border.create [ levelOf 1 ])
-    Assert.Equal(Color.Transparent, background root)
-    show t (Border.create [ levelOf 3 ]) |> ignore
-    Assert.Equal(red, background root)
+let ``where tests an ancestor's property with a function, and re-matches what's inside`` () =
+    let t = tree [ TextBlock.style [ Style.inside Border.Type [ Style.where level (fun l -> l >= 2) ] ] [ TextBlock.foreground red ] ]
+    let view l = Border.create [ levelOf l; Border.content (TextBlock.create [ TextBlock.name "label" ]) ]
+    let root = show t (view 1)
+    let label = find "label" root
+    Assert.Equal(Color.Black, label.Get TextProps.foreground)
+    show t (view 3) |> ignore
+    Assert.Equal(red, label.Get TextProps.foreground)
+    show t (view 1) |> ignore
+    Assert.Equal(Color.Black, label.Get TextProps.foreground)
+
+[<Fact>]
+let ``a property test is for an ancestor's part: in a style's own selector it throws, naming the block to use`` () =
+    // One way to write each: a block for the element itself, a selector part for an ancestor, a state for a name.
+    let own (make: unit -> Style) =
+        let e = Assert.Throws<ArgumentException>(fun () -> make () |> ignore)
+        Assert.Contains("Style.onProp", e.Message)
+        Assert.Contains("Style.onWhere", e.Message)
+        e.Message
+    Assert.Contains("IsChecked", own (fun () -> Border.style [ Style.prop isChecked true ] [ Border.background red ]))
+    Assert.Contains("Level", own (fun () -> Border.style [ Style.cls primary; Style.where level (fun l -> l > 0) ] [ Border.background red ]))
+    own (fun () -> Style.any [ Style.prop isChecked true ] [ Layoutable.opacity 0.5 ]) |> ignore
+    // In an ancestor's part, at any depth, both are fine.
+    TextBlock.style [ Style.inside Border.Type [ Style.prop isChecked true ] ] [ TextBlock.foreground red ] |> ignore
+    TextBlock.style [ Style.parent Border.Type [ Style.where level (fun l -> l > 0) ] ] [ TextBlock.foreground red ] |> ignore
+    TextBlock.style [ Style.inside StackPanel.Type [ Style.inside Border.Type [ Style.prop level 2 ] ] ] [ TextBlock.foreground red ] |> ignore
 
 [<Fact>]
 let ``a property on an ancestor re-matches what's inside`` () =
@@ -329,9 +349,9 @@ let ``a state from a property works in styles and inline blocks`` () =
 
 [<Fact>]
 let ``property selectors read as text for the inspector`` () =
-    Assert.Equal("Border[IsChecked=true]", (Border.style [ Style.prop isChecked true ] [ Border.background red ]).Description)
-    Assert.Equal("Button.primary[Level=2]:hover", (Button.style [ Style.cls primary; Style.prop level 2; States.hover ] [ Button.background red ]).Description)
-    Assert.Equal("Border[Level?]", (Border.style [ Style.where level (fun l -> l > 0) ] [ Border.background red ]).Description)
+    Assert.Equal("Border[IsChecked=true] TextBlock", (TextBlock.style [ Style.inside Border.Type [ Style.prop isChecked true ] ] [ TextBlock.foreground red ]).Description)
+    Assert.Equal("Button.primary[Level=2]:hover > TextBlock", (TextBlock.style [ Style.parent Button.Type [ Style.cls primary; Style.prop level 2; States.hover ] ] [ TextBlock.foreground red ]).Description)
+    Assert.Equal("Border[Level?] TextBlock", (TextBlock.style [ Style.inside Border.Type [ Style.where level (fun l -> l > 0) ] ] [ TextBlock.foreground red ]).Description)
     Assert.Equal("Border:checked", (Border.style [ checkedState ] [ Border.background red ]).Description)
 
 [<Fact>]

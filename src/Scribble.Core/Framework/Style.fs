@@ -304,6 +304,19 @@ module internal Selector =
     let build (t: ElementType voption) (parts: SelectorPart list) =
         parts |> List.fold (fun s (p: SelectorPart) -> p.Apply s) { Selector.Any with Type = t }
 
+    /// A style's own selector: `build`, and a property test in it throws. `Style.prop` and `Style.where` are for
+    /// an ancestor's part; a condition on the element itself is a block (one way to write each).
+    let buildOwn (t: ElementType voption) (parts: SelectorPart list) =
+        let s = build t parts
+        match s.Props with
+        | [] -> s
+        | test :: _ ->
+            invalidArg
+                "parts"
+                ("A style's own selector can't test a property (" + test.Prop.Name + "): Style.prop and Style.where go in an ancestor's part "
+                 + "(Style.inside T [ ... ], Style.parent T [ ... ]). For the element itself, put the settings in a block: "
+                 + "Style.onProp prop value [ ... ] or Style.onWhere prop test [ ... ].")
+
     let rec matches (s: Selector) (e: Element) =
         (match s.Type with
          | ValueSome t -> obj.ReferenceEquals(e.Type, t)
@@ -442,7 +455,7 @@ type Style internal (rules: Rule[], description: string) =
     /// A style for elements of type `elementType` (exactly that type). Element modules wrap it as
     /// their `style`: `let style parts (settings: Setting<ProgressBar> list) = Style.forType Type parts settings`.
     static member forType<'k> (elementType: ElementType) (parts: SelectorPart list) (settings: Setting<'k> list) : Style =
-        Style.Create(Selector.build (ValueSome elementType) parts, [| for s in settings -> struct (s.Prop, s.Value) |])
+        Style.Create(Selector.buildOwn (ValueSome elementType) parts,[| for s in settings -> struct (s.Prop, s.Value) |])
 
     /// Elements with this class (`X.classes [ "primary" ]`; all the classes given must be there;
     /// names are case-sensitive).
@@ -450,8 +463,11 @@ type Style internal (rules: Rule[], description: string) =
     /// The element named `value` (`Layoutable.name`).
     static member name(value: string) = SelectorPart(fun s -> { s with Name = ValueSome value })
 
-    /// Elements whose own value of `prop` (else its default; never a style's) equals `value`:
-    /// `CheckBox.style [ Style.prop CheckBoxProps.isChecked true ] [ ... ]`. Matched again when it changes.
+    /// In an ancestor's part (`Style.inside`, `Style.parent`): an ancestor whose own value of `prop` (else its
+    /// default; never a style's) equals `value`:
+    /// `TextBlock.style [ Style.inside StackPanel.Type [ Style.prop StackProps.orientation Horizontal ] ] [ ... ]`.
+    /// Matched again when it changes. Not for a style's own selector (it throws there): a condition on the
+    /// element itself is a block, `Style.onProp prop value [ ... ]`.
     static member prop<'T when 'T: equality> (prop: Prop<'T>) (value: 'T) : SelectorPart =
         prop.TestedByStyles <- true
         let test =
@@ -460,8 +476,11 @@ type Style internal (rules: Rule[], description: string) =
               Text = "[" + prop.Name + "=" + Selector.valueText (box value) + "]" }
         SelectorPart(fun s -> { s with Props = s.Props @ [ test ] })
 
-    /// Elements whose own value of `prop` (else its default; never a style's) passes `test`:
-    /// `TextBlock.style [ Style.where TextBlockProps.fontSize (fun s -> s >= 20.0) ] [ ... ]`.
+    /// In an ancestor's part (`Style.inside`, `Style.parent`): an ancestor whose own value of `prop` (else its
+    /// default; never a style's) passes `test`:
+    /// `TextBlock.style [ Style.inside StackPanel.Type [ Style.where StackProps.spacing (fun s -> s < 4.0) ] ] [ ... ]`.
+    /// Matched again when it changes. Not for a style's own selector (it throws there): a condition on the
+    /// element itself is a block, `Style.onWhere prop test [ ... ]`.
     static member where<'T> (prop: Prop<'T>) (test: 'T -> bool) : SelectorPart =
         prop.TestedByStyles <- true
         let t = { Prop = prop; Test = (fun v -> test (unbox<'T> v)); Text = "[" + prop.Name + "?]" }

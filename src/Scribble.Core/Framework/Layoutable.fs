@@ -172,4 +172,4 @@ module StyleExtensions =
     type Style with
         /// A style for elements of any type: `Style.any [ Style.cls compact ] [ Layoutable.margin 2.0 ]`.
         static member any (parts: SelectorPart list) (settings: Setting<Layoutable> list) : Style =
-            Style.Create(Selector.build ValueNone parts, [| for s in settings -> struct (s.Prop, s.Value) |])
+            Style.Create(Selector.buildOwn ValueNone parts,[| for s in settings -> struct (s.Prop, s.Value) |])

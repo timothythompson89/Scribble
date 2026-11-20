@@ -1004,7 +1004,8 @@ Border.create [ Border.onState States.hover [ Border.background lighter ] ]  // 
   condition needs a name: an element type's own, one several styles share, one to force in the inspector); blocks
   nest. An ancestor's state or property goes in its part, the one place a selector tests them:
   `Style.inside Button.Type [ States.disabled ]`, `Style.inside Border.Type [ Style.prop p v ]` (and
-  `Style.where p (fun v -> ...)` for a test other than equals).
+  `Style.where p (fun v -> ...)` for a test other than equals). `Style.prop` and `Style.where` are for an ancestor's
+  part only: in a style's own selector they throw, with a message naming the block to write instead.
 - **Classes are plain names**, matched exactly (case counts). For typo safety, define a name once
   (`let primary = "primary"`) and use that.
 - **Property selectors read the element's own value** (else its default), never a value set by a style, so a style
