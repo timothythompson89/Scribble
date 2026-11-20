@@ -107,26 +107,19 @@ let private lists =
                         ]
                     ]
                 ]
-                Border.create [
+                ListBox.create [
                     DockPanel.dock Dock.Fill
-                    Border.borderBrush Palette.border
-                    Border.borderThickness 1.0
-                    Border.cornerRadius 6.0
-                    Border.padding 4.0
-                    Border.content (
-                        ScrollViewer.create [
-                            ScrollViewer.content (
-                                ListBox.create [
-                                    ListBox.name "items"
-                                    ListBox.source source
-                                    ListBox.keySelector (fun (i: Item) -> i.Id)
-                                    ListBox.viewSelector (fun (i: Item) -> i.Name)
-                                    ListBox.selectionMode mode.Current
-                                    ListBox.selected selected.Current
-                                    ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Item, int>) -> selected.Set e.Keys)
-                                    ListBox.onItemInvoked (fun (e: ItemInvokedEventArgs<Item, int>) -> invoked.Set("#" + number e.Key))
-                                ])
-                        ])
+                    ListBox.borderBrush Palette.border
+                    ListBox.borderThickness 1.0
+                    ListBox.cornerRadius 6.0
+                    ListBox.name "items"
+                    ListBox.source source
+                    ListBox.keySelector (fun (i: Item) -> i.Id)
+                    ListBox.viewSelector (fun (i: Item) -> i.Name)
+                    ListBox.selectionMode mode.Current
+                    ListBox.selected selected.Current
+                    ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Item, int>) -> selected.Set e.Keys)
+                    ListBox.onItemInvoked (fun (e: ItemInvokedEventArgs<Item, int>) -> invoked.Set("#" + number e.Key))
                 ]
                 // The colours: a view of their own per item; the list keeps its own selection.
                 StackPanel.create [
@@ -141,24 +134,17 @@ let private lists =
                             TextBlock.fontSize 12.0
                             TextBlock.textWrapping Wrap
                         ]
-                        Border.create [
-                            Border.height 150.0
-                            Border.borderBrush Palette.border
-                            Border.borderThickness 1.0
-                            Border.cornerRadius 6.0
-                            Border.padding 4.0
-                            Border.content (
-                                ScrollViewer.create [
-                                    ScrollViewer.content (
-                                        ListBox.create [
-                                            ListBox.name "swatches"
-                                            ListBox.source swatches
-                                            ListBox.keySelector (fun (s: Swatch) -> s.Name)
-                                            ListBox.viewSelector swatchView
-                                            ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Swatch, string>) ->
-                                                colours.Set(e.Key |> ValueOption.defaultValue ""))
-                                        ])
-                                ])
+                        ListBox.create [
+                            ListBox.height 150.0
+                            ListBox.borderBrush Palette.border
+                            ListBox.borderThickness 1.0
+                            ListBox.cornerRadius 6.0
+                            ListBox.name "swatches"
+                            ListBox.source swatches
+                            ListBox.keySelector (fun (s: Swatch) -> s.Name)
+                            ListBox.viewSelector swatchView
+                            ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Swatch, string>) ->
+                                colours.Set(e.Key |> ValueOption.defaultValue ""))
                         ]
                     ]
                 ]

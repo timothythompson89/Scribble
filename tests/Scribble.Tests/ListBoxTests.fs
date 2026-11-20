@@ -26,7 +26,8 @@ let private show (view: View) =
     w.DeliverFrame() |> ignore
     w, (app :?> ElementHost)
 
-let private listOf (host: ElementHost) = all host.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, ListBox.Type))
+/// The list inside the ListBox (a `ListBoxItems`): what holds the items.
+let private listOf (host: ElementHost) = all host.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, ListBoxItems.Type))
 
 /// The realized containers, in item order.
 let private containers (host: ElementHost) =
@@ -58,16 +59,13 @@ let private keyWith (w: FakeWindow) (mods: Modifiers) k =
 
 let private key w k = keyWith w Modifiers.None k
 
-/// A ListBox of `n` people in a ScrollViewer, items 30 DIPs of content high; `extra` settings after.
+/// A ListBox of `n` people, items 30 DIPs of content high; `extra` settings after.
 let private list (n: int) (extra: Setting<ListBox> list) =
-    ScrollViewer.create [
-        ScrollViewer.content (
-            ListBox.create [
-                ListBox.source (people n)
-                ListBox.keySelector (fun (p: Person) -> p.Id)
-                ListBox.viewSelector (fun (p: Person) -> Border.create [ Border.height 30.0; Border.content (TextBlock.create [ TextBlock.text p.Name ]) ])
-                yield! extra
-            ])
+    ListBox.create [
+        ListBox.source (people n)
+        ListBox.keySelector (fun (p: Person) -> p.Id)
+        ListBox.viewSelector (fun (p: Person) -> Border.create [ Border.height 30.0; Border.content (TextBlock.create [ TextBlock.text p.Name ]) ])
+        yield! extra
     ]
 
 type private Changes() =
@@ -237,14 +235,11 @@ let ``the selection follows keys through sorting and removal`` () =
     let source = ref (people 10)
     let view () =
 
-        ScrollViewer.create [
-            ScrollViewer.content (
-                ListBox.create [
-                    ListBox.source source.Value
-                    ListBox.keySelector (fun (p: Person) -> p.Id)
-                    ListBox.viewSelector (fun (p: Person) -> p.Name)
-                    ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> reports.Add e.Keys)
-                ])
+        ListBox.create [
+            ListBox.source source.Value
+            ListBox.keySelector (fun (p: Person) -> p.Id)
+            ListBox.viewSelector (fun (p: Person) -> p.Name)
+            ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> reports.Add e.Keys)
         ]
     let w, host = show (view ())
     click w (container host 4)
@@ -267,14 +262,11 @@ let ``the selection follows keys through sorting and removal`` () =
 let ``a controlled selection's missing key is left to the app`` () =
     let reports = List<int list>()
     let view (items: Person array) =
-        ScrollViewer.create [
-            ScrollViewer.content (
-                ListBox.create [
-                    ListBox.source items
-                    ListBox.keySelector (fun (p: Person) -> p.Id)
-                    ListBox.selected [ 4 ]
-                    ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> reports.Add e.Keys)
-                ])
+        ListBox.create [
+            ListBox.source items
+            ListBox.keySelector (fun (p: Person) -> p.Id)
+            ListBox.selected [ 4 ]
+            ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> reports.Add e.Keys)
         ]
     let w, host = show (view (people 10))
     Assert.Equal<int list>([ 4 ], selectedKeys host)
@@ -324,3 +316,173 @@ let ``after a click, focus moved by the arrow keys shows the ring`` () =
     // A press puts it away again.
     click w (container host 5)
     Assert.False((container host 5).IsFocusVisible)
+
+// ---- A ListBox scrolls on its own (DESIGN.md, "ListBox scrolls on its own") ----
+
+let private ofType (host: ElementHost) (t: ElementType) = all host.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, t))
+let private realizedIn (host: ElementHost) = let struct (r, _) = (ItemsView.realizedCount (listOf host)).Value in r
+
+/// What a ListBox was before it scrolled on its own: its list, wrapped in a ScrollViewer by hand.
+let private byHand (n: int) (extra: Setting<ItemsView> list) =
+    ScrollViewer.create [
+        ScrollViewer.content (
+            View.Create(
+                ListBoxItems.Type,
+                ([ ListBox.source (people n)
+                   ListBox.keySelector (fun (p: Person) -> p.Id)
+                   ListBox.viewSelector (fun (p: Person) -> Border.create [ Border.height 30.0; Border.content (TextBlock.create [ TextBlock.text p.Name ]) ])
+                   yield! extra ]: Setting<ItemsView> list)))
+    ]
+
+[<Fact>]
+let ``it holds a ScrollViewer with its list inside, and scrolls in the height it is given`` () =
+    let w, host = show (list 10_000 [])
+    let lb = ofType host ListBox.Type
+    let scroll = Seq.exactlyOne lb.Children
+    Assert.Same(ScrollViewer.Type, scroll.Type)
+    Assert.Same(ListBoxItems.Type, (Seq.exactlyOne scroll.Children).Type)
+    Assert.Same(listOf host, (ListBox.listOf lb).Value)
+    // As tall as the window, not as its items; only what shows is realized.
+    Assert.Equal(host.Tree.Root.Value.Bounds.Height, lb.Bounds.Height)
+    Assert.InRange(lb.Bounds.Height, 100.0, 5000.0)
+    Assert.InRange(realizedIn host, 1, 40)
+    // Scrolled from code, other items show.
+    let first = containers host |> List.head |> keyOf
+    ScrollViewer.jumpTo scroll 3000.0
+    while w.DeliverFrame() do ()
+    Assert.True((containers host |> List.head |> keyOf) > first)
+    Assert.InRange(realizedIn host, 1, 40)
+
+[<Fact>]
+let ``to a screen reader it is what a list wrapped by hand was, and its label names the list`` () =
+    for mode in [ SelectionMode.Single; SelectionMode.Multiple ] do
+        let _, mine = show (list 40 [ ListBox.selected [ 2 ]; ListBox.selectionMode mode; Semantics.label "People" ])
+        let _, hand =
+            show (byHand 40 [ Setting.create ListBoxProps.selected [ box 2 ]; Setting.create ListBoxProps.selectionMode mode; Semantics.label "People" ])
+        Assert.Equal(hand.SemanticTree().ToString(), mine.SemanticTree().ToString())
+        let area = mine.SemanticTree().Children[0]
+        Assert.Equal(Role.ScrollArea, area.Role)
+        Assert.Equal(Role.List, area.Children[0].Role)
+        Assert.Equal("People", area.Children[0].Name)
+
+[<Fact>]
+let ``a Label for a ListBox names its list`` () =
+    let _, host =
+        show (
+            DockPanel.create [
+                DockPanel.children [
+                    Label.create [ Label.text "Team"; Label.target "team"; DockPanel.dock Dock.Top ]
+                    list 5 [ ListBox.name "team" ]
+                ]
+            ])
+    Assert.Contains("List \"Team\"", host.SemanticTree().ToString())
+
+[<Fact>]
+let ``an app's ScrollViewer style reaches a ListBox's scrollbar`` () =
+    let styles = [ ScrollViewer.style [] [ ScrollViewer.barSize 8.0 ] ]
+    let w, _, app = start [ App.styles styles; App.view (list 100 []) ]
+    w.DeliverFrame() |> ignore
+    let host = app :?> ElementHost
+    Assert.Equal(8.0, (ofType host ScrollViewer.Type).Get ScrollViewerProps.barSize)
+    // And one for the scrollers inside ListBoxes alone.
+    let styles = [ ScrollViewer.style [ Style.inside ListBox.Type [] ] [ ScrollViewer.barSize 6.0 ] ]
+    let view = StackPanel.create [ StackPanel.children [ ScrollViewer.create [ ScrollViewer.height 50.0 ]; list 5 [] ] ]
+    let w, _, app = start [ App.styles styles; App.view view ]
+    w.DeliverFrame() |> ignore
+    let host = app :?> ElementHost
+    let scrollers = all host.Tree.Root.Value |> Seq.filter (fun e -> obj.ReferenceEquals(e.Type, ScrollViewer.Type)) |> List.ofSeq
+    Assert.Equal<float list>([ 12.0; 6.0 ], scrollers |> List.map (fun e -> e.Get ScrollViewerProps.barSize))
+
+[<Fact>]
+let ``its scroller scrolls to an item never realized, and is the one found by the ListBox's name`` () =
+    let scroller = Scroller()
+    let w, host = show (list 10_000 [ ListBox.scroller scroller; ListBox.name "people" ])
+    scroller.ScrollTo(9000)
+    while w.DeliverFrame() do ()
+    Assert.Contains(9000, containers host |> List.map keyOf)
+    Assert.InRange(realizedIn host, 1, 40)
+    let found, named = host.AppValues.NamedScrollers["people"].TryGetTarget()
+    Assert.True(found && obj.ReferenceEquals(named, scroller))
+
+[<Fact>]
+let ``maxHeight limits it where the height is unlimited`` () =
+    let _, host = show (StackPanel.create [ StackPanel.children [ list 10_000 [ ListBox.maxHeight 240.0 ] ] ])
+    Assert.Equal(240.0, (ofType host ListBox.Type).Bounds.Height)
+    Assert.InRange(realizedIn host, 1, 40)
+
+[<Fact>]
+let ``inside a ScrollViewer (a header above it, or code written before it scrolled) it still realizes only what shows`` () =
+    let view =
+        ScrollViewer.create [
+            ScrollViewer.content (
+                StackPanel.create [
+                    StackPanel.children [ Border.create [ Border.height 80.0 ]; list 10_000 [] ]
+                ])
+        ]
+    let w, host = show view
+    while w.DeliverFrame() do ()
+    Assert.InRange(realizedIn host, 1, 40)
+    // The keys still move through it, and the outer ScrollViewer follows.
+    key w Key.Tab
+    key w Key.End
+    while w.DeliverFrame() do ()
+    Assert.True((container host 9999).IsFocused)
+    Assert.InRange(realizedIn host, 1, 40)
+
+/// What a debug build says of ListBoxes with unlimited height while `act` runs (and whether this listener was
+/// still there at the end: a test that sets the listener outright may drop it).
+let private warningsWhile (act: unit -> unit) =
+    let warnings = List<string>()
+    let listener = System.Action<string>(fun m -> lock warnings (fun () -> warnings.Add m))
+    DebugWarnings.Listener <- System.Delegate.Combine(DebugWarnings.Listener, listener) :?> System.Action<string>
+    let mutable heard = true
+    try
+        act ()
+        heard <- not (isNull DebugWarnings.Listener) && (DebugWarnings.Listener.GetInvocationList() |> Array.contains (listener :> System.Delegate))
+    finally
+        DebugWarnings.Listener <- System.Delegate.Remove(DebugWarnings.Listener, listener) :?> System.Action<string>
+    heard, lock warnings (fun () -> warnings |> Seq.filter (fun m -> m.Contains "ListBox" && m.Contains "unlimited height") |> List.ofSeq)
+
+[<Fact>]
+let ``a Debug build warns of a big ListBox with unlimited height, and of no other`` () =
+    let inStack (n: int) (extra: Setting<ListBox> list) = StackPanel.create [ StackPanel.children [ list n extra ] ]
+    // Few items, a height of its own, a window's height, a ScrollViewer around it: nothing to say.
+    let heard, quiet =
+        warningsWhile (fun () ->
+            show (inStack 200 [ ListBox.name "quiet" ]) |> ignore
+            show (inStack 5000 [ ListBox.name "quiet"; ListBox.maxHeight 200.0 ]) |> ignore
+            show (list 5000 [ ListBox.name "quiet" ]) |> ignore
+            show (ScrollViewer.create [ ScrollViewer.content (inStack 5000 [ ListBox.name "quiet" ]) ]) |> ignore)
+    if heard then Assert.Empty(quiet |> List.filter (fun m -> m.Contains "\"quiet\""))
+    let heard, loud = warningsWhile (fun () -> show (inStack 201 [ ListBox.name "loud" ]) |> ignore)
+#if DEBUG
+    if heard then
+        let message = Assert.Single(loud |> List.filter (fun m -> m.Contains "\"loud\""))
+        Assert.Contains("201 items", message)
+        Assert.Contains("ListBox.maxHeight", message)
+#else
+    ignore (heard, loud)
+#endif
+
+[<Fact>]
+let ``its frame is a Border's: no line or background unless asked for, and a padding of 4 that 0 takes away`` () =
+    let _, host = show (list 100 [])
+    let lb = ofType host ListBox.Type
+    let scroll = Seq.exactlyOne lb.Children
+    // The gap a flyout keeps round a ComboBox's open list.
+    Assert.Equal((4.0, 4.0), (scroll.Bounds.X, scroll.Bounds.Y))
+    Assert.Equal((lb.Bounds.Width - 8.0, lb.Bounds.Height - 8.0), (scroll.Bounds.Width, scroll.Bounds.Height))
+    Assert.Equal(0.0f, (lb.Get BorderProps.background).A)
+    Assert.Equal(0.0, lb.Get BorderProps.borderThickness)
+    let _, host = show (list 100 [ ListBox.padding 0.0 ])
+    let lb = ofType host ListBox.Type
+    Assert.Equal(lb.Bounds.Width, (Seq.exactlyOne lb.Children).Bounds.Width)
+    let framed =
+        list 100 [ ListBox.height 200.0; ListBox.background Scribble.Rendering.Color.White; ListBox.borderBrush Scribble.Rendering.Color.Black; ListBox.borderThickness 1.0; ListBox.cornerRadius 6.0; ListBox.padding 4.0 ]
+    let _, host = show (StackPanel.create [ StackPanel.children [ framed ] ])
+    let lb = ofType host ListBox.Type
+    let scroll = Seq.exactlyOne lb.Children
+    Assert.Equal(200.0, lb.Bounds.Height)
+    Assert.Equal((5.0, 5.0), (scroll.Bounds.X, scroll.Bounds.Y))
+    Assert.Equal((lb.Bounds.Width - 10.0, 190.0), (scroll.Bounds.Width, scroll.Bounds.Height))
+    Assert.InRange(realizedIn host, 1, 40)

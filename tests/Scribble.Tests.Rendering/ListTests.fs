@@ -27,16 +27,13 @@ let private view =
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 24.0
         StackPanel.children [
-            ScrollViewer.create [
-                ScrollViewer.width 220.0
-                ScrollViewer.height 290.0
-                ScrollViewer.content (
-                    ListBox.create [
-                        ListBox.source [ 0 .. names.Length - 1 ]
-                        ListBox.viewSelector (fun (i: int) -> names[i])
-                        ListBox.selectionMode SelectionMode.Multiple
-                        ListBox.selected [ 1; 4; 5 ]
-                    ])
+            ListBox.create [
+                ListBox.width 220.0
+                ListBox.height 290.0
+                ListBox.source [ 0 .. names.Length - 1 ]
+                ListBox.viewSelector (fun (i: int) -> names[i])
+                ListBox.selectionMode SelectionMode.Multiple
+                ListBox.selected [ 1; 4; 5 ]
             ]
             RadioGroup.create [
                 RadioGroup.selected "Pear"

@@ -321,7 +321,12 @@ module internal SemanticBuilder =
             if e.IsVisible then
                 if obj.ReferenceEquals(e.Type, Label.Type) then
                     match Label.findTarget e with
-                    | ValueSome target when not (labels.ContainsKey target) -> labels[target] <- e.Get TextProps.text
+                    | ValueSome target ->
+                        // A label for a ListBox names the list inside it (the ListBox itself has no node).
+                        let target =
+                            if obj.ReferenceEquals(target.Type, ListBox.Type) then ListBox.listOf target |> ValueOption.defaultValue target
+                            else target
+                        if not (labels.ContainsKey target) then labels[target] <- e.Get TextProps.text
                     | _ -> ()
                 for c in e.Children do
                     walk c
@@ -362,7 +367,8 @@ module internal SemanticBuilder =
                 | ValueNone ->
 #if DEBUG
                     match valueOf computed e SemanticsProps.label with
-                    | Fixed l when l <> "" ->
+                    // A ListBox passes its label on to the list inside it, which has the role.
+                    | Fixed l when l <> "" && not (obj.ReferenceEquals(e.Type, ListBox.Type)) ->
                         DebugWarnings.Once(
                             "semantics-label-without-role:" + e.Type.Name,
                             "A " + e.Type.Name + " has Semantics.label \"" + l + "\" but no role, so it isn't in the semantic tree: give it Semantics.role (Role.Group for a container).")

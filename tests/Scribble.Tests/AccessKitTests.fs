@@ -49,17 +49,14 @@ type private Person = { Id: int; Name: string }
 
 let private people (n: int) = [ for i in 0 .. n - 1 -> { Id = i; Name = "Person " + string i } ]
 
-/// A ListBox of `n` people in a ScrollViewer 300 DIPs high, items 30 DIPs of content high.
+/// A ListBox of `n` people 300 DIPs high, items 30 DIPs of content high.
 let private list (n: int) =
-    ScrollViewer.create [
-        ScrollViewer.height 300.0
-        ScrollViewer.verticalAlignment VerticalAlignment.Top
-        ScrollViewer.content (
-            ListBox.create [
-                ListBox.source (people n)
-                ListBox.keySelector (fun (p: Person) -> p.Id)
-                ListBox.viewSelector (fun (p: Person) -> Border.create [ Border.height 30.0; Border.content (TextBlock.create [ TextBlock.text p.Name ]) ])
-            ])
+    ListBox.create [
+        ListBox.height 300.0
+        ListBox.verticalAlignment VerticalAlignment.Top
+        ListBox.source (people n)
+        ListBox.keySelector (fun (p: Person) -> p.Id)
+        ListBox.viewSelector (fun (p: Person) -> Border.create [ Border.height 30.0; Border.content (TextBlock.create [ TextBlock.text p.Name ]) ])
     ]
 
 let private controls =

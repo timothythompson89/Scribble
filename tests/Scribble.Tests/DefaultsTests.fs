@@ -13,7 +13,7 @@ let private types: ElementType list =
       StackPanel.Type; Grid.Type; DockPanel.Type; Canvas.Type; WrapPanel.Type
       ScrollViewer.Type; ItemsView.Type
       Button.Type; ToggleButton.Type; CheckBox.Type; Switch.Type; RadioButton.Type; RadioGroup.Type; Slider.Type
-      TabControl.Type; TabHeader.Type; TabItem.Type; ListBox.Type; ListBoxItem.Type; ComboBox.Type; TextBox.Type
+      TabControl.Type; TabHeader.Type; TabItem.Type; ListBox.Type; ListBoxItems.Type; ListBoxItem.Type; ComboBox.Type; TextBox.Type
       Menu.Type; MenuItem.Type; SelectionHandle.Type; Modal.Type; Scrim.Type; ToastPresenter.Type ]
 
 /// One element of the type with no settings, laid out in a tree with or without a theme.

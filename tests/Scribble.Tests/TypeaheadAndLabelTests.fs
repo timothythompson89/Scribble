@@ -90,9 +90,7 @@ let private typeText (w: FakeWindow) (text: string) =
 let private names = [| "Alice"; "Bob"; "Carol"; "Charlie"; "Chloe"; "Dave"; "New Jersey"; "New York" |]
 
 let private listOf (items: string[]) (settings: Setting<ListBox> list) =
-    ScrollViewer.create [
-        ScrollViewer.content (ListBox.create [ yield ListBox.source items; yield ListBox.viewSelector (fun (s: string) -> s); yield! settings ])
-    ]
+    ListBox.create [ yield ListBox.source items; yield ListBox.viewSelector (fun (s: string) -> s); yield! settings ]
 
 let private selectedOf (host: ElementHost) = (ofType host ListBox.Type).Get ListBoxProps.selected |> List.map (fun k -> string k)
 
@@ -157,15 +155,12 @@ type private Person = { Id: int; Name: string }
 let ``items drawn by views are found by textSelector, which is also their name for a screen reader`` () =
     let people = names |> Array.mapi (fun i n -> { Id = i; Name = n })
     let view (withText: bool) =
-        ScrollViewer.create [
-            ScrollViewer.content (
-                ListBox.create [
-                    yield ListBox.source people
-                    yield ListBox.keySelector (fun (p: Person) -> p.Id)
-                    // A view with no text in it.
-                    yield ListBox.viewSelector (fun (p: Person) -> Border.create [ Border.height 20.0 ])
-                    if withText then yield ListBox.textSelector (fun (p: Person) -> p.Name)
-                ])
+        ListBox.create [
+            yield ListBox.source people
+            yield ListBox.keySelector (fun (p: Person) -> p.Id)
+            // A view with no text in it.
+            yield ListBox.viewSelector (fun (p: Person) -> Border.create [ Border.height 20.0 ])
+            if withText then yield ListBox.textSelector (fun (p: Person) -> p.Name)
         ]
     let _, w, host = show (view true)
     key w Key.Tab
@@ -182,12 +177,12 @@ let ``items drawn by views are found by textSelector, which is also their name f
 [<Fact>]
 let ``typing reaches item 9,000 of 10,000 without realizing those between`` () =
     let items = Array.init 10_000 (fun i -> "Item " + i.ToString "0000")
-    let _, w, host = show (ScrollViewer.create [ ScrollViewer.height 240.0; ScrollViewer.content (ListBox.create [ ListBox.source items ]) ])
+    let _, w, host = show (ListBox.create [ ListBox.height 240.0; ListBox.source items ])
     key w Key.Tab
     typeText w "item 9000"
     Assert.Equal<string list>([ "Item 9000" ], selectedOf host)
     Assert.Equal("Item 9000", focusedItem host)
-    match ItemsView.realizedCount (ofType host ListBox.Type) with
+    match ItemsView.realizedCount (ofType host ListBoxItems.Type) with
     | ValueSome(struct (realized, count)) ->
         Assert.Equal(10_000, count)
         Assert.InRange(realized, 1, 60)

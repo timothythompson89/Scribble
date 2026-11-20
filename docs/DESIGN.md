@@ -43,6 +43,7 @@ questions", as paragraphs starting with the name given here.
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
 | Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
 | Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); built 2026-11-20 | Section "A hook for a picture's load state" |
+| ListBox scrolls | A ListBox holds its own ScrollViewer (with the list, `ListBoxItems`, inside): no wrapper to write; a break in 0.1.0-alpha.3 (2026-11-20) | Section "ListBox scrolls on its own" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -193,7 +194,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   and grids over any source, recycling, a scroll anchor by key; scrolling to item 9,000 realizes only what's around
   it).
 - **Elements:** Border, TextBlock, Label, IconView, ImageView, Separator, FocusRing, Flyout (and the boxes the host makes for tooltips and toasts); Button, ToggleButton, CheckBox, Switch, Slider,
-  TabControl, ListBox, RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Label, Menu and MenuItem (as a flyout or a context menu, or a row; 9f), SelectionHandle (a TextBox's, for a finger; 9g), Modal, dialogs, toasts (controls are controlled when the view gives their value,
+  TabControl, ListBox (it scrolls on its own), RadioGroup and RadioButton, ComboBox, TextBox (one line or several, with clipboard, undo and input methods; M9 steps 9a to 9d), Label, Menu and MenuItem (as a flyout or a context menu, or a row; 9f), SelectionHandle (a TextBox's, for a finger; 9g), Modal, dialogs, toasts (controls are controlled when the view gives their value,
   else keep their own).
 - **Input:** hit testing, routed pointer events (preview, then bubble), capture, clicks, hover and pressed states,
   cursors (also image cursors); keyboard focus, Tab order (view order, as is a screen reader's reading order),
@@ -5427,6 +5428,102 @@ for `docs/CHECKLIST-BROWSER.md`.
   after a jump to 9,000; hidden lets go and shown takes back without a run. The 10,000-row test doesn't count
   requests exactly: how many rows are asked for on the way depends on how many frames the list takes to settle.
 - README (the hooks list), `CHANGELOG.md` (Unreleased: Added, and the per-app change under Changed).
+
+## ListBox scrolls on its own (grilling, 2026-11-20)
+
+Tim: a ListBox that has to be wrapped in a ScrollViewer is not what anyone expects of a ListBox. Why it was so:
+ListBox extended ItemsView (4b, decision 1), and an ItemsView leaves scrolling to the ScrollViewers around it (M8
+round 1, decision 2). Two wider designs were talked through and dropped (a public `ListView` inside a scrolling
+ListBox; selection moved into ItemsView): Tim wanted only the ListBox to behave as expected.
+
+**Decisions (Tim: yes to all; 8 to be discussed again once built):**
+1. **Only ListBox changes.** ItemsView stays the part that is composed (headers that scroll with it, several lists
+   in one scroller, sideways scrolling: the inspector's tree, the Icons gallery) and still needs a ScrollViewer.
+2. **The scroller inside is a real ScrollViewer element**, so an app's `ScrollViewer.style` reaches a ListBox's bar
+   (a style matches a type exactly), and `ScrollViewer.style [ Style.inside ListBox.Type [] ]` styles it alone.
+3. **No scroll settings on ListBox yet**: `scroller` and the sizes every element has. `vertical`, `horizontal` and
+   `scrollBarSpace` can be added without breaking anything.
+4. **A debug warning** when a ListBox of more than 200 items is laid out with unlimited height and so can't
+   scroll: it names the fix (`ListBox.maxHeight`).
+5. **A plain break in 0.1.0-alpha.3**: no setting to turn the scroller off. The changelog has the migration (take
+   the ScrollViewer from around a ListBox).
+6. **Screen readers get what a hand-wrapped ListBox gave:** a scroll area holding one list of items. The outer
+   element adds no node. Held by a test.
+7. **Settings are written on ListBox and go to the part they are about:** size, margin, alignment, `isEnabled`,
+   styles, classes and input handlers to the outer element; `source`, the selectors, `layout`, `selected`,
+   `selectionMode`, the two events and `Semantics.label` to the list inside.
+8. **ListBox stays borderless** (4b, decision 15) in this change. Whether it gets `background`, `border` and
+   `cornerRadius` now that it is a box is open: Tim wants to discuss it after the change is built.
+   **Settled once built (Tim, 2026-11-20): the settings exist and are off by default.** `ListBox.background`,
+   `borderBrush`, `borderThickness`, `cornerRadius` and `padding`; a ListBox with none of them looks as before.
+   Over framed by default (as TextBox and ComboBox are, and a WPF ListBox): a list is used without a frame about
+   as often as with one (a navigation pane, a flyout's list), ComboBox would have had to turn it off, and adding
+   a default later breaks nothing while taking one away would.
+   **Its padding is 4 by default (Tim, the same day): "match ComboBox".** 4 is what a flyout keeps round a
+   ComboBox's open list, not the 12 × 7 inside a ComboBox's box (with a `ListBoxItem`'s own 12 × 8, text would
+   have started 24 in). So a ListBox given a line and corners looks like that open list with nothing more to
+   set. It applies with or without a frame: `ListBox.padding 0.0` for a list that goes edge to edge.
+9. **The list inside is internal and named `ListBoxItems`** (the inspector shows it, with "realized 40 of
+   10,000"). It keeps `ListView` and the like free for the day it is made public.
+10. **The list screenshots stay byte-identical**: no reference is regenerated; a difference is a bug.
+
+**Thought given up, and wasn't:** a selectable list sharing a scroller with a header above it. Claude said in the
+planning that a ListBox inside a ScrollViewer of the app's would realize every item, and that it would come back
+as a `ListBox.header` setting or a public `ListBoxItems`. Built, it turned out to need neither (see below).
+
+**As built (2026-11-20):**
+- **Three elements.** `ListBox.Type` is now a plain element (`Element.define`, no longer an ItemsView) that holds
+  one child it makes itself, as ComboBox and TabControl make theirs: a `ScrollViewer` whose content is a
+  `ListBoxItems` (internal; what `ListBox.Type` was: an ItemsView with the `ListBoxItem` container, the keys and
+  typeahead). The settings type `ListBox` still inherits `ItemsView`, so every setting kept its name.
+- **Settings (decision 7).** At each measure the ListBox builds the view of its parts from its own values and
+  patches it: `source`, the selectors, `layout`, the scroller, `selected`, `selectionMode` and `Semantics.label`
+  go to the list. Everything else stays where the app wrote it, on the outer element; keys and clicks bubble up
+  to its handlers from the items (ComboBox's Tab handler on its flyout's list still hears Tab).
+- **The selection lives on the ListBox**, not the list: `ListBoxLogic.owner` goes from the list up two parents to
+  the ListBox (told by its `ListBoxParts`), and reads and writes `selected`, the mode and the two handlers there.
+  A value changed by a key is so seen by the next key before any layout. The list is given `selected` and the
+  mode as well only so that a change lays it out again and a screen reader hears "multi-select".
+- **The scroller** is the list's (it scrolls to items): the app's `ListBox.scroller`, else one the ListBox keeps.
+  The ListBox registers it under its own `name`, as an ItemsView does.
+- **Inside a ScrollViewer of the app's it still virtualizes.** An ItemsView's viewport is what every ScrollViewer
+  around it shows, intersected. A ListBox given unlimited height makes its own ScrollViewer as tall as all the
+  items, so that one cuts nothing off and the app's outer one decides what shows. So a header above a ListBox
+  in one scroller works, the keys move the outer scroller, and code written for alpha.2 (a ListBox wrapped by
+  hand) behaves as it did, with one ScrollViewer more than it needs. Decision 5's break is therefore soft: what
+  changes for old code is the tree (the items are two levels further in).
+- **The warning (decision 4)** is narrower than agreed, for that reason: more than 200 items, unlimited height
+  **and no ScrollViewer anywhere around it**. Its key has the ListBox's name, so it is said once per name.
+- **Screen readers (decision 6):** the outer element has no role, so it gives no node; the ScrollViewer and the
+  list give what they gave. `SemanticTree` knows a ListBox in two places: a `Semantics.label` on it is not the
+  "label without a role" mistake (it is passed on), and a `Label` whose target is a ListBox names the list.
+- **ComboBox** makes a ListBox with `maxHeight` for its flyout; its own ScrollViewer is gone.
+- **Tests** (`ListBoxTests.fs`, 8 new): the three elements, and scrolling in the window's height; the semantic
+  tree equal to a `ListBoxItems` wrapped by hand, in Single and Multiple, with the label on the list; a `Label`
+  for a ListBox; `ScrollViewer.style` reaching its bar, and `Style.inside ListBox.Type` reaching only its bar;
+  the scroller to item 9,000, found by the ListBox's name; `maxHeight` in a StackPanel; 10,000 items under a
+  header in an outer ScrollViewer realize under 40, also after End; the warning said for 201 items in a
+  StackPanel and for none of four other arrangements. The wrappers came off the existing ListBox, typeahead,
+  AccessKit and screenshot tests and the Gallery's Lists page, with no other change to them.
+- **The frame (decision 8).** The five settings are declared on `ListBox` and set Border's properties
+  (`BorderProps`), which are neutral by default. The element measures and arranges its ScrollViewer inside the
+  line and the padding as a Border does (`Border.inset`) and draws with `Border.draw`. The settings type still
+  inherits `ItemsView`, not `Border` (Claude had said it would switch): inheriting Border would have offered
+  `ListBox.content`, which would put a second child beside the ScrollViewer. **Corners:** a Border doesn't cut
+  its content to its rounded corners, and neither does this; with `cornerRadius` give `padding` too, or an
+  item's highlight shows past the corner (the Gallery uses 6 and 4). The Gallery's two lists use the settings
+  and lost their wrapper Borders: its screenshots are the same bytes. One test (frame off by default; with a
+  line of 1 and padding of 4 the ScrollViewer sits 5 in on every side).
+- **The padding of 4** is a type default on `ListBox.Type` (a metric, by "Where defaults live"). ComboBox gives
+  its flyout's list `ListBox.padding 0.0` (the flyout has the gap), so ComboBox's pictures are unchanged; the
+  Gallery's two lists dropped their `padding 4.0` and are unchanged too. **`lists@1x` and `lists-light@1x` were
+  regenerated**, setting decision 10 aside for them on purpose: their unframed list sits 4 in on every side,
+  and nothing else in them moved (looked at before regenerating). The frame test now holds the 4 and that 0
+  takes it away.
+- **Results (before the padding default):** 1,360 unit tests and 9 timing tests skipped; 107 rendering tests with **no reference changed**
+  (decision 10: every picture, the two of the lists and those with a ComboBox or the Gallery among them, is the same
+  bytes). The timing tests pass run on their own; `decoding a 1024 square PNG is fast` read 32 ms against its
+  25 ms bound when run among the whole Release suite, twice, and 3 of 3 passed alone (the decoder is untouched).
 
 ## Vectorising the PNG decoder (2026-11-18)
 

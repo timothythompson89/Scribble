@@ -6,7 +6,30 @@ While the version starts with 0, any release may break the API: each break is li
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+
+- **`ListBox` scrolls on its own**: it holds its own ScrollViewer, so it no longer needs one written around it.
+  Take the wrapper away and move its sizes to the ListBox:
+
+  ```fsharp
+  // before
+  ScrollViewer.create [ ScrollViewer.height 240.0; ScrollViewer.content (ListBox.create [ ListBox.source people ]) ]
+  // now
+  ListBox.create [ ListBox.height 240.0; ListBox.source people ]
+  ```
+
+  Code that keeps its wrapper still works and still realizes only the items that show; it has a ScrollViewer more
+  than it needs. A ListBox also has a padding of 4 now, so its items sit 4 DIPs in from its edges:
+  `ListBox.padding 0.0` gives the old edge-to-edge list. `ComboBox` is unchanged. An element found as "the ListBox" in the tree is now the outer box: the
+  items are two levels further in (ListBox, ScrollViewer, the list, `ListBoxItem`s).
+
+### Added
+
+- `ListBox.background`, `borderBrush`, `borderThickness`, `cornerRadius` and `padding`: a frame round a ListBox
+  without a Border written around it. No line or background by default; the padding is 4.
+- A Debug build warns once of a `ListBox` with more than 200 items that is given unlimited height with no
+  ScrollViewer around it (in a StackPanel, say): it is as tall as all its items and realizes every one. Give it
+  `ListBox.maxHeight`.
 
 ## 0.1.0-alpha.2 (2026-11-20)
 

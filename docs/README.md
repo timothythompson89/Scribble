@@ -1265,26 +1265,32 @@ RadioGroup.create [
 ]
 ```
 
-- **ListBox**: a list the user selects from. It's an ItemsView (so 10,000 items cost about what 40 do: put it in
-  a ScrollViewer) that wraps each item's view in a `ListBoxItem`. The selection is **keys** (`keySelector`; the
+- **ListBox**: a list the user selects from. It scrolls on its own and realizes only the items that show (so
+  10,000 cost about what 40 do), each in a `ListBoxItem`. The selection is **keys** (`keySelector`; the
   index without one), so it survives inserts, sorting and filtering. `selectionMode`: `Single` (default),
   `Multiple` (Ctrl+click toggles, Shift+click selects a range, Ctrl+A all, Space toggles, Shift+arrows extend) or
   `None` (a list of actions: a click invokes). One Tab stop; ↑/↓, Home/End and PageUp/PageDown move through the
   items, realizing only the one reached. **Invoking** acts on an item: a double-click or Enter (a click in `None`).
 
 ```fsharp
-ScrollViewer.create [
-    ScrollViewer.content (
-        ListBox.create [
-            ListBox.source model.People
-            ListBox.keySelector (fun (p: Person) -> p.Id)
-            ListBox.viewSelector (fun (p: Person) -> p.Name)          // or a view
-            ListBox.selected [ model.Current ]                         // left out: it keeps its own
-            ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> dispatch (Pick e.Key))
-            ListBox.onItemInvoked (fun (e: ItemInvokedEventArgs<Person, int>) -> dispatch (Open e.Key))
-        ])
+ListBox.create [
+    ListBox.source model.People
+    ListBox.keySelector (fun (p: Person) -> p.Id)
+    ListBox.viewSelector (fun (p: Person) -> p.Name)          // or a view
+    ListBox.selected [ model.Current ]                         // left out: it keeps its own
+    ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> dispatch (Pick e.Key))
+    ListBox.onItemInvoked (fun (e: ItemInvokedEventArgs<Person, int>) -> dispatch (Open e.Key))
 ]
 ```
+
+  It scrolls in the height it is given. Where the height is unlimited (a StackPanel), give it `ListBox.maxHeight`,
+  or it is as tall as all its items (a Debug build says so for more than 200). Inside a ScrollViewer of your own
+  (a header above it that scrolls away with it) it still realizes only what shows. Its scrollbar is a
+  ScrollViewer's: `ScrollViewer.style` reaches it, and `ScrollViewer.style [ Style.inside ListBox.Type [] ] [ ... ]`
+  reaches the ones in ListBoxes alone. It has no frame unless you give it one: `ListBox.background`,
+  `borderBrush`, `borderThickness`, `cornerRadius` and `padding` are a Border's. Its padding is 4 by default (the
+  gap round a ComboBox's open list), which keeps item highlights clear of a small corner radius, as the items
+  aren't cut to the corners; `ListBox.padding 0.0` for a list that goes edge to edge.
 
   The change event has `Keys`, `Items`, `Added`, `Removed`, and `Key`/`Item` (the one selected, for Single). A
   selected key that leaves the source is dropped (and reported) when the list keeps its own selection; a

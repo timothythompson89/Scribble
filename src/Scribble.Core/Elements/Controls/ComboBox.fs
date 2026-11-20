@@ -166,7 +166,7 @@ module ComboBox =
         child.SetParent ValueNone
         child.SetRoot ValueNone
 
-    /// The flyout: a ListBox of the same items in a ScrollViewer. Nothing can be selected in it
+    /// The flyout: a ListBox of the same items, no taller than `maxListHeight`. Nothing can be selected in it
     /// (the arrows only move focus); it shows the box's selection, and invoking an item picks it.
     let private flyoutView (e: Element) (s: ComboState) =
         let list =
@@ -179,6 +179,9 @@ module ComboBox =
                 Setting.create ListBoxProps.selected (e.Get ComboBoxProps.selected |> ValueOption.toList)
                 Setting.create ListBoxProps.onItemInvoked (ValueSome(fun (key: obj) (_: obj) -> commit e key))
                 ListBox.scroller s.Scroller
+                ListBox.maxHeight (e.Get ComboBoxProps.maxListHeight)
+                // The flyout has the gap round the list already.
+                ListBox.padding 0.0
                 // Tab leaves the list with nothing changed (it has one Tab stop, so Tab would go nowhere).
                 ListBox.onKeyDown (fun args ->
                     if args.Key = Key.Tab then
@@ -191,7 +194,7 @@ module ComboBox =
             Flyout.matchAnchorWidth true
             Flyout.isOpen (e.Get ComboBoxOpenProps.isOpen)
             Flyout.onOpenChanged (setOpen e)
-            Flyout.content (ScrollViewer.create [ ScrollViewer.maxHeight (e.Get ComboBoxProps.maxListHeight); ScrollViewer.content list ])
+            Flyout.content list
         ]
 
     /// Brings the keys, the box's content and the flyout in line with the settings.
