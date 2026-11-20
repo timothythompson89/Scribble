@@ -5173,6 +5173,10 @@ Facts at the start.
   the background decodes end before the first frame even when forced, so it never showed there. Fixed in the
   test: it draws again until the 13 are there (5 s at most). A cache per tree for tests would make it
   deterministic; that is a Core change, not made.
+- **The first release run failed at the push (2026-11-20), with nothing published:** on Windows `dotnet nuget push`
+  finds no files for a pattern written with forward slashes. The pattern now has backslashes, and a rehearsal
+  step pushes the same pattern into a folder and counts 17 before the sign-in. Tests, pack, the consumer test
+  and the trusted-publishing sign-in had all passed. The tag `v0.1.0-alpha.1` was moved to the fixed commit.
 - **Not verified:** the release workflow (never run); `wasm-tools` is installed in both because Tim's machine has
   it and a browser publish without it wasn't tried; trusted publishing's setup; that the ids are still free on
   nuget.org (not queried).

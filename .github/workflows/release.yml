@@ -63,12 +63,23 @@ jobs:
       - name: Pack and consumer test
         run: dotnet fsi tools/TestPackages.fsx --version ${{ steps.version.outputs.version }} --no-run
 
+      # The same pattern as the real push, into a folder: a pattern that finds nothing fails here, before sign-in.
+      - name: Push rehearsal (to a local folder)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force rehearsal-feed | Out-Null
+          dotnet nuget push "artifacts\packages\*.nupkg" --source (Join-Path $PWD "rehearsal-feed")
+          $count = @(Get-ChildItem rehearsal-feed -Recurse -Filter *.nupkg).Count
+          if ($count -ne 17) { throw "The rehearsal pushed $count packages, 17 expected." }
+
       - name: NuGet login (trusted publishing)
         id: login
         uses: NuGet/login@v1
         with:
           user: ${{ secrets.NUGET_USER }}
 
-      # The .snupkg beside each .nupkg goes to the symbol server with it.
+      # The .snupkg beside each .nupkg goes to the symbol server with it. Backslashes on purpose: on Windows
+      # `dotnet nuget push` finds nothing for a pattern written with forward slashes ("File does not exist
+      # (artifacts/packages/*.nupkg)", the first release run, 2026-11-20).
       - name: Push
-        run: dotnet nuget push "artifacts/packages/*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push "artifacts\packages\*.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
