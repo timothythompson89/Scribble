@@ -5166,6 +5166,13 @@ Facts at the start.
   first lines of the stack) and totals in the job summary, both public; a run that wrote no results, or half a
   file, is reported as that. Tried on a passing file, a failing one and a truncated one. The failure itself
   did not show in 40 Release runs on Tim's machine.
+- **The test that failed, found by that reporting in run 4:** `the Gallery's Images page finds its embedded pictures
+  and draws every one` ("Expected: 13, Actual: 1"). The image cache is one per process and the Gallery's pictures
+  have fixed keys: when another test drawing the Gallery on another thread (decoding in the background) had
+  started them, this test's inline decoding had nothing to do and its one frame came too early. On Tim's machine
+  the background decodes end before the first frame even when forced, so it never showed there. Fixed in the
+  test: it draws again until the 13 are there (5 s at most). A cache per tree for tests would make it
+  deterministic; that is a Core change, not made.
 - **Not verified:** the release workflow (never run); `wasm-tools` is installed in both because Tim's machine has
   it and a browser publish without it wasn't tried; trusted publishing's setup; that the ids are still free on
   nuget.org (not queried).

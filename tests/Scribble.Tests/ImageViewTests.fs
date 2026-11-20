@@ -291,7 +291,16 @@ let ``a picture over the GPU's limit is reduced, with a debug warning`` () =
 [<Fact>]
 let ``the Gallery's Images page finds its embedded pictures and draws every one`` () =
     let s = Scene(Scribble.Samples.Gallery.ImagesPage.view (), 720.0, 1600.0)
-    let list = s.Render()
+    let mutable list = s.Render()
+    // The image cache is one per process and these pictures have fixed keys, so another test drawing the Gallery
+    // on another thread (where decoding runs in the background) may have started them first: then nothing decodes
+    // inline here and the first frame has only the picture made from pixels. Wait for those decodes to end.
+    // (CI, 2026-11-20: "Expected: 13, Actual: 1" in two runs of four on GitHub's runners, never on Tim's machine.)
+    let watch = Stopwatch.StartNew()
+    while list.Images.Count < 13 && watch.ElapsedMilliseconds < 5000L do
+        Thread.Sleep 5
+        s.Dispatcher.RunPending()
+        list <- s.Render()
     Assert.Empty s.Errors
     // 4 stretch modes, 3 directions, smooth and pixelated, two avatars, the pattern; the exported card's potion.
     Assert.Equal(13, list.Images.Count)
