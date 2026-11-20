@@ -17,6 +17,12 @@ type internal HookSlot(kind: string) =
     /// The current value and status, for `Element.Hooks`.
     abstract Inspect: now: TimeSpan -> struct (obj voption * string)
     default _.Inspect _ = struct (ValueNone, "")
+    /// The component's element was hidden with what is around it, and is drawn again after that: a hook that holds
+    /// something only worth holding while shown (`useImage`'s picture) lets go and takes it back.
+    abstract Hidden: unit -> unit
+    default _.Hidden() = ()
+    abstract Shown: unit -> unit
+    default _.Shown() = ()
 
 /// A component's hooks and lifecycle, kept on the element that hosts it.
 [<Sealed>]
@@ -121,6 +127,15 @@ type internal ComponentInstance(element: Element, name: string) =
             | ValueSome r -> r.AppValues
             | ValueNone -> invalidOp $"Component '{name}' used an app value outside a tree."
 
+    /// The dispatcher of the tree it's in (or is being built in); none in a bare tree without one.
+    member _.Dispatcher: Dispatcher voption =
+        match element.Root with
+        | ValueSome r -> r.Dispatcher
+        | ValueNone ->
+            match Element.Realizing with
+            | ValueSome r -> r.Dispatcher
+            | ValueNone -> ValueNone
+
     /// The tree it's in (or is being built in), when it's an ElementTree (a host's layer, or a bare tree).
     member _.Tree: ElementTree voption =
         let root =
@@ -212,6 +227,15 @@ type internal ComponentInstance(element: Element, name: string) =
     override this.Attached(r: IElementRoot) =
         if dirty then this.Schedule r
         this.ScheduleFlush()
+
+    override _.Hidden() =
+        for s in slots do
+            s.Hidden()
+
+    override _.Shown() =
+        if not removed then
+            for s in slots do
+                s.Shown()
 
     /// The element left the tree: the component is gone. Subscriptions are disposed.
     override _.Detached() =
@@ -377,6 +401,131 @@ type internal AsyncSlot<'D, 'T>() =
 
     interface IDisposable with
         member this.Dispose() = this.Stop()
+
+/// `ctx.useImage` (DESIGN.md, "A hook for a picture's load state"): the component's hold on one picture in its app's
+/// cache, from the run that asks for it until the component goes or asks for another. UI thread only.
+[<Sealed>]
+type internal ImageSlot(instance: ComponentInstance) =
+    inherit HookSlot("useImage")
+    let mutable cache: ImageCache = null
+    let mutable entry: ImageEntry = null
+    let mutable image: Image voption = ValueNone
+    /// Told when loading ends: once per stretch of loading.
+    let mutable waiting = false
+    let mutable gone = false
+    /// How the picture stood when the component was hidden and let it go (`Hidden`); none while it holds.
+    let mutable statusWhenHidden: ImageStatus voption = ValueNone
+
+    let read () =
+        if isNull entry then struct (ImageStatus.Loading, 0, 0)
+        else
+            let struct (state, info, _) = cache.Describe entry
+            let status =
+                match state with
+                | ImageState.Loading -> ImageStatus.Loading
+                | ImageState.Ready _ -> ImageStatus.Ready
+                | ImageState.Failed e -> ImageStatus.Failed e
+            match info with
+            | ValueSome i -> struct (status, i.Width, i.Height)
+            | ValueNone -> struct (status, 0, 0)
+
+    /// While it loads: runs the component again when loading ends. The waiter may be called on any thread, so it
+    /// comes back through the dispatcher (a bare tree without one isn't told, as its elements aren't).
+    let wait () =
+        if not waiting && not (isNull entry) then
+            match instance.Dispatcher with
+            | ValueSome d ->
+                let asked = entry
+                let ended () =
+                    // A stale call (the component went, or asked for another picture meanwhile) changes nothing.
+                    if not gone && obj.ReferenceEquals(asked, entry) then
+                        waiting <- false
+                        instance.Invalidate()
+                waiting <- true
+                if not (cache.AddWaiter(entry, fun () -> d.Post ended)) then waiting <- false
+            | ValueNone -> ()
+
+    let letGo () =
+        if not (isNull entry) then
+            cache.Release entry
+            entry <- null
+            waiting <- false
+
+    let retry () =
+        instance.OnUiThread(fun () ->
+            match image with
+            | ValueSome i when not gone && not (isNull entry) ->
+                if cache.Retry(entry, i) then
+                    wait ()
+                    instance.Invalidate()
+            | _ -> ())
+
+    // `Hold` has run before a component can read the handle, so there is a picture by then.
+    member val Load = ImageLoad(read, retry, fun () -> image.Value)
+
+    /// Holds `next` (letting go of the picture held before, if it is another), and claims its failure: a picture a
+    /// component asks about reports to that component, not to `App.onError` (decision 3).
+    member _.Hold(next: Image) =
+        let same =
+            match image with
+            | ValueSome i -> not (isNull entry) && i.Key = next.Key
+            | ValueNone -> false
+        if not same then
+            letGo ()
+            cache <- instance.AppValues.Images
+            entry <- cache.Acquire next
+        image <- ValueSome next
+        statusWhenHidden <- ValueNone
+        cache.ClaimReport entry |> ignore
+        wait ()
+
+    /// Hidden with what is around it (a recycled row waiting in an ItemsView's pool, a page behind another): it lets
+    /// go, as the elements in it do, so only what is shown is held. The cache's pool usually still has a ready
+    /// picture when it shows again.
+    override _.Hidden() =
+        if not (isNull entry) then
+            let struct (status, _, _) = read ()
+            statusWhenHidden <- ValueSome status
+            letGo ()
+
+    /// Drawn again without having run since (a run takes the picture back itself): takes it back, and runs the
+    /// component again if it now stands differently (it was ready, and decodes again).
+    override _.Shown() =
+        match image, statusWhenHidden with
+        | ValueSome i, ValueSome before when isNull entry && not gone ->
+            statusWhenHidden <- ValueNone
+            cache <- instance.AppValues.Images
+            entry <- cache.Acquire i
+            cache.ClaimReport entry |> ignore
+            wait ()
+            let struct (now, _, _) = read ()
+            let same =
+                match before, now with
+                | ImageStatus.Loading, ImageStatus.Loading
+                | ImageStatus.Ready, ImageStatus.Ready
+                | ImageStatus.Failed _, ImageStatus.Failed _ -> true
+                | _ -> false
+            // While it loads, `wait` runs the component when it ends; a change seen now runs it at once.
+            if not same then instance.Invalidate()
+        | _ -> statusWhenHidden <- ValueNone
+
+    override _.Label =
+        match image with
+        | ValueSome i -> "useImage " + i.Key
+        | ValueNone -> "useImage"
+
+    override _.Inspect _ =
+        let struct (status, w, h) = read ()
+        let size = if w > 0 then $" {w} × {h}" else ""
+        match status with
+        | ImageStatus.Loading -> struct (ValueNone, "loading" + size)
+        | ImageStatus.Ready -> struct (ValueNone, "ready" + size)
+        | ImageStatus.Failed e -> struct (ValueSome(box e), "failed")
+
+    interface IDisposable with
+        member _.Dispose() =
+            gone <- true
+            letGo ()
 
 /// What a component function gets: its hooks. Call them unconditionally, in the same order
 /// every time the component runs (not inside `if`, loops or handlers).
@@ -621,6 +770,17 @@ type ComponentContext internal (instance: ComponentInstance) =
     /// useAsync with an F# async (`ct` is also the async's cancellation token).
     member this.useAsync<'D, 'T>(deps: 'D, load: 'D -> CancellationToken -> Async<'T>) : AsyncValue<'T> =
         this.Async(deps, fun d ct -> Async.StartAsTask(load d ct, cancellationToken = ct))
+
+    /// Where a picture stands, for a placeholder while it loads or a retry when it fails:
+    /// `let load = ctx.useImage (Image.fromUrl url [])`, then `load.Status` (`ImageStatus.Loading | Ready |
+    /// Failed e`), `load.PixelWidth`, `load.Retry()`, and `load.Image` to show it (`ImageView.image load.Image`).
+    /// The component holds the picture from this run on (so it loads even when the view shows something else
+    /// meanwhile) and runs again when loading ends. A failure of a picture asked about here comes to the
+    /// component, not to `App.onError`.
+    member _.useImage(image: Image) : ImageLoad =
+        let slot = instance.Slot("useImage", fun () -> new ImageSlot(instance))
+        slot.Hold image
+        slot.Load
 
     /// A number that moves to `target` over `duration` whenever `target` changes (the first one is
     /// taken at once). The component re-runs every frame while it moves.

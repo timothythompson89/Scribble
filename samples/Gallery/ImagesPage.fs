@@ -107,6 +107,45 @@ let private hoverBox (label: string) (cursor: Cursor) =
 let private webPicture = Image.fromUrl "https://upload.wikimedia.org/wikipedia/commons/7/70/Example.png" []
 let private missingPicture = Image.fromUrl "https://upload.wikimedia.org/wikipedia/commons/0/00/Scribble-no-such-picture.png" []
 
+/// A picture with something of the app's own while it loads and when it fails (`ctx.useImage`): the component asks
+/// where the picture stands, and runs again when that changes. A failure asked about this way comes here, not to
+/// App.onError, so there is no toast: the box says so and offers to try again.
+let private watched =
+    Component.define "WatchedPicture" (fun ctx (picture: Image, label: string) ->
+        let load = ctx.useImage picture
+        let box (content: View) =
+            Border.create [
+                Border.width 172.0
+                Border.height 178.0
+                Border.background Palette.surface
+                Border.borderBrush Palette.border
+                Border.borderThickness 1.0
+                Border.content content
+            ]
+        let note (text: string) =
+            TextBlock.create [
+                TextBlock.text text
+                TextBlock.fontSize 12.0
+                TextBlock.foreground Palette.textDim
+                TextBlock.horizontalAlignment HorizontalAlignment.Center
+                TextBlock.verticalAlignment VerticalAlignment.Center
+            ]
+        match load.Status with
+        | ImageStatus.Ready -> ImageView.create [ ImageView.image load.Image; Semantics.label label ]
+        | ImageStatus.Loading -> box (note "Loading…")
+        | ImageStatus.Failed _ ->
+            box (
+                StackPanel.create [
+                    StackPanel.spacing 8.0
+                    StackPanel.horizontalAlignment HorizontalAlignment.Center
+                    StackPanel.verticalAlignment VerticalAlignment.Center
+                    StackPanel.children [
+                        note "Couldn't load"
+                        Button.create [ Button.text "Retry"; Button.onClick (fun _ -> load.Retry()) ]
+                    ]
+                ]
+            ))
+
 /// Not a PNG past its first bytes: decoding fails, and the error goes to App.onError (a toast here).
 let private brokenBytes = [| 0x89uy; 0x50uy; 0x4Euy; 0x47uy; 0x0Duy; 0x0Auy; 0x1Auy; 0x0Auy; 0uy; 0uy; 0uy; 13uy |]
 
@@ -307,7 +346,7 @@ let private images =
                         hoverBox "Potion" potionCursor
                         hoverBox "Target" targetCursor
                     ])
-                section "From a URL""Downloaded when shown, at their own size once they arrive (0 × 0 until then). The second gives 404: one toast. Needs the internet; nothing is asked for until you press the button." (
+                section "From a URL""Downloaded when shown. Each asks where its picture stands (ctx.useImage): Loading until it arrives; the second gives 404 and offers Retry. Needs the internet; nothing is asked for until you press the button." (
                     StackPanel.create [
                         StackPanel.spacing 8.0
                         StackPanel.children [
@@ -319,8 +358,8 @@ let private images =
                             ]
                             if showWeb.Current then
                                 wrap [
-                                    ImageView.create [ ImageView.image webPicture; Semantics.label "Example picture from Wikimedia" ]
-                                    boxed "404: nothing drawn" 96.0 96.0 [ ImageView.image missingPicture ]
+                                    watched (webPicture, "Example picture from Wikimedia")
+                                    watched (missingPicture, "A picture that isn't there")
                                 ]
                         ]
                     ])

@@ -332,6 +332,12 @@ StackPanel.items names id counter                                // keyed: state
   - `ctx.useElmish(init, update)`: `let model, dispatch = ...`; `ctx.useElmishWithCmd((model, cmd), update)`
     when `update` returns `model, cmd` (see Async below).
   - `ctx.useAsync(deps, fun d ct -> task)`: see Async below.
+  - `ctx.useImage (Image.fromUrl url [])`: where a picture stands, for a placeholder while it loads or a retry
+    when it fails: `load.Status` (`ImageStatus.Loading | Ready | Failed e`), `load.Image` (the picture, to show
+    it), `load.PixelWidth` and `PixelHeight` (0 until known), `load.Retry()`. The component holds the picture
+    while it's shown and runs again when loading ends; a failure of a picture asked about this way comes to the
+    component, not to `App.onError`. Showing the picture is still an `ImageView`: `ImageView.image load.Image`
+    (the Gallery's Images page, "From a URL").
   - `ctx.useAnimated(target, duration, ?easing)`: a `float` or `Color` that moves to each new target; the
     component re-runs every frame while it moves.
   - Described where they're used: `ctx.useAppValue` (App values, below); `ctx.useScroller ()` (scrolling from

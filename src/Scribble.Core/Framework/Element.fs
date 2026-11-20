@@ -363,6 +363,12 @@ and [<AbstractClass>] internal ComponentState() =
     abstract Name: string
     abstract Attached: root: IElementRoot -> unit
     abstract Detached: unit -> unit
+    /// The element was hidden with what is around it (its pictures are let go: so are its hooks'), and is drawn
+    /// again after that.
+    abstract Hidden: unit -> unit
+    default _.Hidden() = ()
+    abstract Shown: unit -> unit
+    default _.Shown() = ()
     /// The hooks' current values (`now` for animated ones).
     abstract Hooks: now: TimeSpan -> HookValue list
 
@@ -490,6 +496,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     let mutable heldImages: ResizeArray<ImageHold> = null
     /// Drawn since it was last hidden: hiding it then lets go of the pictures in it (once, not every frame).
     let mutable shownSinceHidden = false
+    /// Its component was told it is hidden (`ComponentState.Hidden`), and not yet that it shows again.
+    let mutable componentHidden = false
 
     let find (id: int) =
         let mutable i = 0
@@ -1539,8 +1547,22 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             | ValueNone -> ()
 
     /// A failed picture is reported once, by the first element that asks after it failed ((d) 7).
+    /// It also asks to be told if the picture is asked for again (`ImageLoad.Retry`), and then measures again: its
+    /// state is loading from then on, and the usual waiting takes over.
     member private this.ReportImageFailure(hold: ImageHold, e: exn) =
         if hold.Cache.ClaimReport hold.Entry then this.ReportError e
+        if not hold.RetryWaiting then
+            match root with
+            | ValueSome r ->
+                match r.Dispatcher with
+                | ValueSome d ->
+                    hold.RetryWaiting <- true
+                    let again () =
+                        hold.RetryWaiting <- false
+                        if not (isNull heldImages) && heldImages.Contains hold then this.InvalidateMeasure()
+                    hold.Cache.AddRetryWaiter(hold.Entry, fun () -> d.Post again)
+                | ValueNone -> ()
+            | ValueNone -> ()
 
     /// The decoded picture to draw, or none while it loads (or after it failed, or outside a tree).
     member internal this.ImageOf(image: Image) : Scribble.Imaging.DecodedImage voption =
@@ -1628,6 +1650,11 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// Lets go of every picture held in this element and everything inside it (it was hidden).
     member private this.LetGoOfImagesBelow() =
         this.LetGoOfImages true
+        match componentState with
+        | ValueSome c when not componentHidden ->
+            componentHidden <- true
+            c.Hidden()
+        | _ -> ()
         for child in children do
             child.LetGoOfImagesBelow()
 
@@ -1785,6 +1812,11 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     /// Draws the element and its children (Render has checked it can show).
     member private this.RenderShown(list: DrawList) =
             shownSinceHidden <- true
+            if componentHidden then
+                componentHidden <- false
+                match componentState with
+                | ValueSome c -> c.Shown()
+                | ValueNone -> ()
             let scale = this.Get LayoutProps.scale
             list.PushTranslate(bounds.X, bounds.Y)
             let opacity = this.Get LayoutProps.opacity

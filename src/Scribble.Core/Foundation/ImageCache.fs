@@ -25,6 +25,8 @@ type internal ImageEntry(key: string) =
     member val Info: ImageInfo voption = ValueNone with get, set
     member val Holders = 0 with get, set
     member val Waiters = ResizeArray<unit -> unit>() with get
+    /// Who to tell if it is asked for again after it failed (`ImageCache.Retry`): the elements that hold it.
+    member val RetryWaiters = ResizeArray<unit -> unit>() with get
     member val Reported = false with get, set
     /// Its place in the recently-used pool while nothing holds it.
     member val PoolNode: LinkedListNode<ImageEntry> = null with get, set
@@ -362,6 +364,32 @@ type internal ImageCache(poolLimit: int64) as this =
                 true
             | _ -> false)
 
+    /// Calls `waiter` if this entry, having failed, is asked for again (`Retry`); once.
+    member _.AddRetryWaiter(entry: ImageEntry, waiter: unit -> unit) =
+        lock sync (fun () -> entry.RetryWaiters.Add waiter)
+
+    /// Asks again for a picture that failed, in place (DESIGN.md, "A hook for a picture's load state", decision 4):
+    /// whatever holds it keeps its hold, and the elements that asked (`AddRetryWaiter`) are told, so they look
+    /// again. False, and nothing happens, when it hasn't failed. A failed picture nothing holds has left the cache
+    /// already, and showing it again is its retry.
+    member this.Retry(entry: ImageEntry, image: Image) : bool =
+        let waiters =
+            lock sync (fun () ->
+                match entry.State with
+                | ImageState.Failed _ ->
+                    entry.State <- ImageState.Loading
+                    entry.Downloaded <- false
+                    let w = entry.RetryWaiters.ToArray()
+                    entry.RetryWaiters.Clear()
+                    w
+                | _ -> null)
+        if isNull waiters then false
+        else
+            this.Start(entry, image)
+            for w in waiters do
+                w ()
+            true
+
     /// True for the one caller that reports this entry's failure (decision 7: once per image).
     member _.ClaimReport(entry: ImageEntry) =
         lock sync (fun () ->
@@ -394,6 +422,8 @@ type internal ImageHold(cache: ImageCache, entry: ImageEntry, image: Image) =
     member val Image = image with get, set
     member val Touched = true with get, set
     member val Waiting = false with get, set
+    /// It failed, and this element asked to be told of a retry.
+    member val RetryWaiting = false with get, set
     /// Waiting for it to show as a cursor (DESIGN.md, "M8 step 3b", (f) 1).
     member val CursorWaiting = false with get, set
 
@@ -403,6 +433,41 @@ type ImageStatus =
     | Loading
     | Ready
     | Failed of error: exn
+
+/// Where a picture stands for the component that asked with `ctx.useImage` (DESIGN.md, "A hook for a picture's load
+/// state"). The component runs again when it changes, so read it in the component function:
+/// ```
+/// let load = ctx.useImage (Image.fromUrl url [])
+/// match load.Status with
+/// | ImageStatus.Ready -> ImageView.create [ ImageView.image load.Image ]
+/// | ImageStatus.Loading -> placeholder ()
+/// | ImageStatus.Failed _ -> Button.create [ Button.text "Retry"; Button.onClick (fun _ -> load.Retry()) ]
+/// ```
+[<Sealed>]
+type ImageLoad internal (read: unit -> struct (ImageStatus * int * int), retry: unit -> unit, image: unit -> Image) =
+    /// The picture asked about (what `ctx.useImage` was last given), to show it: `ImageView.image load.Image`.
+    member _.Image = image ()
+
+    /// Loading (reading, downloading or decoding), ready to draw, or failed (with why).
+    member _.Status =
+        let struct (status, _, _) = read ()
+        status
+
+    /// Its width in pixels as the file gives it; 0 until known. A resource's or bytes' header gives it while the
+    /// picture still loads; a file's or URL's is known when loading ends.
+    member _.PixelWidth =
+        let struct (_, w, _) = read ()
+        w
+
+    /// Its height in pixels as the file gives it; 0 until known.
+    member _.PixelHeight =
+        let struct (_, _, h) = read ()
+        h
+
+    /// Asks again for a picture that failed (a Retry button's handler): its status goes back to loading, and
+    /// everything showing it looks again. Does nothing unless it failed. Call it from a handler or an effect, not
+    /// while the component function runs.
+    member _.Retry() = retry ()
 
 /// One image an element holds, as the inspector shows it (DESIGN.md, "M8 step 3b", (f) 7).
 type HeldImage =

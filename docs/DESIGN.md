@@ -42,7 +42,7 @@ questions", as paragraphs starting with the name given here.
 | Controls written outside Core | `ControlValue` and `Prop.appState` are public, `InputContext.Element` too; the Gallery's `RatingBar` is written with the public API only (2026-11-19) | Section "Controls written outside Core" |
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
 | Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
-| Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); agreed 2026-11-20, not built | Section "A hook for a picture's load state" |
+| Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); built 2026-11-20 | Section "A hook for a picture's load state" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -227,7 +227,7 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
 
 - **MVU is built in:** `App.program init update view` (Elmish; an equal model doesn't rebuild), with commands
   (`App.programWithCmd`); or a view of **components** with hooks (`useState`, `useEffect`, `useMemo`,
-  `useElmish`, `useAsync`, `useAnimated`, `useAppValue`, `useScroller`, `useSubscription`, `useToaster`, `useDialogs`,
+  `useElmish`, `useAsync`, `useImage`, `useAnimated`, `useAppValue`, `useScroller`, `useSubscription`, `useToaster`, `useDialogs`,
   `useInform`, `useConfirm`, `useAsk`, `useDialog`), or both.
 - **Settings lists everywhere:** views (`Border.create [ ... ]`), apps (`App.run [ App.title ...; ... ]`), element
   types, themes, hosts. No computation-expression or modifier-chain syntax. Exceptions are listed in "Settings
@@ -5302,8 +5302,9 @@ what it is (a key and a source), so no app code changes and nothing in the publi
 
 ## A hook for a picture's load state: `ctx.useImage` (planning round, 2026-11-20)
 
-Status: **agreed (Tim, 2026-11-20: "Accept all"); nothing built.** It waits for the per-app image work (section
-"Image state per app, not per process") to be committed (decision 7).
+Status: **agreed (Tim, 2026-11-20: "Accept all"); built the same day** (as built, below), after the per-app image
+work (section "Image state per app, not per process") was committed (decision 7). Waiting for Tim's check of the
+Gallery's "From a URL" section on the desktop.
 
 Tim asked whether images should work through a hook. The answer given: not as how pictures are shown (the
 isolation the tests lacked comes from where the cache lives, not from a hook; a hook per row would make virtualized
@@ -5353,9 +5354,53 @@ reaches the hook and not `App.onError`; unmounting lets go (holders at zero, a r
 changing the picture swaps what is held; retry after a failure asks again and can succeed; 10,000 rows with a hook
 each hold only the realized rows.
 
-**Not known yet:** whether a hook and an `ImageView` holding the same failed picture agree on who reports
-(decision 3) whatever the order: to be settled with a test first. The browser (decoding on the UI thread): for
-`docs/CHECKLIST-BROWSER.md`.
+**Not known yet (at planning):** whether a hook and an `ImageView` holding the same failed picture agree on who
+reports (decision 3) whatever the order: to be settled with a test first. The browser (decoding on the UI thread):
+for `docs/CHECKLIST-BROWSER.md`.
+
+**As built (2026-11-20)**
+- `ImageLoad` (public, `ImageCache.fs`): `Status` (the existing `ImageStatus`), `PixelWidth`, `PixelHeight` (0
+  until known), `Retry()`. `ctx.useImage` and its `ImageSlot` are in `Component.fs`. The slot takes the picture
+  from its app's cache (`instance.AppValues.Images`), asks to be told when loading ends (through the dispatcher,
+  as elements do) and runs the component again then; it lets go when the component goes or asks for another.
+- **Who reports (decision 3), settled:** the hook claims the picture's one report when it takes it, on every run.
+  A component runs before the elements of its view draw, so in the usual order (the hook, then an `ImageView` of
+  the same picture inside it) nothing reaches `App.onError`; a test holds that, beside the same view without the
+  hook reporting once. An element *elsewhere* that drew the failed picture before any component asked has
+  reported already: both then know, which seemed right.
+- **Retry restarts the picture in place** (`ImageCache.Retry`), not "let go and ask again" as decision 4 put it:
+  letting go does nothing while an `ImageView` still holds the failed picture, which is the common case (a retry
+  button over the picture). The entry goes back to loading and is started again; its holders keep their hold. An
+  element that met the failure asks to be told of a retry (`AddRetryWaiter`, in `ReportImageFailure`) and
+  measures again when it comes, so it draws the picture when it arrives. Not done for an image cursor (it shows
+  the arrow until the pointer next moves).
+- **Hidden, the hook lets go** (new: `ComponentState.Hidden`/`Shown`, passed to each `HookSlot`): an element lets
+  go of its pictures when it is hidden with what is around it (a page behind another), and a hook that kept
+  holding would keep a download's place for something not shown. Drawn again without having run, it takes the
+  picture back and runs the component only if the picture now stands differently. This refines decision 1 ("for
+  as long as the component lives"): for as long as it is shown. Rows of an `ItemsView` needed nothing: a row with
+  a component isn't pooled, it goes, and its hooks with it.
+- **`load.Image`** (Tim, 2026-11-20, after asking why not a `ctx.useImageFromUrl`): the handle gives back the
+  picture it was asked about, so a view names it once: `let load = ctx.useImage (Image.fromUrl url [])`, then
+  `ImageView.image load.Image`. A hook per source was turned down: a URL is one of five sources and load state
+  matters for the others too, the view needs the `Image` value anyway, `Image.fromUrl` already carries the
+  options, and a picture stays one kind of value however it is used.
+- **The inspector** shows it with the other hooks: `useImage url:…`, "loading 172 × 178", "ready …", "failed".
+- **The Gallery's Images page, "From a URL":** both pictures go through a `WatchedPicture` component: a box says
+  "Loading…", then the picture; the 404 says "Couldn't load" with a Retry button (it fails again: the address is
+  wrong), and no longer raises a toast. One reference was regenerated, `images-page@1x`: the section's two lines
+  of description changed (looked at: nothing else differs; the pictures stay behind the section's toggle).
+- **Results:** 1,351 unit tests (11 new) and 9 timing tests skipped; 107 rendering tests; the 9 timing tests pass
+  in Release warm (twice; the first run after the build failed the PNG decoder's, a cold run, as before). Not
+  run: the consumer test (no package or build file changed).
+- **Tests** (`ImageHookTests.fs`, 11; the eleventh holds `load.Image`): ready at once with its size, one run; loading then ready, with the
+  header's size while loading, and no runs while idle; the hook on `Element.Hooks`; a failure to the hook and not
+  the error handler; held with no `ImageView` and let go when the component goes (download cancelled, cache
+  empty); another picture swaps the hold; retry after a 404 asks again, and when it succeeds the hook is ready
+  and the `ImageView` draws; retry on a ready picture does nothing; 10,000 rows hold only the realized rows, also
+  after a jump to 9,000; hidden lets go and shown takes back without a run. The 10,000-row test doesn't count
+  requests exactly: how many rows are asked for on the way depends on how many frames the list takes to settle.
+- README (the hooks list), `CHANGELOG.md` (Unreleased: Added, and the per-app change under Changed).
 
 ## Vectorising the PNG decoder (2026-11-18)
 

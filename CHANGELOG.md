@@ -6,7 +6,17 @@ While the version starts with 0, any release may break the API: each break is li
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- `ctx.useImage picture`: a component reads where a picture stands (`load.Status`: loading, ready or failed; its
+  size in pixels once known; `load.Image` to show it) and can ask again after a failure (`load.Retry()`), for a
+  placeholder while a picture downloads or a retry button when it fails. A failure of a picture asked about this
+  way comes to the component and no longer to `App.onError`.
+
+### Changed
+
+- Pictures belong to the app, not the process: two apps in one process no longer share decoded pictures, downloads
+  or their six download places. Nothing in the public API changed.
 
 ## 0.1.0-alpha.1 (2026-11-20)
 

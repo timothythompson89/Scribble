@@ -59,6 +59,7 @@
     <Compile Include="ImageAtlasTests.fs" />
     <Compile Include="ImageViewTests.fs" />
     <Compile Include="ImageLoadingTests.fs" />
+    <Compile Include="ImageHookTests.fs" />
     <Compile Include="ImageCursorTests.fs" />
     <Compile Include="FlyoutTests.fs" />
     <Compile Include="ImageRobustnessTests.fs" />
