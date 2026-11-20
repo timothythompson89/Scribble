@@ -1,14 +1,32 @@
-# Builds, runs the unit tests and the consumer test on every push to main and every pull request
-# (docs/DESIGN.md, "Publishing", decisions 4 and 9).
+# Builds, runs the unit tests and the consumer test on a push to main and on a pull request
+# (docs/DESIGN.md, "Publishing", decisions 4 and 9), unless only documentation changed: see `paths` below.
 #
 # Not here: the rendering tests. Their references are exact Direct3D 12 pictures from a real GPU, and the hosted
 # runners have only a software one; they run on the development machine before each milestone.
 name: CI
 
+# The `paths` lists (the same twice: a push and a pull request each need their own) leave out a change that is
+# documentation only. A later pattern wins over an earlier one, so: everything; not docs/; but the two files in
+# docs/ that are packed into every package; not the two documents at the root. One file that still matches is
+# enough to run, so a push with code and documentation runs. "Run workflow" on the Actions page always runs.
 on:
   push:
     branches: [main]
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/PACKAGE.md'
+      - 'docs/THIRD-PARTY-NOTICES.md'
+      - '!CLAUDE.md'
+      - '!LICENSE'
   pull_request:
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/PACKAGE.md'
+      - 'docs/THIRD-PARTY-NOTICES.md'
+      - '!CLAUDE.md'
+      - '!LICENSE'
   workflow_dispatch:
 
 permissions:

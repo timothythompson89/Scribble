@@ -5197,6 +5197,11 @@ Facts at the start.
   step; NuGet's index showed all 17 about six minutes after the push. Checked from outside: an app in an empty
   folder, with nuget.org as its only source, restored `Scribble.Desktop` and built with the four native
   libraries in its output (built, not run).
+- **CI skips documentation (Tim, 2026-11-20).** `ci.yml` has a `paths` filter: a push or pull request that changes
+  only `docs/`, `CLAUDE.md` or `LICENSE` starts no run. `docs/PACKAGE.md` and `docs/THIRD-PARTY-NOTICES.md` still
+  do: they are packed into every package. Several of the day's 11-minute runs were for DESIGN.md alone. Seen
+  working only once pushed: the commit adding it changes a workflow, so it runs; the next documentation-only
+  push is the test.
 - **GitHub releases (Tim, 2026-11-20).** `.github/github-release.ps1` publishes a release for a tag with that
   version's section of `docs/CHANGELOG.md` as its notes (a pre-release when the version has a hyphen).
   `release.yml` runs it last, after the packages are on NuGet; `github-release.yml` runs it by hand for a tag
