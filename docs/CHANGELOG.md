@@ -6,6 +6,10 @@ While the version starts with 0, any release may break the API: each break is li
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.0-alpha.2 (2026-11-20)
+
 ### Added
 
 - `ctx.useImage picture`: a component reads where a picture stands (`load.Status`: loading, ready or failed; its
