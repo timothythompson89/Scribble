@@ -10,7 +10,7 @@ decision. Read Part 1 before planning work; this file is how we work and what bi
 - **Discuss the plan before writing any code.** Tim tends to second-guess and wants to see decisions, options and
   a recommendation first. For each milestone: list what it covers, the decisions it needs (a recommendation for
   each), wait for agreement, record decisions in `docs/DESIGN.md`, then build.
-- **Every decision round goes through the `mattpocock-skills:grill-with-docs` skill**, however small the decision
+- **Every decision round goes through the `mattpocock-skills:grilling` skill**, however small the decision
   (a default, a name, a follow-up to something just built): invoke it with the Skill tool each time, since a
   skill's instructions don't carry over from an earlier round or survive a summarized session. If it isn't in the
   session's skill list, say so and ask, rather than discussing in plain prose.
