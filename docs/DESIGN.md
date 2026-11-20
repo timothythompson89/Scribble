@@ -61,7 +61,8 @@ development platform.
 - **Frame work proportional to what's visible**, not to what exists (tested: virtualization, culling).
 - Licence: MIT (`LICENSE`). Packages will be `Scribble.*` (the bare `Scribble` id on NuGet belongs to someone
   else), all at one version, pre-release (`0.1.0-alpha.1` is the first); a desktop package carries its native
-  libraries. The repository and the packages are ready to publish; pushing and tagging are Tim's (section
+  libraries. The repository is public (https://github.com/timothythompson89/Scribble, CI green); the packages are
+  ready, and the nuget.org setup and the first tag are Tim's (section
   "Publishing: GitHub and NuGet").
 
 ## Status
@@ -5076,8 +5077,9 @@ Facts at the start.
 ## Publishing: GitHub and NuGet (planned and built 2026-11-19)
 
 Status: **agreed (Tim, 2026-11-19: "Accept all"); the files are built and the consumer test passes on Tim's
-machine. Not done, and Tim's to do: creating the GitHub repository and pushing, the nuget.org account and its
-trusted publishing policy, the first tag.** The workflows have never run: GitHub is the first place they can.
+machine and on GitHub. Public since 2026-11-19 at https://github.com/timothythompson89/Scribble; the first CI run
+passed. Not done, and Tim's to do: the nuget.org account and its trusted publishing policy, the first tag.** The
+release workflow has never run: a tag is the first thing that can start it.
 
 Tim asked whether enough is finished to publish. The answer given: enough for a public repository now; for NuGet
 an alpha, once the packages carry what an app needs. Two stages.
@@ -5152,13 +5154,19 @@ Facts at the start.
   script is run on Tim's machine before a tag (`release.yml` says so at its top).
 - README: pre-release notice, status to M9, packages paragraph, licences; its "What to check" list moved to
   `docs/what-to-check.md` (project review, decision 18). New: `CONTRIBUTING.md`, `CHANGELOG.md`.
-- **Not verified:** the two workflows (never run); `wasm-tools` is installed in them because Tim's machine has
+- **Pushed and CI green (2026-11-19).** GitHub had made the repository with an initial commit of its own (a short
+  README and a LICENSE, authored with the address decision 2 removed, no history in common); Tim chose to replace
+  it, so `main` was force-pushed over it, pinned to that commit. CI run 1 passed in 11 minutes: `wasm-tools` 4,
+  build 2.5, unit tests 16 s, the consumer test 3.7 (pack, NativeAOT publish and browser publish all work on a
+  hosted runner; apps not started). Packages link to the repository (`PackageProjectUrl`; the repository element
+  comes from the remote).
+- **Not verified:** the release workflow (never run); `wasm-tools` is installed in both because Tim's machine has
   it and a browser publish without it wasn't tried; trusted publishing's setup; that the ids are still free on
-  nuget.org (not queried); the package's repository link, which is empty until there is a remote.
+  nuget.org (not queried).
 
 **Tim's part, in order**
-1. Say which GitHub account or organisation and repository name (the email rewrite of decision 2 is done).
-2. Create the repository (empty, no README), add it as `origin`, push `main`; check the CI run.
+1. ~~Say which GitHub account and repository name~~ (done: `timothythompson89/Scribble`).
+2. ~~Create the repository, push `main`, check the CI run~~ (done 2026-11-19, green).
 3. On nuget.org: create the account, add a trusted publishing policy for the repository and `release.yml`, and
    put the profile name in the repository secret `NUGET_USER`. Apply for the `Scribble.` prefix if wanted
    (project review, decision 16: likely refused, not needed).

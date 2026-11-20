@@ -20,6 +20,7 @@
     <VersionSuffix>alpha.1</VersionSuffix>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>fsharp;ui;gui;webgpu;wasm;nativeaot;funcui</PackageTags>
+    <PackageProjectUrl>https://github.com/timothythompson89/Scribble</PackageProjectUrl>
     <!-- Stepping into Scribble from an app: the repository's address and commit go into the package (SourceLink is
          part of the SDK), and the PDBs into a .snupkg beside it. -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
