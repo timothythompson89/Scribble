@@ -1772,7 +1772,7 @@ app presents, and the cursor only moves on screen at a refresh; we draw on reque
 monitor fell to its minimum rate and the cursor stepped. Games present constantly and never show it. Found by
 elimination: the trace showed our frames were cheap (layout under 1 ms) and the frames came from hover fades (a
 temporary test counting what invalidates); turning G-SYNC off ended it; "G-SYNC for full screen mode only" did
-not (the driver or Windows still applied VRR to the window). The 11-15 build (`ad9f9bb`, run from a worktree)
+not (the driver or Windows still applied VRR to the window). The 11-15 build (`48eaf47`, run from a worktree)
 stutters too: nothing we changed caused it; most likely the driver Tim installed that day made it show. Pointer
 moves have never requested frames, and the Win32 loop has always drawn on request.
 
@@ -1981,7 +1981,7 @@ Tim: a landing page in the serve tool, as a hub on another device. Agreed (recom
 
 ## Project review 2026-11-17
 
-Claude reviewed the whole project at commit `0c4b79b` (findings: `.scratch/project-review/review.md`, 22
+Claude reviewed the whole project at commit `475f929` (findings: `.scratch/project-review/review.md`, 22
 items graded A/B/C), then went through them with Tim as a grilling (`grill-with-docs`). Holding: the rules in
 CLAUDE.md (printf, `fixed`, `static let`, no C#, no public nulls), the power rule, the inspector on Core's public
 API only, and NativeAOT (Counter published and run again 2026-11-17: only FSharp.Core's IL2104/IL3053).
@@ -2079,7 +2079,7 @@ Round 4 (step 1's design and Core's layout; Tim accepted every recommendation, Q
 
 **As built (2026-11-17, not yet checked by Tim).**
 
-- *Reorganisation (23–25):* commit `6eaae0d`; files moved unchanged (git sees renames).
+- *Reorganisation (23–25):* commit `5d7686f`; files moved unchanged (git sees renames).
 - *The clock (21):* `IPlatform.Elapsed` and `IPlatform.After(delay, action)`; `TimerQueue` (Scribble.Platform)
   keeps the delayed work and the platform one OS timer for the earliest (Win32: `SetTimer` on the wake window,
   created on first use; browser: one `setTimeout` through a new `setTimer` JS function and an `onTimer`
@@ -3269,7 +3269,7 @@ Status: **agreed (Tim, 2026-11-18: "yes, record it and build").** Built 2026-11-
 
 **As built (2026-11-18):**
 - `ListBox.fs` and `RadioButton.fs` in `Elements/Controls`, after TabControl. The renames (decisions 9, 10) were
-  their own commit (1510133).
+  their own commit (e3d7c0f).
 - **Item containers:** an internal ItemsView hook, `ItemsViewProps.container` (key, item, view → view), wraps
   each item's view in `realize`. ListBox sets it in its defaults to wrap in a `ListBoxItem`, so recycling, keys
   and measuring stay ItemsView's. After ItemsView's measure, ListBox walks the realized containers and sets each
@@ -5097,7 +5097,11 @@ Facts at the start.
 **Decisions, stage 1 (GitHub)**
 1. **Keep the whole history** (not one squashed commit): it is clean, and this document refers to it by date.
 2. **Commit email:** rewrite to a GitHub noreply address before the first push if Tim minds his address being
-   public; it can't be done after others clone. *Waiting for Tim's GitHub account name; history untouched.*
+   public; it can't be done after others clone. *Done 2026-11-19 (Tim: "Yes, rewrite"): author and committer of all
+   97 commits are his GitHub noreply address (`git filter-branch --env-filter`); trees, dates and messages are
+   unchanged, every hash is new, and the four hashes this document quotes were updated. The old history stays
+   under the local tags `backup/main` and `backup/publishing` and `refs/original/` until Tim deletes them: never
+   push those (`git push --tags` would).*
 3. **One default branch, `main`:** `master` is fast-forwarded to the current commit and renamed, the old milestone
    branches go, and work happens on short-lived branches.
 4. **CI on GitHub's Windows runners: build, unit tests, the consumer test.** Rendering tests stay out at first:
@@ -5153,7 +5157,7 @@ Facts at the start.
   nuget.org (not queried); the package's repository link, which is empty until there is a remote.
 
 **Tim's part, in order**
-1. Say which GitHub account or organisation, and whether to rewrite the commit email (decision 2).
+1. Say which GitHub account or organisation and repository name (the email rewrite of decision 2 is done).
 2. Create the repository (empty, no README), add it as `origin`, push `main`; check the CI run.
 3. On nuget.org: create the account, add a trusted publishing policy for the repository and `release.yml`, and
    put the profile name in the repository secret `NUGET_USER`. Apply for the `Scribble.` prefix if wanted
