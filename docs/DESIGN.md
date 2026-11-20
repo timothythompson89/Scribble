@@ -5201,7 +5201,10 @@ Facts at the start.
   version's section of `docs/CHANGELOG.md` as its notes (a pre-release when the version has a hyphen).
   `release.yml` runs it last, after the packages are on NuGet; `github-release.yml` runs it by hand for a tag
   that exists already (Actions, "GitHub release", Run workflow), which is how `v0.1.0-alpha.1` gets its own. The
-  notes were tried locally (`-NotesOnly`); neither workflow path has run yet.
+  notes were tried locally (`-NotesOnly`). The by-hand workflow ran once, from `main`, and published
+  "Scribble 0.1.0-alpha.1" as a pre-release (a first try was refused by GitHub before it started, most likely
+  with the tag chosen under "Use workflow from": the workflow isn't in the tag's commit). The step in
+  `release.yml` has not run: the next tag is its first.
 - **The markdown files moved into `docs/` (Tim, 2026-11-20):** README, CHANGELOG, CONTRIBUTING, GLOSSARY,
   THIRD-PARTY-NOTICES and the package readme (`docs/PACKAGE.md`, from `src/`). GitHub shows a README and a
   CONTRIBUTING file from `docs/` as it does from the root. Two stay at the root: `LICENSE` (GitHub reads the
