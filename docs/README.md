@@ -1289,6 +1289,24 @@ ListBox.create [
 ]
 ```
 
+A control inside an item takes the pointer and a Tab stop for itself: a click on a CheckBox in an item ticks the
+box and doesn't select the item. For a control that only shows something (a box ticked while its item is
+selected), give it `isHitTestVisible false` and `focusable false`: clicks go through it to the item, and Tab
+stays on the items.
+
+```fsharp
+ListBox.selectionMode SelectionMode.Multiple
+ListBox.selected model.Picked
+ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> dispatch (Pick e.Keys))
+ListBox.viewSelector (fun (p: Person) ->
+    CheckBox.create [
+        CheckBox.text p.Name
+        CheckBox.isChecked (List.contains p.Id model.Picked)
+        CheckBox.isHitTestVisible false      // the pointer goes through to the item
+        CheckBox.focusable false             // Tab doesn't stop on it
+    ])
+```
+
   It scrolls in the height it is given. Where the height is unlimited (a StackPanel), give it `ListBox.maxHeight`,
   or it is as tall as all its items (a Debug build says so for more than 200). Inside a ScrollViewer of your own
   (a header above it that scrolls away with it) it still realizes only what shows. Its scrollbar is a

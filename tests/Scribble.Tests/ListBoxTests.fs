@@ -634,3 +634,62 @@ let ``in a stack, Left and Right are not the list's`` () =
     Assert.Equal(1, focusedKey host)
     Assert.Equal<int list>([ 1 ], selectedKeys host)
     Assert.Equal(1, ItemsView.columns (listOf host))
+
+// ---- A control inside an item that leaves input to the item (README, "ListBox") ----
+
+/// A Multiple list the view controls, each item a CheckBox ticked while its item is selected; the box takes no
+/// pointer and no focus when `ignores`.
+let private checkList (ignores: bool) (toggles: int ref) =
+    Component.define "CheckList" (fun ctx () ->
+        let selected = ctx.useState ([]: int list)
+        ListBox.create [
+            ListBox.source (people 5)
+            ListBox.keySelector (fun (p: Person) -> p.Id)
+            ListBox.selectionMode SelectionMode.Multiple
+            ListBox.selected selected.Current
+            ListBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<Person, int>) -> selected.Set e.Keys)
+            ListBox.viewSelector (fun (p: Person) ->
+                CheckBox.create [
+                    CheckBox.text p.Name
+                    CheckBox.isChecked (List.contains p.Id selected.Current)
+                    CheckBox.onCheckedChanged (fun _ -> toggles.Value <- toggles.Value + 1)
+                    if ignores then
+                        CheckBox.isHitTestVisible false
+                        CheckBox.focusable false
+                ])
+        ])
+
+let private boxIn (e: Element) = all e |> Seq.find (fun c -> obj.ReferenceEquals(c.Type, CheckBox.Type))
+let private checkedKeys (host: ElementHost) = containers host |> List.filter (fun c -> (boxIn c).Get ToggleButtonProps.isChecked) |> List.map keyOf
+
+[<Fact>]
+let ``a CheckBox in an item that takes no pointer and no focus leaves both to the item, and shows its selection`` () =
+    let toggles = ref 0
+    let w, host = show (checkList true toggles ())
+    // A click on the box is a click on the item: the item is selected, and the view ticks its box.
+    click w (boxIn (container host 2))
+    Assert.Equal<int list>([ 2 ], selectedKeys host)
+    Assert.Equal<int list>([ 2 ], checkedKeys host)
+    clickWith w Modifiers.Control (boxIn (container host 4))
+    Assert.Equal<int list>([ 2; 4 ], checkedKeys host)
+    clickWith w Modifiers.Control (boxIn (container host 2))
+    Assert.Equal<int list>([ 4 ], selectedKeys host)
+    Assert.Equal<int list>([ 4 ], checkedKeys host)
+    // The box itself was never asked.
+    Assert.Equal(0, toggles.Value)
+    // Tab stops on the list's item and then leaves the list: never on a box. Space selects from the keyboard.
+    let w, host = show (checkList true toggles ())
+    key w Key.Tab
+    Assert.True(obj.ReferenceEquals((all host.Tree.Root.Value |> Seq.find (fun e -> e.IsFocused)).Type, ListBoxItem.Type))
+    key w Key.Space
+    Assert.Equal<int list>([ 0 ], checkedKeys host)
+    key w Key.Tab
+    Assert.DoesNotContain(all host.Tree.Root.Value, fun e -> e.IsFocused && obj.ReferenceEquals(e.Type, CheckBox.Type))
+
+[<Fact>]
+let ``a plain CheckBox in an item takes the click itself`` () =
+    let toggles = ref 0
+    let w, host = show (checkList false toggles ())
+    click w (boxIn (container host 2))
+    Assert.Equal(1, toggles.Value)
+    Assert.Empty(selectedKeys host)

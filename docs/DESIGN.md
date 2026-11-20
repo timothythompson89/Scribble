@@ -5672,6 +5672,22 @@ list, under 60 of 1,000 realized (`ItemsViewTests.fs`); the keys in a `wrapFill`
 The Gallery's tiles use `wrapFill 96.0 64.0`; `gallery-phone-lists@3x` regenerated (three cells of 100 where
 there were three of 96 and a gap). 1,367 unit tests, 107 rendering tests.
 
+## A control in an item that leaves input to the item (grilling, 2026-11-20)
+
+Tim: "can we add something to make controls ignore input? Like I put checkboxes in a listbox and clicking on the
+checkbox doesn't click the listboxitem". Nothing was added: two settings every element has do it together,
+`isHitTestVisible false` (the pointer goes through to the item) and `focusable false` (Tab doesn't stop on it).
+Measured with a throwaway test first: with the first alone a click selects the item but Tab still stops on
+every box. **Decisions (Tim: yes to all):** (1) no third setting that does both (it would overlap these two,
+with `isEnabled false` already nearby): the pair is in the README's ListBox section, held by a test; (2) the
+box shows its item's selection from the view (`CheckBox.isChecked (List.contains p.Id model.Picked)` in a
+controlled list). Checked, not assumed: an item's view is made again when only the selection changes (the view
+selector is a new function on each update, which re-views the realized items), so the box follows.
+**As built:** no framework change. Two tests (`ListBoxTests.fs`): a Multiple list of such boxes (click and
+Ctrl+click on a box select the item and tick it, the box's own handler never runs, Tab lands on the item and
+never on a box, Space selects); a plain CheckBox in an item takes the click itself. 1,369 unit tests.
+**Not looked at:** what a screen reader says of a checkbox inside a list item that is itself selectable.
+
 ## Vectorising the PNG decoder (2026-11-18)
 
 Status: **built** (agreed by Tim, 2026-11-18: "yes to all"); the Gallery's Images page checked by Tim on the desktop
