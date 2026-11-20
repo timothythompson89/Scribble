@@ -91,7 +91,7 @@ for name in expected do
     expectFile (Path.Combine(packages, $"Scribble.{name}.{version}.snupkg"))
 let found = Directory.GetFiles(packages, "*.nupkg").Length
 if found <> expected.Length then
-    fail $"{found} packages packed, {expected.Length} expected: a new library goes in this list (and in src/PACKAGE.md if apps reference it)"
+    fail $"{found} packages packed, {expected.Length} expected: a new library goes in this list (and in docs/PACKAGE.md if apps reference it)"
 
 // --- The apps ---------------------------------------------------------------------------------------------
 

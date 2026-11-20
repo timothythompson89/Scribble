@@ -19,7 +19,7 @@ decision. Read Part 1 before planning work; this file is how we work and what bi
   and 10,000 items; scroll to item 9,000 without realizing those between).
 - **Same pixels on every platform** (project review, decision 13): exact screenshot comparison, backends agree.
 - Everything works under **NativeAOT**, trimming and WebAssembly AOT.
-- **Use the words in `GLOSSARY.md`** (view, element, element type, settings type, property, setting, value, theme
+- **Use the words in `docs/GLOSSARY.md`** (view, element, element type, settings type, property, setting, value, theme
   value, app value, visual state, layer, host, ...) in code, docs and discussion; add a term when one settles.
   Decisions go in `docs/DESIGN.md` (no ADR files).
 - When something is done: keep DESIGN.md Part 1 and README current, add an "as built" note to its decisions,
@@ -111,10 +111,10 @@ dotnet fsi tools/TestPackages.fsx                 # the consumer test: packs all
 - Core's `Cursor`, `Modifiers`, `MouseButton`, `PointerKind` alias the Scribble.Platform types. `onClick` takes
   `ClickEventArgs`: write `fun _ -> ...` when unused.
 - **Packages** (DESIGN.md, "Publishing"): every project in `src/` is a package at one version (`Directory.Build.props`);
-  a new library goes in `tools/TestPackages.fsx`'s list, and in `src/PACKAGE.md` if apps reference it. Anything
+  a new library goes in `tools/TestPackages.fsx`'s list, and in `docs/PACKAGE.md` if apps reference it. Anything
   conditioned on a project's own property (`IsScribbleLibrary`) belongs in `Directory.Build.targets`: the props file is
   read first, and a condition there silently never applied. After a change of version alone, build with
-  `--no-incremental` (a stale assembly kept the old version of its reference). API breaks go in `CHANGELOG.md`.
+  `--no-incremental` (a stale assembly kept the old version of its reference). API breaks go in `docs/CHANGELOG.md`.
 - Rider: it once silently overwrote `Directory.Build.props` (check the file on disk if a fix doesn't take); linked
   files with a folder in `Link` are hidden (link flat); browser samples need the default browser "First listed".
   Run configurations live in `.run/`: adding or renaming a host project updates its `.run/*.run.xml` too.
@@ -179,4 +179,4 @@ The five default labels, as a `Status:` line in each issue file. See `docs/agent
 
 ### Domain docs
 
-Single-context: `GLOSSARY.md` at the root; decisions in `docs/DESIGN.md` (no ADR files). See `docs/agents/domain.md`.
+Single-context: `docs/GLOSSARY.md`; decisions in `docs/DESIGN.md` (no ADR files). See `docs/agents/domain.md`.

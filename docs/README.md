@@ -1,6 +1,6 @@
 # Scribble
 
-A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](docs/DESIGN.md) has the goals, architecture,
+A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](DESIGN.md) has the goals, architecture,
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
 **Pre-release.** Scribble runs on Windows (x64) and in the browser today; macOS and Linux come next. The API still
@@ -116,7 +116,7 @@ app drew. Vulkan on Windows still has that problem with G-SYNC.
 
 ### What to check
 
-What each sample should show and do is in [`docs/what-to-check.md`](docs/what-to-check.md).
+What each sample should show and do is in [`docs/what-to-check.md`](what-to-check.md).
 
 ## Run the browser sample
 

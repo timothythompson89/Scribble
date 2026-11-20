@@ -5197,6 +5197,11 @@ Facts at the start.
   step; NuGet's index showed all 17 about six minutes after the push. Checked from outside: an app in an empty
   folder, with nuget.org as its only source, restored `Scribble.Desktop` and built with the four native
   libraries in its output (built, not run).
+- **The markdown files moved into `docs/` (Tim, 2026-11-20):** README, CHANGELOG, CONTRIBUTING, GLOSSARY,
+  THIRD-PARTY-NOTICES and the package readme (`docs/PACKAGE.md`, from `src/`). GitHub shows a README and a
+  CONTRIBUTING file from `docs/` as it does from the root. Two stay at the root: `LICENSE` (GitHub reads the
+  licence there) and `CLAUDE.md` (Claude Code loads project instructions only from the root; in `docs/` they
+  would silently stop applying). Older sections of this document name the files where they were.
 - **Not verified:** `wasm-tools` is installed in both because Tim's machine has
   it and a browser publish without it wasn't tried; trusted publishing's setup; that the ids are still free on
   nuget.org (not queried).
@@ -5212,7 +5217,8 @@ Facts at the start.
 ## Image state per app, not per process (planning round, 2026-11-20)
 
 Status: **agreed (Tim, 2026-11-20: "Accept all"), answering his "how do we make our library not share process wide image
-state"; built the same day (as built, below).**
+state"; built the same day (as built, below); checked by Tim on the desktop, 2026-11-20 ("images can be checked
+off").**
 
 Why now. Two unit tests failed on GitHub's runners and never on Tim's machine (section "Publishing: GitHub and
 NuGet", as built): each assumed it had the process's image state to itself. The interim fix runs eight test
@@ -5302,9 +5308,9 @@ what it is (a key and a source), so no app code changes and nothing in the publi
 
 ## A hook for a picture's load state: `ctx.useImage` (planning round, 2026-11-20)
 
-Status: **agreed (Tim, 2026-11-20: "Accept all"); built the same day** (as built, below), after the per-app image
-work (section "Image state per app, not per process") was committed (decision 7). Waiting for Tim's check of the
-Gallery's "From a URL" section on the desktop.
+Status: **agreed (Tim, 2026-11-20: "Accept all"); built the same day; checked by Tim on the desktop, 2026-11-20
+("images can be checked off")** (as built, below), after the per-app image work (section "Image state per app, not
+per process") was committed (decision 7). Its browser checks wait in `docs/CHECKLIST-BROWSER.md`.
 
 Tim asked whether images should work through a hook. The answer given: not as how pictures are shown (the
 isolation the tests lacked comes from where the cache lives, not from a hook; a hook per row would make virtualized

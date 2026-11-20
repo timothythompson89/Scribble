@@ -2,7 +2,7 @@
 # decision 10). The version is the tag without its "v".
 #
 # Before tagging, on a machine with a GPU:   dotnet fsi tools/TestPackages.fsx --version <version>
-# and move CHANGELOG.md's "Unreleased" entries under the version.
+# and move docs/CHANGELOG.md's "Unreleased" entries under the version.
 #
 # No API key is stored: NuGet's trusted publishing gives this workflow a short-lived one. That needs, once:
 #   - on nuget.org, a trusted publishing policy for this repository and this file (release.yml);

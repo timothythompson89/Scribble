@@ -16,9 +16,9 @@ This will change as the API settles; this file will say when.
 ## Finding your way
 
 - [`README.md`](README.md): what Scribble does, with examples for each part.
-- [`docs/DESIGN.md`](docs/DESIGN.md): Part 1 describes Scribble as it is; Part 2 is the history of every decision.
+- [`docs/DESIGN.md`](DESIGN.md): Part 1 describes Scribble as it is; Part 2 is the history of every decision.
 - [`GLOSSARY.md`](GLOSSARY.md): the words used in code, docs and discussion.
-- [`CLAUDE.md`](CLAUDE.md): how the work is done day to day (the code is written with Claude and tested by Tim),
+- [`CLAUDE.md`](../CLAUDE.md): how the work is done day to day (the code is written with Claude and tested by Tim),
   the build and test commands, and the rules and gotchas.
 
 ## Building and testing

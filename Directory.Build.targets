@@ -21,7 +21,7 @@
 
   <!-- Every package carries the one package readme and the notices for what Scribble bundles. -->
   <ItemGroup Condition="'$(IsScribbleLibrary)' == 'true'">
-    <None Include="$(RepositoryRoot)src/PACKAGE.md" Pack="true" PackagePath="/" Visible="false" />
-    <None Include="$(RepositoryRoot)THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(RepositoryRoot)docs/PACKAGE.md" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(RepositoryRoot)docs/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 </Project>

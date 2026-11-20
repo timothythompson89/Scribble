@@ -5,7 +5,7 @@ Scribble is a single-context repo: one glossary, one decision log.
 
 ## Before exploring, read these
 
-- **`GLOSSARY.md`** at the repo root: the words to use (view, element, element type, settings type, property,
+- **`docs/GLOSSARY.md`**: the words to use (view, element, element type, settings type, property,
   setting, value, theme value, app value, visual state, layer, host, ...).
 - **`docs/DESIGN.md`**: the decision log. Read the sections that touch the area you're about to work in
   (the "Decisions for Mx" sections, the dated topic sections, and "Milestone summaries").
