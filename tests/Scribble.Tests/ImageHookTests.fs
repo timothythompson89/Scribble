@@ -281,9 +281,11 @@ let ``10,000 rows with a hook each hold only the realized rows, also after jumpi
     // (How many rows are asked for on the way depends on how many frames the list takes to settle, so the counts
     // aren't exact: what is held and what was never asked for are.)
     let firstRows = [ for i in 0..5 -> urlOf i ]
+    // Six requests open (asked for and not cancelled) means every place holds a live download: waiting only for
+    // a count of requests could look while a cancelled one's place was still on its way back.
     s.WaitFor(fun () ->
         let cancelled = http.Cancelled
-        firstRows |> List.forall (fun u -> List.contains u cancelled) && http.Requests.Length >= 12)
+        firstRows |> List.forall (fun u -> List.contains u cancelled) && http.Requests.Length - cancelled.Length = 6)
     let struct (running, _) = s.Images.Downloads
     Assert.Equal(6, running)
     Assert.True(s.Images.Count < 40, $"{s.Images.Count} pictures held after the jump")

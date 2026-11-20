@@ -268,12 +268,24 @@ let ``10,000 rows of downloaded avatars ask only for the realized rows, also aft
     scroller.ScrollToIndex(9000, ScrollAlign.Start, false)
     s.Layout()
     s.Render() |> ignore
-    // The first rows' downloads are cancelled and give their places to the new rows.
-    s.WaitFor(fun () -> http.Requests.Length = 12)
-    let asked = http.Requests
-    Assert.Equal(6, http.Cancelled.Length)
+    // The first rows' downloads are cancelled and give their places to the new rows: six requests are open again.
+    //
+    // Not "12 requests, 6 cancelled" exactly (2026-11-20: that failed about one run in five in Release). The jump
+    // lays the list out in two passes, the first realizing a few rows more than the second keeps, and a cancelled
+    // download gives its place back on another thread. When that thread is quick, a row of the first pass (8,991,
+    // seen) is asked for and then cancelled as the second pass lets it go: 13 requests, 7 cancelled. What holds
+    // whatever the threads do: the first six are cancelled, six are open, and no row but those near 9,000 was
+    // ever asked for.
+    let rowOf (u: string) = int (Path.GetFileNameWithoutExtension(Uri(u).LocalPath))
+    s.WaitFor(fun () -> http.Cancelled.Length >= 6 && http.Requests.Length - http.Cancelled.Length = 6)
+    let asked, cancelled = http.Requests, http.Cancelled
+    Assert.Equal<int list>([ 0..5 ], List.take 6 asked |> List.map rowOf)
+    for i in 0..5 do
+        Assert.Contains(urlOf i, cancelled)
+    let struct (running, _) = s.Tree.Images.Downloads
+    Assert.Equal(6, running)
     for u in List.skip 6 asked do
-        Assert.True(int (Path.GetFileNameWithoutExtension(Uri(u).LocalPath)) >= 8990, u)
+        Assert.True(rowOf u >= 8980 && rowOf u <= 9020, u)
     for i in 100..8900 do
         Assert.DoesNotContain(urlOf i, asked)
     Assert.Empty s.Errors
