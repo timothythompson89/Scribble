@@ -180,7 +180,9 @@ module ComboBox =
                 Setting.create ListBoxProps.onItemInvoked (ValueSome(fun (key: obj) (_: obj) -> commit e key))
                 ListBox.scroller s.Scroller
                 ListBox.maxHeight (e.Get ComboBoxProps.maxListHeight)
-                // The flyout has the gap round the list already.
+                // The flyout is the frame, with its own gap round the list.
+                ListBox.background Color.Transparent
+                ListBox.borderThickness 0.0
                 ListBox.padding 0.0
                 // Tab leaves the list with nothing changed (it has one Tab stop, so Tab would go nowhere).
                 ListBox.onKeyDown (fun args ->

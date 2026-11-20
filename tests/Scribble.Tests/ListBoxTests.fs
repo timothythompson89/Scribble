@@ -465,24 +465,39 @@ let ``a Debug build warns of a big ListBox with unlimited height, and of no othe
 #endif
 
 [<Fact>]
-let ``its frame is a Border's: no line or background unless asked for, and a padding of 4 that 0 takes away`` () =
-    let _, host = show (list 100 [])
-    let lb = ofType host ListBox.Type
-    let scroll = Seq.exactlyOne lb.Children
-    // The gap a flyout keeps round a ComboBox's open list.
-    Assert.Equal((4.0, 4.0), (scroll.Bounds.X, scroll.Bounds.Y))
-    Assert.Equal((lb.Bounds.Width - 8.0, lb.Bounds.Height - 8.0), (scroll.Bounds.Width, scroll.Bounds.Height))
-    Assert.Equal(0.0f, (lb.Get BorderProps.background).A)
-    Assert.Equal(0.0, lb.Get BorderProps.borderThickness)
-    let _, host = show (list 100 [ ListBox.padding 0.0 ])
-    let lb = ofType host ListBox.Type
-    Assert.Equal(lb.Bounds.Width, (Seq.exactlyOne lb.Children).Bounds.Width)
-    let framed =
-        list 100 [ ListBox.height 200.0; ListBox.background Scribble.Rendering.Color.White; ListBox.borderBrush Scribble.Rendering.Color.Black; ListBox.borderThickness 1.0; ListBox.cornerRadius 6.0; ListBox.padding 4.0 ]
-    let _, host = show (StackPanel.create [ StackPanel.children [ framed ] ])
+let ``it has a frame by default (a line of 1 and a padding of 4 round the scrolling part), which settings take away`` () =
+    let _, host = show (StackPanel.create [ StackPanel.children [ list 100 [ ListBox.height 200.0 ] ] ])
     let lb = ofType host ListBox.Type
     let scroll = Seq.exactlyOne lb.Children
     Assert.Equal(200.0, lb.Bounds.Height)
+    // The line, then the gap a flyout keeps round a ComboBox's open list.
+    Assert.Equal(1.0, lb.Get BorderProps.borderThickness)
     Assert.Equal((5.0, 5.0), (scroll.Bounds.X, scroll.Bounds.Y))
     Assert.Equal((lb.Bounds.Width - 10.0, 190.0), (scroll.Bounds.Width, scroll.Bounds.Height))
     Assert.InRange(realizedIn host, 1, 40)
+    // No frame, edge to edge.
+    let bare = list 100 [ ListBox.background Scribble.Rendering.Color.Transparent; ListBox.borderThickness 0.0; ListBox.padding 0.0 ]
+    let _, host = show bare
+    let lb = ofType host ListBox.Type
+    let scroll = Seq.exactlyOne lb.Children
+    Assert.Equal((0.0, 0.0), (scroll.Bounds.X, scroll.Bounds.Y))
+    Assert.Equal((lb.Bounds.Width, lb.Bounds.Height), (scroll.Bounds.Width, scroll.Bounds.Height))
+    Assert.Equal(0.0f, (lb.Get BorderProps.background).A)
+
+[<Fact>]
+let ``its frame is a ComboBox's and a TextBox's, in both themes`` () =
+    for theme in [ Theme.dark []; Theme.light [] ] do
+        let view =
+            StackPanel.create [
+                StackPanel.children [ list 5 []; ComboBox.create [ ComboBox.source [ "a"; "b" ] ]; TextBox.create [] ]
+            ]
+        let w, _, app = start [ App.theme theme; App.view view ]
+        w.DeliverFrame() |> ignore
+        let host = app :?> ElementHost
+        let lb, combo, text = ofType host ListBox.Type, ofType host ComboBox.Type, ofType host TextBox.Type
+        for other in [ combo; text ] do
+            Assert.Equal(other.Get BorderProps.background, lb.Get BorderProps.background)
+            Assert.Equal(other.Get BorderProps.borderBrush, lb.Get BorderProps.borderBrush)
+            Assert.Equal(other.Get BorderProps.borderThickness, lb.Get BorderProps.borderThickness)
+            Assert.Equal(other.Get BorderProps.cornerRadius, lb.Get BorderProps.cornerRadius)
+        Assert.True((lb.Get BorderProps.background).A > 0.0f)

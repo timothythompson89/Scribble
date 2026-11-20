@@ -10,6 +10,10 @@ decision. Read Part 1 before planning work; this file is how we work and what bi
 - **Discuss the plan before writing any code.** Tim tends to second-guess and wants to see decisions, options and
   a recommendation first. For each milestone: list what it covers, the decisions it needs (a recommendation for
   each), wait for agreement, record decisions in `docs/DESIGN.md`, then build.
+- **Every decision round goes through the `mattpocock-skills:grill-with-docs` skill**, however small the decision
+  (a default, a name, a follow-up to something just built): invoke it with the Skill tool each time, since a
+  skill's instructions don't carry over from an earlier round or survive a summarized session. If it isn't in the
+  session's skill list, say so and ask, rather than discussing in plain prose.
 - Claude writes the code; Tim tests in **Rider on Windows** (and Chrome/Edge for the browser) and gives feedback.
 - **F# only**: no C# projects.
 - Low level by intent: rendering, layout, text, styles and controls are our own code. Borrowed: WebGPU (wgpu-native),
@@ -49,7 +53,7 @@ dotnet fsi tools/MakeGalleryImages.fsx         # the Gallery's pictures (only if
 dotnet fsi tools/TestPackages.fsx                 # the consumer test: packs all, builds/runs/publishes apps from the packages (--no-run: no GPU)
 ```
 
-- **A test run counts only if nothing aborted and the totals are right** (2026-11-20: 1,360 unit tests plus 9
+- **A test run counts only if nothing aborted and the totals are right** (2026-11-20: 1,361 unit tests plus 9
   timing tests skipped; 107 rendering tests). A hang killed by `--blame-hang-timeout` still prints "Passed!" with
   only the finished tests: check for "Test Run Aborted" and the total. Delete hang dumps in `TestResults/` once read.
 - **Screenshot references** (`tests/Scribble.Tests.Rendering/References`) come from Tim's machine on D3D12 and

@@ -109,9 +109,6 @@ let private lists =
                 ]
                 ListBox.create [
                     DockPanel.dock Dock.Fill
-                    ListBox.borderBrush Palette.border
-                    ListBox.borderThickness 1.0
-                    ListBox.cornerRadius 6.0
                     ListBox.name "items"
                     ListBox.source source
                     ListBox.keySelector (fun (i: Item) -> i.Id)
@@ -136,9 +133,6 @@ let private lists =
                         ]
                         ListBox.create [
                             ListBox.height 150.0
-                            ListBox.borderBrush Palette.border
-                            ListBox.borderThickness 1.0
-                            ListBox.cornerRadius 6.0
                             ListBox.name "swatches"
                             ListBox.source swatches
                             ListBox.keySelector (fun (s: Swatch) -> s.Name)

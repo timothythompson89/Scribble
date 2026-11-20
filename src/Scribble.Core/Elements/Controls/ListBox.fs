@@ -399,14 +399,16 @@ type ListBox =
     static member onItemInvoked<'k, 'T, 'K when 'k :> ListBox>(handler: ItemInvokedEventArgs<'T, 'K> -> unit) : Setting<'k> =
         Setting.create ListBoxProps.onItemInvoked (ValueSome(fun (key: obj) (item: obj) -> handler (ItemInvokedEventArgs<'T, 'K>(unbox<'K> key, unbox<'T> item))))
 
-    // A frame of its own, as a Border's (DESIGN.md, "ListBox scrolls on its own", decision 8): none unless asked for.
-    /// What is behind the items (default: nothing).
+    // A frame of its own, as a Border's (DESIGN.md, "ListBox scrolls on its own", decision 8): by default a
+    // ComboBox's and a TextBox's. For a list with none: `ListBox.borderThickness 0.0`, `ListBox.background
+    // Color.Transparent` and, to go edge to edge, `ListBox.padding 0.0`.
+    /// What is behind the items (default: the theme's surface).
     static member background<'k when 'k :> ListBox>(value: Color) : Setting<'k> = Setting.create BorderProps.background value
     static member background<'k when 'k :> ListBox>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.background themeValue
     /// The colour of the line round the list; it shows with a `borderThickness`.
     static member borderBrush<'k when 'k :> ListBox>(value: Color) : Setting<'k> = Setting.create BorderProps.borderBrush value
     static member borderBrush<'k when 'k :> ListBox>(themeValue: ThemeValue<Color>) : Setting<'k> = Setting.fromTheme BorderProps.borderBrush themeValue
-    /// The line's width in DIPs (default 0: no line).
+    /// The line's width in DIPs (default 1; 0 for no line).
     static member borderThickness<'k when 'k :> ListBox>(value: float) : Setting<'k> = Setting.create BorderProps.borderThickness value
     /// Rounds the frame's corners. The items inside are not cut to them: the default `padding` of 4 keeps an
     /// item's highlight clear of a small radius; a larger one needs more.
@@ -414,8 +416,8 @@ type ListBox =
     static member cornerRadius<'k when 'k :> ListBox>(uniform: float) : Setting<'k> = Setting.create BorderProps.cornerRadius (CornerRadius.Uniform uniform)
     static member cornerRadius<'k when 'k :> ListBox>(themeValue: ThemeValue<float>) : Setting<'k> =
         Setting.fromThemeWith BorderProps.cornerRadius themeValue ThemeConvert.uniformCorners
-    /// Space between the ListBox's edge and the scrolling items (the scrollbar is inside it too). Default 4, with
-    /// or without a frame; `ListBox.padding 0.0` for a list that goes edge to edge.
+    /// Space between the frame's line and the scrolling items (the scrollbar is inside it too). Default 4;
+    /// `ListBox.padding 0.0` for items that reach the line.
     static member padding<'k when 'k :> ListBox>(value: Thickness) : Setting<'k> = Setting.create BorderProps.padding value
     static member padding<'k when 'k :> ListBox>(uniform: float) : Setting<'k> = Setting.create BorderProps.padding (Thickness.Uniform uniform)
     static member padding<'k when 'k :> ListBox>(horizontal: float, vertical: float) : Setting<'k> =
@@ -588,9 +590,16 @@ module ListBox =
             Element.arrange arrange
             // Its frame, when it has one (the properties are a Border's; all neutral unless set).
             Element.render Border.draw
-            // The gap a flyout keeps round a ComboBox's open list: item highlights stop short of the edge, and
-            // clear a rounded corner when it is given a frame.
-            Element.defaults [ ListBox.padding 4.0 ]
+            // Its look at rest, by theme value: a ComboBox's and a TextBox's frame (DESIGN.md, "ListBox scrolls on
+            // its own", decision 8). The padding is the gap a flyout keeps round a ComboBox's open list: item
+            // highlights stop short of the line and clear the rounded corners.
+            Element.defaults [
+                ListBox.background Palette.surface
+                ListBox.borderBrush Palette.border
+                ListBox.borderThickness 1.0
+                ListBox.cornerRadius Palette.cornerRadius
+                ListBox.padding 4.0
+            ]
         ]
 
     let create (settings: Setting<ListBox> list) : View = View.Create(Type, settings)

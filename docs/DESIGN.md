@@ -5180,6 +5180,18 @@ Facts at the start.
   the background decodes end before the first frame even when forced, so it never showed there. Fixed in the
   test: it draws again until the 13 are there (5 s at most). A cache per tree for tests would make it
   deterministic; that is a Core change, not made.
+- **The avatars test's own race, found and ended 2026-11-20** (after image state went per app, it still timed out
+  about one Release run in five, also on untouched code: "downloads running 6, waiting 8"). No website is asked:
+  a fake handler holds every request open. The test waited for exactly 12 requests after a jump to row 9,000.
+  The jump lays the list out in two passes, the first realizing a few rows more than the second keeps, and a
+  cancelled download gives its place back on a thread-pool thread. When that thread is quick, a row of the first
+  pass gets the place, is asked for, and is cancelled as the second pass lets it go (seen: rows 0–5, then 9000,
+  8991, …; 8991 cancelled): 13 requests, so "= 12" was never true and the wait ran out. The product is right
+  (a request near the target, cancelled at once); the test asserted more than is promised. It now waits for six
+  requests open (asked and not cancelled) with the first six cancelled, and checks that six downloads run and
+  that every other request is within 20 rows of 9,000. The hook's 10,000-row test read "running" after waiting
+  for a count of requests, the same mistake in a smaller window: it waits for six open too. 60 Release runs of
+  the whole suite in a row passed after the change.
 - **A second test failed the same way in run 7:** `10,000 rows of downloaded avatars ...` timed out waiting for 6
   requests ("downloads running 6, waiting 9"). The HTTP handler and the six download places are also one per
   process, and the Gallery's Images page has two pictures from real URLs: a test drawing the Gallery at the same
@@ -5463,6 +5475,18 @@ ListBox; selection moved into ItemsView): Tim wanted only the ListBox to behave 
    ComboBox's open list, not the 12 × 7 inside a ComboBox's box (with a `ListBoxItem`'s own 12 × 8, text would
    have started 24 in). So a ListBox given a line and corners looks like that open list with nothing more to
    set. It applies with or without a frame: `ListBox.padding 0.0` for a list that goes edge to edge.
+   **And framed by default after all (Tim asked again; Claude changed its recommendation; 2026-11-20):** the
+   theme's surface behind the items, a line of 1 in the border colour and the theme's corner radius, as a
+   ComboBox and a TextBox have, so the three read as one family. What turned it: with the padding of 4 an
+   unframed list sat 4 in from nothing; a ListBox with a frame is what people expect (WPF, Avalonia, HTML, and
+   both of the Gallery's); and the lists that want none (a navigation pane, a flyout's) are styled on purpose
+   anyway: `ListBox.borderThickness 0.0`, `ListBox.background Color.Transparent`, `ListBox.padding 0.0`.
+   As built: type defaults on `ListBox.Type`, all theme values. ComboBox gives its flyout's list those three
+   settings (the flyout is the frame), and its pictures are unchanged. The Gallery's lists dropped their frame
+   settings. Regenerated on purpose, each looked at first: `lists@1x`, `lists-light@1x` (the frame round the
+   list) and `gallery-phone-lists@3x` (the surface behind both lists, nothing else). Two tests: the line and
+   padding round the scrolling part and the three settings that take the frame away; the frame's four values
+   equal a ComboBox's and a TextBox's in both themes.
 9. **The list inside is internal and named `ListBoxItems`** (the inspector shows it, with "realized 40 of
    10,000"). It keeps `ListView` and the like free for the day it is made public.
 10. **The list screenshots stay byte-identical**: no reference is regenerated; a difference is a bug.
