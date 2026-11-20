@@ -41,6 +41,7 @@ questions", as paragraphs starting with the name given here.
 | Property tests in selectors | `Style.prop` and `Style.where` are for an ancestor's part only; they throw in a style's own selector (2026-11-19) | Section "Style.prop and Style.where are for an ancestor's part only" |
 | Controls written outside Core | `ControlValue` and `Prop.appState` are public, `InputContext.Element` too; the Gallery's `RatingBar` is written with the public API only (2026-11-19) | Section "Controls written outside Core" |
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
+| Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
@@ -208,6 +209,10 @@ signatures (F# can't use the `LibraryImport` generator); browser interop uses `J
   handles), which never takes the keyboard.
   Flyouts (`flyout content` or `flyout [ ... ]`: content anchored to an element, light dismiss, flip and clamp) and tooltips each show
   in a layer of their own. Section "M8 step 4".
+- **Images:** an `Image` is a value (a key and where it comes from: a resource, bytes, pixels, a file, a URL); decoded
+  pictures, their recently-used pool (32 MB), downloads (six at once) and the HTTP client belong to the app: one
+  image cache on its app values, shared by its windows and layers; a bare tree has its own, and two apps in one
+  process share none. Section "Image state per app, not per process".
 - **Errors:** app code (handlers, views, components, render functions, items) is guarded; with `App.onError` an
   error is reported and only what failed is left out; without it the app ends.
 - **Semantics** (namespace `Scribble.Accessibility`, seen only after `open`): what each element is to assistive
@@ -5182,7 +5187,7 @@ Facts at the start.
   GalleryPages, AppValue, Idle, Inspector, Semantics; the run still takes 6 s). **Still open:** a download a
   finished test left running keeps its place, so this narrows the race and may not end it; the cure is image
   state that belongs to a tree or host, a design round of its own (with the cache per tree above), which would
-  also keep unit tests off the real network.
+  also keep unit tests off the real network. **Done the same day:** section "Image state per app, not per process".
 - **The first release run failed at the push (2026-11-20), with nothing published:** on Windows `dotnet nuget push`
   finds no files for a pattern written with forward slashes. The pattern now has backslashes, and a rehearsal
   step pushes the same pattern into a folder and counts 17 before the sign-in. Tests, pack, the consumer test
@@ -5202,6 +5207,97 @@ Facts at the start.
    put the profile name in the repository secret `NUGET_USER`. Apply for the `Scribble.` prefix if wanted
    (project review, decision 16: likely refused, not needed).
 4. Done 2026-11-20 (the tag was moved once, after the first run failed at the push). `dotnet fsi tools/TestPackages.fsx --version 0.1.0-alpha.1`, then tag `v0.1.0-alpha.1` and push the tag.
+
+## Image state per app, not per process (planning round, 2026-11-20)
+
+Status: **agreed (Tim, 2026-11-20: "Accept all"), answering his "how do we make our library not share process wide image
+state"; built the same day (as built, below).**
+
+Why now. Two unit tests failed on GitHub's runners and never on Tim's machine (section "Publishing: GitHub and
+NuGet", as built): each assumed it had the process's image state to itself. The interim fix runs eight test
+modules one after another; it narrows the race and leaves unit tests able to reach the real network. M10's round 2
+already lists going through Core's statics (engineering rule 6), and this is part of that work.
+
+What is process-wide today.
+
+| State | Where | Who uses it |
+| --- | --- | --- |
+| The cache and its 32 MB pool (`ImageCache.Shared`) | `ImageCache.fs` | 14 places in `Element.fs`, 1 in `ViewImage.fs` |
+| The download queue and its six places | inside the cache | the same |
+| The HTTP client, the tests' handler, the timeout and the base URL (`ImageHttp`) | `Image.fs` | the cache; `Scribble.Browser` sets the base URL |
+| Image cursors (`ImageCursors`) | `Cursor.fs` | `Cursor.fs` (5 places), `Input.fs` (1) |
+| "Decode inline" for tests (`ImageCache.DecodeInlineOnThisThread`) | thread-static | tests only |
+
+The first three rows were read closely; how the image cursors' registry works was not, and is to be read before
+that part is built.
+
+The shape. One internal `ImageServices` object holds the cache, the download queue, the HTTP client and the decode
+mode. An app makes one, and every host, window and layer of that app shares it. `IElementRoot` gains an `Images`
+member beside `AppValues`, and the 15 places change from `ImageCache.Shared` to the root's. An `Image` value stays
+what it is (a key and a source), so no app code changes and nothing in the public API breaks.
+
+**Decisions (Tim accepted every recommendation)**
+1. **Scope: one per app.** Considered: one per tree (the same picture decoded once for each layer and window) and
+   one per process (today). A bare `ElementTree` makes its own, as it does for app values.
+2. **Reached through the root** (`IElementRoot.Images`). Considered: handing it to each element, which touches far
+   more code.
+3. **Everything in the table moves together,** the HTTP client and the six download places included: moving the
+   cache alone would leave the avatars test's failure where it is.
+4. **"Decode inline" becomes a setting of the service,** in place of the thread-static flag: a test makes a service
+   that decodes inline, and nothing depends on which thread a test runs on.
+5. **Each test gets a service of its own,** with a handler that fails any request it wasn't told to answer, so
+   unit tests can't reach the real network. The `Shared image state` collection and the Gallery test's waiting
+   loop come out. A new test holds the rule: two trees showing a picture with the same key don't see each other's
+   decodes or downloads.
+6. **When: now, as the first piece of M10's audit of statics.** It also ends the CI failures properly.
+
+**Costs and what isn't known**
+- Two apps in one process each have a 32 MB pool. That happens in the hot-reload dev host and in tests.
+- `ViewImage.render` and `DesktopApp.headless` need a service too; `Headless.start` would own one.
+- Image cursors may be awkward where a cursor is looked up with no root in reach (`Input.fs`): to be reported
+  before that part is built.
+- Drawing isn't touched, so the screenshot references shouldn't change; the 107 rendering tests are run to confirm.
+
+**As built (2026-11-20)**
+- **The cache is the service: no `ImageServices` wrapper.** `ImageCache` already held the pool and the download
+  queue; it now also owns its `ImageHttp` (client, the tests' handler, timeout: an instance, no longer statics)
+  and its decode mode (`DecodeInline`, in place of the thread-static flag). `ImageCache.Shared` is gone.
+- **It hangs on the app values, and elements reach it through their root's** (`root.AppValues.Images`), not a new
+  `IElementRoot.Images` (a change to decision 2's wording): the interface is public and the cache internal, and
+  the app values are already the one object an app's windows, layers and trees share, with a bare tree owning
+  its own. So no host, layer or `App.start` code changed: what shares app values shares pictures. It is made on
+  first use.
+- **A hold remembers its cache** (`ImageHold.Cache`): a picture is asked about and given back where it was taken,
+  whatever tree the element is in by then.
+- **A download function is given the cache's `ImageHttp`** (`ImageSource.Url`'s `fetch`), so `Image.fromUrl`
+  still is the only thing that names `HttpClient` (the NativeAOT Counter, which downloads nothing, grew 5 KB, from
+  8,847,360 bytes to 8,852,480; linking `HttpClient` would add 2.4 MB).
+- **Rendering to an image:** inside an app, a render's tree takes the app's values and so its pictures; in a
+  tool the headless environment owns one cache (`RenderEnvironment.Images`) for every render.
+- **What stays the process's, on purpose:**
+  - `ImageHttp.BaseUrl`, the page's address for relative URLs: a browser tab has one page whatever runs in it.
+  - `ImageHttp.Detached`, for `Image.toPng` of a URL image: a public call with no app in reach. It caches nothing
+    and has no places to wait for.
+  - `ImageCursors`, read before building as promised: it is a weak table from a cursor value to what it was made
+    from (its picture and options), not cache state, and stays. One thing in it is shared: `spec.Decoded`, the
+    decoded picture an element found ready. Two apps in one process using the *same* cursor value would both
+    see it; left, and noted for M10's audit.
+  - `ImageCache.ConfigureNew`, a default every new cache is given first: how the tests say "inline, no network"
+    once for their process. Nothing sets it in an app.
+- **Tests:** `tests/Scribble.Tests/ImageSetup.fs` sets that default from an xUnit test framework class (the one
+  place that runs once per test process): every cache decodes inline and has a handler, `NoNetwork`, that refuses
+  each request by name. A test that downloads gives its tree's cache a handler (`tree.Images.Http.Handler`). The
+  `Shared image state` collection and the Gallery test's waiting loop are gone. New tests: a tree's cache is its
+  app values' and two bare trees share none; the same picture in two trees is decoded by each; one tree's
+  downloads take none of another's six places (the CI failure, as a test); a new cache in the unit tests decodes
+  inline and refuses the network. The rendering tests set inline decoding on their own tree's or host's cache
+  and are otherwise as they were (their collection also keeps the process's render environment to one class).
+- **Results:** 1,340 unit tests (4 new) and 9 timing tests skipped; 107 rendering tests, no reference changed; the
+  consumer test passes (17 packages, the desktop and NativeAOT apps run); the 9 timing tests pass in Release
+  (three runs of three; the first run after the build failed one, the PNG decoder's, which this work does not
+  touch: a cold run).
+- **Not verified:** the browser (relative URLs, downloads through `fetch`): a line waits in
+  `docs/CHECKLIST-BROWSER.md`. Two apps in one process outside tests (M10's dev host will be the first).
 
 ## Vectorising the PNG decoder (2026-11-18)
 

@@ -6,6 +6,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="ImageSetup.fs" />
     <Compile Include="Timing.fs" />
     <Compile Include="FrameClockTests.fs" />
     <Compile Include="ColorTests.fs" />

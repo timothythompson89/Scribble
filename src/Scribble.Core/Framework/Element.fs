@@ -1509,13 +1509,14 @@ and [<Sealed>] Element internal (elementType: ElementType) =
     member private this.HoldImage(image: Image) : ImageHold =
         match root with
         | ValueNone -> null
-        | ValueSome _ ->
+        | ValueSome r ->
             if isNull heldImages then heldImages <- ResizeArray(1)
             let mutable hold: ImageHold = null
             for h in heldImages do
                 if isNull hold && h.Entry.Key = image.Key then hold <- h
             if isNull hold then
-                hold <- ImageHold(ImageCache.Shared.Acquire image, image)
+                let cache = r.AppValues.Images
+                hold <- ImageHold(cache, cache.Acquire image, image)
                 heldImages.Add hold
             hold.Touched <- true
             hold.Image <- image
@@ -1533,26 +1534,26 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                         hold.Waiting <- false
                         if not (isNull heldImages) && heldImages.Contains hold then
                             if sizeKnown then this.InvalidateVisual() else this.InvalidateMeasure()
-                    if not (ImageCache.Shared.AddWaiter(hold.Entry, fun () -> d.Post ended)) then ended ()
+                    if not (hold.Cache.AddWaiter(hold.Entry, fun () -> d.Post ended)) then ended ()
                 | ValueNone -> ()
             | ValueNone -> ()
 
     /// A failed picture is reported once, by the first element that asks after it failed ((d) 7).
     member private this.ReportImageFailure(hold: ImageHold, e: exn) =
-        if ImageCache.Shared.ClaimReport hold.Entry then this.ReportError e
+        if hold.Cache.ClaimReport hold.Entry then this.ReportError e
 
     /// The decoded picture to draw, or none while it loads (or after it failed, or outside a tree).
     member internal this.ImageOf(image: Image) : Scribble.Imaging.DecodedImage voption =
         match this.HoldImage image with
         | null -> ValueNone
         | hold ->
-            match ImageCache.Shared.StateOf hold.Entry with
+            match hold.Cache.StateOf hold.Entry with
             | ImageState.Ready d -> ValueSome d
             | ImageState.Failed e ->
                 this.ReportImageFailure(hold, e)
                 ValueNone
             | ImageState.Loading ->
-                this.WaitForImage(hold, (ImageCache.Shared.InfoOf hold.Entry).IsSome)
+                this.WaitForImage(hold, (hold.Cache.InfoOf hold.Entry).IsSome)
                 ValueNone
 
     /// The picture's size in DIPs (its pixels before any reduction ÷ its density), once known.
@@ -1560,8 +1561,8 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         match this.HoldImage image with
         | null -> ValueNone
         | hold ->
-            let info = ImageCache.Shared.InfoOf hold.Entry
-            match ImageCache.Shared.StateOf hold.Entry with
+            let info = hold.Cache.InfoOf hold.Entry
+            match hold.Cache.StateOf hold.Entry with
             | ImageState.Failed e -> this.ReportImageFailure(hold, e)
             | ImageState.Loading -> this.WaitForImage(hold, info.IsSome)
             | ImageState.Ready _ -> ()
@@ -1581,7 +1582,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         match this.HoldImage spec.Image with
         | null -> false
         | hold ->
-            match ImageCache.Shared.StateOf hold.Entry with
+            match hold.Cache.StateOf hold.Entry with
             | ImageState.Ready d ->
                 spec.Decoded <- ValueSome d
                 true
@@ -1598,7 +1599,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                             let ended () =
                                 hold.CursorWaiting <- false
                                 ready ()
-                            if not (ImageCache.Shared.AddWaiter(hold.Entry, fun () -> d.Post ended)) then d.Post ended
+                            if not (hold.Cache.AddWaiter(hold.Entry, fun () -> d.Post ended)) then d.Post ended
                         | ValueNone -> ()
                     | ValueNone -> ()
                 false
@@ -1609,19 +1610,19 @@ and [<Sealed>] Element internal (elementType: ElementType) =
             for i in heldImages.Count - 1 .. -1 .. 0 do
                 let h = heldImages[i]
                 if all || not h.Touched then
-                    ImageCache.Shared.Release h.Entry
+                    h.Cache.Release h.Entry
                     heldImages.RemoveAt i
                 else
                     h.Touched <- false
             if heldImages.Count = 0 then heldImages <- null
 
     /// The pictures it holds that are still loading (`ViewImage` waits for them).
-    member internal _.ImagesLoading: ImageEntry list =
+    member internal _.ImagesLoading: ImageHold list =
         if isNull heldImages then []
         else
             [ for h in heldImages do
-                  match ImageCache.Shared.StateOf h.Entry with
-                  | ImageState.Loading -> h.Entry
+                  match h.Cache.StateOf h.Entry with
+                  | ImageState.Loading -> h
                   | _ -> () ]
 
     /// Lets go of every picture held in this element and everything inside it (it was hidden).
@@ -1638,7 +1639,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
         if isNull heldImages then []
         else
             [ for h in heldImages do
-                  let struct (state, info, holders) = ImageCache.Shared.Describe h.Entry
+                  let struct (state, info, holders) = h.Cache.Describe h.Entry
                   let w, height = match info with ValueSome i -> i.Width, i.Height | ValueNone -> 0, 0
                   { Image = h.Image
                     Status =
@@ -1802,7 +1803,7 @@ and [<Sealed>] Element internal (elementType: ElementType) =
                 match this.HoldImage spec.Image with
                 | null -> ()
                 | hold ->
-                    match ImageCache.Shared.StateOf hold.Entry with
+                    match hold.Cache.StateOf hold.Entry with
                     | ImageState.Failed e -> this.ReportImageFailure(hold, e)
                     | _ -> ()
             | ValueNone -> ()

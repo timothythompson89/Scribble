@@ -16,9 +16,9 @@ type ImageViewTests(fixture: TextRenderingTests.TextFixture) =
 
     [<Fact>]
     member _.``the Gallery's Images page``() =
-        ImageCache.DecodeInlineOnThisThread <- true
         let theme = Theme.dark []
         let tree = ElementTree(fixture.Text)
+        tree.Images.DecodeInline <- true
         tree.Theme <- ValueSome theme
         tree.Update(Scribble.Samples.Gallery.ImagesPage.view ())
         let width, height = 720.0, 2200.0

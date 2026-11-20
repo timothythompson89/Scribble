@@ -92,12 +92,12 @@ type InspectorTests(fixture: TextFixture) =
     /// M8 step 3b (f) 7: an ImageView picked, its IMAGES section with the thumbnail.
     [<Fact>]
     member _.``the inspector's IMAGES section``() =
-        ImageCache.DecodeInlineOnThisThread <- true
         // Custom states are process-wide; the Gallery's ("chosen") show in STATES whichever test ran first.
         Scribble.Samples.Gallery.StylesPage.view () |> ignore
         let pixels: PixelSize = { Width = 900; Height = 720 }
         let size = Size.Create(900.0, 720.0)
         let host = ElementHost.create (new StillWindow(pixels)) (new OffscreenOnly(fixture.Gpu.Device)) fixture.Text []
+        host.AppValues.Images.DecodeInline <- true
         // A 96 × 64 gradient with a ring, at density 2 (48 × 32 DIPs).
         let w, h = 96, 64
         let rgba = Array.zeroCreate<byte> (w * h * 4)

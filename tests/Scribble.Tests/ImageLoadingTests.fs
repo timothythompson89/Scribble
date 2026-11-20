@@ -2,9 +2,6 @@
 /// at most 6 downloads at once, cancelled when nothing holds them, failures (404, too big, timeout, relative URL on
 /// the desktop) reported once, a size that arrives with the pixels, and a 10,000-row list downloading only what's
 /// shown (DESIGN.md, "M8 step 3b", (e)).
-// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
-// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
-[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.ImageLoadingTests
 
 open System
@@ -61,27 +58,27 @@ type private FakeHttp(answer: string -> HttpResponseMessage voption) =
 let private ok (bytes: byte[]) = new HttpResponseMessage(HttpStatusCode.OK, Content = new ByteArrayContent(bytes))
 
 /// Waits (real time: downloads finish on other threads) until `condition`, running what they post to the UI thread.
-let private waitFor (dispatcher: Dispatcher) (condition: unit -> bool) =
+let private waitFor (cache: ImageCache) (dispatcher: Dispatcher) (condition: unit -> bool) =
     let deadline = DateTime.UtcNow.AddSeconds 5.0
     while not (condition ()) && DateTime.UtcNow < deadline do
         dispatcher.RunPending()
         Thread.Yield() |> ignore
     dispatcher.RunPending()
-    let struct (running, waiting) = ImageCache.Shared.Downloads
+    let struct (running, waiting) = cache.Downloads
     Assert.True(condition (), "timed out waiting; downloads running " + string running + ", waiting " + string waiting + "
 " + Environment.StackTrace)
 
-/// A tree showing `view`, its errors collected; `http` answers its downloads.
-type private Scene(view: View, http: HttpMessageHandler, ?width: float, ?height: float) =
-    do
-        ImageCache.DecodeInlineOnThisThread <- true
-        ImageHttp.Handler <- http
+/// A tree showing `view`, its errors collected; `http` answers the downloads of its own image cache (null: the tests'
+/// default, which refuses every request).
+type private Scene(view: View, http: HttpMessageHandler, ?width: float, ?height: float, ?timeout: TimeSpan) =
     let size = Size.Create(defaultArg width 400.0, defaultArg height 300.0)
     let errors = List<exn>()
     let dispatcher = Dispatcher ignore
     do dispatcher.OnError <- errors.Add
     let tree = ElementTree(textSystem ())
     do
+        if not (isNull http) then tree.Images.Http.Handler <- http
+        timeout |> Option.iter (fun t -> tree.Images.Http.Timeout <- t)
         tree.Dispatcher <- ValueSome dispatcher
         tree.Update view
         tree.UpdateLayout size
@@ -98,14 +95,12 @@ type private Scene(view: View, http: HttpMessageHandler, ?width: float, ?height:
         tree.Render list
         dispatcher.FrameEnded()
         list
-    member _.WaitFor(condition: unit -> bool) = waitFor dispatcher condition
+    member _.WaitFor(condition: unit -> bool) = waitFor tree.Images dispatcher condition
     interface IDisposable with
         member _.Dispose() =
             // Taken down, its downloads are cancelled: the next test gets all 6 places.
             tree.Update(Border.create [])
-            waitFor dispatcher (fun () -> ImageCache.Shared.Downloads = struct (0, 0))
-            ImageHttp.Handler <- null
-            ImageHttp.Timeout <- TimeSpan.Zero
+            waitFor tree.Images dispatcher (fun () -> tree.Images.Downloads = struct (0, 0))
 
 let private topLeft (image: Image) =
     ImageView.create [ ImageView.image image; ImageView.horizontalAlignment Left; ImageView.verticalAlignment Top ]
@@ -172,8 +167,7 @@ let ``a response over 64 MB fails without being read`` () =
 let ``a download that takes too long fails`` () =
     let url = "https://example.test/" + unique "slow" + ".png"
     let http = new FakeHttp(fun _ -> ValueNone)
-    ImageHttp.Timeout <- TimeSpan.FromMilliseconds 100.0
-    use s = new Scene(topLeft (Image.fromUrl url []), http)
+    use s = new Scene(topLeft (Image.fromUrl url []), http, timeout = TimeSpan.FromMilliseconds 100.0)
     s.WaitFor(fun () -> s.Layout(); s.Render() |> ignore; s.Errors.Count > 0)
     Assert.Contains("took longer than", (Assert.Single s.Errors).Message)
 
@@ -204,7 +198,7 @@ let ``at most 6 download at once, the rest in the order asked`` () =
     use s = new Scene(StackPanel.create [ StackPanel.children [ for u in urls -> topLeft (Image.fromUrl u []) ] ], http)
     s.WaitFor(fun () -> http.Requests.Length = 6)
     Assert.Equal<string list>(List.take 6 urls, http.Requests)
-    let struct (running, waiting) = ImageCache.Shared.Downloads
+    let struct (running, waiting) = s.Tree.Images.Downloads
     Assert.True(running >= 6 && waiting >= 4)
     http.Answer(urls[0], ok pngBytes)
     s.WaitFor(fun () -> http.Requests.Length = 7)
@@ -221,7 +215,7 @@ let ``a download nothing shows any more is cancelled, and one still waiting is n
     s.WaitFor(fun () -> http.Cancelled.Length = 6)
     Assert.Equal(6, http.Requests.Length)
     for u in urls do
-        Assert.False(ImageCache.Shared.Contains("url:" + u))
+        Assert.False(s.Tree.Images.Contains("url:" + u))
     Assert.Empty s.Errors
 
 // --- Files --------------------------------------------------------------------------------------
@@ -290,7 +284,6 @@ let ``10,000 rows of downloaded avatars ask only for the realized rows, also aft
 let ``an image cursor shows the arrow until its picture arrives, then changes without a frame`` () =
     let url = "https://example.test/" + unique "cursor" + ".png"
     let http = new FakeHttp(fun _ -> ValueNone)
-    ImageHttp.Handler <- http
     let platform, device = new Scribble.Tests.AppTests.FakePlatform(), new Scribble.Tests.AppTests.FakeDevice()
     let errors = List<exn>()
     let cursor = Cursor.fromImage (Image.fromUrl url []) []
@@ -305,6 +298,8 @@ let ``an image cursor shows the arrow until its picture arrives, then changes wi
     let app = App.start (platform, device, new FixedShaper(), [ App.view view; App.onError (fun _ e -> errors.Add e) ])
     let w = platform.Window.Value
     let host = app :?> ElementHost
+    // Before the first frame, which asks for the picture.
+    host.AppValues.Images.Http.Handler <- http
     try
         w.DeliverFrame() |> ignore
         // The first frame asked for it: the download started before any pointer.
@@ -334,4 +329,54 @@ let ``an image cursor shows the arrow until its picture arrives, then changes wi
     finally
         host.App.Update(Border.create [])
         w.DeliverFrame() |> ignore
-        ImageHttp.Handler <- null
+
+// --- Image state belongs to an app, not the process (DESIGN.md, "Image state per app, not per process") ---------
+
+[<Fact>]
+let ``a tree's image cache is its app values', and two bare trees share none`` () =
+    let a, b = ElementTree(textSystem ()), ElementTree(textSystem ())
+    Assert.Same(a.AppValues.Images, a.Images)
+    Assert.NotSame(a.Images, b.Images)
+    Assert.NotSame(a.Images.Http, b.Images.Http)
+    // A tree given another's app values (a host's layers, an app's windows) has its pictures too.
+    b.AppValues <- a.AppValues
+    Assert.Same(a.Images, b.Images)
+
+[<Fact>]
+let ``the same picture in two trees is decoded by each`` () =
+    let key = unique "twice"
+    let image () = Image.fromBytes (key, pngBytes) []
+    use a = new Scene(topLeft (image ()), null)
+    use b = new Scene(topLeft (image ()), null)
+    a.Render() |> ignore
+    b.Render() |> ignore
+    Assert.Equal(1, a.Tree.Images.Decodes("bytes:" + key))
+    Assert.Equal(1, b.Tree.Images.Decodes("bytes:" + key))
+
+/// What failed on GitHub's runners while the six places were the process's (CI run 7, 2026-11-20): a test waiting
+/// for its six requests while another test's downloads held two of the places.
+[<Fact>]
+let ``one tree's downloads take none of another's six places`` () =
+    let urlsOf (run: string) (n: int) = [ for i in 1..n -> "https://example.test/" + run + "/" + string i + ".png" ]
+    let viewOf (urls: string list) = StackPanel.create [ StackPanel.children [ for u in urls -> topLeft (Image.fromUrl u []) ] ]
+    // The first tree fills its six places and keeps four waiting; nothing answers.
+    let busy = new FakeHttp(fun _ -> ValueNone)
+    use a = new Scene(viewOf (urlsOf (unique "busy") 10), busy)
+    a.WaitFor(fun () -> busy.Requests.Length = 6)
+    Assert.Equal(struct (6, 4), a.Tree.Images.Downloads)
+    // The second still gets all six of its own at once.
+    let http = new FakeHttp(fun _ -> ValueNone)
+    use b = new Scene(viewOf (urlsOf (unique "free") 6), http)
+    b.WaitFor(fun () -> http.Requests.Length = 6)
+    Assert.Equal(struct (6, 0), b.Tree.Images.Downloads)
+    Assert.Equal(struct (6, 4), a.Tree.Images.Downloads)
+    Assert.Equal(6, busy.Requests.Length)
+
+[<Fact>]
+let ``in the unit tests a new cache decodes inline and refuses the network`` () =
+    let url = "https://example.test/" + unique "nobody" + ".png"
+    use s = new Scene(topLeft (Image.fromUrl url []), null)
+    Assert.True(s.Tree.Images.DecodeInline)
+    s.WaitFor(fun () -> s.Layout(); s.Render() |> ignore; s.Errors.Count > 0)
+    Assert.Contains("Unit tests have no network", (Assert.Single s.Errors).Message)
+    Assert.Contains(url, (Assert.Single s.Errors).Message)

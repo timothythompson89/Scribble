@@ -57,7 +57,7 @@ module ViewImage =
           ImageTimeout = TimeSpan.FromSeconds 10.0
           WaitForImages = true }
 
-    let rec private loading (e: Element) (into: ResizeArray<ImageEntry>) =
+    let rec private loading (e: Element) (into: ResizeArray<ImageHold>) =
         into.AddRange e.ImagesLoading
         for c in e.Children do
             loading c into
@@ -69,11 +69,15 @@ module ViewImage =
         (env: RenderEnvironment)
         (o: ViewImageOptions)
         (view: View)
-        (wait: ResizeArray<ImageEntry> -> TimeSpan -> Task<bool>)
+        (wait: ResizeArray<ImageHold> -> TimeSpan -> Task<bool>)
         : Task<Image> =
         let tree = ElementTree(env.Text)
         env.Dispatcher |> ValueOption.iter (fun d -> tree.Dispatcher <- ValueSome d)
         env.AppValues |> ValueOption.iter (fun v -> tree.AppValues <- v)
+        // With no app, every render in a tool shares the headless environment's pictures.
+        match env.AppValues, env.Images with
+        | ValueNone, ValueSome images -> tree.AppValues.Images <- images
+        | _ -> ()
         let theme =
             match o.Theme, env.AppValues with
             | ValueSome t, _ -> t
@@ -127,7 +131,7 @@ module ViewImage =
                         waiting <- pending.Count > 0
                     else
 #if DEBUG
-                        let keys = String.Join(", ", pending |> Seq.map _.Key |> Seq.distinct)
+                        let keys = String.Join(", ", pending |> Seq.map _.Entry.Key |> Seq.distinct)
                         let seconds = o.ImageTimeout.TotalSeconds
                         DebugWarnings.Once(
                             "viewimage-timeout:" + keys,
@@ -143,7 +147,7 @@ module ViewImage =
         }
 
     /// Resolves when every entry has loaded (true) or `left` has passed (false).
-    let private waitAll (after: TimeSpan -> (unit -> unit) -> unit) (entries: ResizeArray<ImageEntry>) (left: TimeSpan) : Task<bool> =
+    let private waitAll (after: TimeSpan -> (unit -> unit) -> unit) (entries: ResizeArray<ImageHold>) (left: TimeSpan) : Task<bool> =
         if left <= TimeSpan.Zero then Task.FromResult false
         else
             let finished = TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
@@ -151,7 +155,7 @@ module ViewImage =
             let one () =
                 if Threading.Interlocked.Decrement(&remaining.contents) = 0 then finished.TrySetResult true |> ignore
             for e in entries do
-                if not (ImageCache.Shared.AddWaiter(e, one)) then one ()
+                if not (e.Cache.AddWaiter(e.Entry, one)) then one ()
             after left (fun () -> finished.TrySetResult false |> ignore)
             finished.Task
 
@@ -174,7 +178,7 @@ module ViewImage =
                 // A tool: no UI thread to come back to, so it waits here, blocking, and stays on this thread.
                 let realTime (delay: TimeSpan) (action: unit -> unit) =
                     Task.Delay(delay).ContinueWith(fun (_: Task) -> action ()) |> ignore
-                let blockingWait (entries: ResizeArray<ImageEntry>) (left: TimeSpan) =
+                let blockingWait (entries: ResizeArray<ImageHold>) (left: TimeSpan) =
                     let t = waitAll realTime entries left
                     t.Wait()
                     t
@@ -206,4 +210,5 @@ module Headless =
               Platform = ValueNone
               Window = ValueNone
               Dispatcher = ValueNone
-              AppValues = ValueNone }
+              AppValues = ValueNone
+              Images = ValueSome(ImageCache.Create()) }

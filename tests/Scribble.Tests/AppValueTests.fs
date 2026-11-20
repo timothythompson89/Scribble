@@ -1,7 +1,4 @@
 /// App values: state declared once (`AppValue.define`) and shared by any component that uses it.
-// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
-// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
-[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.AppValueTests
 
 open System

@@ -1,9 +1,6 @@
-/// M8 step 3b (d): the Image value, the process-wide cache and its pool, elements holding what they show, ImageView's
+/// M8 step 3b (d): the Image value, the cache (one for each app or bare tree) and its pool, elements holding what they show, ImageView's
 /// measure and fitting, failures reported once per image, and decoding only what's realized in a long list
 /// (DESIGN.md, "M8 step 3b", (d)).
-// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
-// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
-[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.ImageViewTests
 
 open System
@@ -20,7 +17,7 @@ open Scribble.Tests.TestShaping
 /// A 32 × 32 RGBA PNG from PngSuite.
 let private pngBytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "PngSuite", "basn6a08.png"))
 
-/// Keys unique to one test run (the cache is process-wide).
+/// Keys unique to one test run (left from when the cache was the process's; each tree has its own now).
 let private unique (name: string) = name + "-" + Guid.NewGuid().ToString("N")
 
 /// Straight RGBA, `w × h`, every pixel `r, g, b, a`.
@@ -34,7 +31,6 @@ let private solid (w: int) (h: int) (r: byte, g: byte, b: byte, a: byte) =
 
 /// A tree showing `view` at `size`, decoding inline, with a dispatcher whose errors land in `Errors`.
 type private Scene(view: View, ?width: float, ?height: float) =
-    do ImageCache.DecodeInlineOnThisThread <- true
     let errors = List<exn>()
     let dispatcher = Dispatcher ignore
     do dispatcher.OnError <- errors.Add
@@ -138,7 +134,7 @@ let ``many ImageViews showing one picture decode it once`` () =
     let s = Scene(StackPanel.create [ StackPanel.children [ for _ in 1..20 -> ImageView.create [ ImageView.image (image ()) ] ] ])
     let list = s.Render()
     Assert.Equal(20, list.Images.Count)
-    Assert.Equal(1, ImageCache.Shared.Decodes("bytes:" + key))
+    Assert.Equal(1, s.Tree.Images.Decodes("bytes:" + key))
     Assert.Empty s.Errors
 
 [<Fact>]
@@ -154,16 +150,15 @@ let ``an element lets go of a picture it no longer shows, and of all of them whe
     s.Render() |> ignore
     Assert.Equal(1, imageView.HeldImageCount)
     // `a` is unheld and pooled: shown again it isn't made again.
-    Assert.True(ImageCache.Shared.Contains a.Key)
+    Assert.True(s.Tree.Images.Contains a.Key)
     s.Update(view a)
     s.Render() |> ignore
-    Assert.Equal(1, ImageCache.Shared.Decodes a.Key)
+    Assert.Equal(1, s.Tree.Images.Decodes a.Key)
     s.Update(Border.create [])
     Assert.Equal(0, imageView.HeldImageCount)
 
 [<Fact>]
 let ``the pool keeps unheld pictures up to its limit, oldest out first, releasing them`` () =
-    ImageCache.DecodeInlineOnThisThread <- true
     // 16 × 16 counts 16·16·16/3 = 1365 bytes; the limit fits two.
     let cache = ImageCache(3000L)
     let make n = Image.fromPixels (unique ("pool" + string n), 16, 16, solid 16 16 (9uy, 9uy, 9uy, 255uy)) []
@@ -231,16 +226,16 @@ let ``10,000 rows with a picture each decode only the realized rows, also after 
     let scroller = Scroller()
     let s = Scene(longList run scroller, 300.0, 200.0)
     s.Render() |> ignore
-    let decoded () = [ for i in 0..9999 -> ImageCache.Shared.Decodes("bytes:" + run + "-" + string i) ] |> List.sum
+    let decoded () = [ for i in 0..9999 -> s.Tree.Images.Decodes("bytes:" + run + "-" + string i) ] |> List.sum
     let first = decoded ()
     Assert.InRange(first, 6, 40)
     scroller.ScrollToIndex(9000, ScrollAlign.Start, false)
     s.Tree.UpdateLayout(Size.Create(300.0, 200.0))
     s.Render() |> ignore
     Assert.InRange(decoded () - first, 6, 40)
-    let between = [ for i in 100..8900 -> ImageCache.Shared.Decodes("bytes:" + run + "-" + string i) ] |> List.sum
+    let between = [ for i in 100..8900 -> s.Tree.Images.Decodes("bytes:" + run + "-" + string i) ] |> List.sum
     Assert.Equal(0, between)
-    Assert.True(ImageCache.Shared.Decodes("bytes:" + run + "-9000") = 1)
+    Assert.True(s.Tree.Images.Decodes("bytes:" + run + "-9000") = 1)
     // Rows scrolled away let go: what they showed is pooled, not held.
     Assert.Empty s.Errors
 
@@ -249,7 +244,7 @@ let ``10,000 rows with a picture each decode only the realized rows, also after 
 [<Fact>]
 let ``decoding runs off the UI thread and the element is drawn when it ends`` () =
     let s = Scene(ImageView.create [ ImageView.horizontalAlignment Left; ImageView.verticalAlignment Top ])
-    ImageCache.DecodeInlineOnThisThread <- false
+    s.Tree.Images.DecodeInline <- false
     try
         let key = unique "async"
         let invalidated = ref 0
@@ -268,7 +263,7 @@ let ``decoding runs off the UI thread and the element is drawn when it ends`` ()
         Assert.True(invalidated.Value >= 1)
         Assert.Empty s.Errors
     finally
-        ImageCache.DecodeInlineOnThisThread <- true
+        s.Tree.Images.DecodeInline <- true
 
 // --- Debug warning ------------------------------------------------------------------------------
 
@@ -294,16 +289,7 @@ let ``a picture over the GPU's limit is reduced, with a debug warning`` () =
 [<Fact>]
 let ``the Gallery's Images page finds its embedded pictures and draws every one`` () =
     let s = Scene(Scribble.Samples.Gallery.ImagesPage.view (), 720.0, 1600.0)
-    let mutable list = s.Render()
-    // The image cache is one per process and these pictures have fixed keys, so another test drawing the Gallery
-    // on another thread (where decoding runs in the background) may have started them first: then nothing decodes
-    // inline here and the first frame has only the picture made from pixels. Wait for those decodes to end.
-    // (CI, 2026-11-20: "Expected: 13, Actual: 1" in two runs of four on GitHub's runners, never on Tim's machine.)
-    let watch = Stopwatch.StartNew()
-    while list.Images.Count < 13 && watch.ElapsedMilliseconds < 5000L do
-        Thread.Sleep 5
-        s.Dispatcher.RunPending()
-        list <- s.Render()
+    let list = s.Render()
     Assert.Empty s.Errors
     // 4 stretch modes, 3 directions, smooth and pixelated, two avatars, the pattern; the exported card's potion.
     Assert.Equal(13, list.Images.Count)

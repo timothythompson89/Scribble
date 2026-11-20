@@ -1,8 +1,5 @@
 /// M8 step 3b (f): image cursors (`Cursor.fromImage`) and the inspector's IMAGES section, on the fake platform with
 /// decoding inline (DESIGN.md, "M8 step 3b", (f)). The arrow-until-ready test is in ImageLoadingTests (it downloads).
-// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
-// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
-[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.ImageCursorTests
 
 open System
@@ -41,7 +38,6 @@ let private blue = (0uy, 0uy, 255uy)
 
 /// The app showing `view` in a 400 × 300 window, its errors collected; decoding inline on this thread.
 let private show (view: View) (extra: AppSetting<unit> list) =
-    ImageCache.DecodeInlineOnThisThread <- true
     let errors = List<exn>()
     let w, _, app = start ([ App.view view; App.onError (fun _ e -> errors.Add e) ] @ extra)
     settle w

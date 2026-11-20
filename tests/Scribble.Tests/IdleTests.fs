@@ -1,9 +1,6 @@
 /// The power rule on real apps: once the pointer stops, an app whose model doesn't change draws
 /// nothing more. A hover that changes layout can move the element out from under the pointer and
 /// back, forever (2026-11-17: the Counter's (now the Gallery's) Layout tab kept drawing 20–144 frames a second).
-// One collection for every module that draws the Gallery or uses the process-wide image cache, HTTP handler and
-// download places: xUnit runs a collection's tests one after another (DESIGN.md, "Publishing", the CI failures).
-[<Xunit.Collection("Shared image state")>]
 module Scribble.Tests.IdleTests
 
 open Xunit

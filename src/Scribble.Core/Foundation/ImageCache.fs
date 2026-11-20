@@ -31,7 +31,7 @@ type internal ImageEntry(key: string) =
     /// A download: where from, its place in the queue while it waits, its cancellation while it runs, whether its
     /// bytes have all arrived (from then on it's decoded whatever happens), and whether it was dropped.
     member val Url: Uri = null with get, set
-    member val Fetcher: Uri -> CancellationToken -> Task<Result<byte[], exn>> = Unchecked.defaultof<_> with get, set
+    member val Fetcher: ImageHttp -> Uri -> CancellationToken -> Task<Result<byte[], exn>> = Unchecked.defaultof<_> with get, set
     member val QueueNode: LinkedListNode<ImageEntry> = null with get, set
     member val Cancellation: CancellationTokenSource = null with get, set
     member val Downloaded = false with get, set
@@ -43,12 +43,14 @@ type internal ImageEntry(key: string) =
         | _ -> 0L
 
 
-/// Decoded pictures, process-wide and thread-safe (decision 9). Elements hold what they show (`Element.HoldImage`);
-/// at zero holders a picture goes to a recently-used pool of `poolLimit` bytes, oldest out first, and leaving the
-/// pool releases its decoded image (GPU devices then give back its atlas space). A failed picture leaves at once, so
-/// it's tried again only when shown again after that; so does a download nothing holds any more, cancelled.
-[<Sealed>]
-type internal ImageCache(poolLimit: int64) =
+/// Decoded pictures and their downloads for one app, thread-safe (decision 9; DESIGN.md, "Image state per app, not
+/// per process": an app's windows and layers share one through its app values, a bare tree has its own, and two
+/// apps in one process share nothing). Elements hold what they show (`Element.HoldImage`); at zero holders a picture
+/// goes to a recently-used pool of `poolLimit` bytes, oldest out first, and leaving the pool releases its decoded
+/// image (GPU devices then give back its atlas space). A failed picture leaves at once, so it's tried again only
+/// when shown again after that; so does a download nothing holds any more, cancelled.
+[<Sealed; AllowNullLiteral>]
+type internal ImageCache(poolLimit: int64) as this =
     let entries = Dictionary<string, ImageEntry>(StringComparer.Ordinal)
     let pool = LinkedList<ImageEntry>()
     let mutable pooledBytes = 0L
@@ -56,28 +58,37 @@ type internal ImageCache(poolLimit: int64) =
     /// Downloads waiting for one of the `MaxDownloads` places, in the order asked.
     let queue = LinkedList<ImageEntry>()
     let mutable downloading = 0
+    let http = ImageHttp()
+    let mutable decodeInline = false
 
     let sync = obj ()
 
-    /// Decode inline on this thread (unit tests: deterministic with FakeTime, and per thread so tests running in
-    /// parallel don't see each other's choice).
-    [<ThreadStatic; DefaultValue>] static val mutable private inlineHere: bool
+    do
+        match ImageCache.configure with
+        | null -> ()
+        | configure -> configure.Invoke this
 
-    static member internal DecodeInlineOnThisThread
-        with get () = ImageCache.inlineHere
-        and set (v: bool) = ImageCache.inlineHere <- v
+    /// What every new cache is given before anything uses it. Tests set it once for their process (decode inline,
+    /// no network); it is a default for new caches, not state they share. Field as in `Ids` (CLAUDE.md).
+    [<DefaultValue>] static val mutable private configure: Action<ImageCache>
+
+    static member ConfigureNew
+        with set (v: Action<ImageCache>) = lock typeof<ImageCache> (fun () -> ImageCache.configure <- v)
+
+    /// A cache with the size an app gets (32 MB pool: decision 10).
+    static member Create() = ImageCache(32L * 1024L * 1024L)
+
+    /// Its HTTP client and limits (downloads of `Image.fromUrl`).
+    member _.Http = http
+
+    /// Decode on the calling thread instead of in the background (unit tests: deterministic with FakeTime).
+    member _.DecodeInline
+        with get () = decodeInline
+        and set (v: bool) = decodeInline <- v
 
     /// Runs decoding work: Task.Run (a later task on the same thread in single-threaded WebAssembly), or inline.
     member private _.RunDecode(work: unit -> unit) =
-        if ImageCache.inlineHere then work () else Task.Run(work) |> ignore
-
-    [<DefaultValue>] static val mutable private shared: ImageCache
-
-    /// The process's cache (32 MB pool: decision 10). Fields as in `Ids` (CLAUDE.md).
-    static member Shared =
-        lock typeof<ImageCache> (fun () ->
-            if isNull (box ImageCache.shared) then ImageCache.shared <- ImageCache(32L * 1024L * 1024L)
-            ImageCache.shared)
+        if decodeInline then work () else Task.Run(work) |> ignore
 
     member _.PoolLimit = poolLimit
     member _.PooledBytes = lock sync (fun () -> pooledBytes)
@@ -198,14 +209,14 @@ type internal ImageCache(poolLimit: int64) =
     member private this.Fetch(entry: ImageEntry) : Task =
         task {
             let cts = entry.Cancellation
-            let timeout = ImageHttp.Timeout
+            let timeout = http.Timeout
             cts.CancelAfter timeout
             // A download function that throws, or whose task faults, fails the picture like an error it returns: its
             // place must come back whatever happens.
             let! result =
                 task {
                     try
-                        let! r = (entry.Fetcher entry.Url cts.Token).ConfigureAwait(false)
+                        let! r = (entry.Fetcher http entry.Url cts.Token).ConfigureAwait(false)
                         return r
                     with e ->
                         return Error e
@@ -375,7 +386,9 @@ and ImageLoadException(key: string, message: string, inner: exn) =
 /// An element's hold on one picture (`Element.HoldImage`): asked for since the last render, and whether it waits
 /// for loading to end. UI thread only.
 [<Sealed; AllowNullLiteral>]
-type internal ImageHold(entry: ImageEntry, image: Image) =
+type internal ImageHold(cache: ImageCache, entry: ImageEntry, image: Image) =
+    /// The cache it was taken from: where it is asked about and given back, whatever tree the element is in by then.
+    member _.Cache = cache
     member _.Entry = entry
     /// The image last asked for under this key (its density may differ between asks).
     member val Image = image with get, set

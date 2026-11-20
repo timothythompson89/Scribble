@@ -97,6 +97,10 @@ dotnet fsi tools/TestPackages.fsx                 # the consumer test: packs all
   `GCHandle.Alloc(s, GCHandleType.Pinned)`: `fixed` on a string once let a background GC kill the process
   (0x80131506). Browser: `JSFunctionBinding`, void returns `JSMarshalerType.Discard`, JS modules embedded and
   imported as `data:` URLs.
+- **Image state is the app's, not the process's** (DESIGN.md, "Image state per app, not per process"): the cache,
+  downloads and HTTP client are `appValues.Images` (`tree.Images`, `host.AppValues.Images`). In the unit tests every
+  new cache decodes inline and refuses the network (`tests/Scribble.Tests/ImageSetup.fs`): a test that downloads
+  sets `tree.Images.Http.Handler`; one that wants background decoding sets `tree.Images.DecodeInline <- false`.
 - **State shared across threads** lives in holder types with `[<DefaultValue>] static val mutable` fields, changed
   under a lock (`Ids`, `ElementCounts`, `DebugWarnings`): a `static let` threw "static data accessed recursively"
   when two threads first used a file at once. Elements are UI-thread only; font caches are shared and thread-safe.

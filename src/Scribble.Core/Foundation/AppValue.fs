@@ -33,6 +33,7 @@ module AppValue =
 type AppValues() =
     let values = Dictionary<int, obj>()
     let listeners = Dictionary<int, List<unit -> unit>>()
+    let mutable images: ImageCache = null
 
     /// Where sets from other threads go (`App.run` sets it); without one they run where they're made.
     member val internal Dispatcher: Dispatcher voption = ValueNone with get, set
@@ -44,6 +45,16 @@ type AppValues() =
     /// What the host that runs these values offers commands (its toasts and dialogs): a `HostServices`,
     /// kept untyped because those types come later in the compile order.
     member val internal Services: obj = null with get, set
+
+    /// The app's pictures (DESIGN.md, "Image state per app, not per process"): its cache, downloads and HTTP client,
+    /// made on first use and shared by everything that shares these values. `ViewImage` in a tool gives a tree the
+    /// headless environment's instead.
+    member internal this.Images
+        with get () : ImageCache =
+            lock listeners (fun () ->
+                if isNull images then images <- ImageCache.Create()
+                images)
+        and set (v: ImageCache) = lock listeners (fun () -> images <- v)
 
     /// Registers a named scroller; called at every arrange, so it allocates only when it changes.
     member internal this.RegisterScroller(name: string, scroller: Scroller) =

@@ -33,7 +33,8 @@ type ImageOutTests(fixture: TextFixture) =
               Platform = ValueNone
               Window = ValueNone
               Dispatcher = ValueNone
-              AppValues = ValueNone }
+              AppValues = ValueNone
+              Images = ValueSome(ImageCache.Create()) }
 
     interface IClassFixture<TextFixture>
 
@@ -226,8 +227,9 @@ type ImageOutTests(fixture: TextFixture) =
                   Platform = ValueNone
                   Window = ValueNone
                   Dispatcher = ValueSome dispatcher
-                  AppValues = ValueSome values }
-        ImageCache.DecodeInlineOnThisThread <- false
+                  AppValues = ValueSome values
+                  Images = ValueNone }
+        values.Images.DecodeInline <- false
         host.Update(ImagesPage.view ())
         host.HandleEvent Frame |> ignore
         let rec all (e: Element) = seq { yield e; for c in e.Children do yield! all c }

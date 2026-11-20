@@ -74,6 +74,9 @@ type ElementTree(text: TextSystem) =
     /// The UI thread's dispatcher (App.start sets it): state set from other threads goes through it.
     /// The app values its components use (`ctx.useAppValue`): its own until a host gives it the app's.
     /// Set it before the tree shows components that use them.
+    /// The pictures of everything that shares this tree's app values (tests configure it; the inspector reads it).
+    member internal _.Images = appValues.Images
+
     member _.AppValues
         with get () = appValues
         and set (v: AppValues) = appValues <- v

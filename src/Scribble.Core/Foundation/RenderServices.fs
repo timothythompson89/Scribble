@@ -16,7 +16,9 @@ type internal RenderEnvironment =
       /// The app's window (the save dialog's owner).
       Window: IWindow voption
       Dispatcher: Dispatcher voption
-      AppValues: AppValues voption }
+      AppValues: AppValues voption
+      /// The pictures of renders that have no app (`DesktopApp.headless`): one cache for all of them.
+      Images: ImageCache voption }
 
 /// The process's rendering environments and the render counter. Fields as in `Ids` (CLAUDE.md).
 ///

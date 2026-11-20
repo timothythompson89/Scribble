@@ -306,7 +306,8 @@ type App =
               Platform = ValueSome platform
               Window = ValueSome window
               Dispatcher = ValueSome dispatcher
-              AppValues = ValueSome values }
+              AppValues = ValueSome values
+              Images = ValueNone }
         |> ignore
         for layer in config.Layers do
             h.AddLayer layer |> ignore

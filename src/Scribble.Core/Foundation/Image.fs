@@ -33,59 +33,70 @@ type StretchDirection =
     /// Either way.
     | Both
 
-/// The HTTP side of `Image.fromUrl` (DESIGN.md, "M8 step 3b", (e)): one `HttpClient` for the process (in the browser
-/// .NET's runs on `fetch`), the page's address for relative URLs, and the limits. Fields as in `Ids` (CLAUDE.md).
-type internal ImageHttp private () =
-    [<DefaultValue>] static val mutable private client: HttpClient
-    [<DefaultValue>] static val mutable private handler: HttpMessageHandler
-    [<DefaultValue>] static val mutable private baseUrl: Uri
-    [<DefaultValue>] static val mutable private timeout: TimeSpan
+/// The HTTP side of `Image.fromUrl` (DESIGN.md, "M8 step 3b", (e), and "Image state per app, not per process"): one
+/// `HttpClient` for each image cache, so for each app (in the browser .NET's runs on `fetch`), and the limits. Only
+/// the page's address is the process's: a browser tab has one page whatever runs in it.
+[<Sealed; AllowNullLiteral>]
+type internal ImageHttp() =
+    let sync = obj ()
+    let mutable client: HttpClient = null
+    let mutable handler: HttpMessageHandler = null
+    let mutable timeout = TimeSpan.Zero
 
-    /// At most this many downloads at once (the browser's own limit per server).
+    /// Fields as in `Ids` (CLAUDE.md).
+    [<DefaultValue>] static val mutable private baseUrl: Uri
+    [<DefaultValue>] static val mutable private detached: ImageHttp
+
+    /// At most this many downloads at once in one cache (the browser's own limit per server).
     static member MaxDownloads = 6
     /// A response bigger than this fails: decoding 8192 × 8192 needs no more.
     static member MaxBytes = 64L * 1024L * 1024L
 
-    static member Client =
-        lock typeof<ImageHttp> (fun () ->
-            if isNull ImageHttp.client then
-                let c = if isNull ImageHttp.handler then new HttpClient() else new HttpClient(ImageHttp.handler, false)
+    member _.Client =
+        lock sync (fun () ->
+            if isNull client then
+                let c = if isNull handler then new HttpClient() else new HttpClient(handler, false)
                 // Our own deadline (Timeout below) covers reading the body too.
                 c.Timeout <- Timeout.InfiniteTimeSpan
                 // Some servers refuse requests without one (Wikimedia: 403). Browsers send their own and forbid setting it.
                 if not (OperatingSystem.IsBrowser()) then
                     c.DefaultRequestHeaders.UserAgent.Add(Headers.ProductInfoHeaderValue("Scribble", "1.0"))
-                ImageHttp.client <- c
-            ImageHttp.client)
+                client <- c
+            client)
 
     /// Tests answer requests themselves (a fake handler); null for the real network.
-    static member Handler
+    member _.Handler
         with set (v: HttpMessageHandler) =
-            lock typeof<ImageHttp> (fun () ->
-                ImageHttp.handler <- v
-                ImageHttp.client <- null)
+            lock sync (fun () ->
+                handler <- v
+                client <- null)
 
     /// How long a download may take, from its start to its last byte (30 s; real time: a network deadline, not
     /// something a frame waits on). Tests shorten it.
-    static member Timeout
-        with get () =
-            lock typeof<ImageHttp> (fun () ->
-                if ImageHttp.timeout = TimeSpan.Zero then TimeSpan.FromSeconds 30.0 else ImageHttp.timeout)
-        and set (v: TimeSpan) = lock typeof<ImageHttp> (fun () -> ImageHttp.timeout <- v)
+    member _.Timeout
+        with get () = lock sync (fun () -> if timeout = TimeSpan.Zero then TimeSpan.FromSeconds 30.0 else timeout)
+        and set (v: TimeSpan) = lock sync (fun () -> timeout <- v)
 
     /// The page's address in the browser (set by Scribble.Browser), for relative URLs; null on the desktop.
     static member BaseUrl
         with get () = lock typeof<ImageHttp> (fun () -> ImageHttp.baseUrl)
         and set (v: Uri) = lock typeof<ImageHttp> (fun () -> ImageHttp.baseUrl <- v)
 
+    /// For a download with no app in reach (`Image.toPng` of a URL image, called from anywhere): the process's own,
+    /// with nothing cached and no places to wait for.
+    static member Detached =
+        lock typeof<ImageHttp> (fun () ->
+            if isNull ImageHttp.detached then ImageHttp.detached <- ImageHttp()
+            ImageHttp.detached)
+
     /// The response's bytes, or why there are none.
-    static member Get(url: Uri, token: CancellationToken) : Task<Result<byte[], exn>> =
+    member this.Get(url: Uri, token: CancellationToken) : Task<Result<byte[], exn>> =
         task {
             try
                 use request = new HttpRequestMessage(HttpMethod.Get, url)
                 // ConfigureAwait(false): on the desktop the rest (and the decoding after it) stays off the UI thread
                 // instead of coming back through its synchronization context.
-                use! response = ImageHttp.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false)
+                use! response = this.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false)
                 if not response.IsSuccessStatusCode then
                     let code = int response.StatusCode
                     return
@@ -129,7 +140,7 @@ type internal ImageSource =
     /// A full path.
     | File of path: string
     /// An absolute http(s) URL, or one relative to the page (resolved when it loads, in the browser).
-    | Url of url: string * fetch: (Uri -> CancellationToken -> Task<Result<byte[], exn>>)
+    | Url of url: string * fetch: (ImageHttp -> Uri -> CancellationToken -> Task<Result<byte[], exn>>)
 
 /// An image: an immutable value naming a picture and how to read it (GLOSSARY.md). Two images with the same source
 /// key are the same picture, decoded once however many places show it, at any density; the bytes behind a key are
@@ -215,7 +226,7 @@ module Image =
     /// `fromBytes`. In the browser, a picture on another site must be sent with Access-Control-Allow-Origin.
     // Only an app that calls fromUrl links HttpClient (2.4 MB in a NativeAOT exe): the cache gets the download
     // function from here, not by naming HttpClient itself.
-    let private download (url: Uri) (token: CancellationToken) = ImageHttp.Get(url, token)
+    let private download (http: ImageHttp) (url: Uri) (token: CancellationToken) = http.Get(url, token)
 
     let fromUrl (url: string) (settings: (Image -> Image) list) : Image =
         if String.IsNullOrEmpty url then invalidArg (nameof url) "A URL is needed."
@@ -264,8 +275,9 @@ module Image =
                         match ImageHttp.BaseUrl with
                         | null -> raise (ArgumentException("'" + url + "' is a relative URL, with no page to resolve it against."))
                         | b -> Uri(b, url)
-                use cts = new CancellationTokenSource(ImageHttp.Timeout)
-                let! result = fetch resolved cts.Token
+                let http = ImageHttp.Detached
+                use cts = new CancellationTokenSource(http.Timeout)
+                let! result = fetch http resolved cts.Token
                 return
                     match result with
                     | Ok bytes -> checkedPng bytes

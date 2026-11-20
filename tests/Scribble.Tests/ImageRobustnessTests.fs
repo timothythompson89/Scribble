@@ -291,6 +291,8 @@ let private eventually (what: string) (condition: unit -> bool) =
 [<Fact>]
 let ``many threads holding and letting go of pictures while they decode leave the cache consistent`` () =
     let cache = ImageCache(2L * 1024L * 1024L)
+    // In the background, as an app decodes (the tests' default is inline).
+    cache.DecodeInline <- false
     let run = Guid.NewGuid().ToString("N")
     let files = smallPngs.Value
     let broken = Text.Encoding.ASCII.GetBytes "not an image"
@@ -338,9 +340,11 @@ let ``many threads holding and letting go of pictures while they decode leave th
 [<Fact>]
 let ``downloads finishing, failing and being cancelled while holders come and go free every place`` () =
     let cache = ImageCache(1024L * 1024L)
+    // In the background, as an app decodes (the tests' default is inline).
+    cache.DecodeInline <- false
     let run = Guid.NewGuid().ToString("N")
     let bytes = smallPngs.Value[0]
-    let fetch (url: Uri) (token: CancellationToken) : Task<Result<byte[], exn>> =
+    let fetch (_: ImageHttp) (url: Uri) (token: CancellationToken) : Task<Result<byte[], exn>> =
         task {
             let n = url.AbsoluteUri.Length + int url.Query.Length
             try
@@ -378,8 +382,10 @@ let ``downloads finishing, failing and being cancelled while holders come and go
 [<Fact>]
 let ``a download function that throws fails that picture and frees its place`` () =
     let cache = ImageCache(1024L * 1024L)
+    // In the background, as an app decodes (the tests' default is inline).
+    cache.DecodeInline <- false
     let run = Guid.NewGuid().ToString("N")
-    let fetch (_: Uri) (_: CancellationToken) : Task<Result<byte[], exn>> = Task.FromException<Result<byte[], exn>>(InvalidOperationException "boom")
+    let fetch (_: ImageHttp) (_: Uri) (_: CancellationToken) : Task<Result<byte[], exn>> = Task.FromException<Result<byte[], exn>>(InvalidOperationException "boom")
     let image = Image($"url:{run}", ImageSource.Url($"https://example.test/{run}.png", fetch), 1.0)
     let e = cache.Acquire image
     eventually "the place to be freed" (fun () -> cache.Downloads = struct (0, 0))
