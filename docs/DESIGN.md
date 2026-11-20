@@ -61,8 +61,8 @@ development platform.
 - **Frame work proportional to what's visible**, not to what exists (tested: virtualization, culling).
 - Licence: MIT (`LICENSE`). Packages will be `Scribble.*` (the bare `Scribble` id on NuGet belongs to someone
   else), all at one version, pre-release (`0.1.0-alpha.1` is the first); a desktop package carries its native
-  libraries. The repository is public (https://github.com/timothythompson89/Scribble, CI green); the packages are
-  ready, and the nuget.org setup and the first tag are Tim's (section
+  libraries. The repository is public (https://github.com/timothythompson89/Scribble, CI green) and
+  `0.1.0-alpha.1` is on nuget.org (2026-11-20); a `v*` tag publishes the next (section
   "Publishing: GitHub and NuGet").
 
 ## Status
@@ -5078,8 +5078,8 @@ Facts at the start.
 
 Status: **agreed (Tim, 2026-11-19: "Accept all"); the files are built and the consumer test passes on Tim's
 machine and on GitHub. Public since 2026-11-19 at https://github.com/timothythompson89/Scribble; the first CI run
-passed. Not done, and Tim's to do: the nuget.org account and its trusted publishing policy, the first tag.** The
-release workflow has never run: a tag is the first thing that can start it.
+passed. Released 2026-11-20: `0.1.0-alpha.1`, all 17 packages on nuget.org, pushed by the release workflow through
+trusted publishing.** Nothing here is left to do.
 
 Tim asked whether enough is finished to publish. The answer given: enough for a public repository now; for NuGet
 an alpha, once the packages carry what an app needs. Two stages.
@@ -5177,17 +5177,21 @@ Facts at the start.
   finds no files for a pattern written with forward slashes. The pattern now has backslashes, and a rehearsal
   step pushes the same pattern into a folder and counts 17 before the sign-in. Tests, pack, the consumer test
   and the trusted-publishing sign-in had all passed. The tag `v0.1.0-alpha.1` was moved to the fixed commit.
-- **Not verified:** the release workflow (never run); `wasm-tools` is installed in both because Tim's machine has
+- **Released 2026-11-20: `0.1.0-alpha.1`, all 17 packages on nuget.org.** The second release run passed every
+  step; NuGet's index showed all 17 about six minutes after the push. Checked from outside: an app in an empty
+  folder, with nuget.org as its only source, restored `Scribble.Desktop` and built with the four native
+  libraries in its output (built, not run).
+- **Not verified:** `wasm-tools` is installed in both because Tim's machine has
   it and a browser publish without it wasn't tried; trusted publishing's setup; that the ids are still free on
   nuget.org (not queried).
 
 **Tim's part, in order**
 1. ~~Say which GitHub account and repository name~~ (done: `timothythompson89/Scribble`).
 2. ~~Create the repository, push `main`, check the CI run~~ (done 2026-11-19, green).
-3. On nuget.org: create the account, add a trusted publishing policy for the repository and `release.yml`, and
+3. Done 2026-11-20. On nuget.org: create the account, add a trusted publishing policy for the repository and `release.yml`, and
    put the profile name in the repository secret `NUGET_USER`. Apply for the `Scribble.` prefix if wanted
    (project review, decision 16: likely refused, not needed).
-4. `dotnet fsi tools/TestPackages.fsx --version 0.1.0-alpha.1`, then tag `v0.1.0-alpha.1` and push the tag.
+4. Done 2026-11-20 (the tag was moved once, after the first run failed at the push). `dotnet fsi tools/TestPackages.fsx --version 0.1.0-alpha.1`, then tag `v0.1.0-alpha.1` and push the tag.
 
 ## Vectorising the PNG decoder (2026-11-18)
 
