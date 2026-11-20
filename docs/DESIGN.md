@@ -5160,6 +5160,12 @@ Facts at the start.
   build 2.5, unit tests 16 s, the consumer test 3.7 (pack, NativeAOT publish and browser publish all work on a
   hosted runner; apps not started). Packages link to the repository (`PackageProjectUrl`; the repository element
   comes from the remote).
+- **CI names the tests that fail (2026-11-20).** Run 2 failed in the unit tests on a commit that changed a
+  document and one metadata line, and the log is shown only to signed-in users. Both workflows now write a
+  `.trx` and run `.github/report-test-results.ps1`: an error annotation per failed test (name, message, the
+  first lines of the stack) and totals in the job summary, both public; a run that wrote no results, or half a
+  file, is reported as that. Tried on a passing file, a failing one and a truncated one. The failure itself
+  did not show in 40 Release runs on Tim's machine.
 - **Not verified:** the release workflow (never run); `wasm-tools` is installed in both because Tim's machine has
   it and a browser publish without it wasn't tried; trusted publishing's setup; that the ids are still free on
   nuget.org (not queried).

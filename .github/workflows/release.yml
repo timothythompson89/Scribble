@@ -43,7 +43,15 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Unit tests
-        run: dotnet test tests/Scribble.Tests -c Release --blame-hang-timeout 5m --results-directory TestResults
+        id: tests
+        run: dotnet test tests/Scribble.Tests -c Release --blame-hang-timeout 5m --results-directory TestResults --logger trx
+
+      # The log is shown only to signed-in users; annotations and the summary are public. This names each failed
+      # test, with its message, in both.
+      - name: Which tests failed
+        if: always() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
+        shell: pwsh
+        run: ./.github/report-test-results.ps1 TestResults
 
       - name: No test run was aborted
         shell: pwsh
