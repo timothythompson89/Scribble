@@ -8,7 +8,7 @@ While the version starts with 0, any release may break the API: each break is li
 
 Nothing yet.
 
-## 0.1.0-alpha.1 (not yet released)
+## 0.1.0-alpha.1 (2026-11-20)
 
 The first packages. Windows x64 and the browser (WebAssembly, WebGPU); .NET 10; NativeAOT, trimming and
 WebAssembly AOT.

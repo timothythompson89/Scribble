@@ -60,7 +60,7 @@ The same code runs on the desktop and in the browser: only the project file diff
 Scribble package it references (which brings the platform, the GPU renderer, text shaping and, on the desktop,
 the native libraries along). The packages are `Scribble.*` and pre-release, so a reference names a version
 (`Version="0.1.0-alpha.1"`, or `dotnet add package Scribble.Desktop --prerelease`); the bare `Scribble` package on
-NuGet is someone else's. **Until the first alpha is on NuGet,** reference the projects instead
+NuGet is someone else's. To work from the source instead, reference the projects
 (`<ProjectReference Include="path/to/Scribble/src/Scribble.Desktop/Scribble.Desktop.fsproj" />`), as the samples
 do, or pack them yourself (`dotnet pack Scribble.slnx -c Release -o artifacts/packages`).
 
