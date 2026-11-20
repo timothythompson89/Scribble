@@ -223,13 +223,16 @@ let ``the Gallery's title names the selected page`` () =
     let w, _, app = start Scribble.Samples.GalleryApp.app
     let host = app :?> ElementHost
     w.DeliverFrame() |> ignore
-    Assert.Equal("Gallery – Components", w.TitleText)
+    // After the page's name, which build it is: the version, and the commit when the build knows it.
+    let build = Scribble.Samples.GalleryApp.buildSuffix
+    Assert.Matches(@"^ · \d+\.\d+\.\d+[^ ]*( \([0-9a-f]{7}\))?$", build)
+    Assert.Equal("Gallery – Components" + build, w.TitleText)
     let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }
     let tab =
         all host.Tree.Root.Value
         |> Seq.find (fun e -> (e.Get LayoutProps.onClick).IsSome && texts e = [ "Styles" ])
     (tab.Get LayoutProps.onClick).Value(ClickEventArgs(ClickSource.Keyboard, Modifiers.None))
-    Assert.Equal("Gallery – Styles", w.TitleText)
+    Assert.Equal("Gallery – Styles" + build, w.TitleText)
     app.Dispose()
 
 [<Fact>]

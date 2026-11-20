@@ -3,6 +3,9 @@
 A UI framework for F#, written from the GPU up. [`docs/DESIGN.md`](DESIGN.md) has the goals, architecture,
 roadmap and every decision; [`GLOSSARY.md`](GLOSSARY.md) the words we use (view, element, setting, theme value, ...).
 
+**[Try it in your browser](https://timothythompson89.github.io/Scribble/)**: the Gallery sample, built from the
+latest `main`. It needs WebGPU (a current Chrome or Edge).
+
 **Pre-release.** Scribble runs on Windows (x64) and in the browser today; macOS and Linux come next. The API still
 changes from week to week, and every break is listed in [`CHANGELOG.md`](CHANGELOG.md). Issues are welcome; pull
 requests aren't taken yet ([`CONTRIBUTING.md`](CONTRIBUTING.md) says why).

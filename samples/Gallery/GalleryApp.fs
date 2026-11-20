@@ -45,6 +45,25 @@ let private titleOf i = let title, _, _ = pages[i] in title
 /// The window title's start; the selected tab's name follows it.
 let private appTitle = "Gallery"
 
+/// Which build this is, for the end of the title: the version and the commit it was built from, as in
+/// " · 0.1.0-alpha.3 (6378526)" (DESIGN.md, "The Gallery on GitHub Pages", decision 6). In the title and not on
+/// a page: the pages are in the screenshot tests. Read from this assembly's informational version, which the
+/// build ends with "+" and the commit; empty when there is none.
+let buildSuffix =
+    let attribute =
+        System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+            System.Reflection.Assembly.GetExecutingAssembly())
+    match attribute with
+    | null -> ""
+    | a ->
+        match a.InformationalVersion.Split('+') with
+        | [| version; commit |] when commit.Length >= 7 -> " · " + version + " (" + commit.Substring(0, 7) + ")"
+        | parts when parts[0] <> "" -> " · " + parts[0]
+        | _ -> ""
+
+/// The title while page `i` shows: "Gallery – Components · 0.1.0-alpha.3 (6378526)".
+let private titleFor (i: int) = appTitle + " – " + titleOf i + buildSuffix
+
 /// The Gallery's two themes are the built-in ones. The light one also gives the Styles page's own theme value
 /// its light colour; the dark one needs nothing, since a theme value's default is its dark value.
 let darkTheme = Theme.dark []
@@ -80,7 +99,7 @@ let gallery =
                 ]
                 TabControl.create [
                     TabControl.margin (10.0, 0.0, 10.0, 0.0)
-                    TabControl.onSelectedChanged (fun i -> windowTitle.Set(appTitle + " – " + titleOf i))
+                    TabControl.onSelectedChanged (fun i -> windowTitle.Set(titleFor i))
                     TabControl.tabs [
                         for title, view, height in pages ->
                             TabItem.create [
@@ -106,7 +125,7 @@ let gallery =
 
 /// Components and app values (the theme, the title) hold all the state, so the app has no messages of its own (hence `unit`).
 let app: AppSetting<unit> list =
-    [ App.title (appTitle + " – " + titleOf 0)
+    [ App.title (titleFor 0)
       App.size (720.0, 560.0)
       // Emoji typed into a TextBox come from Twemoji: Inter has none, and drew its "missing" box.
       App.fonts [ Scribble.Text.Emoji.Twemoji() ]

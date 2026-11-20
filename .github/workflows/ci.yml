@@ -83,3 +83,61 @@ jobs:
           name: packages
           path: artifacts/packages
           if-no-files-found: error
+
+  # The Gallery, in the browser, at https://timothythompson89.github.io/Scribble/ (docs/DESIGN.md, "The Gallery on
+  # GitHub Pages"): published after the tests pass, for a push to main or a run started by hand on main. Never for a
+  # pull request or another branch. Needs the repository's Pages source set to "GitHub Actions" (Settings, Pages).
+  pages:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pages: write      # publishing the page
+      id-token: write   # the deployment proves it comes from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    # One deployment at a time; a newer push waits for the one running and then replaces it.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install the WebAssembly tools
+        run: dotnet workload install wasm-tools
+
+      # WebAssembly AOT: a slow publish and a fast app, which is what a visitor judges.
+      - name: Publish the Gallery
+        run: dotnet publish samples/Gallery.Browser -c Release -p:BrowserAot=true -o artifacts/pages
+
+      # How big the page is to download, in the run's summary (the .br files are what a browser is sent).
+      - name: Size of the page
+        shell: pwsh
+        run: |
+          $root = "artifacts/pages/wwwroot"
+          if (-not (Test-Path "$root/index.html")) { throw "No index.html in $root." }
+          $files = Get-ChildItem $root -Recurse -File
+          $all = ($files | Measure-Object Length -Sum).Sum
+          $plain = ($files | Where-Object { $_.Extension -notin ".br", ".gz" } | Measure-Object Length -Sum).Sum
+          $br = ($files | Where-Object { $_.Extension -eq ".br" } | Measure-Object Length -Sum).Sum
+          $line = "Gallery page: {0} files, {1:N1} MB on disk; {2:N1} MB uncompressed, {3:N1} MB as Brotli." -f $files.Count, ($all / 1MB), ($plain / 1MB), ($br / 1MB)
+          Write-Host $line
+          Add-Content $env:GITHUB_STEP_SUMMARY $line
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts/pages/wwwroot
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

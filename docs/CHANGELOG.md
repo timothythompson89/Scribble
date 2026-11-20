@@ -6,7 +6,11 @@ While the version starts with 0, any release may break the API: each break is li
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- A browser app's default page says so in plain words when it can't run: "This page needs WebGPU" (or HTTPS)
+  in the middle of the page, where it used to be black with a red error box. The .NET runtime isn't downloaded
+  there. An app with a `wwwroot/index.html` of its own is unchanged.
 
 ## 0.1.0-alpha.3 (2026-11-20)
 

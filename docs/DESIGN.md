@@ -5225,6 +5225,37 @@ Facts at the start.
   no ScrollViewer around it (`maxHeight`, `cornerRadius`, `layout`), with the four native libraries in its
   output (built, not run). The docs-only push of the morning (`c6c0754`) started no CI run: the `paths` filter
   below works.
+- **The Gallery on GitHub Pages (grilling, 2026-11-20).** Tim: a push should put the browser Gallery on a GitHub
+  page. Decided (yes to all nine):
+  1. **A `pages` job in `ci.yml`, after the build-and-test job**, not a workflow of its own: only tested code
+     goes live, and a push that breaks the tests leaves the last good page up. CI's `paths` filter applies.
+  2. **The page shows `main`**, so it can be ahead of the packages on NuGet.
+  3. **Built with WebAssembly AOT**: the public page is where speed is judged. The job's time and the
+     download's size are measured on the first run; interpreted is the fallback if the time is unreasonable.
+  4. **The Gallery alone, at the root** (https://timothythompson89.github.io/Scribble/). The other samples can
+     go in sub-folders later without moving it.
+  5. **A link near the top of the README**, saying it needs WebGPU.
+  6. **Which build it is goes in the title**, on the desktop too ("Gallery – Components · 0.1.0-alpha.3
+     (6378526)"), and nothing is drawn in the app: the Gallery's pages are in the screenshot tests, and a commit
+     drawn on them would change every picture with every commit. Read from the assembly's informational
+     version, which SourceLink already ends with the commit.
+  7. **A readable notice where there is no WebGPU**, in Scribble's default page, so every browser app has it:
+     centred text in place of a black page with a red box (which stays for real errors). The runtime isn't
+     started there, so nothing is downloaded to no purpose.
+  8. **A failed publish fails the CI run**, the tests' own result still showing on their job.
+  9. **A push to `main` or a manual run on `main` publishes**; pull requests and other branches never do.
+
+  Tim's one step: repository Settings, Pages, Source "GitHub Actions". Until then the job fails.
+
+  As built: the `pages` job (`ci.yml`) publishes `samples/Gallery.Browser` with `-p:BrowserAot=true`, writes the
+  page's size to the run's summary and deploys `wwwroot` with GitHub's `upload-pages-artifact` and
+  `deploy-pages`. No `.nojekyll` (said to be needed in the planning): with "GitHub Actions" as the source, Pages
+  serves the uploaded files as they are and Jekyll never runs. `GalleryApp.buildSuffix` reads the assembly's
+  informational version; the title test holds its form. The default page (`build/page/main.js`) shows the
+  notice for no WebGPU and for a page that isn't secure, and imports the runtime only when it can run. Seen in
+  the browser pane on the development server: the Gallery runs, its tab reads "Gallery – Components ·
+  0.1.0-alpha.3 (6534fef)", and the notice shows when WebGPU is taken away. Not yet seen: the job on GitHub,
+  its time and the page's size, and the page at its real address (a sub-folder; the page's paths are relative).
 - **CI skips documentation (Tim, 2026-11-20).** `ci.yml` has a `paths` filter: a push or pull request that changes
   only `docs/`, `CLAUDE.md` or `LICENSE` starts no run. `docs/PACKAGE.md` and `docs/THIRD-PARTY-NOTICES.md` still
   do: they are packed into every package. Several of the day's 11-minute runs were for DESIGN.md alone. Seen
