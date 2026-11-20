@@ -64,7 +64,7 @@ development platform.
 - Licence: MIT (`LICENSE`). Packages will be `Scribble.*` (the bare `Scribble` id on NuGet belongs to someone
   else), all at one version, pre-release (`0.1.0-alpha.1` is the first); a desktop package carries its native
   libraries. The repository is public (https://github.com/timothythompson89/Scribble, CI green) and
-  `0.1.0-alpha.1` is on nuget.org (2026-11-20); a `v*` tag publishes the next (section
+  `0.1.0-alpha.2` is on nuget.org (2026-11-20, after `alpha.1` the same day); a `v*` tag publishes the next (section
   "Publishing: GitHub and NuGet").
 
 ## Status
@@ -5084,7 +5084,7 @@ Facts at the start.
 
 Status: **agreed (Tim, 2026-11-19: "Accept all"); the files are built and the consumer test passes on Tim's
 machine and on GitHub. Public since 2026-11-19 at https://github.com/timothythompson89/Scribble; the first CI run
-passed. Released 2026-11-20: `0.1.0-alpha.1`, all 17 packages on nuget.org, pushed by the release workflow through
+passed. Released 2026-11-20: `0.1.0-alpha.1` and `0.1.0-alpha.2`, all 17 packages on nuget.org, pushed by the release workflow through
 trusted publishing.** Nothing here is left to do.
 
 Tim asked whether enough is finished to publish. The answer given: enough for a public repository now; for NuGet
@@ -5197,6 +5197,13 @@ Facts at the start.
   step; NuGet's index showed all 17 about six minutes after the push. Checked from outside: an app in an empty
   folder, with nuget.org as its only source, restored `Scribble.Desktop` and built with the four native
   libraries in its output (built, not run).
+- **Released 2026-11-20: `0.1.0-alpha.2`** (`ctx.useImage`; pictures belong to the app). The tag alone did it all:
+  tests, pack, the consumer test, the push to NuGet and, on its first run, the GitHub release step. Before the
+  tag: the full consumer test at that version, 1,351 unit tests and 107 rendering tests on Tim's machine.
+  NuGet's version lists caught up one package at a time (16 of 17 for a few minutes, and two answers that
+  disagreed in between: its servers don't update together). Then an app in an empty folder, with nuget.org as
+  its only source, restored `Scribble.Desktop` 0.1.0-alpha.2 and built a component using `ctx.useImage` and
+  `load.Image`, with the four native libraries in its output (built, not run).
 - **CI skips documentation (Tim, 2026-11-20).** `ci.yml` has a `paths` filter: a push or pull request that changes
   only `docs/`, `CLAUDE.md` or `LICENSE` starts no run. `docs/PACKAGE.md` and `docs/THIRD-PARTY-NOTICES.md` still
   do: they are packed into every package. Several of the day's 11-minute runs were for DESIGN.md alone. Seen
