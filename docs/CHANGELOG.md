@@ -6,6 +6,10 @@ While the version starts with 0, any release may break the API: each break is li
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.0-alpha.3 (2026-11-20)
+
 ### Changed
 
 - **`ListBox` scrolls on its own**: it holds its own ScrollViewer, so it no longer needs one written around it.
