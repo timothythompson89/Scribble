@@ -83,7 +83,7 @@ let private swatchView (s: Swatch) =
 let private picked (name: string) =
     match swatches |> Array.tryFind (fun s -> s.Name = name) with
     | Some s -> "Picked " + s.Name + ": " + s.Note
-    | None -> "Tiles in a wrap layout: the arrow keys follow the rows. This list keeps its own selection."
+    | None -> "Tiles that share the width: the arrow keys follow the rows. This list keeps its own selection."
 
 let private lists =
     Component.define "Lists" (fun ctx () ->
@@ -158,7 +158,7 @@ let private lists =
                         ListBox.create [
                             ListBox.height 150.0
                             ListBox.name "swatches"
-                            ListBox.layout (ItemsLayout.wrap 96.0 64.0)
+                            ListBox.layout (ItemsLayout.wrapFill 96.0 64.0)
                             ListBox.source swatches
                             ListBox.keySelector (fun (s: Swatch) -> s.Name)
                             ListBox.viewSelector swatchView

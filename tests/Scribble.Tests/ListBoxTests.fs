@@ -608,6 +608,23 @@ let ``in a grid, Ctrl moves the focus only and Shift extends the selection in so
     Assert.Equal<int list>([ 4 ], selectedKeys host)
 
 [<Fact>]
+let ``in a wrapFill layout the keys follow its rows`` () =
+    // 300 wide: three cells of at least 90, widened to 100.
+    let w, host = show (list 10 (bare 300.0 [ ListBox.layout (ItemsLayout.wrapFill 90.0 40.0) ]))
+    Assert.Equal(3, ItemsView.columns (listOf host))
+    key w Key.Tab
+    key w Key.Right
+    key w Key.Down
+    Assert.Equal(4, focusedKey host)
+    key w Key.Right
+    key w Key.Right
+    Assert.Equal(6, focusedKey host)
+    key w Key.Down
+    Assert.Equal(9, focusedKey host)
+    key w Key.Up
+    Assert.Equal(6, focusedKey host)
+
+[<Fact>]
 let ``in a stack, Left and Right are not the list's`` () =
     let w, host = show (list 20 [])
     key w Key.Tab

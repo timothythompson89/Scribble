@@ -159,6 +159,37 @@ let ``wrap and grid lay items out in cells`` () =
     Assert.Equal(90.0, grid.DesiredSize.Height)
 
 [<Fact>]
+let ``wrapFill fits cells of the least width and widens them to fill the row`` () =
+    // 288 wide (300 less the 12 gutter): 5 cells of 50 fit, each widened to 57.6 (edges land on whole pixels);
+    // item 7 is row 1, column 2.
+    let _, _, fill = build (items 1000 (fun _ -> 40.0)) (ItemsLayout.wrapFill 50.0 40.0) (Scroller()) (ref 0)
+    Assert.Equal(5, ItemsView.columns fill)
+    let seven = fill.Children |> Seq.find (fun c -> c.Name = "7")
+    Assert.Equal(115.2, seven.Bounds.X, 1.0)
+    Assert.Equal(40.0, seven.Bounds.Y)
+    Assert.Equal(57.6, seven.Bounds.Width, 1.0)
+    Assert.Equal(40.0, seven.Bounds.Height)
+    Assert.Equal(200.0 * 40.0, fill.DesiredSize.Height)
+    // The last cell of a row ends at the right edge.
+    let four = fill.Children |> Seq.find (fun c -> c.Name = "4")
+    Assert.Equal(288.0, four.Bounds.X + four.Bounds.Width, 1.0)
+    // Only what shows is realized.
+    Assert.InRange(realized fill, 1, 60)
+    // Fewer items than a row holds, and a short last row: cells of the same width, at the left.
+    let _, _, few = build (items 3 (fun _ -> 40.0)) (ItemsLayout.wrapFill 50.0 40.0) (Scroller()) (ref 0)
+    let two = few.Children |> Seq.find (fun c -> c.Name = "2")
+    Assert.Equal(115.2, two.Bounds.X, 1.0)
+    Assert.Equal(57.6, two.Bounds.Width, 1.0)
+    let _, _, seven = build (items 7 (fun _ -> 40.0)) (ItemsLayout.wrapFill 50.0 40.0) (Scroller()) (ref 0)
+    let six = seven.Children |> Seq.find (fun c -> c.Name = "6")
+    Assert.Equal(57.6, six.Bounds.X, 1.0)
+    Assert.Equal(57.6, six.Bounds.Width, 1.0)
+    // A width under the least: one column as wide as the list.
+    let _, _, narrow = build (items 10 (fun _ -> 40.0)) (ItemsLayout.wrapFill 400.0 40.0) (Scroller()) (ref 0)
+    Assert.Equal(1, ItemsView.columns narrow)
+    Assert.Equal(288.0, narrow.Children[0].Bounds.Width, 1.0)
+
+[<Fact>]
 let ``ScrollTo with Nearest doesn't move what already shows`` () =
     let scroller = Scroller()
     let t, _, _ = build (items 1000 (fun _ -> 20.0)) ItemsLayout.stack scroller (ref 0)

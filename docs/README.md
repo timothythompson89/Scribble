@@ -749,7 +749,8 @@ let messages =
 ```
 
 - **Layouts:** `ItemsLayout.stack` (default: each item as tall as it wants; measured as realized, others estimated
-  from the average, so the bar may adjust a little), `fixedStack height`, `wrap width height` and `grid columns`
+  from the average, so the bar may adjust a little), `fixedStack height`, `wrap width height`, `wrapFill minWidth height`
+  (as many cells as fit at the least width, widened equally to fill the row) and `grid columns`
   (exact, by arithmetic).
 - **Sideways:** in a ScrollViewer with `ScrollViewer.horizontal ScrollBarMode.Auto`, a `stack` or `fixedStack`
   measures its items at their natural width (text in them doesn't wrap) and is as wide as the widest item measured
@@ -1273,7 +1274,7 @@ RadioGroup.create [
   index without one), so it survives inserts, sorting and filtering. `selectionMode`: `Single` (default),
   `Multiple` (Ctrl+click toggles, Shift+click selects a range, Ctrl+A all, Space toggles, Shift+arrows extend) or
   `None` (a list of actions: a click invokes). One Tab stop; ↑/↓, Home/End and PageUp/PageDown move through the
-  items, realizing only the one reached. With `ListBox.layout (ItemsLayout.wrap w h)` or `grid columns` the
+  items, realizing only the one reached. With `ListBox.layout (ItemsLayout.wrap w h)`, `wrapFill` or `grid columns` the
   keys follow the rows: ↑/↓ and PageUp/PageDown move by rows and keep the column, ←/→ move by one item and
   carry on to the next row. **Invoking** acts on an item: a double-click or Enter (a click in `None`).
 

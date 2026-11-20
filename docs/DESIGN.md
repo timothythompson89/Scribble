@@ -1240,7 +1240,7 @@ before it is built, and Tim tries each step before the next.
    scroller, several lists on one page and nested scrollers all keep virtualizing.
 3. **`ItemsView`: data plus a view function**, never a list of Views: `ItemsView.source` (indexable: `'T array` or
    `IReadOnlyList<'T>`; an F# list is copied into an array once), `ItemsView.key`, `ItemsView.view` (called only for
-   realized items), `ItemsView.layout` (`ItemsLayout.stack` default, `ItemsLayout.wrap w h`, `ItemsLayout.grid
+   realized items), `ItemsView.layout` (`ItemsLayout.stack` default, `ItemsLayout.wrap w h`, `wrapFill` since 2026-11-20, `ItemsLayout.grid
    columns`). Name `ItemsView` (Tim: yes to the recommendation over Items, VirtualList, Repeater).
 4. **Sizes variable by default**: measured sizes remembered by key, unmeasured ones estimated from the average;
    when an estimate is corrected the first visible item stays where it is on screen (scroll anchoring); the
@@ -5655,6 +5655,22 @@ line above ("Picked Lagoon: teal, for calm"); single selection kept by the list,
 of 96 by 64 (104 gave a phone two columns and an empty third; 96 gives three); the section's hint says "Left
 and Right too in the tiles"; `gallery-phone-lists@3x` regenerated (the only picture of the page). 1,365 unit
 tests, 107 rendering tests. The keys in a window and in the browser are on the checklists.
+
+**Tiles that spread over the width: `ItemsLayout.wrapFill` (grilling, 2026-11-20; Tim: yes to all).** Tim, of
+the tiles' empty space at the right: "make the tiles spread over the width". `wrap` has fixed cells and `grid`
+a fixed count of columns; neither reflows and fills. Decisions: (1) a new layout beside them, `wrap` unchanged
+(the Icons sample uses it for fixed cells); (2) `ItemsLayout.wrapFill minWidth height`: as many cells of at
+least `minWidth` as fit, widened equally so the row fills the width, the height fixed; (3) a short last row's
+cells keep that width, at the left, so the columns line up; (4) with fewer items than a row holds the cells
+are still that width (it follows the list's width alone: a filtered list's tiles don't change size, one item
+is not a tile as wide as the list); (5) the Icons sample stays on `wrap` for now. Settled by Claude, said to
+Tim: the arrow keys need no new rule; with unlimited width it flows to the viewport's width, as wrap and grid.
+**As built:** a fourth case in `ItemsView.cells` (the columns `wrap` would have, the cell `width / columns`);
+a width under `minWidth` gives one column as wide as the list. Cell edges land on whole pixels with no gaps
+(288 over five: 58, 57, 58, 57, 58). Tests: the cells, the right edge, three items, a short last row, a narrow
+list, under 60 of 1,000 realized (`ItemsViewTests.fs`); the keys in a `wrapFill` ListBox (`ListBoxTests.fs`).
+The Gallery's tiles use `wrapFill 96.0 64.0`; `gallery-phone-lists@3x` regenerated (three cells of 100 where
+there were three of 96 and a gap). 1,367 unit tests, 107 rendering tests.
 
 ## Vectorising the PNG decoder (2026-11-18)
 

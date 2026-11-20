@@ -112,7 +112,7 @@ type ItemsView =
     /// it: the text form of `viewSelector`, else the item itself if it is a string, a number or an enum.
     static member textSelector<'k, 'T when 'k :> ItemsView>(f: 'T -> string) : Setting<'k> =
         Setting.create ItemsViewProps.textSelector (ValueSome(ItemsFunc<string>(fun item -> f (unbox<'T> item))))
-    /// `ItemsLayout.stack` (default), `fixedStack height`, `wrap width height` or `grid columns`.
+    /// `ItemsLayout.stack` (default), `fixedStack height`, `wrap width height`, `wrapFill minWidth height` or `grid columns`.
     static member layout<'k when 'k :> ItemsView>(layout: ItemsLayout) : Setting<'k> = Setting.create ItemsViewProps.layout layout
     /// A scroller to scroll to items from code (`ctx.useScroller ()`, then `scroller.ScrollTo key`).
     static member scroller<'k when 'k :> ItemsView>(scroller: Scroller) : Setting<'k> = Setting.create ItemsViewProps.scroller (ValueSome scroller)
@@ -213,6 +213,9 @@ module ItemsView =
         | ItemsLayout.Wrap(w, h) ->
             let columns = if Double.IsInfinity width || w <= 0.0 then 1 else max 1 (int (Math.Floor(width / w)))
             ValueSome(struct (columns, w, h))
+        | ItemsLayout.WrapFill(w, h) ->
+            let columns = if Double.IsInfinity width || w <= 0.0 then 1 else max 1 (int (Math.Floor(width / w)))
+            ValueSome(struct (columns, (if Double.IsInfinity width then w else width / float columns), h))
         | ItemsLayout.Grid columns ->
             let w = if Double.IsInfinity width then 100.0 else width / float columns
             ValueSome(struct (columns, w, (if Double.IsNaN s.CellHeight then s.Fallback else s.CellHeight)))
@@ -544,10 +547,10 @@ module ItemsView =
         // What shows now; before the first arrange, the top of the nearest ScrollViewer's viewport.
         let viewport = viewportOf e
         // Unlimited width (a ScrollViewer scrolling sideways): a stack measures its items at their
-        // natural width (M8 step 3a++); wrap and grid flow to the viewport's width instead.
+        // natural width (M8 step 3a++); wrap, wrapFill and grid flow to the viewport's width instead.
         let width =
             match layout, viewport with
-            | (ItemsLayout.Wrap _ | ItemsLayout.Grid _), ValueSome v when Double.IsInfinity available.Width -> v.Width
+            | (ItemsLayout.Wrap _ | ItemsLayout.WrapFill _ | ItemsLayout.Grid _), ValueSome v when Double.IsInfinity available.Width -> v.Width
             | _ -> available.Width
         // The scroll anchor, taken before the items or the width change: the first visible item
         // keeps its place on screen while sizes or items above it change.
@@ -738,7 +741,7 @@ module ItemsView =
         match viewportOf e with
         | ValueSome v -> max 1 (int (Math.Floor(v.Height / max 1.0 (average s))))
         | ValueNone -> 10
-    /// How many items a row holds, as of the last layout: 1 in a stack, what fits the width in a wrap, a grid's
+    /// How many items a row holds, as of the last layout: 1 in a stack, what fits the width in a wrap or a wrapFill, a grid's
     /// columns (a list's arrow keys: DESIGN.md, "A ListBox's arrow keys in wrap and grid layouts").
     let internal columns (e: Element) =
         let s = stateOf e

@@ -11,6 +11,9 @@ While the version starts with 0, any release may break the API: each break is li
 - A browser app's default page says so in plain words when it can't run: "This page needs WebGPU" (or HTTPS)
   in the middle of the page, where it used to be black with a red error box. The .NET runtime isn't downloaded
   there. An app with a `wwwroot/index.html` of its own is unchanged.
+- `ItemsLayout.wrapFill minWidth height`, for an ItemsView or a ListBox: as many cells per row as fit at
+  `minWidth`, each widened equally so the row fills the width. (`wrap` keeps its cells' width and leaves the
+  space over at the right.)
 
 ### Fixed
 
