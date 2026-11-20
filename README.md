@@ -1121,7 +1121,7 @@ let themeSwitch = Component.define "ThemeSwitch" (fun ctx () ->
                     Button.onClick (fun _ -> theme.Set(if isLight then dark else light)) ])
 ```
 
-- **`Palette`:** `background`, `surface`, `control`, `border`, `text`, `textDim`, `accent`, `danger`, `onAccent`
+- **`Palette`:** `background`, `surface`, `control`, `border`, `text`, `textDim`, `accent`, `danger`, `textDanger` (text that says something failed; `danger` is for behind text), `warning`, `onAccent`
   (text on accent or danger backgrounds, white in both), `focusRing`, `hoverTint`, `pressTint`, `scrollThumb`,
   `shadow` (a button at rest; the theme flattens it when pressed or disabled), `cornerRadius`, `font`, `fontSize`.
   Their defaults are the dark theme's values. The built-in looks are written with them, so `Theme.dark` and
@@ -1582,7 +1582,7 @@ Border.create [ Semantics.role Role.Switch; Semantics.label "Wi-Fi"; Semantics.i
 | `src/Scribble.Rendering.WebGPU.Browser` | Browser WebGPU (`navigator.gpu`) backend |
 | `samples/Hello` | The Hello sample (library): `HelloApp.fs` (model, update, app settings) and `Dashboard.fs` (the dashboard as a view function, also used by the rendering tests) |
 | `samples/Counter` | The Counter (library): the README's first example, one file |
-| `samples/Gallery` | The Gallery (library): one file per page (`ComponentsPage.fs`, `LayoutPage.fs`, `ControlsPage.fs`, `ScrollingPage.fs`, `LayersPage.fs`, `StylesPage.fs`, `ImagesPage.fs`), `Common.fs` (page and section layouts, theme values, themes) and `GalleryApp.fs` (the tabs and the app) |
+| `samples/Gallery` | The Gallery (library): one file per page (`ComponentsPage.fs`, `LayoutPage.fs`, `ControlsPage.fs`, `ScrollingPage.fs`, `LayersPage.fs`, `StylesPage.fs`, `ImagesPage.fs`), `Common.fs` (page and section layouts) and `GalleryApp.fs` (the tabs, the two themes and the app). Its colours are the built-in palette's, but for one theme value of its own on the Styles page (`ThemeValue.define`, `Theme.set`) |
 | `samples/Icons` | The Material Symbols gallery (library) |
 | `samples/X.Desktop`, `samples/X.Browser` | Each sample's hosts: the same one-line Program.fs, a different SDK and Scribble package |
 | `samples/Samples.Shared` | `Adaptive.fs`: the samples' own `SplitRow` |

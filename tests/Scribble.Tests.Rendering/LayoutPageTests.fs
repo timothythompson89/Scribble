@@ -30,7 +30,7 @@ type LayoutPageTests(fixture: TextFixture) =
     /// The Gallery with the Layout page selected.
     member private _.LayoutPage() =
         let tree = ElementTree(fixture.Text)
-        tree.Theme <- ValueSome Common.darkTheme
+        tree.Theme <- ValueSome Scribble.Samples.GalleryApp.darkTheme
         tree.Update(Scribble.Samples.GalleryApp.gallery ())
         let size = Size.Create(width, height)
         tree.UpdateLayout size

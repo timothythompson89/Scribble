@@ -47,7 +47,7 @@ type ImageOutTests(fixture: TextFixture) =
         let task =
             ViewImage.render (Scribble.Samples.Counter.view 3 ignoreMsg) [
                 ViewImage.size (360.0, 200.0)
-                ViewImage.theme Common.darkTheme
+                ViewImage.theme Scribble.Samples.GalleryApp.darkTheme
                 ViewImage.background (Color.Hex 0x181825)
             ]
         // Headless on the desktop: finished at once.
@@ -60,7 +60,7 @@ type ImageOutTests(fixture: TextFixture) =
     [<Fact>]
     member _.``a view image of the light gallery matches its screenshot``() =
         let image =
-            (ViewImage.render (Scribble.Samples.GalleryApp.gallery ()) [ ViewImage.size (720.0, 560.0); ViewImage.theme Common.lightTheme ]).Result
+            (ViewImage.render (Scribble.Samples.GalleryApp.gallery ()) [ ViewImage.size (720.0, 560.0); ViewImage.theme Scribble.Samples.GalleryApp.lightTheme ]).Result
         Assert.Equal(1.0, image.Density)
         match Snapshot.check "gallery-light@1x" (throughPng image) with
         | Some error -> Assert.Fail error

@@ -158,7 +158,7 @@ let ``in an app: a starting value, shared by every layer, set through AppContext
 let ``the Gallery's switch sets Theme.current, and the window and its layers follow`` () =
     let w, device, app = start Scribble.Samples.GalleryApp.app
     let host = app :?> ElementHost
-    let light, dark = Scribble.Samples.Gallery.Common.lightTheme, Scribble.Samples.Gallery.Common.darkTheme
+    let light, dark = Scribble.Samples.GalleryApp.lightTheme, Scribble.Samples.GalleryApp.darkTheme
     w.DeliverFrame() |> ignore
     Assert.Same(dark, host.WindowTheme)
     let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }

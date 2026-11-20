@@ -31,7 +31,7 @@ type ScrollStressTests(fixture: TextFixture) =
     member _.``scrolling 10,000 messages hard while drawing every frame``() =
         let width, height = 920.0, 720.0
         let tree = ElementTree(fixture.Text)
-        tree.Theme <- ValueSome Common.darkTheme
+        tree.Theme <- ValueSome Scribble.Samples.GalleryApp.darkTheme
         tree.Update(Scribble.Samples.GalleryApp.gallery ())
         let size = Size.Create(width, height)
         let layout () =

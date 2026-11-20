@@ -20,7 +20,10 @@ module Palette =
     /// Secondary text.
     let textDim = ThemeValue.define "Palette.textDim" (Color.Hex 0x9A9AB0)
     let accent = ThemeValue.define "Palette.accent" (Color.Hex 0x3D59A1)
+    /// Behind something destructive or failed (a Danger button, a critical toast); `onAccent` text reads on it.
     let danger = ThemeValue.define "Palette.danger" (Color.Hex 0x8C2F39)
+    /// Text that says something failed, on the background or a surface (`danger` is for behind text, and too dark to read as text).
+    let textDanger = ThemeValue.define "Palette.textDanger" (Color.Hex 0xF7768E)
     /// Something to be careful about (a Warning confirmation's button); `onAccent` text reads on it.
     let warning = ThemeValue.define "Palette.warning" (Color.Hex 0x9A6700)
     /// Text on accent- or danger-colored backgrounds (white in both built-in themes).

@@ -177,6 +177,7 @@ module ThemeExtensions =
                   Theme.text (Color.Hex 0x1E1E2E)
                   Theme.textDim (Color.Hex 0x5E5E72)
                   Theme.danger (Color.Hex 0xB3364A)
+                  Theme.textDanger (Color.Hex 0xC0392B)
                   Theme.focusRing (Color.Hex 0x2F5BD3)
                   Theme.hoverTint (Color.Black.WithAlpha 0.05f)
                   Theme.pressTint (Color.Black.WithAlpha 0.1f)

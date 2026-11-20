@@ -56,7 +56,7 @@ type PhoneTests(fixture: TextFixture) =
     [<InlineData("Lists")>]
     member this.``the Gallery on a phone``(tab: string) =
         let tree = ElementTree(fixture.Text, Scale = scale)
-        tree.Theme <- ValueSome Common.darkTheme
+        tree.Theme <- ValueSome Scribble.Samples.GalleryApp.darkTheme
         tree.Update(Scribble.Samples.GalleryApp.gallery ())
         let size = Size.Create(width, height)
         tree.UpdateLayout size

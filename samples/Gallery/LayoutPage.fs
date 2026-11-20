@@ -191,7 +191,7 @@ let private chipWith (thickness: float) (text: string) (settings: Setting<Border
         yield Border.padding (10.0, 4.0)
         yield Border.cornerRadius 12.0
         yield Border.borderThickness thickness
-        yield Border.borderBrush line
+        yield Border.borderBrush Palette.border
         yield Border.content (TextBlock.create [ TextBlock.text text; TextBlock.fontSize 12.0 ])
         yield! settings
     ]

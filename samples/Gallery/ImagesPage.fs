@@ -27,8 +27,8 @@ let private boxed (label: string) (w: float) (h: float) (settings: Setting<Image
             Border.create [
                 Border.width w
                 Border.height h
-                Border.background subtle
-                Border.borderBrush line
+                Border.background Palette.surface
+                Border.borderBrush Palette.border
                 Border.borderThickness 1.0
                 Border.content (ImageView.create settings)
             ]
@@ -86,8 +86,8 @@ let private hoverBox (label: string) (cursor: Cursor) =
     Border.create [
         Border.width 150.0
         Border.height 90.0
-        Border.background subtle
-        Border.borderBrush line
+        Border.background Palette.surface
+        Border.borderBrush Palette.border
         Border.borderThickness 1.0
         Border.cornerRadius 6.0
         Border.cursor cursor
@@ -165,7 +165,8 @@ let private saving =
                     Border.horizontalAlignment HorizontalAlignment.Left
                     Border.cornerRadius 12.0
                     Border.background Palette.surface
-                    Border.shadow floatShadow
+                    // A shadow of its own, deeper than the theme's (`Palette.shadow`, a button's): a fixed value serves both themes.
+                    Border.shadow { Blur = 12.0; OffsetX = 0.0; OffsetY = 4.0; Spread = 0.0; Color = Color.Black.WithAlpha 0.35f }
                     Border.content (
                         StackPanel.create [
                             StackPanel.spacing 8.0

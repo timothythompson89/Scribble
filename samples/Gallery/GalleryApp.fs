@@ -2,7 +2,7 @@
 /// each keeping its state while another is shown. Each page has its own file next to this one (compiled in this
 /// order):
 ///
-/// - Common.fs: what the pages share (the page and section layouts, the theme values and the two themes),
+/// - Common.fs: what the pages share (the page and section layouts),
 /// - ComponentsPage.fs: an Elmish counter with a command, keyed counters with an animated bar, a slow load
 ///   (`useElmishWithCmd`, `useState`, `useAnimated`, `useAsync`),
 /// - LayoutPage.fs: Grid, DockPanel, Canvas (drag, zIndex), WrapPanel and Separators (M8 step 2),
@@ -10,10 +10,10 @@
 /// - ScrollingPage.fs: 10,000 messages in an ItemsView, jumped through with a scroller (M8 step 1),
 /// - ListsPage.fs: ListBox in each selection mode (10,000 items), RadioGroup, a view per item (M8 step 4b),
 /// - LayersPage.fs: toasts, dialogs, flyouts and tooltips (M8 step 4),
-/// - StylesPage.fs: classes, state blocks and scoped styles (M7),
+/// - StylesPage.fs: classes, state blocks and scoped styles (M7), and the one theme value of the Gallery's own,
 /// - ImagesPage.fs: ImageView: stretching, pixelated, round, 2×, from pixels, a broken image (M8 step 3b); saving
 ///   as PNG: a captured card, and the Gallery itself rendered with no window,
-/// - GalleryApp.fs (this file): the tabs and the app's settings.
+/// - GalleryApp.fs (this file): the tabs, the two themes and the app's settings.
 module Scribble.Samples.GalleryApp
 
 open Scribble.Core
@@ -43,6 +43,11 @@ let private titleOf i = let title, _, _ = pages[i] in title
 
 /// The window title's start; the selected tab's name follows it.
 let private appTitle = "Gallery"
+
+/// The Gallery's two themes are the built-in ones. The light one also gives the Styles page's own theme value
+/// its light colour; the dark one needs nothing, since a theme value's default is its dark value.
+let darkTheme = Theme.dark []
+let lightTheme = Theme.light [ Theme.set StylesPage.highlight (Scribble.Rendering.Color.Hex 0x2F5BD3) ]
 
 /// The Light/Dark switch: it switches the window's theme (`Theme.current`, an app value) itself,
 /// wherever it sits; the whole window follows, the toast and dialog layers too. Controlled: it

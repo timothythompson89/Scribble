@@ -364,3 +364,24 @@ let ``the new palette colors are settings`` () =
     Assert.Equal(shadow, t.Get Palette.shadow)
     Assert.Equal(Color.White, (Theme.dark []).Get Palette.onAccent)
     Assert.Equal(Color.White, (Theme.light []).Get Palette.onAccent)
+
+/// Relative luminance (WCAG) of an opaque colour, for the contrast check below.
+let private luminance (c: Color) =
+    let lin (v: float32) =
+        let v = float v
+        if v <= 0.03928 then v / 12.92 else ((v + 0.055) / 1.055) ** 2.4
+    0.2126 * lin c.R + 0.7152 * lin c.G + 0.0722 * lin c.B
+
+let private contrast (a: Color) (b: Color) =
+    let la, lb = luminance a, luminance b
+    (max la lb + 0.05) / (min la lb + 0.05)
+
+[<Fact>]
+let ``Palette.textDanger reads as text on each built-in theme's background and surface, and a theme can set it`` () =
+    for theme in [ Theme.dark []; Theme.light [] ] do
+        let text = theme.Get Palette.textDanger
+        // WCAG AA for body text is 4.5.
+        Assert.True(contrast text (theme.Get Palette.background) >= 4.5)
+        Assert.True(contrast text (theme.Get Palette.surface) >= 4.5)
+    let green = Color.Hex 0x00FF00
+    Assert.Equal(green, (Theme.light [ Theme.textDanger green ]).Get Palette.textDanger)

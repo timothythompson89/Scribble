@@ -17,7 +17,7 @@ type GalleryTests(fixture: TextFixture) =
 
     member private _.Render(view: View) =
         let tree = ElementTree(fixture.Text)
-        tree.Theme <- ValueSome Common.darkTheme // as in the app (the count's text color comes from it)
+        tree.Theme <- ValueSome Scribble.Samples.GalleryApp.darkTheme // as in the app (the count's text color comes from it)
         tree.Update view
         tree.UpdateLayout(Size.Create(360.0, 200.0))
         let size: PixelSize = { Width = 360; Height = 200 }
@@ -77,13 +77,13 @@ type GalleryTests(fixture: TextFixture) =
     [<Fact>]
     member _.``the gallery, light``() =
         let tree = ElementTree(fixture.Text)
-        tree.Theme <- ValueSome Common.lightTheme // what the host gives its layers when Theme.current is light
+        tree.Theme <- ValueSome Scribble.Samples.GalleryApp.lightTheme // what the host gives its layers when Theme.current is light
         tree.Update(Scribble.Samples.GalleryApp.gallery ())
         tree.UpdateLayout(Size.Create(float width, float height))
         let size: PixelSize = { Width = width; Height = height }
         let image =
             fixture.Gpu.Device.RenderOffscreen(size, 1.0, fun f ->
-                f.Clear (Common.lightTheme.Get Palette.background)
+                f.Clear (Scribble.Samples.GalleryApp.lightTheme.Get Palette.background)
                 tree.Render f.DrawList)
         tree.Root <- ValueNone
         match Snapshot.check "gallery-light@1x" image with
@@ -94,12 +94,12 @@ type GalleryTests(fixture: TextFixture) =
     [<Fact>]
     member _.``the styles page, light``() =
         let tree = ElementTree(fixture.Text)
-        tree.Update(Border.create [ Border.theme Common.lightTheme; Border.padding 24.0; Border.content (StylesPage.demo ()) ])
+        tree.Update(Border.create [ Border.theme Scribble.Samples.GalleryApp.lightTheme; Border.padding 24.0; Border.content (StylesPage.demo ()) ])
         tree.UpdateLayout(Size.Create(520.0, 440.0))
         let pixels: PixelSize = { Width = 520; Height = 440 }
         let image =
             fixture.Gpu.Device.RenderOffscreen(pixels, 1.0, fun f ->
-                f.Clear (Common.lightTheme.Get Palette.background)
+                f.Clear (Scribble.Samples.GalleryApp.lightTheme.Get Palette.background)
                 tree.Render f.DrawList)
         match Snapshot.check "styles-page-light@1x" image with
         | Some error -> Assert.Fail error

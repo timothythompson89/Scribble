@@ -83,13 +83,14 @@ let counter =
                     Border.margin (8.0, 0.0, 0.0, 0.0)
                     Border.verticalAlignment VerticalAlignment.Center
                     Border.cornerRadius 4.0
-                    Border.background track
+                    // The palette's border colour: the control colour is the window's own, nearly, on the light theme.
+                    Border.background Palette.border
                     Border.content (
                         Border.create [
                             Border.width (barWidth * filled)
                             Border.horizontalAlignment HorizontalAlignment.Left
                             Border.cornerRadius 4.0
-                            Border.background (if count.Current < 0 then error else fill)
+                            Border.background (if count.Current < 0 then Palette.danger else Palette.accent)
                         ]
                     )
                 ]
@@ -146,7 +147,7 @@ let slowLoad =
             match square with
             | AsyncValue.Loading -> "loading…", Palette.textDim
             | AsyncValue.Loaded v -> $"{n.Current}² = {v}", Palette.text
-            | AsyncValue.Failed e -> e.Message, error
+            | AsyncValue.Failed e -> e.Message, Palette.textDanger
         StackPanel.create [
             StackPanel.orientation Horizontal
             StackPanel.spacing 8.0

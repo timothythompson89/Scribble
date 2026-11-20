@@ -109,7 +109,7 @@ let private lists =
                 ]
                 Border.create [
                     DockPanel.dock Dock.Fill
-                    Border.borderBrush line
+                    Border.borderBrush Palette.border
                     Border.borderThickness 1.0
                     Border.cornerRadius 6.0
                     Border.padding 4.0
@@ -143,7 +143,7 @@ let private lists =
                         ]
                         Border.create [
                             Border.height 150.0
-                            Border.borderBrush line
+                            Border.borderBrush Palette.border
                             Border.borderThickness 1.0
                             Border.cornerRadius 6.0
                             Border.padding 4.0

@@ -34,8 +34,9 @@ questions", as paragraphs starting with the name given here.
 | Defaults | Where each element's defaults live: rest looks as type defaults by theme value (2026-11-19) | Section "Where defaults live" |
 | Names | An app names and styles a thing by what it wrote; presenters are internal (2026-11-19) | Section "Names an app sees" |
 | Style syntax | A selector says which elements, `Style.onState` and `Style.onProp` say when (2026-11-19) | Section "One way to say when" |
-| Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 | States of your own | `States.define "name" [ ... ]` and `Border.state`; the inspector lists an element's own states (2026-11-19) | Section "States of your own" |
+| The Gallery uses the built-in palette | Its own theme values are gone but for one example; `Palette.textDanger` (2026-11-19) | Section "The Gallery uses the built-in palette" |
+| Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
 
 ## What Scribble is
 
@@ -5346,64 +5347,6 @@ Screenshots: 3 regenerated (`styles-page`, `styles-page-light`, `gallery-phone-s
 quotes the syntax, now "Hover me: Border.onState States.hover [ ... ], right in the view"). Tests: 1,307 unit
 (2 new, for `onProp`), 106 rendering.
 
-## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
-
-The working summaries kept in CLAUDE.md while each milestone was built, moved here unchanged when CLAUDE.md
-was trimmed (evaluation, 2026-11-16). Older sections of this file use the words of the time ("token" is now
-"theme value", "marker type" "settings type"; see GLOSSARY.md).
-
-### Status as of 2026-11-16
-
-
-Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
-(draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
-(lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
-Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme values and app values) is done and verified (2026-11-16). Last counts: 284 unit tests,
-50 rendering tests (after M7b step 2, the Material package).
-
-Remaining milestones (M7c custom title bars was skipped, 2026-11-16; see DESIGN.md): M7b icons (decisions in
-DESIGN.md, "Decisions for M7b"; step 1, icons in Core, done and verified 2026-11-16: `PathGeometry` in Text,
-`TextSystem.DrawIcon`, `Icon`/`IconView`/`Button.icon` in Core; plus the inspector's icon toolbar with hover hints,
-also verified; step 2, the Material package `Scribble.Icons.Material` and the Icons sample, done and verified by Tim 2026-11-16;
-step 3, image cursors (`Cursor.fromIcon`, `Cursor.Image` shown by the OS), done and verified by Tim 2026-11-16), M8 core controls
-(Grid, DockPanel, Canvas, dashed lines in the renderer, rest of ScrollViewer (draggable thumb, keyboard, horizontal), virtualization (must keep scroll-to-item, see DESIGN.md), CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
-animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
-
-#### M5: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M5")
-
-Three steps, each tried by Tim before the next:
-1. **Pointer** (done, verified by Tim on Windows and in the browser 2026-11-15; `src/Scribble.Core/Input.fs`): platform gaps (pointer left window, OS capture, modifiers, cursors); tunnel+bubble routing (preview
-   settings only for pointer down/up, wheel, key down); enter/leave on the hovered chain; capture (drag off a button
-   cancels the click); `isEnabled` (inherited); Button hover/pressed/disabled looks; `App.onPointerMove` removed.
-2. **Keyboard** (done, verified by Tim on Windows and in the browser 2026-11-15): portable logical `Key` + modifiers (browser uses
-   `e.key`, Win32 `MapVirtualKeyW`); routed `onKeyDown/Up` + Preview from the focused element (else the root);
-   `focusable` (Button by default); focus manager in `InputRouter` (`MoveFocus Next/Previous`, view order,
-   wraps; press focuses, invalid focus cleared after layout); `ctx.IsFocusVisible` + `FocusRing.draw`; Enter/Space
-   activate (Space pressed while held, Escape cancels); `App.onKey (fun key mods -> ...)` only for unhandled keys;
-   `ElementHost.HandleEvent` returns "handled".
-3. **Components** (done, verified by Tim on Windows and in the browser 2026-11-15; `src/Scribble.Core/Component.fs`, `Animation.fs`):
-   `Component.define "Name" (fun ctx props -> view)` returns `'P -> View`; the component's element hosts its
-   state (`ComponentInstance`, hooks in slots checked for order) and its output as a child. Re-runs: own state
-   (scheduled via `IElementRoot.ScheduleComponent`, run shallowest first at the start of `UpdateLayout`) or changed
-   props (`PropKind.Component` setting compared by F# equality). Effects/subscriptions and "keep animating" go
-   through `IElementRoot.AfterFrame`, run by `ElementHost` after the frame (outside `inFrame`, so they can ask for
-   frames). Hooks: useState/useMemo/useEffect/useSubscription/useElmish/useAnimated. Element authors:
-   `ctx.Animate` (tweens, `Easing`) and `Element.transform`; Button sinks to 97% with a flattening shadow. Text
-   under an extra scale rasterizes at quarter-pixel sizes. Counter sample = components demo.
-
-Views don't read element states directly: state-dependent looks are styles (M7).
-
-#### M5b: async (decisions in `docs/DESIGN.md`, "Decisions for M5b")
-
-`Dispatcher.fs`: one queue in Core (`Post`/`InvokeAsync`/`CheckAccess`/`RunPending`); platforms only `Wake`
-(Win32 message-only window + `PostMessageW`, so it works during the move/resize modal loop; browser
-`setTimeout(0)`). `dispatcher.Install()` (done by `App.run`/`runInBrowser`) sets a `SynchronizationContext` and
-routes unobserved task exceptions to `OnError` (= `App.onError`). `State.Set/Update` and Elmish dispatch post
-when off the UI thread (inline when the tree has no dispatcher, as in bare `ElementTree` tests). `Cmd.fs`: own
-`Cmd` (`none/ofMsg/batch/map/ofSub/ofTask/ofAsync`); `App.programWithCmd`, `ctx.useElmishWithCmd`;
-`ctx.useAsync(deps, fun d ct -> task|async)` → `AsyncValue.Loading|Loaded|Failed` (version counter drops late
-results). Tests drain the fake platform's wakes by hand (`AsyncTests.fs`; use a real `Thread` for "other thread",
-since `Task.Run(...).Wait()` can run inline).
 ## States of your own (2026-11-19)
 
 Tim: "creating custom states seems confusing. Can we make it more user friendly?" The Gallery's chips needed three
@@ -5484,6 +5427,97 @@ and forgetting one hides it silently).
   hint's words and the slider), `gallery-phone-styles@3x` (those and the page's first line), `inspector-pick@1x`, `inspector-images@1x` (a TextBlock's and an ImageView's STATES row: the five
   built-in states, where there were ten).
 
+## The Gallery uses the built-in palette (2026-11-19)
+
+Tim: "let's update our gallery to not have the themes redefined in Common.fs", then "go with A plus" (A: the
+Gallery's colours are the built-in palette's; plus: one small theme value of its own, kept as the example of
+`ThemeValue.define` and `Theme.set`). `Common.fs` had twelve theme values and a light theme setting eleven of them:
+a sample that showed every app needing a palette beside ours.
+
+1. **`Common.fs` holds layouts only.** The twelve values and the two themes are gone from it.
+2. **One theme value stays, on the Styles page:** `StylesPage.highlight` (what lights up under the pointer, a
+   chosen chip's border). `GalleryApp.fs` has `darkTheme = Theme.dark []` and `lightTheme = Theme.light [ Theme.set
+   StylesPage.highlight ... ]`, as an app would write them.
+3. **What replaced the rest:** card, chip and box borders `Palette.border`; boxes' backgrounds `Palette.surface`;
+   the counters' bar `Palette.border` with `Palette.accent` (below zero `Palette.danger`); Primary and Danger
+   buttons' borders their background's own colour; every other row of the Scrolling page `Palette.surface`, the
+   rest none; hovered things `Border.overlay Palette.hoverTint`, which serves a chosen chip too, so its own hover
+   block is gone.
+4. **New built-in theme value `Palette.textDanger`** (`Theme.textDanger`; dark 0xF7768E, light 0xC0392B): text that
+   says something failed. `Palette.danger` is for behind text and too dark to read as text on the dark theme; the
+   Gallery's failed load needed one, and so will most apps.
+5. **The Images page's card has a fixed shadow** (blur 12, 4 down, black at 35%): `Palette.shadow` is a button's,
+   too slight for "shadow and all", and a floating shadow as a theme value isn't worth a palette entry for one card.
+
+**As built (2026-11-19)**
+- Considered for the bar's empty part: `Palette.control`, which the Slider's track uses; on the light theme it is
+  white on a near-white window, so the bar took `Palette.border`. The Slider's own track has that same low contrast
+  on the light theme: left as it is, for Tim to judge.
+- Tests name the themes as `GalleryApp.darkTheme` and `lightTheme`. One new unit test: `Palette.textDanger` has a
+  contrast of at least 4.5 on each built-in theme's background and surface, and a theme can set it.
+- References regenerated, each looked at beside the old one: `gallery@1x`, `gallery-light@1x`, `styles-page@1x`,
+  `styles-page-light@1x`, `layout-page@1x`, `layout-grid-overlay@1x`, `images-page@1x`, `inspector-pick@1x`,
+  `inspector-floating@1x`, and the phone's Components, Scrolling, Lists and Styles pages. What changed in them:
+  border and bar colours, the Primary and Danger buttons' borders, the alternate rows, the card's shadow.
+
+## Milestone summaries (moved from CLAUDE.md, 2026-11-16)
+
+The working summaries kept in CLAUDE.md while each milestone was built, moved here unchanged when CLAUDE.md
+was trimmed (evaluation, 2026-11-16). Older sections of this file use the words of the time ("token" is now
+"theme value", "marker type" "settings type"; see GLOSSARY.md).
+
+### Status as of 2026-11-16
+
+
+Done and verified by Tim on Windows and in the browser: M0 (window, GPU), M0.5 (browser, draw on request), M1
+(draw list), M2/M2b (text, emoji, fallback), M3 (elements, layout, wrapping), M3b (F#-style elements), M3c
+(lengths), M4 (views, differ, App.run, Counter sample, builder trial), M5 (pointer, keyboard and focus, components and animation), plus the Hello toolbar (Pause/Restart/
+Add/Remove/Shuffle cards, keyed grid). M5b (async), the tabbed Counter demo and "settings everywhere" are done and verified by Tim on Windows and in the browser (2026-11-15). M6 (layers, ScrollViewer, inspector with panel modes and properties) is done and verified (2026-11-16). M7 (step 1 styles; step 2a themes, with the inspector's forcing states, themed properties and selection corner marks; step 2b light theme, theme values and app values) is done and verified (2026-11-16). Last counts: 284 unit tests,
+50 rendering tests (after M7b step 2, the Material package).
+
+Remaining milestones (M7c custom title bars was skipped, 2026-11-16; see DESIGN.md): M7b icons (decisions in
+DESIGN.md, "Decisions for M7b"; step 1, icons in Core, done and verified 2026-11-16: `PathGeometry` in Text,
+`TextSystem.DrawIcon`, `Icon`/`IconView`/`Button.icon` in Core; plus the inspector's icon toolbar with hover hints,
+also verified; step 2, the Material package `Scribble.Icons.Material` and the Icons sample, done and verified by Tim 2026-11-16;
+step 3, image cursors (`Cursor.fromIcon`, `Cursor.Image` shown by the OS), done and verified by Tim 2026-11-16), M8 core controls
+(Grid, DockPanel, Canvas, dashed lines in the renderer, rest of ScrollViewer (draggable thumb, keyboard, horizontal), virtualization (must keep scroll-to-item, see DESIGN.md), CheckBox, Image, Slider, ListBox, ComboBox, Dialog, Toast, Popup/portal, TabControl), M9 TextBox, M10 hot reload; later:
+animation, accessibility, bidi/complex scripts, IME, macOS/Linux backends, mobile, Vulkan backend.
+
+#### M5: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M5")
+
+Three steps, each tried by Tim before the next:
+1. **Pointer** (done, verified by Tim on Windows and in the browser 2026-11-15; `src/Scribble.Core/Input.fs`): platform gaps (pointer left window, OS capture, modifiers, cursors); tunnel+bubble routing (preview
+   settings only for pointer down/up, wheel, key down); enter/leave on the hovered chain; capture (drag off a button
+   cancels the click); `isEnabled` (inherited); Button hover/pressed/disabled looks; `App.onPointerMove` removed.
+2. **Keyboard** (done, verified by Tim on Windows and in the browser 2026-11-15): portable logical `Key` + modifiers (browser uses
+   `e.key`, Win32 `MapVirtualKeyW`); routed `onKeyDown/Up` + Preview from the focused element (else the root);
+   `focusable` (Button by default); focus manager in `InputRouter` (`MoveFocus Next/Previous`, view order,
+   wraps; press focuses, invalid focus cleared after layout); `ctx.IsFocusVisible` + `FocusRing.draw`; Enter/Space
+   activate (Space pressed while held, Escape cancels); `App.onKey (fun key mods -> ...)` only for unhandled keys;
+   `ElementHost.HandleEvent` returns "handled".
+3. **Components** (done, verified by Tim on Windows and in the browser 2026-11-15; `src/Scribble.Core/Component.fs`, `Animation.fs`):
+   `Component.define "Name" (fun ctx props -> view)` returns `'P -> View`; the component's element hosts its
+   state (`ComponentInstance`, hooks in slots checked for order) and its output as a child. Re-runs: own state
+   (scheduled via `IElementRoot.ScheduleComponent`, run shallowest first at the start of `UpdateLayout`) or changed
+   props (`PropKind.Component` setting compared by F# equality). Effects/subscriptions and "keep animating" go
+   through `IElementRoot.AfterFrame`, run by `ElementHost` after the frame (outside `inFrame`, so they can ask for
+   frames). Hooks: useState/useMemo/useEffect/useSubscription/useElmish/useAnimated. Element authors:
+   `ctx.Animate` (tweens, `Easing`) and `Element.transform`; Button sinks to 97% with a flattening shadow. Text
+   under an extra scale rasterizes at quarter-pixel sizes. Counter sample = components demo.
+
+Views don't read element states directly: state-dependent looks are styles (M7).
+
+#### M5b: async (decisions in `docs/DESIGN.md`, "Decisions for M5b")
+
+`Dispatcher.fs`: one queue in Core (`Post`/`InvokeAsync`/`CheckAccess`/`RunPending`); platforms only `Wake`
+(Win32 message-only window + `PostMessageW`, so it works during the move/resize modal loop; browser
+`setTimeout(0)`). `dispatcher.Install()` (done by `App.run`/`runInBrowser`) sets a `SynchronizationContext` and
+routes unobserved task exceptions to `OnError` (= `App.onError`). `State.Set/Update` and Elmish dispatch post
+when off the UI thread (inline when the tree has no dispatcher, as in bare `ElementTree` tests). `Cmd.fs`: own
+`Cmd` (`none/ofMsg/batch/map/ofSub/ofTask/ofAsync`); `App.programWithCmd`, `ctx.useElmishWithCmd`;
+`ctx.useAsync(deps, fun d ct -> task|async)` → `AsyncValue.Loading|Loaded|Failed` (version counter drops late
+results). Tests drain the fake platform's wakes by hand (`AsyncTests.fs`; use a real `Thread` for "other thread",
+since `Task.Run(...).Wait()` can run inline).
 
 #### M6: agreed 2026-11-15 (full list in `docs/DESIGN.md`, "Decisions for M6")
 

@@ -68,7 +68,9 @@ let private messages =
                             ItemsView.viewSelector (fun (m: Message) ->
                                 Border.create [
                                     Border.padding (10.0, 6.0)
-                                    Border.background (if m.Id % 2 = 0 then Palette.surface else rowAlt)
+                                    // Every other row is a surface; the rest show the window behind them.
+                                    if m.Id % 2 = 0 then
+                                        Border.background Palette.surface
                                     Border.content (TextBlock.create [ TextBlock.text (messageText m.Id + (if m.Added then " (added)" else "")); TextBlock.textWrapping Wrap ])
                                 ])
                             ItemsView.scroller scroller

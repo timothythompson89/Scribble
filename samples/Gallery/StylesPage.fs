@@ -16,14 +16,20 @@ let private chosen = States.define "chosen" []
 /// itself whenever the value changes.
 let private high = States.ofProp "high" SliderProps.value (fun v -> v >= 80.0)
 
+/// A theme value of our own, beside the built-in palette (every other colour in the Gallery is a `Palette` one):
+/// what lights up under the pointer here, and a chosen chip's border. Settings take it like `Palette.accent`
+/// (`Border.borderBrush highlight`). Its default serves the dark theme; the Gallery's light theme gives it
+/// another (`Theme.light [ Theme.set StylesPage.highlight ... ]`, in GalleryApp.fs).
+let highlight = ThemeValue.define "Highlight" (Color.Hex 0x8AB4F8)
+
 /// The page's styles: classes, a state block, and text inside cards. Colors are theme values, so
 /// one list serves both themes.
 let private normalStyles =
-    [ Button.style [ Style.cls "primary" ] [ Button.background Palette.accent; Button.borderBrush accentBorder; Button.foreground Palette.onAccent ]
-      Button.style [ Style.cls "danger" ] [ Button.background Palette.danger; Button.borderBrush dangerBorder; Button.foreground Palette.onAccent ]
+    [ Button.style [ Style.cls "primary" ] [ Button.background Palette.accent; Button.borderBrush Palette.accent; Button.foreground Palette.onAccent ]
+      Button.style [ Style.cls "danger" ] [ Button.background Palette.danger; Button.borderBrush Palette.danger; Button.foreground Palette.onAccent ]
       Border.style [ Style.cls "card" ] [
           Border.background Palette.surface
-          Border.borderBrush line
+          Border.borderBrush Palette.border
           Border.borderThickness 1.0
           Border.cornerRadius 8.0
           Border.padding 12.0
@@ -34,16 +40,13 @@ let private normalStyles =
       TextBlock.style [ Style.inside Border.Type [ Style.cls "card"; States.hover ] ] [ TextBlock.foreground highlight ]
       // Chips look chosen while they're in our own state: the chip, and the text inside it.
       Border.style [ Style.cls "chip" ] [
-          Border.borderBrush line
+          Border.borderBrush Palette.border
           Border.borderThickness 1.0
           Border.cornerRadius 14.0
           Border.padding (12.0, 5.0)
-          Style.onState States.hover [ Border.background subtle ]
-          Style.onState chosen [
-              Border.background Palette.accent
-              Border.borderBrush highlight
-              Style.onState States.hover [ Border.background accentHover ]
-          ]
+          // The theme's hover tint lies over whatever is behind, so it serves a chosen chip too.
+          Style.onState States.hover [ Border.overlay Palette.hoverTint ]
+          Style.onState chosen [ Border.background Palette.accent; Border.borderBrush highlight ]
       ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "chip" ] ] [ TextBlock.foreground Palette.textDim ]
       TextBlock.style [ Style.inside Border.Type [ Style.cls "chip"; chosen ] ] [ TextBlock.foreground Palette.onAccent ]
@@ -112,7 +115,7 @@ let demo =
                 Border.create [
                     Border.minHeight 40.0
                     Border.cornerRadius 6.0
-                    Border.onState States.hover [ Border.background hover ]
+                    Border.onState States.hover [ Border.overlay Palette.hoverTint ]
                     Border.content (
                         TextBlock.create [
                             TextBlock.text "Hover me: Border.onState States.hover [ ... ], right in the view"
