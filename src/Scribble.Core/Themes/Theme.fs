@@ -211,3 +211,8 @@ module ThemeExtensions =
         /// `picked.Current` and `picked.Set "Light"`. A name the app doesn't have changes nothing.
         /// `App.rememberTheme false`: it still switches the theme, and nothing is kept.
         static member picked: AppValue<string> = picked.Value
+
+        /// The name that means "follow the system": `picked.Set Theme.system`, and the window has the app's dark
+        /// or light theme as the system is set (`App.systemThemes` says which they are; the built-in pair knows),
+        /// changing with it. It does nothing in an app with themes of its own that hasn't said.
+        static member system: string = "System"

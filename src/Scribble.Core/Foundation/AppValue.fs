@@ -155,6 +155,12 @@ type AppValues() =
     /// text names nothing the app has: the stored text stays as it is until something sets the value).
     member internal _.Prime<'T>(value: AppValue<'T>, start: 'T) = values[value.Id] <- box start
 
+    /// True when the store holds something under a stored value's name (the user has picked before).
+    member internal this.HasStored<'T>(value: AppValue<'T>) : bool =
+        value.IsStored
+        && not (this.Unkept.Contains value.Id)
+        && (try (this.Store.TryRead value.Name).IsSome with _ -> false)
+
     /// A stored value's first read: what the store has under its name, else its default. Nothing here throws into
     /// the app: a store that fails, or text that is not the value's type, gives the default and a Debug warning.
     member private this.Load<'T>(value: AppValue<'T>, codec: StoredCodec<'T>) : 'T =
@@ -365,3 +371,15 @@ type Window =
     /// `if size.Current.Width < 600.0 then narrow () else wide ()`. It reports: setting it doesn't resize the
     /// window. Zero in a bare `ElementTree`, which has no window.
     static member size: AppValue<Size> = WindowValues.size.Value
+
+module internal SystemThemeValues =
+    let prefersDark = lazy (AppValue.define "SystemTheme.prefersDark" true)
+
+/// What the system is set to (DESIGN.md, "Following the system's theme").
+[<AbstractClass; Sealed>]
+type SystemTheme =
+    /// True while the system (in the browser, the browser) is set to dark, an app value kept current by the app: a
+    /// component that uses it runs again when the setting changes. `let dark = ctx.useAppValue
+    /// SystemTheme.prefersDark`. True where the platform can't say, and in a bare `ElementTree`. It reports:
+    /// setting it changes nothing on the system. For the app's theme, pick `Theme.system` (`Theme.picked`).
+    static member prefersDark: AppValue<bool> = SystemThemeValues.prefersDark.Value

@@ -17,6 +17,7 @@ module internal PlatformJs =
     let takeTexts = JsFunction(ModuleName, "takeTexts", T.strings, [])
     let scale = JsFunction(ModuleName, "scale", T.double, [])
     let pageUrl = JsFunction(ModuleName, "pageUrl", T.string, [])
+    let prefersDark = JsFunction(ModuleName, "prefersDark", T.double, [])
     let requestFrame = JsFunction(ModuleName, "requestFrame", T.void', [])
     let setTitle = JsFunction(ModuleName, "setTitle", T.void', [ T.string ])
     let setCursor = JsFunction(ModuleName, "setCursor", T.void', [ T.double ])
@@ -308,6 +309,7 @@ type BrowserPlatform private () =
             let index = int r[i + 1]
             if index >= 0 && index < texts.Length then Some(TextInput texts[index]) else None
         | 9 -> Some(FocusChanged(r[i + 1] <> 0.0))
+        | 14 -> Some SystemThemeChanged
         | 13 ->
             match textAt texts r[i + 1] with
             | ValueSome text -> Some(TextComposition(text, int r[i + 2]))
@@ -391,6 +393,13 @@ type BrowserPlatform private () =
     /// Keeps `text` under `key` in the page's localStorage (at once: there is nothing to flush).
     member _.WriteStored(key: string, text: string) : unit =
         PlatformJs.callString PlatformJs.writeStored (key.Replace("\n", " ") + "\n" + text) |> ignore
+
+    interface ISystemTheme with
+        member _.PrefersDark =
+            match int (returnedDouble (PlatformJs.call0 PlatformJs.prefersDark)) with
+            | 1 -> ValueSome true
+            | 0 -> ValueSome false
+            | _ -> ValueNone
 
     interface IPlatform with
         member _.Name = "Browser"

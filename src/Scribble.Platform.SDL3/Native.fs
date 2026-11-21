@@ -102,6 +102,7 @@ type SDL_UserEvent =
 let DisplayModeRefreshRateOffset = 20
 
 let SDL_EVENT_QUIT = 0x100u
+let SDL_EVENT_SYSTEM_THEME_CHANGED = 0x107u
 let SDL_EVENT_WINDOW_SHOWN = 0x202u
 let SDL_EVENT_WINDOW_EXPOSED = 0x204u
 let SDL_EVENT_WINDOW_MOVED = 0x205u
@@ -267,6 +268,10 @@ extern nativeint SDL_GetCurrentDisplayMode(uint32 displayId)
 
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern uint32 SDL_GetPrimaryDisplay()
+
+/// SDL_SystemTheme: 0 unknown, 1 light, 2 dark.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern int SDL_GetSystemTheme()
 
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern float32 SDL_GetDisplayContentScale(uint32 displayId)

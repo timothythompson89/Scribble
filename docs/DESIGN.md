@@ -43,7 +43,8 @@ questions", as paragraphs starting with the name given here.
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
 | Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
 | Stored values | App values kept between runs: `StoredValue.bool`/`int`/`float`/`string`/`enum`, `ctx.useStoredValue`; a JSON file in isolated storage on the desktop, localStorage in the browser (built 2026-11-20) | Section "Stored values" |
-| Common app values and stored values | What the library defines itself: `App.themes` and `Theme.picked` (the theme remembered), `Window.size` (built 2026-11-20); the system's theme and the active window are agreed and not built | Section "Common app values and stored values" |
+| Common app values and stored values | What the library defines itself: `App.themes` and `Theme.picked` (the theme remembered), `Window.size` (built 2026-11-20); the active window is agreed and not built | Section "Common app values and stored values" |
+| Following the system's theme | `App.systemThemes`, `Theme.system`, `SystemTheme.prefersDark`; `ISystemTheme` and a `SystemThemeChanged` event on the platforms (built 2026-11-20) | Section "Following the system's theme" |
 | A remembered window | `App.rememberWindow`: a desktop window's size, position and maximized state stored and restored; `WindowOptions.Position` and `.Maximized`, a `Moved` event, `IWindowPlacement` (built 2026-11-20) | Section "A remembered window" |
 | Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); built 2026-11-20 | Section "A hook for a picture's load state" |
 | ListBox scrolls | A ListBox holds its own ScrollViewer (with the list, `ListBoxItems`, inside): no wrapper to write; a break in 0.1.0-alpha.3 (2026-11-20) | Section "ListBox scrolls on its own" |
@@ -5924,6 +5925,56 @@ the corner SDL gave the 9000 one, off the screen.
 returning to the stored size (the probe could not un-maximize); two displays, a display unplugged for real,
 and displays of different scaling (the size is made at the primary display's scale and then set again for the
 display the window opens on, as before); NativeAOT with the new bindings.
+**Checked by Tim on the desktop (2026-11-20):** "those checks passed" (the checklist's items for this step).
+
+## Following the system's theme (grilling, 2026-11-20)
+
+Step 3 of "Common app values and stored values", with the app value of its decision 5. Agreed there: a "System"
+choice that follows the system's dark or light setting, and an app value for which it prefers. SDL reports the
+system's theme and sends an event when it changes; a browser has `prefers-color-scheme`. Scribble doesn't know
+which of an app's freely named themes is its dark one and which its light one.
+
+**Decisions (Tim: yes to all):**
+1. **`App.systemThemes "Dark" "Light"`**: the app names the theme for a system set to dark, then the one for
+   light. An app that names no themes has the built-in pair, which maps by itself.
+2. **"System" is one more name `Theme.picked` takes**, written `Theme.system` in code. A dropdown lists it beside
+   the others; picking it is remembered like any other choice.
+3. **A new user starts on System only where the app called `App.systemThemes`**; any other app keeps starting on
+   its first theme, so no existing app turns light on a light-mode machine without being asked.
+4. **`SystemTheme.prefersDark`**, a `bool` app value that reports and changes with the system's setting.
+5. **Dark where the platform can't say**: Scribble's own default theme is dark.
+6. **The Gallery's dropdown is System, Dark, Light, Pink**, System the starting choice.
+
+Settled by Claude, said to Tim: while System is picked the window changes theme the moment the system's setting
+does; an app theme named "System" gets a Debug warning; the window's title bar is the system's and follows the
+system's setting, not the app's picked theme (Pink on a dark system has a dark title bar, as before).
+
+**As built.**
+- **Contract (`Scribble.Platform`):** `ISystemTheme.PrefersDark` (`bool voption`) on a platform that can say,
+  and a `SystemThemeChanged` event sent to its windows. Separate from `IPlatform`, so other platforms and the
+  tests' second fake need no change.
+- **SDL:** `SDL_GetSystemTheme` (1 light, 2 dark) and `SDL_EVENT_SYSTEM_THEME_CHANGED`, which is no window's
+  event and goes to every window. **Browser:** `prefersDark()` and a `change` listener on
+  `(prefers-color-scheme: dark)` in `scribble-platform.js`, as event kind 14.
+- **Core:** `SystemTheme.prefersDark` (true in a bare tree), `Theme.system` (the string "System"),
+  `App.systemThemes`. `App.start` sets the value at the start and on the event. The name is resolved when it is
+  picked and again whenever the system changes while it is picked. A user who has picked nothing is one with
+  nothing in the store under `Scribble.Theme` (`AppValues.HasStored`): they start on System where the app set
+  it up and System resolves, else on the first theme. This also fixed a quirk of the step before: such a user
+  started on a theme named "Dark" wherever it was in the list, because that was the value's default.
+- **Debug warnings:** a theme named "System"; `App.systemThemes` naming a theme `App.themes` doesn't have (the
+  half that exists still works).
+- **Gallery:** `App.systemThemes "Dark" "Light"`, and `Theme.system` first in the dropdown.
+
+**Results.** Eight unit tests (`SystemThemeTests.fs`): the value follows the system and is dark when it doesn't
+say; a new user on a light and on a dark system; a named theme staying put while the system changes, and System
+remembered across runs; an app that hasn't set it up; the built-in pair; remembering off; a component running
+again; names that can't work. The Gallery's theme test expects System at the start. 1,414 unit tests (Release
+1,413), 108 rendering tests, no picture changed (a bare tree's dropdown still reads "Dark").
+**Checked on the real platform:** `SDL_GetSystemTheme` through `ISystemTheme` says dark on Tim's machine, where
+Windows' own setting (`AppsUseLightTheme` = 0) says dark.
+**Not verified:** the change event on Windows (it needs the system's setting switched, which is Tim's to do);
+the browser side, which has not run; the Gallery in a real window.
 
 ## Vectorising the PNG decoder (2026-11-18)
 

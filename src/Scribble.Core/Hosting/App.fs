@@ -62,6 +62,7 @@ type AppConfig<'Msg> internal () =
     member val internal Themes: (string * Theme) list = [] with get, set
     member val internal ThemeGiven = false with get, set
     member val internal RememberTheme = true with get, set
+    member val internal SystemThemes: struct (string * string) voption = ValueNone with get, set
     member val internal RememberWindow = false with get, set
     member val internal ValueStore: (string -> IValueStore) voption = ValueNone with get, set
     /// Makes the program, given the runtime's side of it.
@@ -175,6 +176,14 @@ type App =
     /// theme and `Theme.picked` does nothing.
     static member themes<'Msg>(value: (string * Theme) list) : AppSetting<'Msg> = AppSetting(fun c -> c.Themes <- value)
 
+    /// Which of the app's themes (`App.themes`) follow the system: the one for a system set to dark, then the one
+    /// for light. `Theme.system` is then a name `Theme.picked` takes ("follow the system": the window changes when
+    /// the system's setting does), and what a user who has picked nothing starts with.
+    /// `App.systemThemes "Dark" "Light"`. An app that names no themes has the built-in pair, where
+    /// `Theme.system` works without this and the app still starts dark.
+    static member systemThemes<'Msg> (dark: string) (light: string) : AppSetting<'Msg> =
+        AppSetting(fun c -> c.SystemThemes <- ValueSome(struct (dark, light)))
+
     /// True: the window opens where it was last time, at its size and position, maximized if it was (a window
     /// closed while minimized opens at its normal place). `App.size` is then the size on the first run. A position
     /// that is on no display any more (a monitor unplugged) is left out, and a size larger than the display is
@@ -283,23 +292,57 @@ type App =
             | ValueNone -> UnkeptValueStore()
         for set in config.Values do
             set values
-        // The app's themes by name, and the one picked (DESIGN.md, "Common app values and stored values"): the
-        // stored name's theme at start, else the first; from then on the window's theme follows the name. A stored
-        // name the app no longer has stays stored until something picks again.
+        // `SystemTheme.prefersDark`: what the system is set to, at the start and whenever it changes; dark where the
+        // platform can't say (Scribble's own default theme is dark).
+        let reportSystemTheme () =
+            let dark =
+                match box platform with
+                | :? ISystemTheme as system -> system.PrefersDark |> ValueOption.defaultValue true
+                | _ -> true
+            values.Set(SystemTheme.prefersDark, dark)
+        reportSystemTheme ()
+        // The app's themes by name, and the one picked (DESIGN.md, "Common app values and stored values" and
+        // "Following the system's theme"): the stored name's theme at start, else the app's starting one; from
+        // then on the window's theme follows the name. `Theme.system` is the dark or the light theme the app named
+        // for the system's setting, and follows it as it changes. A stored name the app no longer has stays stored
+        // until something picks again.
         let themes =
             if not config.Themes.IsEmpty then config.Themes
             elif config.ThemeGiven then []
             else [ "Dark", values.Get Theme.current; "Light", ThemeExtensions.defaultLight.Value ]
+        // Which themes follow the system: the app's word, or the built-in pair's own names.
+        let systemPair =
+            match config.SystemThemes with
+            | ValueSome pair -> ValueSome pair
+            | ValueNone when config.Themes.IsEmpty && not config.ThemeGiven -> ValueSome(struct ("Dark", "Light"))
+            | ValueNone -> ValueNone
         if not config.RememberTheme then values.Unkept.Add Theme.picked.Id |> ignore
         if not themes.IsEmpty then
             let find (name: string) = themes |> List.tryFind (fun (n, _) -> n = name)
-            match find (values.Get Theme.picked) with
-            | Some(_, theme) -> values.Set(Theme.current, theme)
-            | None ->
-                values.Prime(Theme.picked, fst themes.Head)
-                values.Set(Theme.current, snd themes.Head)
-            // Lives as long as the values (the app's), so it's never removed.
-            values.Subscribe(Theme.picked, fun name -> find name |> Option.iter (fun (_, theme) -> values.Set(Theme.current, theme))) |> ignore
+            if (find Theme.system).IsSome then
+                DebugOnly.warn ("Theme.system name", "A theme in App.themes is named \"" + Theme.system + "\", the name that means \"follow the system\" (Theme.system): give it another name.")
+            match config.SystemThemes with
+            | ValueSome(struct (dark, light)) when (find dark).IsNone || (find light).IsNone ->
+                DebugOnly.warn ("App.systemThemes names", "App.systemThemes names \"" + dark + "\" and \"" + light + "\", and App.themes doesn't have both: Theme.system then picks nothing.")
+            | _ -> ()
+            let resolve (name: string) =
+                if name = Theme.system then
+                    match systemPair with
+                    | ValueSome(struct (dark, light)) -> find (if values.Get SystemTheme.prefersDark then dark else light)
+                    | ValueNone -> None
+                else
+                    find name
+            let apply (name: string) = resolve name |> Option.iter (fun (_, theme) -> values.Set(Theme.current, theme))
+            // What a user who has picked nothing starts with: the system's, where the app set that up; else the first.
+            let fresh = if config.SystemThemes.IsSome && (resolve Theme.system).IsSome then Theme.system else fst themes.Head
+            let start =
+                let stored = values.Get Theme.picked
+                if values.HasStored Theme.picked && (resolve stored).IsSome then stored else fresh
+            if values.Get Theme.picked <> start then values.Prime(Theme.picked, start)
+            apply start
+            // These live as long as the values (the app's), so they're never removed.
+            values.Subscribe(Theme.picked, apply) |> ignore
+            values.Subscribe(SystemTheme.prefersDark, fun _ -> if values.Get Theme.picked = Theme.system then apply Theme.system) |> ignore
         let requestRebuild () =
             dirty.Value <- true
             host.Value |> ValueOption.iter (fun (h: ElementHost) -> h.Window.RequestFrame())
@@ -371,6 +414,7 @@ type App =
                     reportSize h.Window
                     rememberPlacement h.Window
                 | Moved -> rememberPlacement h.Window
+                | SystemThemeChanged -> reportSystemTheme ()
                 | _ -> ()
                 match event with
                 | CloseRequested -> close h

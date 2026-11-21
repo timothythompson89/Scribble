@@ -165,7 +165,8 @@ let ``the Gallery's theme follows Theme.picked, and the window and its layers fo
     // The dropdown shows the name picked; what it sets is the stored value (a ComboBox's own tests click it).
     let picker () = all host.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, ComboBox.Type))
     let shown () = all (picker ()) |> Seq.exists (fun e -> obj.ReferenceEquals(e.Type, TextBlock.Type) && e.Get TextProps.text = host.AppValues.Get Theme.picked)
-    Assert.Equal("Dark", host.AppValues.Get Theme.picked)
+    // A new user follows the system, which the fake platform doesn't speak for: dark.
+    Assert.Equal(Theme.system, host.AppValues.Get Theme.picked)
     Assert.True(shown ())
     for name, theme in [ "Light", light; "Pink", pink ] do
         host.AppValues.Set(Theme.picked, name)

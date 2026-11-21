@@ -22,7 +22,8 @@ const Kind = {
   PointerExited: 10,  // a = pointer kind, b = pointer id
   PointerCanceled: 11, // a = pointer kind, b = pointer id
   ClipboardText: 12,  // a = the read's id, b = index of the text in takeTexts() (-1: refused)
-  TextComposition: 13 // a = index of the composing text in takeTexts() ("" ends it), b = the caret in it
+  TextComposition: 13, // a = index of the composing text in takeTexts() ("" ends it), b = the caret in it
+  SystemTheme: 14     // the system's dark or light setting changed (prefersDark() says which it is now)
 };
 
 let events = [];
@@ -94,6 +95,13 @@ export function takeTexts() {
 // The page's address, for images with relative URLs (Image.fromUrl).
 export function pageUrl() {
   return document.baseURI;
+}
+
+// Whether the system (or the browser) is set to dark: 1 dark, 0 light, -1 when the browser can't say.
+export function prefersDark() {
+  if (typeof matchMedia !== "function") return -1;
+  if (matchMedia("(prefers-color-scheme: dark)").matches) return 1;
+  return matchMedia("(prefers-color-scheme: light)").matches ? 0 : -1;
 }
 
 export function scale() {
@@ -430,6 +438,9 @@ export function createCanvas(id) {
     observer.observe(canvas, { box: "content-box" });
   }
   watchScale();
+  if (typeof matchMedia === "function") {
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => push(Kind.SystemTheme));
+  }
 
   // Every press ends with a release or a cancel. The browser can lose a pointerup (input that
   // arrives while the page is paused, as under a debugger, is dropped; capture can be taken away),

@@ -227,6 +227,9 @@ type SdlWindow
             imageCursors.Clear()
             onDestroyed ()
 
+    /// An event that is not this window's alone (the system's theme changed).
+    member internal _.Send(e: PlatformEvent) = if not closed then onEvent e
+
     /// Handles an SDL event for this window, as it happens (from the platform's event filter, on the UI thread).
     member internal this.HandleEvent(e: nativeptr<SDL_Event>) =
         let t = (NativePtr.read e).Type

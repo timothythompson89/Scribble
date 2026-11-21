@@ -101,7 +101,8 @@ let private themePicker =
         let picked = ctx.useStoredValue Theme.picked
         ComboBox.create [
             ComboBox.width 120.0
-            ComboBox.source (themes |> List.map fst |> Array.ofList)
+            // Theme.system first: "follow the system" (App.systemThemes below says which themes that means).
+            ComboBox.source [| yield Theme.system; yield! themes |> List.map fst |]
             ComboBox.selected (ValueSome picked.Current)
             ComboBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<string, string>) -> e.Key |> ValueOption.iter picked.Set)
             Scribble.Accessibility.Semantics.label "Theme"
@@ -156,6 +157,8 @@ let app: AppSetting<unit> list =
       App.fonts [ Scribble.Text.Emoji.Twemoji() ]
       // The themes by name: the one picked is remembered (Theme.picked, a stored value the library defines).
       App.themes themes
+      // System (the dropdown's first entry) is Dark or Light as the system is set, and where a new user starts.
+      App.systemThemes "Dark" "Light"
       // Stored values are kept under this name on the desktop and in the browser.
       App.storeName "Gallery"
       // The window opens where it was last time (its size, its position, maximized or not).

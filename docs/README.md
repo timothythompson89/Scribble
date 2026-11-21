@@ -1039,6 +1039,15 @@ let themePicker = Component.define "ThemePicker" (fun ctx () ->
   version) gives the first theme.
 - **The theme itself** is `Theme.current`, an app value: `ctx.useAppValue Theme.current` reads it, and setting
   it switches the window for this run without being remembered.
+- **Following the system:** `App.systemThemes "Dark" "Light"` says which of the app's themes are for a system
+  set to dark and to light. `Theme.system` is then one more name `Theme.picked` takes: the window has the dark or
+  the light theme as the system is set and changes when the setting does, and a user who has picked nothing
+  starts there. List it in a theme dropdown beside the others: `ComboBox.source [| Theme.system; "Dark"; "Light" |]`.
+  An app with the built-in pair can pick `Theme.system` without the setting, and still starts dark.
+- **What the system is set to** is `SystemTheme.prefersDark`, an app value: `ctx.useAppValue
+  SystemTheme.prefersDark` runs the component again when it changes (a dark or a light picture, say). It is true
+  where the platform can't tell. The window's title bar is the system's own and follows the system's setting,
+  not the theme picked.
 
 - **`Palette`:** `background`, `surface`, `control`, `border`, `text`, `textDim`, `accent`, `danger`, `textDanger` (text that says something failed; `danger` is for behind text), `warning`, `onAccent`
   (text on accent or danger backgrounds, white in both), `focusRing`, `hoverTint`, `pressTint`, `scrollThumb`,

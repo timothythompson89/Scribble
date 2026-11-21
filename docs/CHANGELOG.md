@@ -20,6 +20,10 @@ While the version starts with 0, any release may break the API: each break is li
 - `App.themes [ "Dark", dark; "Light", light ]` names an app's themes, and `Theme.picked` (a built-in stored
   value) holds the name of the one in use: set it to switch, and the app starts in that theme next time. Without
   `App.themes` an app has the built-in pair under "Dark" and "Light". `App.rememberTheme false` keeps nothing.
+- Following the system's dark or light setting: `App.systemThemes "Dark" "Light"` names the themes for each,
+  `Theme.system` is the name to pick for "follow the system" (and where a new user of such an app starts), and
+  `SystemTheme.prefersDark` is an app value that says which the system prefers. For platform authors:
+  `ISystemTheme` and a `SystemThemeChanged` event.
 - `Window.size`: a built-in app value, the window's size in DIPs, kept current as the window is resized.
 - `App.rememberWindow true`: a desktop window opens where it was last time (size, position, maximized or not).
   `App.size` is then the first run's size. For platform authors: `WindowOptions.Position` and `.Maximized`, a

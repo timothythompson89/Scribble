@@ -98,6 +98,11 @@ type FakePlatform() =
     member val Time = FakeTime()
     member val Window: FakeWindow option = None with get, set
     member val WakeHandler: unit -> unit = ignore with get, set
+    /// What the fake system is set to (none: it doesn't say); `SetSystemDark` changes it as a system would.
+    member val SystemDark: bool voption = ValueNone with get, set
+    member this.SetSystemDark(dark: bool) =
+        this.SystemDark <- ValueSome dark
+        this.Window |> Option.iter (fun w -> w.Send SystemThemeChanged)
     /// How many times something woke the platform (any thread).
     member _.Wakes = Threading.Volatile.Read(&wakes)
     /// What the platform's loop does after a wake: drain the dispatcher (on the test's thread).
@@ -115,6 +120,8 @@ type FakePlatform() =
         this.ClipboardReads.Clear()
         for r in reads do
             r.SetResult this.Clipboard
+    interface ISystemTheme with
+        member this.PrefersDark = this.SystemDark
     interface IPlatform with
         member _.Name = "fake"
         member _.SupportsMultipleWindows = false

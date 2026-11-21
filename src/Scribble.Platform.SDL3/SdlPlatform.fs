@@ -125,6 +125,10 @@ type SdlPlatform() =
         if ev.Type = SDL_EVENT_WINDOW_EXPOSED && ev.Data1 = 1 then
             // data1 1: a live-resize expose, sent by SDL's timer during the modal loop.
             liveTick ev.WindowId
+        elif ev.Type = SDL_EVENT_SYSTEM_THEME_CHANGED then
+            // Not a window's event: every window hears it.
+            for w in List.ofSeq windows.Values do
+                w.Send SystemThemeChanged
         elif ev.Type <> SDL_EVENT_QUIT then
             // QUIT is SDL's idea of the app closing; ours closes when its windows have.
             match windows.TryGetValue ev.WindowId with
@@ -308,6 +312,13 @@ type SdlPlatform() =
             request.Task
         with e ->
             Task.FromException<bool> e
+
+    interface ISystemTheme with
+        member _.PrefersDark =
+            match SDL_GetSystemTheme() with
+            | 2 -> ValueSome true
+            | 1 -> ValueSome false
+            | _ -> ValueNone
 
     interface IPlatform with
         member _.Name = "SDL"

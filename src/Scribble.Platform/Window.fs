@@ -116,6 +116,12 @@ type WindowOptions =
           Position = ValueNone
           Maximized = false }
 
+/// A platform that can say whether the system is set to dark or light (the desktop, the browser). It sends its
+/// windows `SystemThemeChanged` when that changes.
+type ISystemTheme =
+    /// True: the system prefers dark. None: it doesn't say.
+    abstract PrefersDark: bool voption
+
 /// Entry point to a windowing system.
 type IPlatform =
     inherit IDisposable

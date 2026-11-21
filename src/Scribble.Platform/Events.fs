@@ -153,6 +153,8 @@ type PlatformEvent =
     /// The window moved on the screen, or was maximized or restored from it (a desktop window: `IWindowPlacement`
     /// says where it is now).
     | Moved
+    /// The system's dark or light setting changed (`ISystemTheme` on the platform says which it is now).
+    | SystemThemeChanged
     /// The user started (true) or finished (false) dragging the window's edge or title bar.
     /// Renderers can lower latency during a live resize so content keeps up with the frame.
     | LiveResize of active: bool
