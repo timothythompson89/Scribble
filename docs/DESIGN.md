@@ -43,8 +43,9 @@ questions", as paragraphs starting with the name given here.
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
 | Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
 | Stored values | App values kept between runs: `StoredValue.bool`/`int`/`float`/`string`/`enum`, `ctx.useStoredValue`; a JSON file in isolated storage on the desktop, localStorage in the browser (built 2026-11-20) | Section "Stored values" |
-| Common app values and stored values | What the library defines itself: `App.themes` and `Theme.picked` (the theme remembered), `Window.size` (built 2026-11-20); the active window is agreed and not built | Section "Common app values and stored values" |
+| Common app values and stored values | What the library defines itself: `App.themes` and `Theme.picked` (the theme remembered), `Window.size` (built 2026-11-20) | Section "Common app values and stored values" |
 | Following the system's theme | `App.systemThemes`, `Theme.system`, `SystemTheme.prefersDark`; `ISystemTheme` and a `SystemThemeChanged` event on the platforms (built 2026-11-20) | Section "Following the system's theme" |
+| The active window | `Window.isActive`, an app value set from the focus event the platforms already send (built 2026-11-20); with it everything agreed in "Common app values and stored values" is built | Section "The active window" |
 | A remembered window | `App.rememberWindow`: a desktop window's size, position and maximized state stored and restored; `WindowOptions.Position` and `.Maximized`, a `Moved` event, `IWindowPlacement` (built 2026-11-20) | Section "A remembered window" |
 | Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); built 2026-11-20 | Section "A hook for a picture's load state" |
 | ListBox scrolls | A ListBox holds its own ScrollViewer (with the list, `ListBoxItems`, inside): no wrapper to write; a break in 0.1.0-alpha.3 (2026-11-20) | Section "ListBox scrolls on its own" |
@@ -5975,6 +5976,29 @@ again; names that can't work. The Gallery's theme test expects System at the sta
 Windows' own setting (`AppsUseLightTheme` = 0) says dark.
 **Not verified:** the change event on Windows (it needs the system's setting switched, which is Tim's to do);
 the browser side, which has not run; the Gallery in a real window.
+**Checked by Tim on the desktop (2026-11-20):** "those checks passed" (the checklist's items for this step,
+the change event among them).
+
+## The active window (grilling, 2026-11-20)
+
+The last of "Common app values and stored values", decision 5: an app value for whether the app's window is the
+active one. No platform work: both platforms already send `FocusChanged`, which the host uses for the focus
+ring and the caret.
+
+**Decisions (Tim: yes to all):**
+1. **`Window.isActive`**, a `bool` app value beside `Window.size`.
+2. **True until the platform says otherwise**, in an app and in a bare tree: a window that has just opened is
+   almost always the active one, and starting false would draw the first frame as inactive and then flip.
+3. **In the browser it follows the page's focus** (false while another tab, another window or the address bar
+   has the keyboard): the same meaning, "this is where typing goes".
+4. **The app's own window only**: false while the inspector's popped-out window is the active one.
+5. **No Gallery change**: nothing there has a reason to look different, and a test holds the behaviour.
+
+**As built:** `Window.isActive` (`AppValue.fs`), set by `App.start` on `FocusChanged`. One unit test: true at
+the start, false and true again with the focus, a component that uses it running again each time and not for a
+value it already has, true in a bare tree. 1,415 unit tests (Release 1,414), 108 rendering tests.
+**Not verified:** a real window or page losing and gaining the focus (the event itself is the one the focus
+ring has used since M5).
 
 ## Vectorising the PNG decoder (2026-11-18)
 

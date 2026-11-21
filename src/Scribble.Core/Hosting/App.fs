@@ -415,6 +415,8 @@ type App =
                     rememberPlacement h.Window
                 | Moved -> rememberPlacement h.Window
                 | SystemThemeChanged -> reportSystemTheme ()
+                // `Window.isActive`: true until the platform says the window lost the focus.
+                | FocusChanged active -> values.Set(Window.isActive, active)
                 | _ -> ()
                 match event with
                 | CloseRequested -> close h

@@ -362,6 +362,7 @@ type WindowTitle =
 
 module internal WindowValues =
     let size = lazy (AppValue.define "Window.size" Size.Zero)
+    let isActive = lazy (AppValue.define "Window.isActive" true)
 
 /// Facts about the app's window, as app values (DESIGN.md, "Common app values and stored values").
 [<AbstractClass; Sealed>]
@@ -371,6 +372,13 @@ type Window =
     /// `if size.Current.Width < 600.0 then narrow () else wide ()`. It reports: setting it doesn't resize the
     /// window. Zero in a bare `ElementTree`, which has no window.
     static member size: AppValue<Size> = WindowValues.size.Value
+
+    /// True while the app's window is the active one (where typing goes; in the browser, while the page has the
+    /// focus), kept current by the app: a component that uses it runs again when that changes. `let active =
+    /// ctx.useAppValue Window.isActive`, to dim a title or pause something while the user is elsewhere. It is the
+    /// app's own window only: false while the inspector's popped-out window is the active one. True until the
+    /// platform says otherwise, and in a bare `ElementTree`. It reports: setting it doesn't activate the window.
+    static member isActive: AppValue<bool> = WindowValues.isActive.Value
 
 module internal SystemThemeValues =
     let prefersDark = lazy (AppValue.define "SystemTheme.prefersDark" true)

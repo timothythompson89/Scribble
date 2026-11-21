@@ -25,6 +25,8 @@ While the version starts with 0, any release may break the API: each break is li
   `SystemTheme.prefersDark` is an app value that says which the system prefers. For platform authors:
   `ISystemTheme` and a `SystemThemeChanged` event.
 - `Window.size`: a built-in app value, the window's size in DIPs, kept current as the window is resized.
+- `Window.isActive`: a built-in app value, true while the app's window is the active one (in the browser, while
+  the page has the focus).
 - `App.rememberWindow true`: a desktop window opens where it was last time (size, position, maximized or not).
   `App.size` is then the first run's size. For platform authors: `WindowOptions.Position` and `.Maximized`, a
   `Moved` event, and `IWindowPlacement` for a window that knows its place.

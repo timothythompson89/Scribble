@@ -471,6 +471,33 @@ let ``Window.size is the window's size in DIPs, and a component that uses it run
     w.DeliverFrame() |> ignore
     Assert.Equal(2, widths.Count)
 
+let private actives = List<bool>()
+
+let private activeWatcher =
+    Component.define "ActiveWatcher" (fun ctx () ->
+        actives.Add (ctx.useAppValue Window.isActive).Current
+        Border.create [])
+
+[<Fact>]
+let ``Window.isActive is true until the window loses the focus, and a component that uses it runs again`` () =
+    actives.Clear()
+    let w, _, app = start [ App.view (activeWatcher ()) ]
+    let values = (app :?> ElementHost).AppValues
+    w.DeliverFrame() |> ignore
+    Assert.True(values.Get Window.isActive)
+    w.Send(FocusChanged false)
+    w.DeliverFrame() |> ignore
+    Assert.False(values.Get Window.isActive)
+    w.Send(FocusChanged true)
+    w.DeliverFrame() |> ignore
+    Assert.Equal<bool list>([ true; false; true ], List.ofSeq actives)
+    // Told again what it already is (a platform that reports focus at start): nothing runs.
+    w.Send(FocusChanged true)
+    w.DeliverFrame() |> ignore
+    Assert.Equal(3, actives.Count)
+    // A bare tree has no window to lose the focus.
+    Assert.True(AppValues().Get Window.isActive)
+
 // ---- The Gallery keeps its theme ----
 
 [<Fact>]

@@ -421,6 +421,9 @@ App.run [ App.storeName "Notes"; ... ]                           // optional: th
   values). `Window.size` is a built-in app value: the window's size in DIPs, kept current, so a component that
   uses it runs again on a resize: `let size = ctx.useAppValue Window.size`, then
   `if size.Current.Width < 600.0 then narrow () else wide ()`. It reports; setting it doesn't resize the window.
+  `Window.isActive` beside it is true while the app's window is the active one (in the browser, while the page
+  has the focus): `ctx.useAppValue Window.isActive`, to dim a title or pause something while the user is
+  elsewhere. It is true until the platform says otherwise.
 - **A remembered window:** `App.rememberWindow true` and a desktop window opens where it was last time: its size
   and position, and maximized if it was (un-maximizing gives back the size it had; a window closed while
   minimized opens at its normal place). `App.size` is then the size on the first run. A position that is on no
