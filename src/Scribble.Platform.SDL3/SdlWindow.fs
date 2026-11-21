@@ -237,6 +237,8 @@ type SdlWindow
                 if not minimized then this.Resize { Width = w.Data1; Height = w.Data2 }
             elif t = SDL_EVENT_WINDOW_EXPOSED then
                 frameRequested <- true
+            elif t = SDL_EVENT_WINDOW_MOVED || t = SDL_EVENT_WINDOW_MAXIMIZED then
+                onEvent Moved
             elif t = SDL_EVENT_WINDOW_MINIMIZED then
                 minimized <- true
                 this.Resize PixelSize.Zero
@@ -244,6 +246,8 @@ type SdlWindow
                 if minimized then
                     minimized <- false
                     this.Resize(readPixelSize ())
+                // Back from maximized too: where it is now is its normal place again.
+                if t = SDL_EVENT_WINDOW_RESTORED then onEvent Moved
             elif t = SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED then
                 let before = scale
                 readScale ()
@@ -323,6 +327,15 @@ type SdlWindow
                         left <- left - 1
                     index
             onEvent (TextComposition(text, caret))
+
+    interface IWindowPlacement with
+        member _.Position =
+            let mutable x = 0
+            let mutable y = 0
+            SDL_GetWindowPosition(handle, &&x, &&y) |> ignore
+            struct (x, y)
+        member _.IsMaximized = not closed && SDL_GetWindowFlags handle &&& SDL_WINDOW_MAXIMIZED <> 0UL
+        member _.IsMinimized = minimized || (not closed && SDL_GetWindowFlags handle &&& SDL_WINDOW_MINIMIZED <> 0UL)
 
     interface IWindow with
         member _.ClientSize = clientSize

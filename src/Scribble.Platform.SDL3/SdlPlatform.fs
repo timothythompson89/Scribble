@@ -157,6 +157,24 @@ type SdlPlatform() =
             info.Throw()
         | None -> ()
 
+    /// The displays' usable areas (without the taskbar) in screen coordinates, the primary one first.
+    let usableDisplays () : ScreenRect list =
+        let mutable count = 0
+        let ids = SDL_GetDisplays(&&count)
+        if ids = 0n then []
+        else
+            try
+                let primary = SDL_GetPrimaryDisplay()
+                [ for i in 0 .. count - 1 do
+                      let id = uint32 (Runtime.InteropServices.Marshal.ReadInt32(ids, i * 4))
+                      let mutable r = SDL_Rect()
+                      if SDL_GetDisplayUsableBounds(id, &&r) <> 0uy && r.W > 0 && r.H > 0 then
+                          yield id, ({ X = r.X; Y = r.Y; Width = r.W; Height = r.H }: ScreenRect) ]
+                |> List.sortBy (fun (id, _) -> if id = primary then 0 else 1)
+                |> List.map snd
+            finally
+                SDL_free ids
+
     let createWindow (options: WindowOptions) (onEvent: PlatformEvent -> unit) =
         if disposed then raise (ObjectDisposedException(nameof SdlPlatform))
         // Window sizes are in window coordinates: pixels on Windows, points on a Mac (README-highdpi in SDL's docs).
@@ -186,9 +204,29 @@ type SdlPlatform() =
         let wanted = px options.Size.Width w.Scale, px options.Size.Height w.Scale
         let density = float (SDL_GetWindowPixelDensity handle)
         let density = if density > 0.0 then density else 1.0
-        if wanted <> (w.ClientSize.Width, w.ClientSize.Height) then
-            SDL_SetWindowSize(handle, int (Math.Round(float (fst wanted) / density)), int (Math.Round(float (snd wanted) / density)))
-            |> ignore
+        let toScreen (pixels: int) = int (Math.Round(float pixels / density))
+        // A remembered place (DESIGN.md, "A remembered window"): the position if it is still on a display, and a
+        // size no larger than the display it opens on; then maximized, if it was (SDL applies that when the
+        // hidden window is shown, and the size and position above are what it returns to).
+        let position, size =
+            let asked = struct (toScreen (fst wanted), toScreen (snd wanted))
+            match options.Position with
+            | ValueSome p -> WindowPlacement.fit (usableDisplays ()) p asked
+            | ValueNone ->
+                let _, fitted = WindowPlacement.fit (usableDisplays ()) (struct (Int32.MinValue / 2, Int32.MinValue / 2)) asked
+                ValueNone, fitted
+        let struct (width, height) = size
+        let mutable nowW = 0
+        let mutable nowH = 0
+        SDL_GetWindowSize(handle, &&nowW, &&nowH) |> ignore
+        let resized = (width, height) <> (nowW, nowH)
+        if resized then SDL_SetWindowSize(handle, width, height) |> ignore
+        match position with
+        | ValueSome(struct (x, y)) -> SDL_SetWindowPosition(handle, x, y) |> ignore
+        // SDL centred the window at the size it was made with: centre it again at the size it has now (a window
+        // made larger than the display and then shrunk had its top left corner off the screen).
+        | ValueNone -> if resized then SDL_SetWindowPosition(handle, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED) |> ignore
+        if options.Maximized then SDL_MaximizeWindow handle |> ignore
         rethrowPending ()
         w
 

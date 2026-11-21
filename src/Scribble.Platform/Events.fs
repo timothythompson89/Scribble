@@ -150,6 +150,9 @@ type PlatformEvent =
     | Resized of size: PixelSize
     /// The window moved to a monitor with a different scale factor (1.0 = 96 DPI).
     | ScaleChanged of scale: float
+    /// The window moved on the screen, or was maximized or restored from it (a desktop window: `IWindowPlacement`
+    /// says where it is now).
+    | Moved
     /// The user started (true) or finished (false) dragging the window's edge or title bar.
     /// Renderers can lower latency during a live resize so content keeps up with the frame.
     | LiveResize of active: bool

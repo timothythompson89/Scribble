@@ -21,6 +21,16 @@ While the version starts with 0, any release may break the API: each break is li
   value) holds the name of the one in use: set it to switch, and the app starts in that theme next time. Without
   `App.themes` an app has the built-in pair under "Dark" and "Light". `App.rememberTheme false` keeps nothing.
 - `Window.size`: a built-in app value, the window's size in DIPs, kept current as the window is resized.
+- `App.rememberWindow true`: a desktop window opens where it was last time (size, position, maximized or not).
+  `App.size` is then the first run's size. For platform authors: `WindowOptions.Position` and `.Maximized`, a
+  `Moved` event, and `IWindowPlacement` for a window that knows its place.
+
+### Changed
+
+- A desktop window asked for at a size larger than its display is shrunk to the display (it used to open larger
+  than the screen).
+- For platform authors: `WindowOptions` has two more fields and `PlatformEvent` one more case (`Moved`). Code
+  that builds options with `{ WindowOptions.Default with ... }` is unaffected.
 - `ItemsLayout.wrapFill minWidth height`, for an ItemsView or a ListBox: as many cells per row as fit at
   `minWidth`, each widened equally so the row fills the width. (`wrap` keeps its cells' width and leaves the
   space over at the right.)

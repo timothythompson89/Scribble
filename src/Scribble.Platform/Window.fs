@@ -52,6 +52,46 @@ type IWindow =
     /// composing text itself (a click elsewhere in the text). Text input stays on.
     abstract ClearComposition: unit -> unit
 
+/// A rectangle on the desktop, in the screen coordinates the platform uses for window positions.
+[<Struct>]
+type ScreenRect =
+    { X: int
+      Y: int
+      Width: int
+      Height: int }
+
+/// A window whose place on the screen is known (a desktop window): what a remembered window is read from. The
+/// browser's window isn't one.
+type IWindowPlacement =
+    /// Where the window's drawable area starts, in screen coordinates.
+    abstract Position: struct (int * int)
+    abstract IsMaximized: bool
+    abstract IsMinimized: bool
+
+module WindowPlacement =
+    /// How much of a window's top edge must be on a display for it to count as there, and how tall the strip is
+    /// that must be: enough of the title bar to grab.
+    [<Literal>]
+    let Grab = 80
+
+    /// Room left above a window's drawable area for its title bar when it is shrunk to a display's height.
+    [<Literal>]
+    let TitleBar = 64
+
+    /// Where a window remembered at `position` with `size` opens on `displays` (their usable areas, the first
+    /// the primary one): its position if its top edge is still on one of them, else none (the platform's default
+    /// place); and its size, no larger than the display it opens on. With no displays known, as asked.
+    let fit (displays: ScreenRect list) (position: struct (int * int)) (size: struct (int * int)) : struct (int * int) voption * struct (int * int) =
+        let struct (x, y) = position
+        let struct (w, h) = size
+        let holds (d: ScreenRect) =
+            let across = min (x + w) (d.X + d.Width) - max x d.X
+            across >= min Grab w && y >= d.Y && y <= d.Y + d.Height - Grab
+        match displays |> List.tryFind holds, displays with
+        | Some d, _ -> ValueSome position, struct (min w d.Width, min h (d.Height - TitleBar))
+        | None, d :: _ -> ValueNone, struct (min w d.Width, min h (d.Height - TitleBar))
+        | None, [] -> ValueSome position, size
+
 /// Options for creating a window. Sizes are in DIPs, so a window looks the same size at any scaling.
 type WindowOptions =
     { Title: string
@@ -60,13 +100,21 @@ type WindowOptions =
       /// A window this one belongs to (a tool window): it always stays above its owner, minimizes
       /// and closes with it, and has no taskbar button of its own. Ignored where an app has one
       /// window (the browser).
-      Owner: IWindow voption }
+      Owner: IWindow voption
+      /// Where the window's drawable area starts, in screen coordinates (a remembered window); none: where the
+      /// platform puts new windows. A position that is on no display now is left out by the platform, and a size
+      /// larger than the display is shrunk to it. Ignored in the browser.
+      Position: struct (int * int) voption
+      /// Opens maximized; `Size` and `Position` are then what it returns to. Ignored in the browser.
+      Maximized: bool }
 
     static member Default =
         { Title = "Scribble"
           Size = { Width = 960.0; Height = 600.0 }
           Resizable = true
-          Owner = ValueNone }
+          Owner = ValueNone
+          Position = ValueNone
+          Maximized = false }
 
 /// Entry point to a windowing system.
 type IPlatform =

@@ -32,6 +32,18 @@ type AppContext internal (host: ElementHost, platform: IPlatform) =
     /// The window's dialogs: `app.Dialogs.Confirm [ ... ]`.
     member _.Dialogs = host.Dialogs
 
+/// The stored values behind `App.rememberWindow` (DESIGN.md, "A remembered window"): the library's own, made on
+/// first use. Width and height are in DIPs; x and y are the platform's screen coordinates.
+module internal RememberedWindow =
+    /// No position stored yet.
+    [<Literal>]
+    let Unknown = Int32.MinValue
+    let x = lazy (StoredValue.int "Scribble.Window.X" Unknown)
+    let y = lazy (StoredValue.int "Scribble.Window.Y" Unknown)
+    let width = lazy (StoredValue.float "Scribble.Window.Width" 0.0)
+    let height = lazy (StoredValue.float "Scribble.Window.Height" 0.0)
+    let maximized = lazy (StoredValue.bool "Scribble.Window.Maximized" false)
+
 /// Everything App settings configure.
 type AppConfig<'Msg> internal () =
     member val internal Size: DipSize = { Width = 960.0; Height = 600.0 } with get, set
@@ -50,6 +62,7 @@ type AppConfig<'Msg> internal () =
     member val internal Themes: (string * Theme) list = [] with get, set
     member val internal ThemeGiven = false with get, set
     member val internal RememberTheme = true with get, set
+    member val internal RememberWindow = false with get, set
     member val internal ValueStore: (string -> IValueStore) voption = ValueNone with get, set
     /// Makes the program, given the runtime's side of it.
     member val internal Program: (ProgramHost -> ProgramRunner<'Msg>) voption = ValueNone with get, set
@@ -161,6 +174,14 @@ type App =
     /// `App.theme`, an app has the built-in pair under "Dark" and "Light"; with `App.theme` alone it has that one
     /// theme and `Theme.picked` does nothing.
     static member themes<'Msg>(value: (string * Theme) list) : AppSetting<'Msg> = AppSetting(fun c -> c.Themes <- value)
+
+    /// True: the window opens where it was last time, at its size and position, maximized if it was (a window
+    /// closed while minimized opens at its normal place). `App.size` is then the size on the first run. A position
+    /// that is on no display any more (a monitor unplugged) is left out, and a size larger than the display is
+    /// shrunk to it. Only the app's own window, on the desktop; the browser's page has no place to remember.
+    /// Kept as stored values of the library's (`Scribble.Window.X`, `.Y`, `.Width`, `.Height`, `.Maximized`).
+    /// Default: false.
+    static member rememberWindow<'Msg>(value: bool) : AppSetting<'Msg> = AppSetting(fun c -> c.RememberWindow <- value)
 
     /// False: the theme picked (`Theme.picked`) is not kept between runs. Default: true.
     static member rememberTheme<'Msg>(value: bool) : AppSetting<'Msg> = AppSetting(fun c -> c.RememberTheme <- value)
@@ -310,14 +331,35 @@ type App =
                 applyTitle h.Window
 
         // Closing saves what stored values hold now (a change in the last half second is not yet saved).
-        let close (h: ElementHost) =
-            values.FlushStore()
-            h.Close()
-
         // `Window.size`: the window's client area in DIPs, at the start and whenever it or its scale changes.
         let reportSize (window: IWindow) =
             let size, scale = window.ClientSize, max 0.01 window.Scale
             values.Set(Window.size, Size.Create(float size.Width / scale, float size.Height / scale))
+
+        // A remembered window (`App.rememberWindow`; DESIGN.md, "A remembered window"): where a desktop window is
+        // and whether it is maximized, kept as it changes. Its size and position are kept only while it is neither
+        // maximized nor minimized, so they stay those of the normal window: what it returns to from maximized.
+        let rememberPlacement (window: IWindow) =
+            if config.RememberWindow && not window.IsClosed then
+                match window with
+                | :? IWindowPlacement as placed when not placed.IsMinimized ->
+                    let maximized = placed.IsMaximized
+                    values.Set(RememberedWindow.maximized.Value, maximized)
+                    if not maximized then
+                        let size = values.Get Window.size
+                        let struct (x, y) = placed.Position
+                        // A minimized window is parked far off the screen by some systems: never a place to return to.
+                        if size.Width >= 1.0 && size.Height >= 1.0 && x > -16000 && y > -16000 then
+                            values.Set(RememberedWindow.width.Value, size.Width)
+                            values.Set(RememberedWindow.height.Value, size.Height)
+                            values.Set(RememberedWindow.x.Value, x)
+                            values.Set(RememberedWindow.y.Value, y)
+                | _ -> ()
+
+        let close (h: ElementHost) =
+            rememberPlacement h.Window
+            values.FlushStore()
+            h.Close()
 
         let onEvent (event: PlatformEvent) =
             match host.Value with
@@ -325,7 +367,10 @@ type App =
                 let handled = h.HandleEvent event
                 match event with
                 | Resized _
-                | ScaleChanged _ -> reportSize h.Window
+                | ScaleChanged _ ->
+                    reportSize h.Window
+                    rememberPlacement h.Window
+                | Moved -> rememberPlacement h.Window
                 | _ -> ()
                 match event with
                 | CloseRequested -> close h
@@ -341,7 +386,19 @@ type App =
             | ValueNone -> ()
 
         let window =
-            platform.CreateWindow({ WindowOptions.Default with Title = values.Get WindowTitle.current; Size = config.Size }, onEvent)
+            let options = { WindowOptions.Default with Title = values.Get WindowTitle.current; Size = config.Size }
+            // A remembered window opens where it was: its stored size (App.size is then the first run's), its
+            // position, and maximized if it was. The platform leaves out a position no display has any more.
+            let options =
+                if not config.RememberWindow then options
+                else
+                    let width, height = values.Get RememberedWindow.width.Value, values.Get RememberedWindow.height.Value
+                    let x, y = values.Get RememberedWindow.x.Value, values.Get RememberedWindow.y.Value
+                    { options with
+                        Size = (if width >= 100.0 && height >= 100.0 then { Width = width; Height = height } else config.Size)
+                        Position = (if x <> RememberedWindow.Unknown && y <> RememberedWindow.Unknown then ValueSome(struct (x, y)) else ValueNone)
+                        Maximized = values.Get RememberedWindow.maximized.Value }
+            platform.CreateWindow(options, onEvent)
         // Lives as long as the values (the app's), so it's never removed.
         values.Subscribe(WindowTitle.current, fun _ -> applyTitle window) |> ignore
         reportSize window

@@ -43,7 +43,8 @@ questions", as paragraphs starting with the name given here.
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
 | Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
 | Stored values | App values kept between runs: `StoredValue.bool`/`int`/`float`/`string`/`enum`, `ctx.useStoredValue`; a JSON file in isolated storage on the desktop, localStorage in the browser (built 2026-11-20) | Section "Stored values" |
-| Common app values and stored values | What the library defines itself: `App.themes` and `Theme.picked` (the theme remembered), `Window.size` (built 2026-11-20); the system's theme, the active window and a remembered window are agreed and not built | Section "Common app values and stored values" |
+| Common app values and stored values | What the library defines itself: `App.themes` and `Theme.picked` (the theme remembered), `Window.size` (built 2026-11-20); the system's theme and the active window are agreed and not built | Section "Common app values and stored values" |
+| A remembered window | `App.rememberWindow`: a desktop window's size, position and maximized state stored and restored; `WindowOptions.Position` and `.Maximized`, a `Moved` event, `IWindowPlacement` (built 2026-11-20) | Section "A remembered window" |
 | Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); built 2026-11-20 | Section "A hook for a picture's load state" |
 | ListBox scrolls | A ListBox holds its own ScrollViewer (with the list, `ListBoxItems`, inside): no wrapper to write; a break in 0.1.0-alpha.3 (2026-11-20) | Section "ListBox scrolls on its own" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
@@ -5865,6 +5866,64 @@ is drawn on a bare tree given the light theme (and by `ViewImage.render`, which 
 nothing sets the name.
 **Not verified:** a real window (the dropdown open, the pink theme on every page, restart in Pink), and the
 browser. Steps 3, 4 and the rest of 5 are not built.
+
+## A remembered window (grilling, 2026-11-20)
+
+Step 4 of "Common app values and stored values": a desktop window that opens where it was. Agreed there: opt-in
+through `App.rememberWindow true`; nothing in the browser. An app's stored values exist before its window is
+made, so the window can be opened at its place. The platform could not say or set a window's position or
+maximize it: `WindowOptions` had a title, a size, resizable and an owner, and the SDL bindings had no such calls.
+
+**Decisions (Tim: yes to all):**
+1. **Five built-in stored values** under `Scribble.Window.`: `X`, `Y`, `Width`, `Height`, `Maximized`. Width and
+   height in DIPs, as `App.size` is (the window keeps its visual size if the display's scaling changes); x and y
+   in the screen coordinates the platform reports.
+2. **The stored size and position are always the normal window's**, with maximized a flag beside them: a window
+   closed maximized reopens maximized, and un-maximizing gives back the size it had.
+3. **A window closed while minimized reopens at its normal place**, never minimized.
+4. **A position that is on no display any more** (a monitor unplugged) gives the default place with the stored
+   size, shrunk to fit the display; "on a display" means enough of the title bar shows to grab.
+5. **`App.size` is the first run's size**; the stored one wins afterwards.
+6. **The five values stay the library's own**: no public `Window.position` or `Window.isMaximized` (screen
+   coordinates differ per platform). `Window.size` stays.
+7. **The Gallery turns it on.**
+
+Settled by Claude, said to Tim: only the app's own window (not the inspector's popped-out one); saving rides on
+stored values (half a second after the last move or resize, and at close); the contract grows by a position and
+a maximized flag in `WindowOptions`, and the window reports moves and maximizing.
+
+**As built.**
+- **Contract (`Scribble.Platform`):** `WindowOptions.Position` (none: the platform's place) and `.Maximized`;
+  a `Moved` event (moved, maximized, or restored); `IWindowPlacement` (`Position`, `IsMaximized`,
+  `IsMinimized`), which the SDL window and the tests' window implement and the browser's doesn't, so nothing is
+  stored there; `WindowPlacement.fit displays position size`, the rule of decision 4 as a pure function: the
+  position is kept when at least 80 units of the top edge are on a display and at least 80 down from its bottom;
+  the size is shrunk to the display, less 64 of height for a title bar.
+- **SDL:** bindings for `SDL_SetWindowPosition`, `SDL_GetWindowPosition`, `SDL_GetWindowSize`,
+  `SDL_MaximizeWindow`, `SDL_GetDisplays`, `SDL_GetDisplayUsableBounds`. The window is made hidden, sized, placed
+  and then maximized (SDL applies that when it is shown). Every window's size is now fitted to its display, not
+  only a remembered one's; a window resized after creation with no position is centred again.
+- **Core:** `App.rememberWindow`. `App.start` reads the five values into the options before `CreateWindow`
+  (a stored size under 100 by 100 is not used). On `Resized`, `ScaleChanged`, `Moved` and at close it stores the
+  maximized flag, and the size (from `Window.size`) and position only while the window is neither maximized nor
+  minimized. A position beyond -16000 is never stored (Windows parks a minimized window at -32000).
+- **Gallery:** `App.rememberWindow true`.
+
+**Results.** Eleven unit tests (`RememberedWindowTests.fs`): the first run; moved and resized, then the next
+run's options; maximized and restored; minimized, and a parked window on a platform that doesn't say minimized;
+closing; a drag saved once; off by default with stored values ignored and untouched; stored nonsense; and
+`fit` (still on a display, on a second one, hanging over an edge, negative coordinates, the display gone, a
+window larger than its display, no displays known). 1,406 unit tests (Release 1,405), 108 rendering tests.
+**Checked on a real window** (a scratch program on the SDL platform, four windows of 0.6 s on Tim's display,
+2560 wide at scale 1): a window asked for at 300,200 and 500 by 400 is there; one asked for maximized reports
+maximized from creation and at every event while it grows (so its normal size is never overwritten), ending at
+2560 by 1369; a position of 90000,90000 is left out and the window is centred; a window asked for at 9000 by
+9000 is shrunk to 2560 by 1328 and on the screen. That last case found a bug, fixed: the shrunk window kept
+the corner SDL gave the 9000 one, off the screen.
+**Not verified:** the Gallery itself remembering across a restart; un-maximizing after a maximized start
+returning to the stored size (the probe could not un-maximize); two displays, a display unplugged for real,
+and displays of different scaling (the size is made at the primary display's scale and then set again for the
+display the window opens on, as before); NativeAOT with the new bindings.
 
 ## Vectorising the PNG decoder (2026-11-18)
 

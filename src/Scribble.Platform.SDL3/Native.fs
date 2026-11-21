@@ -104,8 +104,10 @@ let DisplayModeRefreshRateOffset = 20
 let SDL_EVENT_QUIT = 0x100u
 let SDL_EVENT_WINDOW_SHOWN = 0x202u
 let SDL_EVENT_WINDOW_EXPOSED = 0x204u
+let SDL_EVENT_WINDOW_MOVED = 0x205u
 let SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED = 0x207u
 let SDL_EVENT_WINDOW_MINIMIZED = 0x209u
+let SDL_EVENT_WINDOW_MAXIMIZED = 0x20Au
 let SDL_EVENT_WINDOW_RESTORED = 0x20Bu
 let SDL_EVENT_WINDOW_MOUSE_ENTER = 0x20Cu
 let SDL_EVENT_WINDOW_MOUSE_LEAVE = 0x20Du
@@ -129,6 +131,10 @@ let SDL_INIT_VIDEO = 0x20u
 
 let SDL_WINDOW_HIDDEN = 0x8UL
 let SDL_WINDOW_RESIZABLE = 0x20UL
+/// SDL_WINDOWPOS_CENTERED: "centre it on the primary display", as a position.
+let SDL_WINDOWPOS_CENTERED = 0x2FFF0000
+let SDL_WINDOW_MINIMIZED = 0x40UL
+let SDL_WINDOW_MAXIMIZED = 0x80UL
 let SDL_WINDOW_HIGH_PIXEL_DENSITY = 0x2000UL
 
 let SDL_KMOD_SHIFT = 0x0003us
@@ -210,6 +216,27 @@ extern byte SDL_SetWindowSize(nativeint window, int w, int h)
 
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern byte SDL_GetWindowSizeInPixels(nativeint window, int* w, int* h)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_SetWindowPosition(nativeint window, int x, int y)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_GetWindowPosition(nativeint window, int* x, int* y)
+
+/// The size of the window's drawable area in window coordinates (what SDL_SetWindowSize takes).
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_GetWindowSize(nativeint window, int* w, int* h)
+
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_MaximizeWindow(nativeint window)
+
+/// The displays' ids, ended by a zero: ours to free with SDL_free.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern nativeint SDL_GetDisplays(int* count)
+
+/// A display's area without the taskbar or the menu bar, in screen coordinates.
+[<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
+extern byte SDL_GetDisplayUsableBounds(uint32 displayId, SDL_Rect* rect)
 
 [<DllImport(Lib, CallingConvention = CallingConvention.Cdecl)>]
 extern float32 SDL_GetWindowDisplayScale(nativeint window)

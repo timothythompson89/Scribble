@@ -50,6 +50,11 @@ type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
     /// The background colour the window was last told of.
     member val Background: struct (byte * byte * byte) voption = ValueNone with get, set
     member val Size: PixelSize = { Width = 400; Height = 300 } with get, set
+    /// What the window was created with, and where it is on the fake screen (a remembered window reads these).
+    member val Options = WindowOptions.Default with get, set
+    member val Position = struct (100, 100) with get, set
+    member val Maximized = false with get, set
+    member val Minimized = false with get, set
     /// Delivers a requested frame, like the platform's loop does, 16 ms of fake time after the last.
     /// Returns whether one was due.
     member this.DeliverFrame() =
@@ -66,6 +71,10 @@ type FakeWindow(onEvent: PlatformEvent -> unit, time: FakeTime) =
         match e with
         | Resized _ -> this.FrameRequested <- true
         | _ -> ()
+    interface IWindowPlacement with
+        member this.Position = this.Position
+        member this.IsMaximized = this.Maximized
+        member this.IsMinimized = this.Minimized
     interface IWindow with
         member this.ClientSize = this.Size
         member _.Scale = 1.0
@@ -110,7 +119,7 @@ type FakePlatform() =
         member _.Name = "fake"
         member _.SupportsMultipleWindows = false
         member this.CreateWindow(options, onEvent) =
-            let w = new FakeWindow(onEvent, this.Time, TitleText = options.Title)
+            let w = new FakeWindow(onEvent, this.Time, TitleText = options.Title, Options = options)
             this.Window <- Some w
             w :> IWindow
         member _.Run() = ()

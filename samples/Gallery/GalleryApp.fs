@@ -158,6 +158,8 @@ let app: AppSetting<unit> list =
       App.themes themes
       // Stored values are kept under this name on the desktop and in the browser.
       App.storeName "Gallery"
+      // The window opens where it was last time (its size, its position, maximized or not).
+      App.rememberWindow true
       App.view (gallery ())
       // The Images page renders the Gallery itself into a picture (ViewImage).
       App.value wholeGallery (ValueSome(fun () -> gallery ()))
