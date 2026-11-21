@@ -561,6 +561,17 @@ type ComponentContext internal (instance: ComponentInstance) =
             (slot :> IDisposable).Dispose()
             replaced.State
 
+    /// A stored value (`StoredValue.bool`, `int`, `float`, `string`, `enum`): an app value that is kept between runs. As `useAppValue`, which it
+    /// is: `let compact = ctx.useStoredValue compactMode`, then `compact.Current`, `compact.Set true`.
+    member this.useStoredValue<'T>(value: AppValue<'T>) : State<'T> =
+#if DEBUG
+        if not value.IsStored then
+            DebugWarnings.Once(
+                "useStoredValue " + value.Name,
+                "ctx.useStoredValue was given " + value.Name + ", an app value that isn't stored (AppValue.define): it is not kept between runs. Declare it with StoredValue.bool, int, float, string or enum.")
+#endif
+        this.useAppValue value
+
     /// A value computed from `deps`, computed again only when `deps` change (F# equality):
     /// `ctx.useMemo(items, fun items -> List.sortBy _.Name items)`.
     member _.useMemo<'D, 'T>(deps: 'D, compute: 'D -> 'T) : 'T =

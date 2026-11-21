@@ -343,7 +343,7 @@ StackPanel.items names id counter                                // keyed: state
     (the Gallery's Images page, "From a URL").
   - `ctx.useAnimated(target, duration, ?easing)`: a `float` or `Color` that moves to each new target; the
     component re-runs every frame while it moves.
-  - Described where they're used: `ctx.useAppValue` (App values, below); `ctx.useScroller ()` (scrolling from
+  - Described where they're used: `ctx.useAppValue` and `ctx.useStoredValue` (App values and Stored values, below); `ctx.useScroller ()` (scrolling from
     code); `ctx.useCapture ()` (an image of an element); `ctx.useClipboard ()`; `ctx.useToaster ()` (toasts);
     `ctx.useConfirm`, `useAsk`, `useInform`, `useDialog` and `useDialogs` (dialogs).
   - If a run fails after an effect's, a subscription's or a load's `deps` changed, nothing of it is lost: the
@@ -384,6 +384,43 @@ App.run [ App.value compactMode true; ... ]                      // optional sta
   `Cmd.setAppValue`) renames the window. `App.showStats` adds its numbers after the current title.
 - Code outside components can watch a value: `values.Subscribe(compactMode, fun v -> ...)` (dispose the result to
   stop). A listener that throws goes to `App.onError`; the others still hear the change.
+
+**Stored values:** an app value that is kept between runs (a theme picked, a compact layout, a volume):
+
+```fsharp
+let compactMode = StoredValue.bool "CompactMode" false           // the name it is stored under, a default
+
+let compactSwitch = Component.define "CompactSwitch" (fun ctx () ->
+    let compact = ctx.useStoredValue compactMode                 // as useAppValue: .Current, .Set, .Update
+    Switch.create [ Switch.text "Compact"; Switch.isChecked compact.Current; Switch.onCheckedChanged compact.Set ])
+
+App.run [ App.storeName "Notes"; ... ]                           // optional: the assembly's name without it
+```
+
+- It is an app value in every way (shared, `AppContext.Get`/`Set`, `Cmd.setAppValue`, `Subscribe`); the only
+  difference is that it is read from the app's store the first time something asks for it, and saved after it
+  changes: half a second after the last change (a slider sets its value on every frame of a drag) and when the
+  window closes.
+- **Primitive values only**, each through its own function, so another type doesn't compile:
+  `StoredValue.bool`, `StoredValue.int`, `StoredValue.float`, `StoredValue.string` and `StoredValue.enum` (kept by
+  the case's name). Something bigger is stored as its parts, a window's size as two numbers:
+  `let width = StoredValue.int "WindowSizeX" 960` and `let height = StoredValue.int "WindowSizeY" 600`.
+- **Where:** on the desktop a JSON file in the user's isolated storage (`Notes.json`:
+  `{ "CompactMode": true, "Volume": 0.5 }`), readable and editable by hand. In the browser the page's
+  `localStorage`, a key per value (`Notes/CompactMode`); `App.storeName` keeps two apps at one web address apart.
+- **Isolated storage finds an app by the path of its exe.** A moved or reinstalled exe starts from the defaults,
+  and a project's Debug, Release and published builds each have their own values.
+- Nothing here throws into the app. With nothing stored, with text that can't be read (a damaged file, a type
+  that changed) or with storage turned off (a private browser window), a value is its default; a Debug build
+  warns. The name is what a value is stored under: rename it and it starts again from its default.
+- There is no reset: set a value back to its default yourself. Two running copies of an app don't watch each
+  other; the last to save wins.
+- A store of your own: `App.valueStore (fun name -> myStore)` after `App.run`'s settings (an `IValueStore`: read
+  a text, write a text, flush); `MemoryValueStore()` keeps nothing between runs, which is what tests want.
+- **Built in:** `Theme.picked` is a stored value the library defines (the name of the app's theme: see Theme
+  values). `Window.size` is a built-in app value: the window's size in DIPs, kept current, so a component that
+  uses it runs again on a resize: `let size = ctx.useAppValue Window.size`, then
+  `if size.Current.Width < 600.0 then narrow () else wide ()`. It reports; setting it doesn't resize the window.
 - Read a value on the UI thread (a Debug build warns once per value when it's read from another); `Set` and
   `Update` are safe from any thread.
 
@@ -978,15 +1015,23 @@ Border.style [ Style.cls "card" ] [
     Style.onState States.hover [ Border.borderBrush Palette.accent ]
 ]
 
-// The window's theme is an app value, Theme.current: App.theme sets where it starts, and setting it
-// from anywhere switches the whole window (every layer that takes app styles, and the background):
-App.run [ App.theme dark; ... ]
-let themeSwitch = Component.define "ThemeSwitch" (fun ctx () ->
-    let theme = ctx.useAppValue Theme.current
-    let isLight = obj.ReferenceEquals(theme.Current, light)
-    Button.create [ Button.text (if isLight then "Dark" else "Light")
-                    Button.onClick (fun _ -> theme.Set(if isLight then dark else light)) ])
+// Name the app's themes once (the first is where a new user starts). Theme.picked, a stored value the library
+// defines, holds the name of the one in use: set it and the whole window follows (every layer that takes app
+// styles, and the background), and the app starts in that theme next time.
+App.run [ App.themes [ "Dark", dark; "Light", light ]; ... ]
+let themePicker = Component.define "ThemePicker" (fun ctx () ->
+    let picked = ctx.useStoredValue Theme.picked
+    ComboBox.create [ ComboBox.source [| "Dark"; "Light" |]
+                      ComboBox.selected (ValueSome picked.Current)
+                      ComboBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<string, string>) -> e.Key |> ValueOption.iter picked.Set) ])
 ```
+
+- **Without `App.themes`** an app has the built-in pair under "Dark" and "Light", so `Theme.picked` works with
+  no setup. `App.theme t` gives an app one theme, and `Theme.picked` then does nothing. `App.rememberTheme false`:
+  the theme still switches, and nothing is kept. A stored name the app no longer has (a theme renamed in a new
+  version) gives the first theme.
+- **The theme itself** is `Theme.current`, an app value: `ctx.useAppValue Theme.current` reads it, and setting
+  it switches the window for this run without being remembered.
 
 - **`Palette`:** `background`, `surface`, `control`, `border`, `text`, `textDim`, `accent`, `danger`, `textDanger` (text that says something failed; `danger` is for behind text), `warning`, `onAccent`
   (text on accent or danger backgrounds, white in both), `focusRing`, `hoverTint`, `pressTint`, `scrollThumb`,

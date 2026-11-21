@@ -36,6 +36,8 @@ module internal PlatformJs =
     let setBackground = JsFunction(ModuleName, "setBackground", T.void', [ T.string ])
     let readClipboard = JsFunction(ModuleName, "readClipboard", T.void', [ T.double ])
     let writeClipboard = JsFunction(ModuleName, "writeClipboard", T.void', [ T.string ])
+    let readStored = JsFunction(ModuleName, "readStored", T.string, [ T.string ])
+    let writeStored = JsFunction(ModuleName, "writeStored", T.void', [ T.string ])
     let createCanvas = JsFunction(ModuleName, "createCanvas", T.doubles, [ T.string ])
     let removeCanvas = JsFunction(ModuleName, "removeCanvas", T.void', [])
 
@@ -378,6 +380,17 @@ type BrowserPlatform private () =
 
     /// The page's address (`document.baseURI`), which relative URLs are resolved against.
     member _.PageUrl: string = returnedString (PlatformJs.call0 PlatformJs.pageUrl)
+
+    /// What the page's localStorage holds under `key` (stored values: DESIGN.md, "Stored values"); nothing when
+    /// the browser keeps no storage for the page.
+    member _.ReadStored(key: string) : string voption =
+        match returnedString (PlatformJs.callString PlatformJs.readStored key) with
+        | null | "" | "0" -> ValueNone
+        | answer -> ValueSome(answer.Substring 1)
+
+    /// Keeps `text` under `key` in the page's localStorage (at once: there is nothing to flush).
+    member _.WriteStored(key: string, text: string) : unit =
+        PlatformJs.callString PlatformJs.writeStored (key.Replace("\n", " ") + "\n" + text) |> ignore
 
     interface IPlatform with
         member _.Name = "Browser"

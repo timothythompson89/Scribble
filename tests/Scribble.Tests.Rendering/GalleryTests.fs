@@ -90,6 +90,25 @@ type GalleryTests(fixture: TextFixture) =
         | Some error -> Assert.Fail error
         | None -> ()
 
+    /// The Gallery in its neon pink theme (the light theme with its colours changed), the dropdown saying so.
+    [<Fact>]
+    member _.``the gallery, pink``() =
+        let pink = Scribble.Samples.GalleryApp.pinkTheme
+        let tree = ElementTree(fixture.Text)
+        tree.Theme <- ValueSome pink
+        tree.AppValues.Set(Theme.picked, "Pink")
+        tree.Update(Scribble.Samples.GalleryApp.gallery ())
+        tree.UpdateLayout(Size.Create(float width, float height))
+        let size: PixelSize = { Width = width; Height = height }
+        let image =
+            fixture.Gpu.Device.RenderOffscreen(size, 1.0, fun f ->
+                f.Clear (pink.Get Palette.background)
+                tree.Render f.DrawList)
+        tree.Root <- ValueNone
+        match Snapshot.check "gallery-pink@1x" image with
+        | Some error -> Assert.Fail error
+        | None -> ()
+
     /// M7 step 2b: the Styles page in the light theme (Primary and Danger with white text, light cards).
     [<Fact>]
     member _.``the styles page, light``() =

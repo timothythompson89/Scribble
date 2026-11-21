@@ -25,7 +25,14 @@ module BrowserApp =
                     ImageHttp.BaseUrl <- Uri(platform.PageUrl)
                     let! device = BrowserGpuDevice.CreateAsync []
                     let! shaper = BrowserHarfBuzzShaper.CreateAsync()
-                    let app = App.start (platform :> IPlatform, device :> IRenderDevice, shaper :> IShaper, settings)
+                    // Stored values go to the page's localStorage, a key per value: "<store name>/<value name>".
+                    let store =
+                        App.valueStore (fun name ->
+                            { new IValueStore with
+                                member _.TryRead value = platform.ReadStored(name + "/" + value)
+                                member _.Write(value, _, text) = platform.WriteStored(name + "/" + value, text)
+                                member _.Flush() = () })
+                    let app = App.start (platform :> IPlatform, device :> IRenderDevice, shaper :> IShaper, store :: settings)
                     // `await` in app code resumes through Scribble's dispatcher (and its error handling).
                     (app :?> ElementHost).Dispatcher |> ValueOption.iter _.Install()
                     (platform :> IPlatform).Run()

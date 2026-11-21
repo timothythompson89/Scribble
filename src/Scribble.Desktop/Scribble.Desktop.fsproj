@@ -8,6 +8,8 @@
     <Description>Runs a Scribble app on the desktop: App.run picks the platform (SDL3), the WebGPU renderer, HarfBuzz shaping and the screen-reader bridge (AccessKit).</Description>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="JsonValueFile.fs" />
+    <Compile Include="IsolatedValueStore.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>
   <ItemGroup>

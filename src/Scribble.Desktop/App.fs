@@ -32,13 +32,16 @@ module DesktopApp =
                 // screen-reader bridge", decision 2). The app's own settings come after: `App.screenReader false`
                 // leaves it out.
                 let settings =
-                    [ App.value ScreenReader.bridge (ValueSome AccessKitBridge.attach)
+                    [ App.valueStore (fun name -> IsolatedValueStore name :> IValueStore)
+                      App.value ScreenReader.bridge (ValueSome AccessKitBridge.attach)
                       App.onStart (fun app -> ScreenReader.attach app.Host) ]
                     @ settings
                 use app = App.start (platform, device, shaper, settings)
                 // `await` in app code resumes on this (the UI) thread.
                 (app :?> ElementHost).Dispatcher |> ValueOption.iter _.Install()
                 platform.Run()
+                // However the window went, what stored values hold now is saved.
+                (app :?> ElementHost).AppValues.FlushStore()
                 0
 
     /// Rendering in a tool or script, with no window (DESIGN.md, "Rendering to an image and saving it", round 2, 9):

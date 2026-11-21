@@ -42,6 +42,8 @@ questions", as paragraphs starting with the name given here.
 | Controls written outside Core | `ControlValue` and `Prop.appState` are public, `InputContext.Element` too; the Gallery's `RatingBar` is written with the public API only (2026-11-19) | Section "Controls written outside Core" |
 | Publishing | The public repository and the NuGet alpha: natives in packages, one version, the consumer test, CI and release workflows (2026-11-19) | Section "Publishing: GitHub and NuGet" |
 | Image state per app | The image cache, downloads and HTTP settings move from the process to the app, reached through the root's app values (built 2026-11-20) | Section "Image state per app, not per process" |
+| Stored values | App values kept between runs: `StoredValue.bool`/`int`/`float`/`string`/`enum`, `ctx.useStoredValue`; a JSON file in isolated storage on the desktop, localStorage in the browser (built 2026-11-20) | Section "Stored values" |
+| Common app values and stored values | What the library defines itself: `App.themes` and `Theme.picked` (the theme remembered), `Window.size` (built 2026-11-20); the system's theme, the active window and a remembered window are agreed and not built | Section "Common app values and stored values" |
 | Image hook | `ctx.useImage picture`: a component holds a picture and reads where it stands (loading, ready, failed, retry); built 2026-11-20 | Section "A hook for a picture's load state" |
 | ListBox scrolls | A ListBox holds its own ScrollViewer (with the list, `ListBoxItems`, inside): no wrapper to write; a break in 0.1.0-alpha.3 (2026-11-20) | Section "ListBox scrolls on its own" |
 | Other | Tooling and platform fixes | Sections "Serving the browser samples", "Phone-friendly samples", "Live resize lag", "Cursor stutter with G-SYNC", "Rendering test hangs", "One entry point and the sample layout", "Scribble.Serve hub"; "Milestone summaries" |
@@ -5687,6 +5689,182 @@ selector is a new function on each update, which re-views the realized items), s
 Ctrl+click on a box select the item and tick it, the box's own handler never runs, Tab lands on the item and
 never on a box, Space selects); a plain CheckBox in an item takes the click itself. 1,369 unit tests.
 **Not looked at:** what a screen reader says of a checkbox inside a list item that is itself selectable.
+
+## Stored values (grilling, 2026-11-20)
+
+Tim: "can we add Settings to the library? maybe something like ctx.useAppSetting? Allow it to be name by string
+and provide a default value. Use the IsolatedStorage system for saving." An app value was already a named, shared
+value with a default; this is that, kept between runs.
+
+**Measured before deciding** (a scratch console app, removed): `IsolatedStorage` works in a NativeAOT exe with no
+publish warnings. Its store is found by the exe's path (`%LOCALAPPDATA%\IsolatedStorage\…\Url.<hash of the
+path>\`): the same exe copied to another folder started with an empty store, and Debug, Release and published
+builds each have their own.
+
+**Decisions (Tim):**
+1. **The name is "stored value"**, `ctx.useStoredValue` (yes): "setting" is an entry of a settings list in the
+   glossary and `AppSetting` is what `App.run` takes.
+2. **Defined once, then used by reference** (yes): `StoredValue.define "Compact" false`, as app values are; not
+   a string at each use, where a typo makes a second value and two uses can disagree on the default.
+3. **Shared like an app value** (yes), and reached outside components the way app values are.
+4. **Saving is behind a contract each platform fills in** (yes); in the browser `localStorage` (Tim: "use
+   localStorage for browser").
+5. **Built-in types `string`, `bool`, `int`, `float` and enums**; any other type gives two functions, to text
+   and from text (yes). NativeAOT rules out reflection serializers, and the JSON source generator is C# only.
+6. **Written after half a second of quiet and at close**, never on every set (yes).
+7. **`IsolatedStorage` on the desktop** (Tim: "I want to use isolated storage for desktop"), over Claude's
+   recommendation of a file of our own found by name, made because of the path rule above. The rule is in the
+   README and the type's documentation, for app authors.
+8. **`App.storeName "Gallery"`**, the assembly's name without it (yes): the file's name on the desktop, the
+   prefix of the keys in the browser, where it keeps two apps at one web address apart (GitHub Pages serves
+   every repository of an account from one).
+9. **The desktop file is JSON** (Tim asked "should we not use JSON?", then yes): one object, a member per value,
+   each of its own JSON type, through the low-level reader and writer only. Claude's opinion, asked for: right
+   for the desktop, mildly (escaping and numbers for free, room for lists later); to be reconsidered if it added
+   more than about half a megabyte to an AOT exe.
+10. **No JSON in the browser** (yes): `localStorage` is a key-value store already, so plain text per key, and
+    `System.Text.Json` stays out of the download.
+11. **Core holds the contract, the hook and a memory store; `Scribble.Desktop` and `Scribble.Browser` hold
+    theirs** (yes). An app with no store keeps its values for the run and warns once in Debug.
+12. **The Gallery's Light/Dark switch is a stored value** (yes).
+
+Settled by Claude, said to Tim: what can't be read gives the default and a Debug warning, never an exception;
+reading happens before the first view; no reset or delete; two running copies don't watch each other (the last
+to save wins); the file is written under a temporary name and renamed; the per-assembly user store
+(`GetUserStoreForAssembly`).
+
+**As built.**
+- **A stored value is an `AppValue<'T>` with a text form** (`AppValue.IsStored`), so every way of using an app
+  value works on it unchanged, and `ctx.useStoredValue` is `ctx.useAppValue` (it warns in Debug when given a
+  plain app value). `StoredValue.define` (built-in types; another type throws where it is defined, naming
+  `defineWith`) and `StoredValue.defineWith name default toText fromText`. Not read at start, which can't know
+  what is defined: **read the first time something asks for it**, which for a view is before that view.
+- **`IValueStore`** (`TryRead name`, `Write(name, kind, text)`, `Flush`), on `AppValues.Store`.
+  `MemoryValueStore` is public (tests, an app that wants nothing kept). `App.valueStore (fun name -> store)` and
+  `App.storeName`; `App.run` puts the platform's store first, so one in the app's settings replaces it.
+- **Saving:** a set writes the text to the store at once and asks for a flush half a second later; a timer
+  that finds another change since waits again, so the flush comes between half a second and a second after the
+  last change. Closing the window (and, on the desktop, the end of `App.run`) flushes. A bare `AppValues` with
+  no dispatcher flushes at each change.
+- **Desktop:** `IsolatedValueStore` over `JsonValueFile` (the JSON part, apart so the unit tests reach it
+  without touching real storage; the test project compiles that file too). Members it doesn't know, and
+  hand-written lists or objects, are kept in their order; a float that JSON has no number for (NaN, infinity)
+  is stored as text; a missing or damaged file is an empty one; quotes and letters are written as they are.
+  If the last run stopped between deleting the file and renaming the new one, the temporary file is read.
+- **Browser:** `readStored`/`writeStored` in `scribble-platform.js`; storage that throws (turned off, full)
+  reads as nothing stored and keeps nothing.
+- **Guarded:** a store, or an app's `toText`/`fromText`, that throws gives the default (or leaves the store as
+  it was) with a Debug warning; two stored values of one name are warned of.
+- **Gallery:** `StoredValue.define "LightTheme" false`, set by the switch beside `Theme.current`;
+  `App.onStart` sets the theme from it; `App.storeName "Gallery"`. (Replaced the same day by the library's
+  `Theme.picked`: section "Common app values and stored values".)
+
+**Results.** 20 tests (`StoredValueTests.fs`): each type through a second run, floats exact and the same in a
+German culture, what can't be read, a store that throws, duplicate names, a value shared by two components, the
+flush timing (ten changes in a second: none during, one after; none for an equal value), closing, the store's
+name, no store, the JSON file (types, unknown members kept, four damaged files, no write when nothing changed)
+and the Gallery's theme. 1,389 unit tests (Release 1,388), 107 rendering tests.
+**Checked by hand, in scratch apps:** the real isolated-storage file written and read back by a second and third
+run, under the JIT and as a NativeAOT exe (`{ "Volume": 0.75, "Name": "Ada \"A\"", "Dark": false }`); the files
+were removed again.
+**Size:** Hello.Desktop as a NativeAOT exe, 15,843,328 bytes before and 16,293,888 after: 450,560 more (2.8%),
+for isolated storage, the JSON reader and writer and the feature together, paid by every desktop app whether it
+has stored values or not. Under the half megabyte of decision 9, not by much.
+**Not verified:** the browser store has not run (the built-in browser pane has no WebGPU and refuses
+`localStorage`); it compiles, and is on the browser checklist. The browser never flushes at close, which it
+doesn't need (each write is kept at once). The Gallery's switch in a real window is on the checklist.
+**Found by Tim in the browser (2026-11-20):** the desktop worked as described; the browser stored the value and
+didn't load it on reopening. `WriteStored` joins the key and the text with a line feed for one call into
+JavaScript, and its F# string held a real line break where `"\n"` was meant (written by a script that expanded
+the escape). Once the file had Windows line endings, the key was stored with a carriage return at its end
+(`Gallery/LightTheme\r`, which looks the same in DevTools) and read without one. Fixed by writing the escape.
+A key stored by the broken build stays in localStorage, unread and harmless.
+
+**Primitive values only (grilling, 2026-11-20).** Tim, after seeing a window's size stored as a `Size` with a
+text form of its own: "Let's enforce primitive values for stored values. storing WindowSizeX and WindowSizeY is
+fine to me." This replaces decision 5's second half and its as-built note. Decisions (Tim: yes to all):
+(a) enums stay (kept by the case's name: no code from the app, and without them a choice is a string or a
+number converted by hand); (b) enforced by the compiler, not by an exception at start: one function per type,
+`StoredValue.bool`, `int`, `float`, `string` and `enum` (F# can't overload a curried function by type), in
+place of the generic `StoredValue.define`; (c) `int` and `float` are the only number types. Settled by Claude,
+said to Tim: `Theme.picked` stays a stored string.
+**As built:** `StoredValue.define` and `StoredValue.defineWith` are gone (never released). The module is
+`RequireQualifiedAccess` (its functions are named `int`, `string`, ...). `StoredValue.enum` takes a .NET enum
+(`'T : struct`, `'T :> Enum`), read with `Enum.TryParse<'T>`; a name or number that is no case of it gives the
+default. The text form is still an internal `StoredCodec` per value. Tests: the type test now stores a window's
+size as `WindowSizeX` and `WindowSizeY`, and the tests of an app's own text form that throws are gone with it.
+1,395 unit tests (Release 1,394), 108 rendering tests.
+
+## Common app values and stored values (grilling, 2026-11-20)
+
+Tim: "can we define some common items for our useAppValue functionality and our useStoredValue functionality".
+Scribble had five built-in app values (`Theme.current`, `WindowTitle.current`, `Toasts.placement`,
+`ScreenReader.enabled`, the TextBox menu's labels) and no built-in stored value; the platform reports a window's
+size, but not its position, whether it is active, or the system's dark or light setting.
+
+**Decisions, round 1 (Tim: yes to all):**
+1. **A small set the library defines**, in two groups: stored values for what nearly every app wants
+   remembered, and app values for facts about the window and system that views read.
+2. **A remembered theme**, for every app, with no code in the app (the Gallery needed a stored value, an
+   `App.onStart` and a switch that set two things).
+3. **A "System" choice** that follows the system's dark or light setting: a second step (platform work on both
+   sides).
+4. **A remembered window** (size, position, maximized), opt-in with one setting: needs the platform to report
+   and set a position; nothing in the browser.
+5. **App values for the window's size, whether it is active, and whether the system prefers dark.** Size needs
+   no platform work.
+6. **Left out until something asks:** a remembered text size or zoom, a language, recent files, reduced motion.
+
+Order agreed: the remembered theme and the window's size (this step), then the platform work for 3, 4 and the
+rest of 5.
+
+**Decisions, round 2 (Tim: yes to all):**
+7. **`App.themes [ "Dark", dark; "Light", light ]`** names an app's themes, the first the default. `App.theme t`
+   stays for one theme. An app that gives neither has the built-in pair under "Dark" and "Light".
+8. **`Theme.picked`**, a built-in stored string holding the name, which the library keeps `Theme.current` in
+   step with. Setting `Theme.current` directly works for the run and isn't remembered.
+9. **A stored name the app no longer has** gives the first theme and stays stored until the user picks again.
+10. **Remembered by default**, `App.rememberTheme false` to turn it off: an app with a theme switch always
+    wants it, and one without never changes the value, so nothing is written.
+11. **`Window.size`**, an app value: the client area in DIPs, updated on every resize. It reports only.
+12. **The Gallery moves to `Theme.picked`** and drops its own stored value and `App.onStart`; its stored key
+    changes, so a remembered choice resets once.
+13. Tim, with the yes: **the Gallery's switch becomes a dropdown, with a third, pink theme.**
+
+Settled by Claude, said to Tim: the stored name is `Scribble.Theme`.
+
+**As built.**
+- `App.themes`, `App.rememberTheme`, `Theme.picked` (default "Dark") and `Window.size` (`Size`, zero in a bare
+  tree). At start the stored name's theme is set, else the first; when the name is unknown, `Theme.picked`
+  reads as the first theme's name for the run without being written (`AppValues.Prime`). From then on a
+  listener sets `Theme.current` from the name; a name the app doesn't have changes nothing. With `App.themes`
+  and `App.theme` both, the named themes win.
+- `App.rememberTheme false` makes `Theme.picked` a plain app value for that app (`AppValues.Unkept`): not read,
+  not written.
+- An app without a store hears no warning for the library's own stored values (names starting `Scribble.`),
+  only for its own.
+- `Window.size` is set by `App.start` from the window's client size and scale, at the start and on `Resized`
+  and `ScaleChanged`, so only the app's own window reports (not the inspector's).
+- **Cost to every app:** the stored theme name is read at start, so a desktop app opens its JSON file in
+  isolated storage once at start whether or not it offers a theme switch. Not timed.
+- **Gallery:** `themes` (Dark, Light, Pink) through `App.themes`; `themePicker`, a ComboBox on `Theme.picked`
+  labelled "Theme" for screen readers. Pink was first `Theme.light` with twelve colours changed (a soft pink
+  on pale backgrounds); Tim: "I was thinking more of a neon pink", then "Brighter", then "I want
+  lighter background colors". It went from neon on near-black, to neon on deep magenta, to what it is: `Theme.light`
+  with twelve colours changed, a neon accent, focus ring and border 0xFF1FC9 on light pinks (backgrounds 0xFFC7EF
+  and 0xFFE3F7, controls 0xFFF5FC, text 0x3A0030). The colours are Claude's, seen only in the `gallery-pink@1x`
+  screenshot.
+
+**Results.** Six new unit tests (first theme and the one picked last time; an unknown stored name; remembering
+off; the built-in pair and `App.theme` alone; no warning without a store; `Window.size` and a component that
+follows it), and the Gallery's two theme tests rewritten for the dropdown. 1,395 unit tests (Release 1,394). One
+new screenshot, `gallery-pink@1x`; thirteen regenerated because the dropdown replaced the switch (`gallery`,
+`gallery-light`, `layout-page`, `layout-grid-overlay`, `inspector-pick`, `inspector-floating` and the seven
+phone pages), each looked at; 108 rendering tests. In `gallery-light@1x` the dropdown says "Dark": that picture
+is drawn on a bare tree given the light theme (and by `ViewImage.render`, which shares the reference), where
+nothing sets the name.
+**Not verified:** a real window (the dropdown open, the pink theme on every page, restart in Pink), and the
+browser. Steps 3, 4 and the rest of 5 are not built.
 
 ## Vectorising the PNG decoder (2026-11-18)
 

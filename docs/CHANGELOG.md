@@ -11,6 +11,16 @@ While the version starts with 0, any release may break the API: each break is li
 - A browser app's default page says so in plain words when it can't run: "This page needs WebGPU" (or HTTPS)
   in the middle of the page, where it used to be black with a red error box. The .NET runtime isn't downloaded
   there. An app with a `wwwroot/index.html` of its own is unchanged.
+- **Stored values**: app values kept between runs, of primitive types: `StoredValue.bool "Compact" false`, and
+  `StoredValue.int`, `float`, `string` and `enum`. `ctx.useStoredValue`, and
+  everything an app value has. Saved to a JSON file in isolated storage on the desktop and to `localStorage` in
+  the browser, half a second after the last change and when the window closes. `App.storeName` names the store;
+  `App.valueStore` gives one of your own (`IValueStore`, `MemoryValueStore`). A desktop exe grows by about
+  0.45 MB (the JSON reader and writer).
+- `App.themes [ "Dark", dark; "Light", light ]` names an app's themes, and `Theme.picked` (a built-in stored
+  value) holds the name of the one in use: set it to switch, and the app starts in that theme next time. Without
+  `App.themes` an app has the built-in pair under "Dark" and "Light". `App.rememberTheme false` keeps nothing.
+- `Window.size`: a built-in app value, the window's size in DIPs, kept current as the window is resized.
 - `ItemsLayout.wrapFill minWidth height`, for an ItemsView or a ListBox: as many cells per row as fit at
   `minWidth`, each widened equally so the row fills the width. (`wrap` keeps its cells' width and leaves the
   space over at the right.)

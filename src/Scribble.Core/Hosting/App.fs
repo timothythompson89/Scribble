@@ -46,6 +46,11 @@ type AppConfig<'Msg> internal () =
     member val internal Styles: Style list = [] with get, set
     member val internal OnStart: (AppContext -> unit) list = [] with get, set
     member val internal Values: (AppValues -> unit) list = [] with get, set
+    member val internal StoreName: string voption = ValueNone with get, set
+    member val internal Themes: (string * Theme) list = [] with get, set
+    member val internal ThemeGiven = false with get, set
+    member val internal RememberTheme = true with get, set
+    member val internal ValueStore: (string -> IValueStore) voption = ValueNone with get, set
     /// Makes the program, given the runtime's side of it.
     member val internal Program: (ProgramHost -> ProgramRunner<'Msg>) voption = ValueNone with get, set
 
@@ -146,7 +151,19 @@ type App =
     /// `Cmd.setAppValue Theme.current t`; the whole window follows (every layer that takes app styles,
     /// and the background).
     static member theme<'Msg>(value: Theme) : AppSetting<'Msg> =
-        AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(Theme.current, value) ])
+        AppSetting(fun c ->
+            c.ThemeGiven <- true
+            c.Values <- c.Values @ [ fun values -> values.Set(Theme.current, value) ])
+
+    /// The app's themes by name, the first the one it starts in: `App.themes [ "Dark", Theme.dark []; "Light",
+    /// Theme.light [] ]`. The name of the one in use is `Theme.picked`, a stored value: set it to switch
+    /// (`ctx.useStoredValue Theme.picked`), and the app starts in that theme next time. Without `App.themes` and
+    /// `App.theme`, an app has the built-in pair under "Dark" and "Light"; with `App.theme` alone it has that one
+    /// theme and `Theme.picked` does nothing.
+    static member themes<'Msg>(value: (string * Theme) list) : AppSetting<'Msg> = AppSetting(fun c -> c.Themes <- value)
+
+    /// False: the theme picked (`Theme.picked`) is not kept between runs. Default: true.
+    static member rememberTheme<'Msg>(value: bool) : AppSetting<'Msg> = AppSetting(fun c -> c.RememberTheme <- value)
 
     /// Where the window's toasts stack at the start (the default is the bottom right):
     /// `App.toasts [ Toasts.horizontalAlignment HorizontalAlignment.Center; Toasts.verticalAlignment VerticalAlignment.Top ]`.
@@ -163,6 +180,16 @@ type App =
     /// An app value's starting value (`AppValue.define`): `App.value compactMode true`.
     static member value<'Msg, 'T> (value: AppValue<'T>) (start: 'T) : AppSetting<'Msg> =
         AppSetting(fun c -> c.Values <- c.Values @ [ fun values -> values.Set(value, start) ])
+
+    /// The name the app's stored values (`StoredValue.bool`, `int`, `float`, `string`, `enum`) are kept under: the file's name in isolated storage
+    /// on the desktop (`Gallery.json`), the prefix of the keys in the browser's localStorage (`Gallery/Compact`),
+    /// which keeps two apps at one web address apart. Default: the name of the app's assembly.
+    static member storeName<'Msg>(value: string) : AppSetting<'Msg> = AppSetting(fun c -> c.StoreName <- ValueSome value)
+
+    /// Where the app's stored values are kept, made from the store's name (`App.storeName`). `App.run` gives the
+    /// platform's; one written after it in the settings replaces that (a store of your own, or a
+    /// `MemoryValueStore` to keep nothing).
+    static member valueStore<'Msg>(make: string -> IValueStore) : AppSetting<'Msg> = AppSetting(fun c -> c.ValueStore <- ValueSome make)
 
     /// False: the app's windows get no screen-reader bridge (DESIGN.md, "AccessKit: the screen-reader bridge").
     /// Default: true; a bridge does nothing until a screen reader, or another tool that reads windows, asks.
@@ -215,8 +242,43 @@ type App =
         platform.SetWakeHandler dispatcher.RunPending
         // The app values, shared by its windows and layers, with their starting values.
         let values = AppValues(Dispatcher = ValueSome dispatcher)
+        // Where its stored values are kept: the platform's store (App.run gives it), else memory, with a Debug
+        // warning when a stored value is first used. A store that can't be made is one too.
+        let storeName =
+            match config.StoreName with
+            | ValueSome name when not (String.IsNullOrWhiteSpace name) -> name
+            | _ ->
+                match System.Reflection.Assembly.GetEntryAssembly() with
+                | null -> "Scribble"
+                | entry -> (match entry.GetName().Name with null -> "Scribble" | n -> n)
+        values.Store <-
+            match config.ValueStore with
+            | ValueSome make ->
+                try
+                    make storeName
+                with e ->
+                    DebugOnly.warn ("StoredValue.store", "The store for stored values could not be opened (" + e.Message + "): they are kept for this run only.")
+                    MemoryValueStore()
+            | ValueNone -> UnkeptValueStore()
         for set in config.Values do
             set values
+        // The app's themes by name, and the one picked (DESIGN.md, "Common app values and stored values"): the
+        // stored name's theme at start, else the first; from then on the window's theme follows the name. A stored
+        // name the app no longer has stays stored until something picks again.
+        let themes =
+            if not config.Themes.IsEmpty then config.Themes
+            elif config.ThemeGiven then []
+            else [ "Dark", values.Get Theme.current; "Light", ThemeExtensions.defaultLight.Value ]
+        if not config.RememberTheme then values.Unkept.Add Theme.picked.Id |> ignore
+        if not themes.IsEmpty then
+            let find (name: string) = themes |> List.tryFind (fun (n, _) -> n = name)
+            match find (values.Get Theme.picked) with
+            | Some(_, theme) -> values.Set(Theme.current, theme)
+            | None ->
+                values.Prime(Theme.picked, fst themes.Head)
+                values.Set(Theme.current, snd themes.Head)
+            // Lives as long as the values (the app's), so it's never removed.
+            values.Subscribe(Theme.picked, fun name -> find name |> Option.iter (fun (_, theme) -> values.Set(Theme.current, theme))) |> ignore
         let requestRebuild () =
             dirty.Value <- true
             host.Value |> ValueOption.iter (fun (h: ElementHost) -> h.Window.RequestFrame())
@@ -247,14 +309,28 @@ type App =
                 stats.Value <- $" · {frameRate.FramesPerSecond:F0} fps · layout {s.LayoutMilliseconds:F2} ms · {s.Shapes} shapes"
                 applyTitle h.Window
 
+        // Closing saves what stored values hold now (a change in the last half second is not yet saved).
+        let close (h: ElementHost) =
+            values.FlushStore()
+            h.Close()
+
+        // `Window.size`: the window's client area in DIPs, at the start and whenever it or its scale changes.
+        let reportSize (window: IWindow) =
+            let size, scale = window.ClientSize, max 0.01 window.Scale
+            values.Set(Window.size, Size.Create(float size.Width / scale, float size.Height / scale))
+
         let onEvent (event: PlatformEvent) =
             match host.Value with
             | ValueSome(h: ElementHost) ->
                 let handled = h.HandleEvent event
                 match event with
-                | CloseRequested -> h.Close()
+                | Resized _
+                | ScaleChanged _ -> reportSize h.Window
+                | _ -> ()
+                match event with
+                | CloseRequested -> close h
                 | KeyDown _ when handled -> ()
-                | KeyDown(Key.Escape, _, false) when config.CloseOnEscape -> h.Close()
+                | KeyDown(Key.Escape, _, false) when config.CloseOnEscape -> close h
                 | KeyDown(key, mods, false) ->
                     for handler in config.OnKey do
                         guarded (fun () ->
@@ -268,6 +344,7 @@ type App =
             platform.CreateWindow({ WindowOptions.Default with Title = values.Get WindowTitle.current; Size = config.Size }, onEvent)
         // Lives as long as the values (the app's), so it's never removed.
         values.Subscribe(WindowTitle.current, fun _ -> applyTitle window) |> ignore
+        reportSize window
         let beforeFrame () =
             match host.Value with
             | ValueSome(h: ElementHost) ->

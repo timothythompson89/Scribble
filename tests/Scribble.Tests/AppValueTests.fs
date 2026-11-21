@@ -155,28 +155,26 @@ let ``in an app: a starting value, shared by every layer, set through AppContext
     Assert.Equal<string list>([ "app light"; "toast light" ], shown ())
 
 [<Fact>]
-let ``the Gallery's switch sets Theme.current, and the window and its layers follow`` () =
+let ``the Gallery's theme follows Theme.picked, and the window and its layers follow`` () =
     let w, device, app = start Scribble.Samples.GalleryApp.app
     let host = app :?> ElementHost
-    let light, dark = Scribble.Samples.GalleryApp.lightTheme, Scribble.Samples.GalleryApp.darkTheme
+    let light, dark, pink = Scribble.Samples.GalleryApp.lightTheme, Scribble.Samples.GalleryApp.darkTheme, Scribble.Samples.GalleryApp.pinkTheme
     w.DeliverFrame() |> ignore
     Assert.Same(dark, host.WindowTheme)
     let rec all (e: Element) : Element seq = seq { yield e; for c in e.Children do yield! all c }
-    let switch () = all host.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, Switch.Type))
-    Assert.False(switch().Get ToggleButtonProps.isChecked)
-    // Click it in the middle.
-    let s = switch ()
-    let p = s.PositionInTree
-    let at: Scribble.Platform.PixelPoint = { X = p.X + s.Bounds.Width / 2.0; Y = p.Y + s.Bounds.Height / 2.0 }
-    w.Send(Scribble.Platform.PointerPressed(Scribble.Platform.Mouse, 0, at, MouseButton.Left, Modifiers.None))
-    w.Send(Scribble.Platform.PointerReleased(Scribble.Platform.Mouse, 0, at, MouseButton.Left, Modifiers.None))
-    w.DeliverFrame() |> ignore
-    Assert.Same(light, host.WindowTheme)
-    Assert.Equal(light.Get Palette.background, device.LastClear)
-    // Controlled by the app value: on now.
-    Assert.True(switch().Get ToggleButtonProps.isChecked)
-    for l in host.Layers do
-        Assert.Same(light, l.Tree.Theme.Value)
+    // The dropdown shows the name picked; what it sets is the stored value (a ComboBox's own tests click it).
+    let picker () = all host.Tree.Root.Value |> Seq.find (fun e -> obj.ReferenceEquals(e.Type, ComboBox.Type))
+    let shown () = all (picker ()) |> Seq.exists (fun e -> obj.ReferenceEquals(e.Type, TextBlock.Type) && e.Get TextProps.text = host.AppValues.Get Theme.picked)
+    Assert.Equal("Dark", host.AppValues.Get Theme.picked)
+    Assert.True(shown ())
+    for name, theme in [ "Light", light; "Pink", pink ] do
+        host.AppValues.Set(Theme.picked, name)
+        w.DeliverFrame() |> ignore
+        Assert.Same(theme, host.WindowTheme)
+        Assert.Equal(theme.Get Palette.background, device.LastClear)
+        Assert.True(shown ())
+        for l in host.Layers do
+            Assert.Same(theme, l.Tree.Theme.Value)
 
 [<Fact>]
 let ``the window title is an app value: App.title starts it, sets change the window's title`` () =

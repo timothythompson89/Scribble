@@ -192,6 +192,11 @@ module ThemeExtensions =
 
     let private current = lazy (AppValue.define "Theme" defaultTheme.Value)
 
+    /// The built-in light theme, for an app that names no themes (one instance, made when first asked for).
+    let internal defaultLight = lazy (Theme.light [])
+
+    let private picked = lazy (StoredValue.string "Scribble.Theme" "Dark")
+
     type Theme with
         /// The window's theme, an app value: every layer that takes app styles (toasts, dialogs; not
         /// the inspector) and the window's background follow it. `App.theme t` sets its starting
@@ -199,3 +204,10 @@ module ThemeExtensions =
         /// (`.Set lightTheme`), `AppContext.Set(Theme.current, t)` or `Cmd.setAppValue Theme.current t`.
         /// A `theme` on an element applies inside it only.
         static member current: AppValue<Theme> = current.Value
+
+        /// The name of the app's theme, a stored value: set it and the window's theme follows (`Theme.current`),
+        /// and the app starts in that theme next time. The names are `App.themes`'s (`"Dark"` and `"Light"`, the
+        /// built-in pair, for an app that gives none). `let picked = ctx.useStoredValue Theme.picked`, then
+        /// `picked.Current` and `picked.Set "Light"`. A name the app doesn't have changes nothing.
+        /// `App.rememberTheme false`: it still switches the theme, and nothing is kept.
+        static member picked: AppValue<string> = picked.Value

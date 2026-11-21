@@ -98,6 +98,10 @@ _Avoid_: root value, theme default
 A named, typed value with one current value per app (`Theme.current`, `WindowTitle.current`), shared by all its windows and layers.
 _Avoid_: global; app state (that is what views give elements, below)
 
+**Stored value**:
+An app value of a primitive type that is kept between runs (`StoredValue.bool`, `int`, `float`, `string`, `enum`; `ctx.useStoredValue`), under its name in the app's store: a JSON file in isolated storage on the desktop, localStorage in the browser.
+_Avoid_: setting, app setting (a setting is an entry of a settings list); preference; persisted state
+
 ## State
 
 **Visual state**:

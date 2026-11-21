@@ -32,6 +32,8 @@
     <Compile Include="ThemeValueTests.fs" />
     <Compile Include="DefaultsTests.fs" />
     <Compile Include="AppValueTests.fs" />
+    <Compile Include="../../src/Scribble.Desktop/JsonValueFile.fs" Link="JsonValueFile.fs" />
+    <Compile Include="StoredValueTests.fs" />
     <Compile Include="LayerTests.fs" />
     <Compile Include="ItemsViewTests.fs" />
     <Compile Include="PanelTests.fs" />

@@ -64,22 +64,47 @@ let buildSuffix =
 /// The title while page `i` shows: "Gallery – Components · 0.1.0-alpha.3 (6378526)".
 let private titleFor (i: int) = appTitle + " – " + titleOf i + buildSuffix
 
-/// The Gallery's two themes are the built-in ones. The light one also gives the Styles page's own theme value
-/// its light colour; the dark one needs nothing, since a theme value's default is its dark value.
+/// The Gallery's themes. Dark and Light are the built-in ones; the light one also gives the Styles page's own
+/// theme value its light colour (the dark one needs nothing, since a theme value's default is its dark value).
+/// Pink is the light theme with its colours changed to a neon pink: every colour a theme has is a setting.
 let darkTheme = Theme.dark []
 let lightTheme = Theme.light [ Theme.set StylesPage.highlight (Scribble.Rendering.Color.Hex 0x2F5BD3) ]
 
-/// The Light/Dark switch: it switches the window's theme (`Theme.current`, an app value) itself,
-/// wherever it sits; the whole window follows, the toast and dialog layers too. Controlled: it
-/// shows the app value, and a click sets it.
-let private themeSwitch =
-    Component.define "ThemeSwitch" (fun ctx () ->
-        let theme = ctx.useAppValue Theme.current
-        let isLight = obj.ReferenceEquals(theme.Current, lightTheme)
-        Switch.create [
-            Switch.text "Light"
-            Switch.isChecked isLight
-            Switch.onCheckedChanged (fun light -> theme.Set(if light then lightTheme else darkTheme))
+let pinkTheme =
+    let hex = Scribble.Rendering.Color.Hex
+    // Neon: hot pink lines and accents on light pinks, with dark plum text.
+    let neon = hex 0xFF1FC9
+    Theme.light [
+        Theme.background (hex 0xFFC7EF)
+        Theme.surface (hex 0xFFE3F7)
+        Theme.control (hex 0xFFF5FC)
+        Theme.border neon
+        Theme.text (hex 0x3A0030)
+        Theme.textDim (hex 0x9C1A80)
+        Theme.accent neon
+        Theme.focusRing neon
+        Theme.hoverTint (neon.WithAlpha 0.14f)
+        Theme.pressTint (neon.WithAlpha 0.26f)
+        Theme.scrollThumb (neon.WithAlpha 0.55f)
+        Theme.scrollTrack (neon.WithAlpha 0.08f)
+        Theme.set StylesPage.highlight neon
+    ]
+
+/// The themes by name, as `App.themes` takes them: the first is the one a new user starts in.
+let themes = [ "Dark", darkTheme; "Light", lightTheme; "Pink", pinkTheme ]
+
+/// The theme dropdown: it shows and sets `Theme.picked`, the name of the app's theme, a stored value the library
+/// defines. The window follows wherever this sits (the toast and dialog layers too), and the Gallery starts in
+/// the theme picked last time, with no code here for either.
+let private themePicker =
+    Component.define "ThemePicker" (fun ctx () ->
+        let picked = ctx.useStoredValue Theme.picked
+        ComboBox.create [
+            ComboBox.width 120.0
+            ComboBox.source (themes |> List.map fst |> Array.ofList)
+            ComboBox.selected (ValueSome picked.Current)
+            ComboBox.onSelectedChanged (fun (e: SelectionChangedEventArgs<string, string>) -> e.Key |> ValueOption.iter picked.Set)
+            Scribble.Accessibility.Semantics.label "Theme"
         ])
 
 /// The tabs: a TabControl keeping the selection itself (no `selected` setting). Each page is
@@ -95,7 +120,7 @@ let gallery =
                     DockPanel.dock Dock.Top
                     Border.horizontalAlignment HorizontalAlignment.Right
                     Border.margin (24.0, 12.0, 24.0, 0.0)
-                    Border.content (themeSwitch ())
+                    Border.content (themePicker ())
                 ]
                 TabControl.create [
                     TabControl.margin (10.0, 0.0, 10.0, 0.0)
@@ -129,7 +154,10 @@ let app: AppSetting<unit> list =
       App.size (720.0, 560.0)
       // Emoji typed into a TextBox come from Twemoji: Inter has none, and drew its "missing" box.
       App.fonts [ Scribble.Text.Emoji.Twemoji() ]
-      App.theme darkTheme
+      // The themes by name: the one picked is remembered (Theme.picked, a stored value the library defines).
+      App.themes themes
+      // Stored values are kept under this name on the desktop and in the browser.
+      App.storeName "Gallery"
       App.view (gallery ())
       // The Images page renders the Gallery itself into a picture (ViewImage).
       App.value wholeGallery (ValueSome(fun () -> gallery ()))

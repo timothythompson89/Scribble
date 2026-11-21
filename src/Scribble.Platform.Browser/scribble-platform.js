@@ -553,3 +553,25 @@ export function saveFile(name, bytes) {
 }
 
 //# sourceURL=scribble-platform.js
+
+// Stored values (DESIGN.md, "Stored values"): the page's localStorage, a key per value. Storage that is turned
+// off or full (a private window, a blocked site) reads as nothing stored and keeps nothing: the app runs on its
+// defaults. The answer starts with "1" when the key holds text, and is "0" when it holds none.
+export function readStored(key) {
+  try {
+    const text = globalThis.localStorage.getItem(key);
+    return text === null ? "0" : "1" + text;
+  } catch {
+    return "0";
+  }
+}
+
+// key and text in one string, parted by the first "\n" (a key has none).
+export function writeStored(keyAndText) {
+  try {
+    const at = keyAndText.indexOf("\n");
+    globalThis.localStorage.setItem(keyAndText.slice(0, at), keyAndText.slice(at + 1));
+  } catch {
+    // not kept
+  }
+}
